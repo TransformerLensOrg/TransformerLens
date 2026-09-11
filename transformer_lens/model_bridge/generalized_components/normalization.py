@@ -222,3 +222,61 @@ class NormalizationBridge(GeneralizedComponent):
             return result
         warnings.warn(NATIVE_PATH_EDIT_FALLBACK_WARNING)
         return self._apply_weight_and_bias(hooked_normalized, input_dtype)
+
+
+class LayerNormPreBridge(NormalizationBridge):
+    """Param-free LayerNorm (LNPre): hook_scale / hook_normalized, no weight or bias."""
+
+    property_aliases: Dict[str, str] = {}
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        optional: bool = False,
+    ):
+        """Initialize the param-free LayerNorm bridge."""
+        super().__init__(
+            name,
+            config,
+            submodules=submodules or {},
+            use_native_layernorm_autograd=False,
+            uses_rms_norm=False,
+            optional=optional,
+        )
+
+    def _apply_weight_and_bias(
+        self, hidden_states: torch.Tensor, input_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """No weight or bias to apply — only restore the input dtype."""
+        return hidden_states.to(input_dtype)
+
+
+class RMSNormPreBridge(NormalizationBridge):
+    """Param-free RMSNorm (RMSPre): hook_scale / hook_normalized, no learnable scale."""
+
+    property_aliases: Dict[str, str] = {}
+
+    def __init__(
+        self,
+        name: str,
+        config: Any,
+        submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        optional: bool = False,
+    ):
+        """Initialize the param-free RMSNorm bridge."""
+        super().__init__(
+            name,
+            config,
+            submodules=submodules or {},
+            use_native_layernorm_autograd=False,
+            uses_rms_norm=True,
+            optional=optional,
+        )
+
+    def _apply_weight_and_bias(
+        self, hidden_states: torch.Tensor, input_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """No learnable scale to apply — only restore the input dtype."""
+        return hidden_states.to(input_dtype)

@@ -4,7 +4,7 @@ Tests cover:
 - Config attributes
 - Component mapping structure and HF module names (incl. q_norm/k_norm)
 - Weight conversion keys/types (GQA: k/v use n_key_value_heads)
-- _preprocess_gated_q_proj static helper (gated q_proj slicing)
+- Gated q_proj survives weight processing on the Qwen3.5/Qwen3Next subclasses
 - Factory registration
 """
 from types import SimpleNamespace
@@ -140,53 +140,65 @@ class TestQwen3AdapterComponentMapping:
         assert "linear_attn" not in blocks.submodules
 
 
-class TestPreprocessGatedQProj:
-    """Numerical correctness of the _preprocess_gated_q_proj static helper
-    on synthetic interleaved [query, gate] rows: asserts query-half slicing,
-    that unrelated state-dict keys are untouched, and that the rewrite
-    applies across all matching layers."""
+GATED_ADAPTERS = (
+    ("Qwen3_5ForCausalLM", "qwen3_5", "Qwen3_5ArchitectureAdapter"),
+    ("Qwen3_5MoeForCausalLM", "qwen3_5_moe", "Qwen3_5MoeArchitectureAdapter"),
+    (
+        "Qwen3_5ForConditionalGeneration",
+        "qwen3_5_multimodal",
+        "Qwen3_5MultimodalArchitectureAdapter",
+    ),
+    ("Qwen3NextForCausalLM", "qwen3_next", "Qwen3NextArchitectureAdapter"),
+)
 
-    def test_slices_query_half(self) -> None:
-        """Interleaved [query, gate] rows per head must be reduced to query-only."""
-        n_heads, d_head, d_model = 4, 8, 16
-        # Build q_proj.weight as (n_heads, d_head*2, d_model): query=1.0, gate=9.0
-        w = torch.empty(n_heads, d_head * 2, d_model)
-        w[:, :d_head, :] = 1.0
-        w[:, d_head:, :] = 9.0
-        w_flat = w.reshape(n_heads * d_head * 2, d_model)
 
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w_flat.clone()}
-        out = Qwen3ArchitectureAdapter._preprocess_gated_q_proj(state_dict, n_heads, d_head)
+@pytest.mark.parametrize(
+    "architecture,module,cls_name", GATED_ADAPTERS, ids=[a[0] for a in GATED_ADAPTERS]
+)
+class TestGatedQProjSurvivesWeightProcessing:
+    """q_proj carries [query|gate] per head; HF and the attention bridge both split it at
+    forward time and scale attn_output by sigmoid(gate). Weight processing must therefore
+    hand the 2x-wide matrix back untouched — a query-half slice drops the gate and moves
+    the logits, and applied twice it silently halves the weight again."""
 
-        result = out["model.layers.0.self_attn.q_proj.weight"]
-        assert result.shape == (n_heads * d_head, d_model)
-        assert torch.all(result == 1.0), "gate rows must be dropped"
+    N_HEADS = 4
+    D_HEAD = 8
+    D_MODEL = 32
 
-    def test_only_q_proj_keys_modified(self) -> None:
-        n_heads, d_head, d_model = 2, 4, 8
-        q_w = torch.ones(n_heads * d_head * 2, d_model)
-        other = torch.full((d_model, d_model), 7.0)
-        state_dict = {
-            "model.layers.0.self_attn.q_proj.weight": q_w,
-            "model.layers.0.self_attn.k_proj.weight": other.clone(),
-            "model.layers.0.mlp.gate_proj.weight": other.clone(),
-        }
-        out = Qwen3ArchitectureAdapter._preprocess_gated_q_proj(state_dict, n_heads, d_head)
-        assert torch.equal(out["model.layers.0.self_attn.k_proj.weight"], other)
-        assert torch.equal(out["model.layers.0.mlp.gate_proj.weight"], other)
+    def _adapter(self, architecture: str, module: str, cls_name: str) -> Any:
+        import importlib
 
-    def test_multiple_layers(self) -> None:
-        n_heads, d_head, d_model = 2, 4, 8
-        state_dict = {
-            f"model.layers.{i}.self_attn.q_proj.weight": torch.ones(n_heads * d_head * 2, d_model)
-            for i in range(3)
-        }
-        out = Qwen3ArchitectureAdapter._preprocess_gated_q_proj(state_dict, n_heads, d_head)
-        for i in range(3):
-            assert out[f"model.layers.{i}.self_attn.q_proj.weight"].shape == (
-                n_heads * d_head,
-                d_model,
-            )
+        cfg = make_bridge_cfg(
+            architecture,
+            n_heads=self.N_HEADS,
+            d_head=self.D_HEAD,
+            d_model=self.D_MODEL,
+            n_key_value_heads=self.N_HEADS,
+        )
+        mod = importlib.import_module(
+            f"transformer_lens.model_bridge.supported_architectures.{module}"
+        )
+        return getattr(mod, cls_name)(cfg)
+
+    def _gated_q(self) -> torch.Tensor:
+        return torch.randn(self.N_HEADS * self.D_HEAD * 2, self.D_MODEL)
+
+    def test_gated_q_proj_returned_untouched(self, architecture, module, cls_name) -> None:
+        adapter = self._adapter(architecture, module, cls_name)
+        w = self._gated_q()
+        # The bridge renames to TL keys before calling preprocess_weights.
+        key = "blocks.1.attn.q.weight"
+        out = adapter.preprocess_weights({key: w.clone()})
+        assert torch.equal(out[key], w)
+
+    def test_repeat_application_is_a_noop(self, architecture, module, cls_name) -> None:
+        adapter = self._adapter(architecture, module, cls_name)
+        w = self._gated_q()
+        key = "blocks.1.attn.q.weight"
+        state_dict = {key: w.clone()}
+        for _ in range(3):
+            state_dict = adapter.preprocess_weights(state_dict)
+        assert torch.equal(state_dict[key], w)
 
 
 class TestQwen3HybridConstructor:

@@ -321,115 +321,81 @@ class TestQwen3_5ConfigAttributes:
         )
 
 
-class TestQwen3_5PreprocessWeights:
-    """q_proj rows are interleaved per-head (query, gate, query, gate, ...) — naive first-half slice is wrong."""
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5GatedQProjWeightProcessing:
+    """Weight processing runs on a real tiny model and must leave the gated q_proj alone.
 
-    N_HEADS = 4
-    D_HEAD = 8
-    HIDDEN_SIZE = 32
+    HF splits q_proj into [query|gate] per head and scales attn_output by sigmoid(gate);
+    the attention bridge reproduces that at forward time from the 2x-wide weight. Slicing
+    the query half out in weight space drops the gate and moves the logits.
+    """
 
-    @pytest.fixture
-    def adapter(self, qwen3_5_dependency_available):
-        from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
-            Qwen3_5ArchitectureAdapter,
-        )
+    FULL_ATTN_LAYER = 3
 
-        cfg = _make_bridge_cfg(
-            n_heads=self.N_HEADS,
-            d_head=self.D_HEAD,
-            d_model=self.HIDDEN_SIZE,
-            n_key_value_heads=self.N_HEADS,
-        )
-        return Qwen3_5ArchitectureAdapter(cfg)
+    def _q_weight(self, bridge):
+        return bridge.blocks[self.FULL_ATTN_LAYER].attn.q.weight
 
-    def _make_q_proj_weight(self):
+    def test_preprocess_weights_sees_tl_renamed_keys(self):
+        """process_weights passes the bridge's own state dict, so an HF-style
+        ``.self_attn.q_proj.weight`` matcher inside preprocess_weights would be dead."""
+        bridge, _ = _make_tiny_processable_bridge()
+        keys = set(bridge.state_dict())
+
+        assert f"blocks.{self.FULL_ATTN_LAYER}.attn.q.weight" in keys
+        assert [k for k in keys if k.endswith(".self_attn.q_proj.weight")] == []
+
+    def test_compatibility_mode_keeps_q_proj_gated_width(self):
         import torch
 
-        total_rows = self.N_HEADS * self.D_HEAD * 2
-        w = torch.zeros(total_rows, self.HIDDEN_SIZE)
-        for row_idx in range(total_rows):
-            w[row_idx] = float(row_idx)
-        return w
+        bridge, _ = _make_tiny_processable_bridge()
+        gated_rows = 2 * bridge.cfg.n_heads * bridge.cfg.d_head
+        before = self._q_weight(bridge).detach().clone()
+        assert before.shape[0] == gated_rows
 
-    def test_q_proj_output_shape(self, adapter):
+        bridge.enable_compatibility_mode()
+
+        after = self._q_weight(bridge)
+        assert after.shape[0] == gated_rows, "gate half was sliced out of q_proj"
+        assert torch.equal(before, after)
+
+    def test_compatibility_mode_logits_match_hf(self):
+        """Processed weights must still reproduce HF — gating included."""
         import torch
 
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.3.self_attn.q_proj.weight": w}
-        result = adapter.preprocess_weights(state_dict)
-        out = result["model.layers.3.self_attn.q_proj.weight"]
-        assert out.shape == (self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
+        bridge, hf_model = _make_tiny_processable_bridge()
+        tokens = torch.randint(0, 512, (1, 6))
+        with torch.no_grad():
+            reference = torch.log_softmax(hf_model(tokens).logits.double(), dim=-1)
 
-    def test_q_proj_selects_query_rows_not_naive_first_half(self, adapter):
+        bridge.enable_compatibility_mode()
+        with torch.no_grad():
+            processed = torch.log_softmax(bridge(tokens).double(), dim=-1)
+
+        max_diff = (processed - reference).abs().max().item()
+        assert max_diff < 1e-4, f"processed bridge vs HF max log-prob diff {max_diff:.2e}"
+
+    def test_gate_hook_still_fires_after_processing(self):
         import torch
 
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w}
-        result = adapter.preprocess_weights(state_dict)
-        out = result["model.layers.0.self_attn.q_proj.weight"]
+        bridge, _ = _make_tiny_processable_bridge()
+        bridge.enable_compatibility_mode()
 
-        for head_idx in range(self.N_HEADS):
-            out_rows = out[head_idx * self.D_HEAD : (head_idx + 1) * self.D_HEAD]
-            expected_start = head_idx * self.D_HEAD * 2
-            expected_rows = w[expected_start : expected_start + self.D_HEAD]
-            assert torch.equal(out_rows, expected_rows), (
-                f"Head {head_idx}: output rows do not match expected query rows. "
-                f"Got row values starting at {out_rows[0, 0].item()}, "
-                f"expected starting at {expected_rows[0, 0].item()}"
+        hook_name = f"blocks.{self.FULL_ATTN_LAYER}.attn.hook_q_gate"
+        assert hook_name in bridge.hook_dict
+        captured = {}
+        with torch.no_grad():
+            bridge.run_with_hooks(
+                torch.randint(0, 512, (1, 6)),
+                fwd_hooks=[(hook_name, lambda t, hook: captured.setdefault(hook.name, t.detach()))],
             )
 
-    def test_naive_slice_would_be_wrong(self, adapter):
-        import torch
-
-        w = self._make_q_proj_weight()
-        state_dict = {"model.layers.0.self_attn.q_proj.weight": w}
-        result = adapter.preprocess_weights(state_dict)
-        correct_out = result["model.layers.0.self_attn.q_proj.weight"]
-        naive_out = w[: self.N_HEADS * self.D_HEAD]
-
-        if self.N_HEADS > 1:
-            assert not torch.equal(correct_out, naive_out), (
-                "Naive first-half slice gave the same result as per-head slice — "
-                "test setup may be wrong"
-            )
-
-    def test_non_q_proj_weights_unchanged(self, adapter):
-        import torch
-
-        k_proj = torch.randn(self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
-        down_proj = torch.randn(self.HIDDEN_SIZE, self.N_HEADS * self.D_HEAD)
-        state_dict = {
-            "model.layers.0.self_attn.k_proj.weight": k_proj.clone(),
-            "model.layers.0.mlp.down_proj.weight": down_proj.clone(),
-        }
-        result = adapter.preprocess_weights(state_dict)
-        assert torch.equal(result["model.layers.0.self_attn.k_proj.weight"], k_proj)
-        assert torch.equal(result["model.layers.0.mlp.down_proj.weight"], down_proj)
-
-    def test_multiple_layers_all_processed(self, adapter):
-        import torch
-
-        w0 = self._make_q_proj_weight()
-        w3 = self._make_q_proj_weight() * 2
-        state_dict = {
-            "model.layers.0.self_attn.q_proj.weight": w0,
-            "model.layers.3.self_attn.q_proj.weight": w3,
-        }
-        result = adapter.preprocess_weights(state_dict)
-        expected_shape = (self.N_HEADS * self.D_HEAD, self.HIDDEN_SIZE)
-        assert result["model.layers.0.self_attn.q_proj.weight"].shape == expected_shape
-        assert result["model.layers.3.self_attn.q_proj.weight"].shape == expected_shape
-
-    def test_empty_state_dict_returns_empty(self, adapter):
-        assert adapter.preprocess_weights({}) == {}
-
-    def test_state_dict_without_q_proj_unchanged(self, adapter):
-        import torch
-
-        state_dict = {"model.embed_tokens.weight": torch.randn(100, self.HIDDEN_SIZE)}
-        original_keys = set(state_dict.keys())
-        result = adapter.preprocess_weights(state_dict)
-        assert set(result.keys()) == original_keys
+        gate = captured.get(hook_name)
+        assert gate is not None, "hook_q_gate did not fire on processed weights"
+        assert gate.shape[-1] == bridge.cfg.n_heads * bridge.cfg.d_head
+        assert gate.float().std() > 0
 
 
 @pytest.mark.skipif(
@@ -453,7 +419,7 @@ class TestQwen3_5ComponentTypes:
     reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
 )
 class TestQwen3_5AttnSubmodules:
-    """Full-attention layers wire Qwen3-pattern submodules; gated q_proj half is pre-sliced."""
+    """Full-attention layers wire Qwen3-pattern submodules."""
 
     @pytest.fixture
     def attn(self):
@@ -494,7 +460,7 @@ class TestQwen3_5HybridSpecifics:
         return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
 
     def test_gated_q_proj_flag_set(self, adapter):
-        """Flag drives preprocess_weights to slice the gated half of q_proj."""
+        """Flag tells the attention bridge to split [query|gate] out of q_proj at forward time."""
         assert getattr(adapter.cfg, "gated_q_proj", False) is True
 
 
@@ -584,6 +550,32 @@ def _make_tiny_bridge():
         d_vocab=512,
         n_key_value_heads=2,
         architecture="Qwen3_5ForCausalLM",
+    )
+    adapter = Qwen3_5ArchitectureAdapter(bridge_cfg)
+    return TransformerBridge(hf_model, adapter, tokenizer=MagicMock()), hf_model
+
+
+def _make_tiny_processable_bridge():
+    """Tiny bridge whose cfg is translated from the HF config, as boot_transformers does.
+
+    _make_tiny_bridge hand-writes its TransformerBridgeConfig; the gaps (act_fn, eps) only
+    bite once weight processing hands the forward to the bridge's own components, which
+    resolve the activation from cfg — relu for a silu model. Weight-processing numerics
+    need the translated config.
+    """
+    from unittest.mock import MagicMock
+
+    import torch
+
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
+    from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+        Qwen3_5ArchitectureAdapter,
+    )
+
+    hf_model = _make_tiny_hf_model()
+    bridge_cfg = build_bridge_config_from_hf(
+        hf_model.config, "Qwen3_5ForCausalLM", "qwen3_5-tiny", torch.float32
     )
     adapter = Qwen3_5ArchitectureAdapter(bridge_cfg)
     return TransformerBridge(hf_model, adapter, tokenizer=MagicMock()), hf_model

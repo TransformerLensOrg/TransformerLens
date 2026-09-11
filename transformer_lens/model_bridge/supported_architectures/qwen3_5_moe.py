@@ -11,8 +11,6 @@ Two adapters: text-only ``Qwen3_5MoeForCausalLM`` and the vision-language
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MoEBridge,
@@ -44,6 +42,8 @@ class Qwen3_5MoeArchitectureAdapter(Qwen3ArchitectureAdapter):
     """Text-only Qwen3.5-MoE: hybrid GatedDeltaNet + full attention, sparse MoE MLP."""
 
     def __init__(self, cfg: Any) -> None:
+        # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
+        # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 
@@ -76,10 +76,6 @@ class Qwen3_5MoeArchitectureAdapter(Qwen3ArchitectureAdapter):
                 "TransformerBridge.boot_transformers(...) so Qwen3_5MoeForConditionalGeneration "
                 "checkpoints route to the multimodal adapter automatically."
             )
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Slice query half from gated q_proj.weight for weight-space analysis."""
-        return self._preprocess_gated_q_proj(state_dict, self.cfg.n_heads, self.cfg.d_head)
 
 
 class Qwen3_5MoeMultimodalArchitectureAdapter(Qwen3_5MultimodalArchitectureAdapter):

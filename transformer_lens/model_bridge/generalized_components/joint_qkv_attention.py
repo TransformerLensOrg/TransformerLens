@@ -105,7 +105,7 @@ class JointQKVAttentionBridge(AttentionBridge):
         )
 
     def __deepcopy__(self, memo):
-        """Share split_qkv_matrix and config across clones instead of copying.
+        """Share split_qkv_matrix across clones instead of copying.
 
         split_qkv_matrix may be a bound method of the architecture adapter,
         which transitively references the full HF model. Without this override,
@@ -130,8 +130,29 @@ class JointQKVAttentionBridge(AttentionBridge):
             self.config = saved_config
 
         clone.split_qkv_matrix = saved_split_fn
-        clone.config = saved_config
+        clone.config = self._resolve_cloned_config(saved_config, memo)
         return clone
+
+    @staticmethod
+    def _resolve_cloned_config(config: Any, memo: Dict[int, Any]) -> Any:
+        """Pick the config a clone reads: the shared live one, or the cloning bridge's own.
+
+        Block replication deepcopies a block template while no Bridge owns the config
+        yet, and those clones must keep sharing the live one so every layer stays on a
+        single object. But a whole-bridge deepcopy gives the clone its own cfg, and an
+        attention still pointing at the original's config makes the clone's
+        ``use_attn_result`` rewire the ORIGINAL's forward -- a pristine control model
+        corrupted with no error. The owning Bridge sitting in ``memo`` is what tells the
+        two cases apart; copying through ``memo`` then hands back the very object that
+        Bridge clone adopts as its cfg instead of forking a third one.
+        """
+        if config is None:
+            return None
+        bridge_ref = getattr(config, "_bridge_ref", None)
+        live_bridge = bridge_ref() if bridge_ref is not None else None
+        if live_bridge is None or id(live_bridge) not in memo:
+            return config
+        return copy.deepcopy(config, memo)
 
     @staticmethod
     def _filter_qkv_state_dict(

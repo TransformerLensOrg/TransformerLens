@@ -127,3 +127,29 @@ def test_hf_generate_tensor_input_does_not_synthesize_attention_mask() -> None:
 
     assert tokenizer.calls == 0
     assert "attention_mask" not in model.generation_kwargs
+
+
+def test_generate_forwards_its_validated_mask_when_delegating_to_hf_generate() -> None:
+    """A stateful model without KV cache falls back to hf_generate.
+
+    generate() has already shape-validated the caller's mask by then; dropping it makes
+    the model attend to pad positions, and there is no workaround on that path.
+    """
+    bridge, _, model = _make_bridge()
+    bridge.cfg.is_stateful = True
+    bridge._resolve_generation_caching = MethodType(
+        lambda self, requested, batched: bool(requested), bridge
+    )
+    mask = torch.tensor([[0, 1]])
+
+    bridge.generate(
+        torch.tensor([[11, 12]]),
+        attention_mask=mask,
+        max_new_tokens=1,
+        do_sample=False,
+        use_past_kv_cache=False,
+        return_type="tokens",
+        verbose=False,
+    )
+
+    torch.testing.assert_close(model.generation_kwargs["attention_mask"], mask)

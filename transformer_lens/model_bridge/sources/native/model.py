@@ -1,7 +1,8 @@
 """TL-native transformer for TransformerBridge — minimal, no HF/HT dependency.
 
-Cfg-driven features: ``normalization_type`` (LN / RMS / RMSPre), ``final_rms``,
-``gated_mlp``, ``attn_only``, ``n_key_value_heads`` (GQA), ``attn_scores_soft_cap``,
+Cfg-driven features: ``normalization_type`` (LN / RMS / LNPre / RMSPre —
+the ``Pre`` variants are param-free), ``final_rms``, ``gated_mlp``,
+``attn_only``, ``n_key_value_heads`` (GQA), ``attn_scores_soft_cap``,
 ``output_logits_soft_cap``, ``positional_embedding_type`` (standard / rotary),
 ``rotary_dim`` / ``rotary_base`` / ``rope_scaling`` (linear PI, dynamic/NTK,
 llama3 by-parts).
@@ -66,9 +67,49 @@ class NativeRMSNorm(nn.Module):
         return self.weight * normalized
 
 
+class NativeRMSNormPre(nn.Module):
+    """Param-free RMSNorm — normalization only, no learnable scale."""
+
+    def __init__(self, eps: float = 1e-5):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        x_fp32 = x.to(torch.float32)
+        rms_inv = torch.rsqrt(x_fp32.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return (x_fp32 * rms_inv).to(input_dtype)
+
+
+class NativeLayerNormPre(nn.Module):
+    """Param-free LayerNorm — center + normalize only, no learnable scale/bias."""
+
+    def __init__(self, eps: float = 1e-5):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        x_fp32 = x.to(torch.float32)
+        x_fp32 = x_fp32 - x_fp32.mean(dim=-1, keepdim=True)
+        scale = (x_fp32.pow(2).mean(dim=-1, keepdim=True) + self.eps).sqrt()
+        return (x_fp32 / scale).to(input_dtype)
+
+
+def _uses_param_free_norm(cfg: TransformerBridgeConfig) -> bool:
+    return _normalization_type(cfg) in ("RMSPRE", "LNPRE")
+
+
 def _make_norm(cfg: TransformerBridgeConfig, *, force_rms: bool = False) -> nn.Module:
+    param_free = _uses_param_free_norm(cfg)
     if force_rms or _uses_rms_norm(cfg):
+        # final_rms swaps the norm family but must not reintroduce a scale the
+        # checkpoint doesn't carry.
+        if param_free:
+            return NativeRMSNormPre(eps=cfg.eps)
         return NativeRMSNorm(cfg.d_model, eps=cfg.eps)
+    if _normalization_type(cfg) == "LNPRE":
+        return NativeLayerNormPre(eps=cfg.eps)
     if _uses_no_norm(cfg):
         return nn.Identity()
     return nn.LayerNorm(cfg.d_model, eps=cfg.eps)

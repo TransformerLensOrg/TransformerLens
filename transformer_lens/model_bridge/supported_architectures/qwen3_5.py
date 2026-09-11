@@ -7,8 +7,6 @@ optional attention mapping and fold_ln disabled.
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.supported_architectures.qwen3 import (
     Qwen3ArchitectureAdapter,
 )
@@ -19,10 +17,12 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
 
     Inherits Qwen3 config/attention/MLP structure. Differences:
     - Attention + linear_attn are optional (per-layer type)
-    - Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis
+    - Gated q_proj: [query|gate] is split at forward time, never in weight space
     """
 
     def __init__(self, cfg: Any) -> None:
+        # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
+        # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 
@@ -56,12 +56,3 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
                 "selected automatically. Qwen3_5ForConditionalGeneration, image/video "
                 "inputs, and Qwen3.5 MoE are not supported by this adapter."
             )
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Slice query half from gated q_proj.weight for weight-space analysis.
-
-        In processed mode, W_Q is the pure query projection (for composition
-        scores, logit lens). Gate signal available in unprocessed mode on
-        full-attention layers via blocks.N.attn.hook_q_gate.
-        """
-        return self._preprocess_gated_q_proj(state_dict, self.cfg.n_heads, self.cfg.d_head)

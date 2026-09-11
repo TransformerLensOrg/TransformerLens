@@ -3,7 +3,8 @@
 Supported modes: ``"gpt2"`` (Normal(0, std) with 1/sqrt(2*n_layers) residual
 scaling on output projections), ``"xavier_uniform"`` / ``"xavier_normal"``,
 ``"kaiming_uniform"`` / ``"kaiming_normal"`` (relu nonlinearity). Norm weights
-go to 1, all biases to 0.
+go to 1, all biases to 0; param-free norms (LNPre / RMSPre) have nothing to
+initialize.
 
 Determinism uses a scoped ``torch.Generator``, not ``torch.manual_seed``, so
 seeded init does not perturb the caller's global RNG.
@@ -23,9 +24,11 @@ from .model import (
     NativeAttention,
     NativeBlock,
     NativeGatedMLP,
+    NativeLayerNormPre,
     NativeMLP,
     NativeModel,
     NativeRMSNorm,
+    NativeRMSNormPre,
 )
 
 # Residual-scaled output is gpt2-specific; other modes treat every weight the
@@ -145,6 +148,8 @@ def _init_norm(norm: nn.Module) -> None:
     norm = _unwrap_component(norm)
     if isinstance(norm, NativeRMSNorm):
         nn.init.ones_(norm.weight)
+    elif isinstance(norm, (NativeRMSNormPre, NativeLayerNormPre)):
+        pass
     elif isinstance(norm, nn.LayerNorm):
         nn.init.ones_(norm.weight)
         nn.init.zeros_(norm.bias)
