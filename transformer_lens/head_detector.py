@@ -26,6 +26,12 @@ INVALID_HEAD_NAME_ERR = (
     f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
 )
 
+CACHE_WITH_SEQ_LIST_ERR = (
+    "A single cache cannot be reused across multiple prompts, so `cache` is not\n"
+    "supported when `seq` is a list. Pass one prompt at a time, or omit `cache`\n"
+    "and let each prompt be run separately."
+)
+
 SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
 
 DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection pattern of shape %s"
@@ -113,7 +119,23 @@ def detect_head(
     if isinstance(detection_pattern, str):
         assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
         if isinstance(seq, list):
-            batch_scores = [detect_head(model, seq, detection_pattern) for seq in seq]
+            # Every other argument is forwarded below. `cache` deliberately is
+            # not, because one cache holds the activations of one prompt and
+            # cannot serve the rest. Say so rather than dropping it quietly.
+            if cache is not None:
+                raise ValueError(CACHE_WITH_SEQ_LIST_ERR)
+            batch_scores = [
+                detect_head(
+                    model,
+                    batch_seq,
+                    detection_pattern,
+                    heads=heads,
+                    exclude_bos=exclude_bos,
+                    exclude_current_token=exclude_current_token,
+                    error_measure=error_measure,
+                )
+                for batch_seq in seq
+            ]
             return torch.stack(batch_scores).mean(0)
         detection_pattern = cast(
             torch.Tensor,
@@ -248,6 +270,12 @@ def compute_head_attention_similarity_score(
     # mul
 
     if error_measure == "mul":
+        # Clone before masking. attention_pattern is a view into the caller's
+        # ActivationCache, so masking in place permanently corrupts the cached
+        # pattern: its rows stop summing to 1 and every later use of that cache
+        # silently reads modified activations.
+        if exclude_bos or exclude_current_token:
+            attention_pattern = attention_pattern.clone()
         if exclude_bos:
             attention_pattern[:, 0] = 0
         if exclude_current_token:

@@ -663,3 +663,120 @@ class Test_induction_head_detection:
 
     def test4(self):
         assert torch.sum(self.detection_pattern) == 3
+
+
+class Test_batched_kwargs_are_forwarded:
+    """The multi-prompt path used to recurse with positional args only, so
+    error_measure, exclude_bos, exclude_current_token and heads were silently
+    reset to their defaults and a different metric was returned."""
+
+    seqs = [test_duplicated_sequence, test_duplicated_sequence2]
+
+    def _reference(self, **kwargs):
+        return torch.stack(
+            [detect_head(model, s, "induction_head", **kwargs) for s in self.seqs]
+        ).mean(0)
+
+    def test_error_measure_is_forwarded(self):
+        assert torch.allclose(
+            detect_head(model, self.seqs, "induction_head", error_measure="abs"),
+            self._reference(error_measure="abs"),
+        )
+
+    def test_exclude_bos_is_forwarded(self):
+        assert torch.allclose(
+            detect_head(model, self.seqs, "induction_head", exclude_bos=True),
+            self._reference(exclude_bos=True),
+        )
+
+    def test_exclude_current_token_is_forwarded(self):
+        assert torch.allclose(
+            detect_head(model, self.seqs, "induction_head", exclude_current_token=True),
+            self._reference(exclude_current_token=True),
+        )
+
+    def test_heads_filter_is_forwarded(self):
+        result = detect_head(model, self.seqs, "induction_head", heads=[(0, 3)])
+        assert torch.allclose(result, self._reference(heads=[(0, 3)]))
+        # every head except (0, 3) must remain at the -1 sentinel
+        mask = torch.ones_like(result, dtype=torch.bool)
+        mask[0, 3] = False
+        assert (result[mask] == -1).all()
+
+
+class Test_cache_is_rejected_for_multiple_prompts:
+    """A single cache holds one prompt's activations and cannot serve a list.
+
+    Forwarding it would be wrong and silently ignoring it is the same failure
+    mode as the dropped keyword arguments, so the list path rejects it.
+    """
+
+    seqs = [test_duplicated_sequence, test_duplicated_sequence2]
+
+    def test_cache_with_a_list_raises(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        with pytest.raises(ValueError, match="cannot be reused across multiple prompts"):
+            detect_head(model, self.seqs, "induction_head", cache=cache)
+
+    def test_cache_with_a_single_prompt_still_works(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        with_cache = detect_head(model, test_duplicated_sequence, "induction_head", cache=cache)
+        without_cache = detect_head(model, test_duplicated_sequence, "induction_head")
+        assert torch.allclose(with_cache, without_cache)
+
+    def test_list_without_a_cache_is_unaffected(self):
+        result = detect_head(model, self.seqs, "induction_head")
+        reference = torch.stack([detect_head(model, s, "induction_head") for s in self.seqs]).mean(
+            0
+        )
+        assert torch.allclose(result, reference)
+
+
+class Test_cache_is_not_mutated:
+    """compute_head_attention_similarity_score masked in place on a view into
+    the caller's ActivationCache, so the cached attention pattern stopped
+    summing to 1 and every later read of that cache was corrupted."""
+
+    def test_exclude_bos_does_not_corrupt_cache(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        before = cache["pattern", 0, "attn"].clone()
+        detect_head(
+            model,
+            test_duplicated_sequence,
+            "induction_head",
+            cache=cache,
+            exclude_bos=True,
+            error_measure="mul",
+        )
+        assert torch.equal(before, cache["pattern", 0, "attn"])
+
+    def test_exclude_current_token_does_not_corrupt_cache(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        before = cache["pattern", 0, "attn"].clone()
+        detect_head(
+            model,
+            test_duplicated_sequence,
+            "induction_head",
+            cache=cache,
+            exclude_current_token=True,
+            error_measure="mul",
+        )
+        assert torch.equal(before, cache["pattern", 0, "attn"])
+
+    def test_pattern_rows_still_sum_to_one(self):
+        tokens = model.to_tokens(test_duplicated_sequence)
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+        detect_head(
+            model,
+            test_duplicated_sequence,
+            "induction_head",
+            cache=cache,
+            exclude_bos=True,
+            error_measure="mul",
+        )
+        row_sums = cache["pattern", 0, "attn"].sum(-1)
+        assert torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-5)
