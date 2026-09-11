@@ -211,12 +211,16 @@ def _head_weights(
 def _degeneracy_blocks(S: Float[torch.Tensor, "rank"], eps: float) -> List[List[int]]:
     """Group singular directions into contiguous blocks by their relative gap.
 
-    ``S`` holds singular values sorted in descending order. Direction ``i`` joins
-    the block of direction ``i - 1`` when their relative gap ``1 - S[i]/S[i-1]``
-    falls below ``eps``, or when both are in a near-zero (null) run relative to the
-    top singular value. A block of more than one direction is degenerate: its
-    directions are defined only up to a rotation within the block. ``_SIGMA_FLOOR``
-    keeps the ratios finite when a divisor is ~0.
+    ``S`` holds singular values sorted in descending order. Direction ``i`` joins the
+    open block when it is within relative gap ``eps`` of both the previous direction
+    and the block's anchor (its first, largest member), or when both directions sit in
+    a near-zero (null) run relative to the top singular value. The anchor constraint
+    bounds how far a block can spread: without it, a spectrum decaying by just under
+    ``eps`` at every step would chain every direction into one block whose extremes
+    differ by far more than ``eps``, purely because each gap-to-previous is individually
+    small. A block of more than one direction is degenerate: its directions are defined
+    only up to a rotation within the block. ``_SIGMA_FLOOR`` keeps the ratios finite when
+    a divisor is ~0.
     """
     n = int(S.shape[0])
     if n == 0:
@@ -227,9 +231,10 @@ def _degeneracy_blocks(S: Float[torch.Tensor, "rank"], eps: float) -> List[List[
     current = [0]
     for i in range(1, n):
         prev = max(values[i - 1], _SIGMA_FLOOR)
-        relative_gap = 1.0 - (values[i] / prev)
+        anchor = max(values[current[0]], _SIGMA_FLOOR)
+        near_equal = (1.0 - values[i] / prev) < eps and (1.0 - values[i] / anchor) < eps
         null_run = (values[i] / top) < eps and (values[i - 1] / top) < eps
-        if relative_gap < eps or null_run:
+        if near_equal or null_run:
             current.append(i)
         else:
             blocks.append(current)

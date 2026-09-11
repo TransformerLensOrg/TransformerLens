@@ -225,6 +225,30 @@ def test_null_run_grouped():
         res.require_isolated(3)
 
 
+def test_degenerate_blocks_returns_equal_run():
+    """degenerate_blocks pins the actual grouping for a repeated value, defeating a
+    "return [] unconditionally" mutation that would otherwise slip through a test that
+    only checks non-degeneracy elsewhere."""
+    res = _factored_head_svd(
+        *_factored_with_spectrum([5.0, 3.0, 3.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    assert res.degenerate_blocks() == [[1, 2]]
+
+
+def test_slow_decay_does_not_form_one_block():
+    """A spectrum decaying ~0.9% per step, just under eps=1e-2, no longer chains every
+    direction into one block spanning far more than eps: each block's spread is capped to
+    eps of its own anchor, so the slowly decaying tail breaks into several small blocks
+    instead of one, and the well-separated top direction stays isolated."""
+    tail = [0.5 * (0.991**i) for i in range(7)]
+    spectrum = [1.0] + tail
+    res = _factored_head_svd(
+        *_factored_with_spectrum(spectrum), which="OV", layer=0, head=0, eps=1e-2
+    )
+    assert res.require_isolated(0) is None
+    assert res.degenerate_blocks() == [[1, 2], [3, 4], [5, 6]]
+
+
 def test_degeneracy_blocks_partition_all_indices():
     """Degenerate blocks plus the remaining singletons cover every direction exactly once."""
     res = _factored_head_svd(
