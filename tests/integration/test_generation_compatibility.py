@@ -374,6 +374,31 @@ class TestTransformerBridgeHFGenerate:
         assert isinstance(result, list), "Batch input should return list"
         assert len(result) == len(prompts), "Output list should match input length"
 
+    def test_hf_generate_variable_length_batch_matches_solo_generation(self, gpt2_bridge):
+        """Test padded batch rows retain the same context as solo generation."""
+        prompts = [
+            "A",
+            "Mechanistic interpretability studies how neural networks represent and transform information internally.",
+        ]
+
+        batched = gpt2_bridge.hf_generate(
+            prompts,
+            max_new_tokens=2,
+            do_sample=False,
+            output_logits=True,
+        )
+        solo = [
+            gpt2_bridge.hf_generate(
+                prompt,
+                max_new_tokens=2,
+                do_sample=False,
+                output_logits=True,
+            )
+            for prompt in prompts
+        ]
+
+        assert batched == solo
+
 
 class TestGenerationBackwardCompatibility:
     """Tests to ensure backward compatibility with existing generation usage."""

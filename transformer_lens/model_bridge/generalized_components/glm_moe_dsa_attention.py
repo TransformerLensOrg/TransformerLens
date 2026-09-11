@@ -195,11 +195,15 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
         index_mask.scatter_(-1, topk_indices, 0.0)
         index_mask = self.hook_dsa_mask(index_mask).unsqueeze(1)
         if attention_mask is not None and attention_mask.dim() == 4:
-            attn_scores_mask = index_mask + attention_mask[..., :total_len]
-        elif attention_mask is not None:
-            attn_scores_mask = attention_mask.masked_fill(
-                index_mask == float("-inf"), float("-inf")
+            # Only the score path needs the compat sentinel; the indexer mask above
+            # feeds HF's own module and stays as HF built it.
+            padding_mask = self._normalize_compatibility_mask_sentinel(
+                attention_mask[..., :total_len]
             )
+            attn_scores_mask = index_mask + padding_mask
+        elif attention_mask is not None:
+            padding_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
+            attn_scores_mask = padding_mask.masked_fill(index_mask == float("-inf"), float("-inf"))
         else:
             causal_mask = (
                 torch.arange(total_len, device=hidden_states.device)[None, None, None, :]

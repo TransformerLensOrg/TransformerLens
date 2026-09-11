@@ -129,3 +129,30 @@ def test_generate_keeps_left_padding_for_ragged_strings(compatibility_bridge) ->
         assert tokenizer.padding_side == "right"
     finally:
         tokenizer.padding_side = original_side
+
+
+def test_generate_leaves_padding_side_intact_when_tokenization_raises(
+    compatibility_bridge, monkeypatch
+) -> None:
+    """A raise mid-tokenization must not pin the shared tokenizer to left-padding.
+
+    The tokenizer is shared with to_tokens/forward/run_with_cache, so a side that
+    survives a failed generate() silently pads every later call the wrong way, with
+    nothing tying the bad activations back to the earlier failure.
+    """
+    tokenizer = compatibility_bridge.tokenizer
+    original_side = tokenizer.padding_side
+
+    def _explode(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("tokenization failed")
+
+    try:
+        tokenizer.padding_side = "right"
+        monkeypatch.setattr(compatibility_bridge, "to_tokens", _explode)
+
+        with pytest.raises(RuntimeError, match="tokenization failed"):
+            compatibility_bridge.generate(PROMPTS, max_new_tokens=1, do_sample=False, verbose=False)
+
+        assert tokenizer.padding_side == "right"
+    finally:
+        tokenizer.padding_side = original_side

@@ -63,7 +63,18 @@ Example::
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import torch
 from jaxtyping import Float, Int
@@ -73,6 +84,7 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
+    solve_coordinate_patch_positions,
 )
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     DEFAULT_K,
@@ -86,6 +98,18 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 TokenInput = Union[str, int]
+
+# Backward-provider seam for the fit drive loop. A provider takes the target
+# residual, the source residuals it differentiates against, one batched one-hot
+# cotangent, and the ``retain_graph`` flag, and returns one gradient per source
+# (the same tuple ``torch.autograd.grad`` returns). Keeping the backward step
+# behind this narrow callable lets the estimator-independent driver run an
+# alternate estimator without touching its capture / cotangent-batching /
+# averaging machinery; the ordinary J-lens path passes :func:`_ordinary_vjp`.
+BackwardProvider = Callable[
+    [torch.Tensor, List[torch.Tensor], torch.Tensor, bool],
+    Tuple[torch.Tensor, ...],
+]
 
 # ---------------------------------------------------------------------------
 # Registry helpers
@@ -1479,6 +1503,125 @@ class JacobianLens:
             )
         return hooks
 
+    def coordinate_patch_hooks(
+        self,
+        model: Any,
+        source_token: TokenInput,
+        target_token: TokenInput,
+        layers: Sequence[int],
+        *,
+        positions: Sequence[int],
+        decomposition_cache: Optional[
+            MutableMapping[Tuple[int, int, int], JSpaceDecomposition]
+        ] = None,
+        k: int = DEFAULT_K,
+        mode: str = "substitute",
+        alpha: float = 1.0,
+        algorithm: str = "nonnegative_orthogonal_matching_pursuit",
+    ) -> List[Tuple[str, Any]]:
+        """Hooks that anchor-patch one J-space coordinate live, per forward-pass position.
+
+        Unlike :meth:`coordinate_patch`, which edits one already-captured activation offline,
+        this installs a forward hook that solves :func:`solve_coordinate_patch` independently for
+        every ``(batch_idx, position)`` pair at each requested layer -- a vocabulary-scale sparse
+        decomposition per pair, per hook firing, unless ``decomposition_cache`` supplies one
+        already validated for that ``(layer, batch_idx, position)`` key.
+
+        Args:
+            model: The model the hooks will run on.
+            source_token: Active source concept, as a single-token string or token id.
+            target_token: Distinct target concept, as a single-token string or token id.
+            layers: Layers to intervene at.
+            positions: Chunk-local positions to patch (negative indices allowed and normalized on
+                every hook invocation). Required -- there is no full-sequence default, because a
+                silent default would trigger a vocabulary-scale solve at every position.
+            decomposition_cache: Optional caller-owned mapping from ``(layer, batch_idx,
+                position)`` to a previously validated
+                :class:`~transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition`.
+                A hit skips the vocabulary-scale scan; a miss solves and populates the cache.
+                Purely a performance path -- correctness does not depend on it.
+            k: Sparse-solver upper bound on a cache miss.
+            mode: ``"substitute"`` or ``"swap"``.
+            alpha: Finite interpolation strength; zero is an exact no-op.
+            algorithm: Sparse coefficient-update rule on a cache miss.
+
+        Returns:
+            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
+
+        Raises:
+            ValueError: If ``positions`` is empty, if ``source_token`` and ``target_token``
+                resolve to the same id, or if ``source_token`` is not in the top-``k`` active
+                support of every patched ``(batch_idx, position)`` pair *at the moment its hook
+                fires* -- the whole forward pass fails rather than silently patching a subset.
+                This precondition is stronger and more order-dependent than "active on a clean
+                forward pass": in a band of layers an earlier hook's patch edits the residual
+                that a later layer re-decomposes, and ``substitute``/``swap`` zero or move the
+                source coordinate, so the source can be removed from a later layer's active
+                support even though it was active on an unhooked pass. Stacking layers or
+                positions therefore makes this progressively harder to satisfy.
+
+        Warns:
+            UserWarning: Once per call, naming the number of layers and positions that will
+                perform a live vocabulary-scale solve on every cache miss.
+        """
+        self.validate_model(model)
+        if not positions:
+            raise ValueError("positions must contain at least one index")
+        resolved_layers = [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]
+        source_id, target_id = _to_token_ids(model, [source_token, target_token])
+        if source_id == target_id:
+            raise ValueError(
+                "source_token and target_token resolve to the same token id; "
+                "a coordinate patch would be a silent no-op"
+            )
+        warnings.warn(
+            f"coordinate_patch_hooks installs {len(resolved_layers)} layer(s) x "
+            f"{len(positions)} position(s) of coordinate-patch hooks; every (batch, position) "
+            "pair not already present in decomposition_cache performs a vocabulary-scale sparse "
+            "decomposition on every forward pass",
+            UserWarning,
+            stacklevel=2,
+        )
+
+        requested = tuple(positions)
+        hooks = []
+        for layer in resolved_layers:
+            dictionary = self.lens_vector_dictionary(model, layer)
+
+            def hook_fn(
+                activation: Float[torch.Tensor, "batch pos d_model"],
+                hook: Any,
+                layer: int = layer,
+                dictionary: torch.Tensor = dictionary,
+            ) -> Float[torch.Tensor, "batch pos d_model"]:
+                hook_name = getattr(hook, "name", "intervention hook")
+                _validate_residual_activation(
+                    activation, d_model=model.cfg.d_model, hook_name=hook_name
+                )
+                normalized = _normalize_positions(requested, activation.shape[1])
+                selected = activation[:, normalized, :].float().to(dictionary.device)
+                patched, _ = solve_coordinate_patch_positions(
+                    selected,
+                    dictionary,
+                    normalized,
+                    source_id,
+                    target_id,
+                    layer=layer,
+                    decomposition_cache=decomposition_cache,
+                    k=k,
+                    mode=mode,
+                    alpha=alpha,
+                    algorithm=algorithm,
+                )
+                output = activation.clone()
+                output[:, normalized, :] = patched.to(
+                    device=activation.device, dtype=activation.dtype
+                )
+                return output
+
+            hooks.append((_resid_post_hook_name(layer), hook_fn))
+        return hooks
+
     # ------------------------------------------------------------------ #
     # fitting                                                            #
     # ------------------------------------------------------------------ #
@@ -1520,7 +1663,8 @@ class JacobianLens:
             model: A raw ``TransformerBridge``. Model parameters are temporarily
                 frozen (``requires_grad=False``) during fitting and restored
                 after. Cotangents and activation gradients use the model dtype;
-                fit with a float32 model for the highest-fidelity estimator.
+                fit with a float32 model for the highest-fidelity estimator. The
+                model and all of its submodules must be in evaluation mode.
             prompts: Prompt strings. Prompts too short to contain a valid
                 position (``seq_len <= skip_first_positions + 1``) are skipped
                 with a warning and do not count toward ``n_prompts``.
@@ -1542,10 +1686,11 @@ class JacobianLens:
 
         Raises:
             TypeError: If model is not a ``TransformerBridge``.
-            ValueError: On compatibility mode, invalid provenance or layer
-                indices, or if no prompt was long enough to fit on.
+            ValueError: On compatibility mode, training mode, invalid provenance
+                or layer indices, or if no prompt was long enough to fit on.
         """
         _require_raw_bridge(model)
+        _require_eval_mode_for_fit(model)
         if not isinstance(corpus, str) or not corpus.strip():
             raise ValueError("corpus must be a non-empty provenance identifier")
         n_layers = model.cfg.n_layers
@@ -1577,36 +1722,16 @@ class JacobianLens:
                 stacklevel=2,
             )
 
-        jacobian_sum = {
-            layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in resolved_sources
-        }
-        n_done = 0
-        iterator = tqdm(prompts, desc="fitting J-lens", disable=not show_progress)
-        with _frozen_parameters(model):
-            for prompt in iterator:
-                tokens = model.to_tokens(prompt)[:, :max_seq_len]
-                seq_len = tokens.shape[1]
-                if seq_len <= skip_first_positions + 1:
-                    warnings.warn(
-                        f"skipping prompt with only {seq_len} tokens "
-                        f"(need > {skip_first_positions + 1})",
-                        stacklevel=2,
-                    )
-                    continue
-                per_prompt = _jacobian_for_prompt(
-                    model,
-                    tokens,
-                    source_layers=resolved_sources,
-                    dim_batch=dim_batch,
-                    skip_first_positions=skip_first_positions,
-                )
-                for layer in resolved_sources:
-                    jacobian_sum[layer] += per_prompt[layer]
-                n_done += 1
-        if n_done == 0:
-            raise ValueError(
-                "every prompt was too short to contribute valid positions; nothing was fitted"
-            )
+        transport_matrices, n_done = _fit_transport_matrices(
+            model,
+            prompts,
+            source_layers=resolved_sources,
+            dim_batch=dim_batch,
+            max_seq_len=max_seq_len,
+            skip_first_positions=skip_first_positions,
+            show_progress=show_progress,
+            backward_provider=_ordinary_vjp,
+        )
 
         fit_metadata: Dict[str, Any] = {
             "model_name": getattr(model.cfg, "model_name", None),
@@ -1634,7 +1759,7 @@ class JacobianLens:
         full_metadata.update(fit_metadata)
         _validate_metadata(full_metadata)
         return cls(
-            {layer: jacobian_sum[layer] / n_done for layer in resolved_sources},
+            transport_matrices,
             n_prompts=n_done,
             d_model=d_model,
             metadata=full_metadata,
@@ -1731,6 +1856,32 @@ def _require_raw_bridge(model: Any) -> None:
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
         )
+
+
+def _require_eval_mode_for_fit(model: Any) -> None:
+    """Reject stochastic training state without mutating the caller's model."""
+    training_modules: Dict[int, str] = {}
+    roots = (("", model), ("original_model", getattr(model, "original_model", None)))
+    for prefix, root in roots:
+        if not isinstance(root, torch.nn.Module):
+            continue
+        for name, module in root.named_modules():
+            if not module.training:
+                continue
+            qualified_name = ".".join(part for part in (prefix, name) if part)
+            training_modules.setdefault(id(module), qualified_name or "<root>")
+    if not training_modules:
+        return
+
+    names = list(training_modules.values())
+    preview = ", ".join(names[:3])
+    if len(names) > 3:
+        preview += f", and {len(names) - 3} more"
+    raise ValueError(
+        "JacobianLens.fit() requires the model and all submodules to be in "
+        f"evaluation mode; found training mode at {preview}. Call model.eval() "
+        "before fitting."
+    )
 
 
 def _validate_metadata(metadata: Dict[str, Any]) -> None:
@@ -1909,6 +2060,27 @@ class _frozen_parameters:
             param.requires_grad_(flag)
 
 
+def _ordinary_vjp(
+    target: torch.Tensor,
+    sources: List[torch.Tensor],
+    cotangent: torch.Tensor,
+    retain_graph: bool,
+) -> Tuple[torch.Tensor, ...]:
+    """Ordinary vector-Jacobian product backing the J-lens estimator.
+
+    Thin wrapper over ``torch.autograd.grad`` so the drive loop takes its
+    backward step through the :data:`BackwardProvider` seam. This is the
+    identity-preserving provider: routing the ordinary fit through it changes no
+    numerics.
+    """
+    return torch.autograd.grad(
+        outputs=target,
+        inputs=sources,
+        grad_outputs=cotangent,
+        retain_graph=retain_graph,
+    )
+
+
 def _jacobian_for_prompt(
     model: Any,
     tokens: Int[torch.Tensor, "one seq"],
@@ -1916,12 +2088,18 @@ def _jacobian_for_prompt(
     source_layers: List[int],
     dim_batch: int,
     skip_first_positions: int,
+    backward_provider: BackwardProvider,
 ) -> Dict[int, Float[torch.Tensor, "d_model d_model"]]:
     """Exact per-prompt Jacobian rows via batched one-hot cotangents.
 
     Assumes parameters are already frozen (see :class:`_frozen_parameters`) so
     that marking the earliest source activation ``requires_grad`` roots the
     graph there.
+
+    The backward pass is taken through ``backward_provider`` rather than calling
+    ``torch.autograd.grad`` directly, so the capture / cotangent-batching /
+    averaging mechanics are shared by any estimator. The ordinary J-lens path
+    passes :func:`_ordinary_vjp`, which reproduces the original numerics exactly.
     """
     d_model = model.cfg.d_model
     target_layer = model.cfg.n_layers - 1
@@ -1966,11 +2144,11 @@ def _jacobian_for_prompt(
             positions_index[None, :],
             dim_start + batch_index[:n_dims, None],
         ] = 1.0
-        grads = torch.autograd.grad(
-            outputs=target,
-            inputs=sources,
-            grad_outputs=cotangent,
-            retain_graph=pass_index < n_passes - 1,
+        grads = backward_provider(
+            target,
+            sources,
+            cotangent,
+            pass_index < n_passes - 1,
         )
         for layer, grad in zip(source_layers, grads):
             # each gradient lives on its layer's device under sharded/device_map setups
@@ -1978,3 +2156,84 @@ def _jacobian_for_prompt(
             jacobians[layer][dim_start : dim_start + n_dims, :] = rows.cpu()
         del grads
     return jacobians
+
+
+def _fit_transport_matrices(
+    model: Any,
+    prompts: Sequence[str],
+    *,
+    source_layers: List[int],
+    dim_batch: int,
+    max_seq_len: int,
+    skip_first_positions: int,
+    show_progress: bool,
+    backward_provider: BackwardProvider,
+) -> Tuple[Dict[int, Float[torch.Tensor, "d_model d_model"]], int]:
+    """Estimator-independent J-lens drive loop.
+
+    Owns the mechanics shared by every estimator: the frozen-parameter
+    lifecycle, the per-prompt forward/backward accumulation (source/target
+    residual capture, one-hot cotangent batching, ``dim_batch`` chunking,
+    valid-position selection, and source-position averaging all live in
+    :func:`_jacobian_for_prompt`), the prompt-accumulation running sum, and the
+    final division into per-prompt means. Only the backward step varies: it is
+    taken through ``backward_provider``, so an alternate estimator reuses this
+    loop unchanged. Callers own input validation, provenance, and lens
+    construction.
+
+    Args:
+        model: A raw ``TransformerBridge`` whose parameters are frozen for the
+            duration of the loop.
+        prompts: Prompt strings; prompts too short to contain a valid position
+            (``seq_len <= skip_first_positions + 1``) are skipped with a warning
+            and do not count toward the returned prompt total.
+        source_layers: Resolved, in-range source layers to fit.
+        dim_batch: Output dimensions per backward pass.
+        max_seq_len: Prompts are truncated to this many tokens.
+        skip_first_positions: Leading positions excluded from the source average.
+        show_progress: Show a tqdm progress bar over prompts.
+        backward_provider: Backward-step seam; pass :func:`_ordinary_vjp` for the
+            ordinary J-lens numerics.
+
+    Returns:
+        ``(transport_matrices, n_prompts)`` where ``transport_matrices`` maps each
+        source layer to its prompt-averaged ``[d_model, d_model]`` matrix and
+        ``n_prompts`` is the number of prompts that contributed.
+
+    Raises:
+        ValueError: If no prompt was long enough to contribute valid positions.
+    """
+    d_model = model.cfg.d_model
+    jacobian_sum = {
+        layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in source_layers
+    }
+    n_done = 0
+    iterator = tqdm(prompts, desc="fitting J-lens", disable=not show_progress)
+    with _frozen_parameters(model):
+        for prompt in iterator:
+            tokens = model.to_tokens(prompt)[:, :max_seq_len]
+            seq_len = tokens.shape[1]
+            if seq_len <= skip_first_positions + 1:
+                warnings.warn(
+                    f"skipping prompt with only {seq_len} tokens "
+                    f"(need > {skip_first_positions + 1})",
+                    stacklevel=3,
+                )
+                continue
+            per_prompt = _jacobian_for_prompt(
+                model,
+                tokens,
+                source_layers=source_layers,
+                dim_batch=dim_batch,
+                skip_first_positions=skip_first_positions,
+                backward_provider=backward_provider,
+            )
+            for layer in source_layers:
+                jacobian_sum[layer] += per_prompt[layer]
+            n_done += 1
+    if n_done == 0:
+        raise ValueError(
+            "every prompt was too short to contribute valid positions; nothing was fitted"
+        )
+    means = {layer: jacobian_sum[layer] / n_done for layer in source_layers}
+    return means, n_done

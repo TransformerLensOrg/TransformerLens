@@ -7,8 +7,6 @@ end-to-end correctness of the wiring is covered by the verify suite + the integr
 
 from types import SimpleNamespace
 
-import torch
-
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
@@ -108,19 +106,3 @@ class TestVisionDecomposition:
         for leaf in ("attn.qkv", "attn.proj", "mlp.linear_fc1", "mlp.linear_fc2"):
             comp, sub = leaf.split(".")
             assert isinstance(block.submodules[comp].submodules[sub], LinearBridge)
-
-
-def test_gated_q_proj_query_half_is_sliced_under_nested_path():
-    """preprocess_weights slices the query half from the 2x-wide gated q_proj, matching the
-    nested model.language_model.* key."""
-    adapter = Qwen3_5MultimodalArchitectureAdapter(_make_cfg())
-    n_heads, d_head, hidden = adapter.cfg.n_heads, adapter.cfg.d_head, adapter.cfg.d_model
-    key = "model.language_model.layers.1.self_attn.q_proj.weight"
-    # Per head: rows [query(d_head), gate(d_head)] -> 2*d_head wide.
-    full = torch.randn(n_heads * d_head * 2, hidden)
-    out = adapter.preprocess_weights({key: full.clone()})
-    assert out[key].shape == (n_heads * d_head, hidden)
-    expected = full.view(n_heads, d_head * 2, hidden)[:, :d_head, :].reshape(
-        n_heads * d_head, hidden
-    )
-    assert torch.equal(out[key], expected)

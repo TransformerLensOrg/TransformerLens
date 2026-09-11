@@ -186,6 +186,7 @@ class BloomAttentionBridge(JointQKVAttentionBridge):
 
         attention_mask = kwargs.get("attention_mask", None)
         if attention_mask is not None:
+            attention_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
             causal_mask = attention_mask[:, :, :, : attn_scores.shape[-1]]
             attn_scores = attn_scores + causal_mask
 

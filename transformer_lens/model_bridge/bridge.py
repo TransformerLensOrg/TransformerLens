@@ -58,6 +58,10 @@ from transformer_lens.model_bridge.generalized_components.block import (
     _VARIANT_SUBMODULE_SET,
     VARIANT_SUBMODULE_NAMES,
 )
+from transformer_lens.model_bridge.generalized_components.moe import (
+    fold_scale_into_moe_block,
+    has_batched_experts,
+)
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.aliases import resolve_alias
@@ -649,6 +653,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Override setattr to track HookPoint objects dynamically."""
+        # nn.Module.__setattr__ claims Module values before any data descriptor runs, so the
+        # original_model property setter would never fire. object.__setattr__ invokes it:
+        # a registered copy aliases every HF weight into state_dict and makes .to() move twice.
+        if name == "original_model":
+            object.__setattr__(self, name, value)
+            return
         super().__setattr__(name, value)
         if isinstance(value, HookPoint):
             value.name = name
@@ -1019,14 +1029,23 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __str__(self) -> str:
-        """Get a string representation of the bridge.
-        # type: ignore[operator]
-               Returns:
-                   A string describing the bridge's components # type: ignore[operator]
+        """One-line-per-component summary of the bridge.
+
+        Returns:
+            A string describing the bridge's components.
         """
         lines = ["TransformerBridge:"]
         mapping = self.adapter.get_component_mapping()
-        lines.extend(self._format_component_mapping(mapping, indent=1))
+
+        def _describe(component_mapping: Any, indent: int) -> None:
+            pad = "  " * indent
+            for name, component in component_mapping.items():
+                lines.append(f"{pad}{name}: {type(component).__name__}")
+                submodules = getattr(component, "submodules", None)
+                if submodules:
+                    _describe(submodules, indent + 1)
+
+        _describe(mapping, 1)
         return "\n".join(lines)
 
     def enable_compatibility_mode(
@@ -1176,6 +1195,18 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             fold_value_biases: Fold value biases into output bias. Default: True
             refactor_factored_attn_matrices: Experimental QK/OV factorization. Default: False
         """
+        # Match HookedTransformer: warn and skip rather than raise. Folding and centering
+        # read their own factors out of the weights and neutralize them, so a repeat pass
+        # is a no-op for every architecture — but adapters that fold a factor held outside
+        # the weights would double-apply it, and notebook cell re-runs make that routine.
+        if self._weights_processed:
+            logging.warning(
+                "process_weights was already applied to this bridge. Skipping: re-running "
+                "it would re-apply adapter weight folds. Boot a fresh bridge with "
+                "TransformerBridge.boot_transformers(...) to process with different options."
+            )
+            return
+
         # Folding and centering do arithmetic on raw weights, so packed or
         # scale-separated storage would produce silent garbage. The forward
         # path stays usable when quantized; only this transformation does not.
@@ -1208,8 +1239,6 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # Soft capping (tanh) is not translation-invariant; centering would change output.
         if center_unembed and softcap_enabled(getattr(self.cfg, "output_logits_soft_cap", None)):
-            import logging
-
             logging.warning(
                 "center_unembed=True is incompatible with logit softcapping "
                 "(output_logits_soft_cap=%.1f). Disabling center_unembed.",
@@ -1278,8 +1307,62 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             state_dict=state_dict,
             component_mapping=self.real_components,
         )
+        if fold_ln:
+            self._fold_layer_norms_into_batched_experts()
         if adapter is not None:
             adapter.postprocess_weights(self)
+
+    def _fold_layer_norms_into_batched_experts(self) -> None:
+        """Fold each batched-expert MoE layer's ln2 into the weights that read it.
+
+        transformers stores a whole expert stack in one 3-D Parameter, which is not a
+        ``weight``/``bias`` leaf of a declared bridge submodule and so never appears in
+        the state dict ProcessWeights folds. Left alone those layers keep their learned
+        FFN gains while attention and dense layers of the same model lose theirs, and
+        the mixed basis surfaces only in DLA / logit-lens / factored-matrix reads.
+
+        Runs on the live model because the readers include tensors the state dict
+        cannot carry: batched experts, and the shared-expert MLPs that Qwen2-MoE and
+        GLM4-MoE hang off the same norm.
+        """
+        # An adapter that declares fold_ln unsupported cannot have its norms folded
+        # weight-preservingly. ProcessWeights already warns and skips for these; folding
+        # the expert stack anyway leaves the model diverging from the reference.
+        if not getattr(self.adapter, "supports_fold_ln", True):
+            return
+
+        uses_offset = bool(getattr(self.cfg, "rmsnorm_uses_offset", False))
+        skipped: list[str] = []
+        for list_name in ("blocks", "encoder_blocks", "decoder_blocks"):
+            for index, block in enumerate(getattr(self, list_name, None) or []):
+                mlp = getattr(block, "mlp", None)
+                if mlp is None or not has_batched_experts(mlp):
+                    continue
+                label = f"{list_name}.{index}"
+                norm = getattr(block, "ln2", None)
+                weight = getattr(norm, "weight", None) if norm is not None else None
+                if not isinstance(weight, torch.Tensor) or weight.ndim != 1:
+                    skipped.append(label)
+                    continue
+                if getattr(norm, "bias", None) is not None:
+                    # Folding the gain but not the shift would change the block's output.
+                    skipped.append(label)
+                    continue
+                scale = weight.detach().clone()
+                if uses_offset:
+                    scale += 1.0
+                if not fold_scale_into_moe_block(mlp, scale):
+                    skipped.append(label)
+                    continue
+                with torch.no_grad():
+                    weight.fill_(0.0 if uses_offset else 1.0)
+        if skipped:
+            logging.warning(
+                "fold_ln could not reach the expert weights of %s, so those layers keep "
+                "their FFN norm gains while the rest of the model is folded. Direct "
+                "logit attribution and logit lens will mix two bases.",
+                ", ".join(skipped),
+            )
 
     def _calculate_loss(self, logits, tokens, loss_per_token=False):
         """Calculate cross-entropy loss."""
@@ -3422,14 +3505,12 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                         and self.tokenizer is not None
                         and self.tokenizer.pad_token_id is not None
                     ):
-                        _prev_side = self.tokenizer.padding_side
-                        self.tokenizer.padding_side = "left"
                         attn_mask = utils.get_attention_mask(
                             self.tokenizer,
                             current_tokens,
                             prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
+                            padding_side="left",
                         ).to(self.cfg.device)
-                        self.tokenizer.padding_side = _prev_side
                         forward_kwargs["attention_mask"] = attn_mask
                         # Same target gate as the forward() path: the mask is safe
                         # for every model, the derived positions are not (#1626).
@@ -3847,14 +3928,15 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             else:
                 # Force left-padding for batched generation so real tokens are
                 # flush-right and logits[:, -1, :] is always the last real token.
-                if _is_batched_list:
-                    _orig_padding_side = self.tokenizer.padding_side
-                    self.tokenizer.padding_side = "left"
+                # Passed as a kwarg rather than assigned: a raise between assignment
+                # and restore would pin the shared tokenizer left for the session.
                 input_tokens = self.to_tokens(
-                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                    input,
+                    prepend_bos=prepend_bos,
+                    padding_side="left" if _is_batched_list else None,
+                    move_to_device=True,
+                    truncate=False,
                 )
-                if _is_batched_list:
-                    self.tokenizer.padding_side = _orig_padding_side
             input_type = "list"
         elif isinstance(input, torch.Tensor) and input.is_floating_point():
             # inputs_embeds: pre-computed embeddings (e.g., from multimodal models)
@@ -4104,6 +4186,10 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 hf_kwargs["top_p"] = top_p
             if eos_token_id is not None:
                 hf_kwargs["eos_token_id"] = eos_token_id
+            # generate() already derived and shape-validated this mask; dropping it here
+            # would let the model attend to pad positions on the stateful fallback.
+            if initial_attention_mask is not None:
+                hf_kwargs["attention_mask"] = initial_attention_mask
             return self.hf_generate(input, **hf_kwargs)
 
         # SSM cache is built once and mutated in place across forward calls.
@@ -4374,7 +4460,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         verbose: bool = True,
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
-    ) -> Generator[Union[torch.Tensor, str], None, None]:
+    ) -> Generator[Union[torch.Tensor, str, List[str]], None, None]:
         """Stream tokens from the model as they are generated.
 
         Yields batches of tokens progressively during generation rather than
@@ -4410,9 +4496,11 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
                 (scores is the step's logits). See generate() for the full contract.
 
         Yields:
-            Token tensors [batch, seq_len] or strings, accumulated up to
-            max_tokens_per_yield tokens between yields. First yield includes
-            the input tokens; subsequent yields contain only new tokens.
+            Token tensors [batch, seq_len], or decoded text when return_type='str' -
+            a bare string for a single sequence and one string per batch row for a
+            larger batch, matching generate(). Chunks accumulate up to
+            max_tokens_per_yield tokens between yields; the first yield includes the
+            input tokens and subsequent yields contain only new tokens.
         """
         self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
@@ -4527,13 +4615,42 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
         accumulated_tokens: Optional[torch.Tensor] = None
         tokens_since_last_yield = 0
 
-        def _maybe_decode(
-            tokens: torch.Tensor,
-        ) -> Union[torch.Tensor, str]:
-            if return_type == "str":
-                assert self.tokenizer is not None
-                return self.tokenizer.decode(tokens[0], skip_special_tokens=True)
-            return tokens
+        # Decoding each chunk alone splits any character whose bytes straddle a yield
+        # boundary into U+FFFD, and concatenating chunks cannot rebuild it. Decode the
+        # whole stream each time, emit only the new text, and hold back a trailing
+        # incomplete character until the tokens that finish it arrive.
+        decoded_history: Optional[torch.Tensor] = None
+        emitted_chars = [0] * batch_size
+
+        def _decode_delta(hold_incomplete: bool) -> List[str]:
+            assert self.tokenizer is not None and decoded_history is not None
+            deltas = []
+            for row_idx, row in enumerate(decoded_history):
+                text = self.tokenizer.decode(row, skip_special_tokens=True)
+                if hold_incomplete:
+                    text = text.rstrip("�")
+                deltas.append(text[emitted_chars[row_idx] :])
+                emitted_chars[row_idx] = len(text)
+            return deltas
+
+        def _maybe_decode(tokens: torch.Tensor) -> Union[torch.Tensor, str, List[str]]:
+            nonlocal decoded_history
+            if return_type != "str":
+                return tokens
+            decoded_history = (
+                tokens if decoded_history is None else torch.cat([decoded_history, tokens], dim=-1)
+            )
+            deltas = _decode_delta(hold_incomplete=True)
+            return deltas[0] if len(deltas) == 1 else deltas
+
+        def _flush_held() -> Optional[Union[str, List[str]]]:
+            """Emit a withheld partial character at stream end rather than dropping it."""
+            if return_type != "str" or decoded_history is None:
+                return None
+            deltas = _decode_delta(hold_incomplete=False)
+            if not any(deltas):
+                return None
+            return deltas[0] if len(deltas) == 1 else deltas
 
         try:
             for step_idx, (sampled_tokens, _, all_finished) in enumerate(
@@ -4594,6 +4711,9 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             # Yield remainder after loop completes without break
             if accumulated_tokens is not None:
                 yield _maybe_decode(accumulated_tokens)
+            held_back = _flush_held()
+            if held_back is not None:
+                yield held_back
         finally:
             self._capture_hf_cache = False
             if hasattr(self, "_last_hf_cache"):
@@ -4664,6 +4784,7 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             print(result.attentions)  # Attention weights
         """
         self._ensure_generation_supported("hf_generate")
+        input_attention_mask: torch.Tensor | None = None
         # Handle string input by tokenizing it
         if isinstance(input, str):
             inputs = self.tokenizer(input, return_tensors="pt", padding=False, truncation=False).to(
@@ -4672,10 +4793,19 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
             input_ids = inputs["input_ids"]
             input_type = "str"
         elif isinstance(input, list):
-            inputs = self.tokenizer(input, return_tensors="pt", padding=True, truncation=False).to(
-                self.cfg.device
+            is_encoder_decoder = getattr(
+                getattr(self.original_model, "config", None), "is_encoder_decoder", False
             )
+            tokenizer_kwargs = {} if is_encoder_decoder else {"padding_side": "left"}
+            inputs = self.tokenizer(
+                input,
+                return_tensors="pt",
+                padding=True,
+                truncation=False,
+                **tokenizer_kwargs,
+            ).to(self.cfg.device)
             input_ids = inputs["input_ids"]
+            input_attention_mask = inputs["attention_mask"]
             input_type = "list"
         else:
             input_ids = input
@@ -4685,6 +4815,8 @@ class TransformerBridge(HookIntrospectionMixin, nn.Module):
 
         # Build generation_kwargs from explicit args and kwargs
         generation_kwargs = dict(generation_kwargs) if generation_kwargs is not None else {}
+        if input_attention_mask is not None:
+            generation_kwargs["attention_mask"] = input_attention_mask
         generation_kwargs.update(
             {
                 "max_new_tokens": max_new_tokens,
