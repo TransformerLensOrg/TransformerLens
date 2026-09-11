@@ -16,8 +16,8 @@ from .defaults_utils import (
     override_or_use_default_value,
 )
 from .devices import (
-    ModelWithCfg,
     _MPS_MIN_SAFE_TORCH_VERSION,
+    ModelWithCfg,
     _mps_warned,
     _torch_version_tuple,
     get_device,
@@ -45,10 +45,7 @@ from .initialization_utils import (
 from .library_utils import is_library_available
 from .lm_utils import lm_accuracy, lm_cross_entropy_loss
 from .logits_utils import logits_to_df, sample_logits
-from .matrix import (
-    composition_scores,
-    get_matrix_corner,
-)
+from .matrix import composition_scores, get_matrix_corner
 
 # Re-export multi-GPU helpers here (devices.py must not import multi_gpu directly)
 from .multi_gpu import (
@@ -62,6 +59,7 @@ from .multi_gpu import (
     resolve_device_map,
     sort_devices_based_on_available_memory,
 )
+from .parameter_swap import temporarily_swap_parameter
 from .slice import Slice, SliceInput
 from .tensors import (
     check_structure,

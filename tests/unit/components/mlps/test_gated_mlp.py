@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from transformer_lens.components import GatedMLP, LayerNorm
-from transformer_lens.utils import solu
+from transformer_lens.utilities import solu
 
 
 @pytest.fixture

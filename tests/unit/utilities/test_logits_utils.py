@@ -3,6 +3,7 @@
 import pytest
 import torch
 
+from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.utilities.logits_utils import (
     _apply_repetition_penalty,
     logits_to_df,
@@ -80,9 +81,10 @@ class TestLogitsToDf:
 
     def test_rejects_non_1d_input(self):
         # Shape constraint enforced by jaxtyping/beartype on Float[Tensor, "d_vocab"].
-        from beartype.roar import BeartypeCallHintParamViolation
+        # jaxtyping <0.3 let beartype's violation propagate; >=0.3 re-raises its own
+        # TypeCheckError around it. The rejection is what matters, not which wrapper.
 
-        with pytest.raises(BeartypeCallHintParamViolation):
+        with pytest.raises(TYPECHECK_ERRORS):
             logits_to_df(torch.zeros(3, 4))
 
 

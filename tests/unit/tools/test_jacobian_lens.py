@@ -1,10 +1,11 @@
 """Unit tests for the TransformerBridge-only Jacobian lens implementation."""
 
-from contextlib import contextmanager
+import gc
 from enum import IntEnum
 from inspect import Parameter, signature
 from types import SimpleNamespace
 from typing import Any, Optional, Sequence
+from weakref import ref
 
 import numpy as np
 import pytest
@@ -12,27 +13,35 @@ import torch
 import torch.nn as nn
 
 import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
-from transformer_lens.hook_points import HookPoint
+from tests.unit.tools.conftest import (
+    CORPUS,
+    D_MODEL,
+    D_VOCAB,
+    N_LAYERS,
+    SEQ_LEN,
+    SKIP_FIRST,
+    _lens,
+    _NotABridge,
+    _ToyBlock,
+    _ToyBridge,
+)
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import AltUpBlockBridge
 from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
     DeepseekV4BlockBridge,
 )
 from transformer_lens.tools.analysis import (
+    CoordinatePatch,
     JacobianLens,
     JSpaceDecomposition,
     JSpaceOccupancy,
     JSpaceVarianceProfile,
     get_sparse_decomposition,
+    solve_coordinate_patch,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
-
-D_MODEL = 6
-N_LAYERS = 4
-D_VOCAB = 11
-SEQ_LEN = 9
-SKIP_FIRST = 2
-CORPUS = "unit-test-corpus"
+from transformer_lens.utilities.parameter_swap import temporarily_swap_parameter
 
 
 class _UnsafeMetadataEnum(IntEnum):
@@ -43,196 +52,6 @@ class _UnsafeMetadataKey(str):
     pass
 
 
-class _ToyBlock(nn.Module):
-    def __init__(self, d_model: int, layer: int, dtype: torch.dtype):
-        super().__init__()
-        self.linear = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
-        nn.init.normal_(self.linear.weight, std=0.2)
-        self.hook_out = HookPoint()
-        self.hook_out.name = f"blocks.{layer}.hook_out"
-
-    def forward(self, residual: torch.Tensor) -> torch.Tensor:
-        return self.hook_out(residual + self.linear(residual))
-
-
-class _CausalSumBlock(nn.Module):
-    """Causal cross-position mixing with an exact triangular Jacobian."""
-
-    def __init__(self, layer: int):
-        super().__init__()
-        self.hook_out = HookPoint()
-        self.hook_out.name = f"blocks.{layer}.hook_out"
-
-    def forward(self, residual: torch.Tensor) -> torch.Tensor:
-        return self.hook_out(residual.cumsum(dim=1))
-
-
-class _ToyTokenizer:
-    def decode(self, token_ids: list[int]) -> str:
-        return f"token-{token_ids[0]}"
-
-
-class _ToyBridge(TransformerBridge):
-    """Small real ``TransformerBridge`` subclass with Bridge-native hooks.
-
-    The production constructor needs a Hugging Face model and architecture
-    adapter. Unit tests only need its public analysis surface, so this subclass
-    initializes ``nn.Module`` directly while retaining the concrete
-    ``TransformerBridge`` isinstance contract.
-    """
-
-    def __init__(
-        self,
-        *,
-        dtype: torch.dtype = torch.float32,
-        causal_final_block: bool = False,
-    ) -> None:
-        nn.Module.__init__(self)
-        torch.manual_seed(0)
-        self.cfg = SimpleNamespace(
-            n_layers=N_LAYERS,
-            d_model=D_MODEL,
-            d_vocab=D_VOCAB,
-            d_vocab_out=D_VOCAB,
-            normalization_type="LN",
-            output_logits_soft_cap=None,
-            model_name="toy-bridge",
-            dtype=dtype,
-            device="cpu",
-        )
-        self.adapter = SimpleNamespace(
-            supports_generation=True,
-            get_component_mapping=lambda: {
-                "blocks": SimpleNamespace(hook_out_is_single_residual_stream=True),
-                "ln_final": object(),
-                "unembed": object(),
-            },
-            validate_output_logits_transform=lambda: None,
-            apply_output_logits_transform=lambda logits: apply_softcap(
-                logits, self.cfg.output_logits_soft_cap
-            ),
-        )
-        self.compatibility_mode = False
-        self._weights_processed = False
-        self.tokenizer = _ToyTokenizer()
-        self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
-        blocks: list[nn.Module] = [_ToyBlock(D_MODEL, layer, dtype) for layer in range(N_LAYERS)]
-        if causal_final_block:
-            blocks[-1] = _CausalSumBlock(N_LAYERS - 1)
-        self.blocks = nn.ModuleList(blocks)
-        self.ln_final = nn.Identity()
-        self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
-
-    @property
-    def W_U(self) -> torch.Tensor:
-        return self.unembed.weight.T
-
-    @property
-    def hook_dict(self) -> dict[str, HookPoint]:
-        return {
-            f"blocks.{layer}.hook_out": block.hook_out for layer, block in enumerate(self.blocks)
-        }
-
-    def parameters(self, recurse: bool = True):
-        # A production bridge delegates this to its wrapped HF model. This toy
-        # owns its small modules directly, so enumerate the nn.Module tree.
-        return nn.Module.parameters(self, recurse=recurse)
-
-    def named_parameters(
-        self,
-        prefix: str = "",
-        recurse: bool = True,
-        remove_duplicate: bool = True,
-    ):
-        return nn.Module.named_parameters(
-            self,
-            prefix=prefix,
-            recurse=recurse,
-            remove_duplicate=remove_duplicate,
-        )
-
-    def to_tokens(self, prompt: str) -> torch.Tensor:
-        ids = [(3 * index + len(prompt)) % D_VOCAB for index in range(SEQ_LEN)]
-        return torch.tensor([ids], dtype=torch.long)
-
-    def to_single_token(self, string: str) -> int:
-        return len(string) % D_VOCAB
-
-    def forward(
-        self, tokens: torch.Tensor, return_type: str | None = "logits"
-    ) -> torch.Tensor | None:
-        residual = self.embed(tokens)
-        for block in self.blocks:
-            residual = block(residual)
-        if return_type is None:
-            return None
-        return self.unembed(self.ln_final(residual))
-
-    @contextmanager
-    def hooks(
-        self,
-        fwd_hooks: list[tuple[str, Any]] = [],
-        bwd_hooks: list[tuple[str, Any]] = [],
-        reset_hooks_end: bool = True,
-        clear_contexts: bool = False,
-    ):
-        del clear_contexts
-        added: list[tuple[HookPoint, str, Any]] = []
-        for direction, hook_specs in (("fwd", fwd_hooks), ("bwd", bwd_hooks)):
-            for name, hook_fn in hook_specs:
-                hook_point = self.hook_dict[name]
-                hook_point.add_hook(hook_fn, dir=direction)
-                handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                added.append((hook_point, direction, handles[-1]))
-        try:
-            yield self
-        finally:
-            if reset_hooks_end:
-                for hook_point, direction, handle in added:
-                    handle.hook.remove()
-                    handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                    if handle in handles:
-                        handles.remove(handle)
-
-    def run_with_cache(
-        self,
-        input: torch.Tensor,
-        return_cache_object: bool = False,
-        remove_batch_dim: bool = False,
-        names_filter: Any = None,
-        **kwargs: Any,
-    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        del return_cache_object, remove_batch_dim, kwargs
-
-        def wanted(name: str) -> bool:
-            if names_filter is None:
-                return True
-            if isinstance(names_filter, str):
-                return name == names_filter
-            if callable(names_filter):
-                return bool(names_filter(name))
-            return name in names_filter
-
-        cache: dict[str, torch.Tensor] = {}
-
-        def cache_hook(activation: torch.Tensor, hook: HookPoint) -> torch.Tensor:
-            assert hook.name is not None
-            cache[hook.name] = activation.detach()
-            return activation
-
-        cache_hooks = [(name, cache_hook) for name in self.hook_dict if wanted(name)]
-        with self.hooks(fwd_hooks=cache_hooks):
-            logits = self(input)
-        assert logits is not None
-        return logits, cache
-
-
-class _NotABridge(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.cfg = SimpleNamespace(n_layers=N_LAYERS, d_model=D_MODEL)
-
-
 def _closed_form_jacobian(model: _ToyBridge, layer: int) -> torch.Tensor:
     """Exact d h_final / d h_layer for the position-wise linear toy."""
     jacobian = torch.eye(D_MODEL)
@@ -241,24 +60,6 @@ def _closed_form_jacobian(model: _ToyBridge, layer: int) -> torch.Tensor:
         assert isinstance(block, _ToyBlock)
         jacobian = (torch.eye(D_MODEL) + block.linear.weight) @ jacobian
     return jacobian
-
-
-def _lens(
-    *,
-    n_prompts: int = 1,
-    metadata: dict[str, Any] | None = None,
-) -> JacobianLens:
-    return JacobianLens(
-        {0: torch.eye(D_MODEL)},
-        n_prompts=n_prompts,
-        d_model=D_MODEL,
-        metadata=metadata,
-    )
-
-
-@pytest.fixture(scope="module")
-def toy_model() -> _ToyBridge:
-    return _ToyBridge()
 
 
 @pytest.fixture(scope="module")
@@ -279,6 +80,57 @@ def test_toy_model_satisfies_raw_bridge_contract(toy_model: _ToyBridge) -> None:
     assert toy_model.compatibility_mode is False
     assert toy_model._weights_processed is False
     assert set(toy_model.hook_dict) == {f"blocks.{layer}.hook_out" for layer in range(N_LAYERS)}
+
+
+def test_fit_rejects_model_in_training_mode() -> None:
+    model = _ToyBridge()
+    model.train()
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)"):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
+    assert model.training is True
+
+
+def test_fit_rejects_nested_submodule_in_training_mode() -> None:
+    model = _ToyBridge()
+    model.blocks[1].train()
+    assert model.training is False
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)"):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
+    assert model.training is False
+    assert model.blocks[1].training is True
+
+
+def test_fit_rejects_hidden_original_model_submodule_in_training_mode() -> None:
+    model = _ToyBridge()
+    original_model = nn.Sequential(nn.Linear(D_MODEL, D_MODEL))
+    original_model.eval()
+    original_model[0].train()
+    model.original_model = original_model
+
+    with pytest.raises(ValueError, match="original_model"):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
+    assert original_model.training is False
+    assert original_model[0].training is True
 
 
 def test_fit_recovers_closed_form_jacobians(
@@ -928,6 +780,14 @@ def test_lens_vectors_rejects_empty_or_out_of_range_tokens(tokens: list[int]) ->
         _lens().lens_vectors(model, tokens, 0)
 
 
+@pytest.mark.parametrize("token", [True, False])
+def test_to_token_ids_rejects_bool(token: bool) -> None:
+    """A bool token must not silently coerce to id 1/0 via int(token)."""
+    model = _ToyBridge()
+    with pytest.raises(ValueError, match="bool"):
+        jacobian_lens_module._to_token_ids(model, [token])
+
+
 def _intervention_hooks(
     name: str,
     lens: JacobianLens,
@@ -1070,11 +930,140 @@ def test_swap_leaves_orthogonal_complement_unchanged(
     assert orthogonal_part.abs().max().item() < 1e-4
 
 
+def test_swap_clamp_holds_each_layer_at_exchanged_clean_coordinates(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layers = [1, 2]
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache_dict = toy_model.run_with_cache(tokens)
+    clean_cache = ActivationCache(clean_cache_dict, toy_model)
+    hooks = fitted_lens.swap_clamp_hooks(toy_model, 3, 5, layers, clean_cache)
+
+    with toy_model.hooks(fwd_hooks=hooks):
+        _, clamped_cache = toy_model.run_with_cache(tokens)
+
+    for layer in layers:
+        name = f"blocks.{layer}.hook_out"
+        vectors = fitted_lens.lens_vectors(toy_model, [3, 5], layer)
+        pinv = torch.linalg.pinv(vectors.T)
+        clean_coords = clean_cache[name].float() @ pinv.T
+        clamped_coords = clamped_cache[name].float() @ pinv.T
+        torch.testing.assert_close(clamped_coords, clean_coords[..., [1, 0]], atol=1e-5, rtol=1e-5)
+
+
+def test_swap_clamp_accepts_plain_cache_dict(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer = 1
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache_dict = toy_model.run_with_cache(tokens, return_cache_object=False)
+    assert isinstance(clean_cache_dict, dict)
+    hooks = fitted_lens.swap_clamp_hooks(toy_model, 3, 5, [layer], clean_cache_dict)
+
+    with toy_model.hooks(fwd_hooks=hooks):
+        _, clamped_cache = toy_model.run_with_cache(tokens)
+
+    name = f"blocks.{layer}.hook_out"
+    vectors = fitted_lens.lens_vectors(toy_model, [3, 5], layer)
+    pinv = torch.linalg.pinv(vectors.T)
+    clean_coords = clean_cache_dict[name].float() @ pinv.T
+    clamped_coords = clamped_cache[name].float() @ pinv.T
+    torch.testing.assert_close(clamped_coords, clean_coords[..., [1, 0]], atol=1e-5, rtol=1e-5)
+
+
+def test_swap_clamp_requires_each_clean_activation(toy_model: _ToyBridge) -> None:
+    with pytest.raises(ValueError, match="clean_cache is missing"):
+        _lens().swap_clamp_hooks(
+            toy_model, 3, 5, layers=[0], clean_cache=ActivationCache({}, toy_model)
+        )
+
+
+def test_swap_clamp_rejects_identical_tokens(toy_model: _ToyBridge) -> None:
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache_dict = toy_model.run_with_cache(tokens)
+    clean_cache = ActivationCache(clean_cache_dict, toy_model)
+    with pytest.raises(ValueError, match="same token|identical|distinct"):
+        _lens().swap_clamp_hooks(toy_model, 3, 3, layers=[0], clean_cache=clean_cache)
+
+
+def test_swap_clamp_warns_for_near_parallel_vectors() -> None:
+    model = _ToyBridge()
+    with torch.no_grad():
+        source = model.unembed.weight[3]
+        noise = torch.randn_like(source)
+        noise -= noise.dot(source) / source.square().sum() * source
+        noise *= 0.05 * source.norm() / noise.norm()
+        model.unembed.weight[5].copy_(source + noise)
+    tokens = model.to_tokens("a toy prompt")
+    _, clean_cache_dict = model.run_with_cache(tokens)
+    clean_cache = ActivationCache(clean_cache_dict, model)
+    with pytest.warns(UserWarning, match="parallel|ill-conditioned|poorly conditioned"):
+        hooks = _lens().swap_clamp_hooks(model, 3, 5, layers=[0], clean_cache=clean_cache)
+    assert hooks[0][0] == "blocks.0.hook_out"
+
+
+def test_swap_clamp_validates_clean_activation_shape(toy_model: _ToyBridge) -> None:
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache_dict = toy_model.run_with_cache(tokens)
+    clean_cache = ActivationCache(clean_cache_dict, toy_model)
+    name = "blocks.0.hook_out"
+    clean_cache.cache_dict[name] = clean_cache[name][..., :-1]
+    with pytest.raises(ValueError, match="d_model|shape"):
+        _lens().swap_clamp_hooks(toy_model, 3, 5, layers=[0], clean_cache=clean_cache)
+
+
+def test_swap_clamp_validates_clean_live_batch_shape(toy_model: _ToyBridge) -> None:
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache_dict = toy_model.run_with_cache(tokens)
+    clean_cache = ActivationCache(clean_cache_dict, toy_model)
+    name = "blocks.0.hook_out"
+    clean_cache.cache_dict[name] = clean_cache[name].repeat(2, 1, 1)
+    hooks = _lens().swap_clamp_hooks(toy_model, 3, 5, layers=[0], clean_cache=clean_cache)
+    with pytest.raises(ValueError, match="incompatible with the live activation"):
+        with toy_model.hooks(fwd_hooks=hooks):
+            toy_model(tokens)
+
+
+def test_swap_clamp_positions_and_orthogonal_complement(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer = 2
+    name = f"blocks.{layer}.hook_out"
+    positions = [1, -1]
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache_dict = toy_model.run_with_cache(tokens)
+    clean_cache = ActivationCache(clean_cache_dict, toy_model)
+    hooks = fitted_lens.swap_clamp_hooks(
+        toy_model, 3, 5, layers=[layer], clean_cache=clean_cache, positions=positions
+    )
+    with toy_model.hooks(fwd_hooks=hooks):
+        _, clamped_cache = toy_model.run_with_cache(tokens)
+
+    normalized = [1, clean_cache[name].shape[1] - 1]
+    untouched = [index for index in range(clean_cache[name].shape[1]) if index not in normalized]
+    torch.testing.assert_close(clamped_cache[name][:, untouched], clean_cache[name][:, untouched])
+
+    vectors = fitted_lens.lens_vectors(toy_model, [3, 5], layer)
+    pinv = torch.linalg.pinv(vectors.T)
+    clean_coords = clean_cache[name][:, normalized].float() @ pinv.T
+    clamped_coords = clamped_cache[name][:, normalized].float() @ pinv.T
+    torch.testing.assert_close(clamped_coords, clean_coords[..., [1, 0]], atol=1e-5, rtol=1e-5)
+
+    delta = (clamped_cache[name][:, normalized] - clean_cache[name][:, normalized]).reshape(
+        -1, D_MODEL
+    )
+    basis, _ = torch.linalg.qr(vectors.T)
+    orthogonal_part = delta - (delta @ basis) @ basis.T
+    assert orthogonal_part.abs().max().item() < 1e-4
+
+
 def test_exports() -> None:
     from transformer_lens.tools import analysis
 
     assert analysis.JacobianLens is JacobianLens
     assert hasattr(analysis, "JacobianLensReadout")
+    assert analysis.CoordinatePatch is CoordinatePatch
+    assert analysis.solve_coordinate_patch is solve_coordinate_patch
 
 
 # ---------------------------------------------------------------------------
@@ -1287,8 +1276,7 @@ class TestRegistry:
 
 
 def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyBridge) -> None:
-    """The full-vocabulary dictionary equals lens_vectors over every token, is cached per
-    (layer, device), and is released by clear_device_cache."""
+    """The dictionary matches lens_vectors, caches unchanged weights, and can be cleared."""
     torch.manual_seed(0)
     d_model = toy_model.cfg.d_model
     layer = 1
@@ -1304,7 +1292,146 @@ def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyB
     # cached: the same object is returned on a repeat call, and clearing releases it
     assert lens.lens_vector_dictionary(toy_model, layer) is dictionary
     lens.clear_device_cache()
+    assert lens._unembedding_snapshots == {}
     assert lens.lens_vector_dictionary(toy_model, layer) is not dictionary
+
+
+def test_lens_vector_dictionary_invalidates_after_in_place_weight_update() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    original = lens.lens_vector_dictionary(toy_model, 1)
+
+    with torch.no_grad():
+        toy_model.unembed.weight.copy_(2 * toy_model.unembed.weight)
+
+    updated = lens.lens_vector_dictionary(toy_model, 1)
+    assert updated is not original
+    torch.testing.assert_close(
+        updated,
+        lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_invalidates_after_optimizer_step() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    original = lens.lens_vector_dictionary(toy_model, 1)
+    optimizer = torch.optim.SGD([toy_model.unembed.weight], lr=0.1)
+    toy_model.unembed.weight.grad = torch.ones_like(toy_model.unembed.weight)
+
+    optimizer.step()
+
+    updated = lens.lens_vector_dictionary(toy_model, 1)
+    assert updated is not original
+    torch.testing.assert_close(
+        updated,
+        lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_does_not_cross_model_instances() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    first = lens.lens_vector_dictionary(toy_model, 1)
+    other_model = _ToyBridge()
+    with torch.no_grad():
+        other_model.unembed.weight.add_(1)
+
+    second = lens.lens_vector_dictionary(other_model, 1)
+
+    assert second is not first
+    torch.testing.assert_close(
+        second,
+        lens.lens_vectors(other_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_invalidates_after_parameter_replacement() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    original = lens.lens_vector_dictionary(toy_model, 1)
+    old_weight_ref = ref(toy_model.unembed.weight)
+    shape = toy_model.unembed.weight.shape
+    dtype = toy_model.unembed.weight.dtype
+    device = toy_model.unembed.weight.device
+    toy_model.unembed.register_parameter("weight", None)
+    gc.collect()
+    assert old_weight_ref() is None
+    toy_model.unembed.weight = nn.Parameter(torch.empty(shape, dtype=dtype, device=device).fill_(2))
+
+    updated = lens.lens_vector_dictionary(toy_model, 1)
+
+    assert updated is not original
+    torch.testing.assert_close(
+        updated,
+        lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+    )
+
+
+def test_lens_vector_dictionary_tracks_temporary_parameter_swap() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    baseline = lens.lens_vector_dictionary(toy_model, 1)
+    replacement = 2 * toy_model.unembed.weight.detach()
+
+    with temporarily_swap_parameter(toy_model.unembed.weight, replacement):
+        swapped = lens.lens_vector_dictionary(toy_model, 1)
+        assert swapped is not baseline
+        torch.testing.assert_close(
+            swapped,
+            lens.lens_vectors(toy_model, list(range(D_VOCAB)), 1),
+        )
+
+    restored = lens.lens_vector_dictionary(toy_model, 1)
+    assert restored is not swapped
+    torch.testing.assert_close(restored, baseline)
+
+
+def test_unembedding_snapshot_is_shared_across_layers_and_invalidates_all() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens(
+        {0: torch.eye(D_MODEL), 1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL
+    )
+    device = torch.device("cpu")
+    first_layer_zero = lens.lens_vector_dictionary(toy_model, 0)
+    first_layer_one = lens.lens_vector_dictionary(toy_model, 1)
+    snapshot = lens._unembedding_snapshots[device]
+
+    assert len(lens._unembedding_snapshots) == 1
+    assert lens.lens_vector_dictionary(toy_model, 0) is first_layer_zero
+    assert lens._unembedding_snapshots[device] is snapshot
+
+    with torch.no_grad():
+        toy_model.unembed.weight.data.add_(1)
+
+    updated_layer_zero = lens.lens_vector_dictionary(toy_model, 0)
+
+    assert updated_layer_zero is not first_layer_zero
+    assert lens._unembedding_snapshots[device] is not snapshot
+    assert (1, device) not in lens._dictionary_cache
+    updated_layer_one = lens.lens_vector_dictionary(toy_model, 1)
+    assert updated_layer_one is not first_layer_one
+
+
+def test_decompose_detects_data_row_swap_without_a_version_change() -> None:
+    toy_model = _ToyBridge()
+    lens = JacobianLens({1: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+    lens.lens_vector_dictionary(toy_model, 1)
+    original = toy_model.unembed.weight.detach().clone()
+    version = toy_model.unembed.weight._version
+
+    try:
+        toy_model.unembed.weight.data[[0, 1]] = toy_model.unembed.weight.data[[1, 0]].clone()
+        assert toy_model.unembed.weight._version == version
+        current_token_zero = toy_model.W_U[:, 0].detach().clone()
+        result = lens.decompose(toy_model, current_token_zero, layer=1, k=1)
+    finally:
+        toy_model.unembed.weight.data.copy_(original)
+
+    assert result.support.tolist() == [0]
+    torch.testing.assert_close(
+        result.non_j_space_component, torch.zeros(D_MODEL), atol=1e-6, rtol=0
+    )
 
 
 def test_lens_vector_dictionary_rejects_unfitted_layer(toy_model: _ToyBridge) -> None:
@@ -1393,6 +1520,169 @@ def test_decompose_rejects_unfitted_layer(toy_model: _ToyBridge, fitted_lens: Ja
         fitted_lens.decompose(
             toy_model, torch.randn(toy_model.cfg.d_model), layer=N_LAYERS - 1, k=3
         )
+
+
+def test_coordinate_patch_raw_activation_matches_model_free_core(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer, source_id, target_id = 0, 3, 5
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    activation = 2.0 * dictionary[source_id]
+
+    result = fitted_lens.coordinate_patch(toy_model, activation, layer, source_id, target_id, k=1)
+    expected = solve_coordinate_patch(activation, dictionary, source_id, target_id, k=1)
+
+    assert isinstance(result, CoordinatePatch)
+    assert torch.equal(result.support_after, expected.support_after)
+    torch.testing.assert_close(result.coordinates_after, expected.coordinates_after)
+    torch.testing.assert_close(result.patched, expected.patched)
+
+
+def test_coordinate_patch_prompt_matches_manual_activation_and_reuses_decomposition(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer, position, k = 0, -1, 3
+    tokens = toy_model.to_tokens("a toy prompt")
+    hook = f"blocks.{layer}.hook_out"
+    _, cache = toy_model.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    activation = cache[hook][0, position, :]
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    decomposition = get_sparse_decomposition(activation.float(), dictionary, k)
+    source_id = int(decomposition.support[0])
+    target_id = next(token_id for token_id in range(D_VOCAB) if token_id != source_id)
+
+    prompt_result = fitted_lens.coordinate_patch(
+        toy_model,
+        "a toy prompt",
+        layer,
+        source_id,
+        target_id,
+        position=position,
+        decomposition=decomposition,
+    )
+    raw_result = fitted_lens.coordinate_patch(
+        toy_model,
+        activation,
+        layer,
+        source_id,
+        target_id,
+        decomposition=decomposition,
+    )
+
+    assert torch.equal(prompt_result.support_after, raw_result.support_after)
+    torch.testing.assert_close(prompt_result.coordinates_after, raw_result.coordinates_after)
+    torch.testing.assert_close(prompt_result.patched, raw_result.patched)
+
+
+def test_coordinate_patch_resolves_string_tokens(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer = 0
+    source_token = "abc"
+    target_token = "abcde"
+    source_id = toy_model.to_single_token(source_token)
+    dictionary = fitted_lens.lens_vector_dictionary(toy_model, layer)
+    activation = dictionary[source_id].clone()
+
+    result = fitted_lens.coordinate_patch(
+        toy_model, activation, layer, source_token, target_token, k=1
+    )
+
+    assert int(result.support_after[result.source_slot]) == source_id
+    assert int(result.support_after[result.target_slot]) == toy_model.to_single_token(target_token)
+
+
+def test_coordinate_patch_reuses_activation_validation(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    with pytest.raises(ValueError, match="raw activation"):
+        fitted_lens.coordinate_patch(toy_model, "a toy prompt", 0, 3, 5, k=1)
+    with pytest.raises(ValueError, match="position is only valid"):
+        fitted_lens.coordinate_patch(toy_model, torch.randn(D_MODEL), 0, 3, 5, position=0, k=1)
+
+
+def test_coordinate_patch_rejects_unfitted_layer(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    """coordinate_patch shares decompose's resolution: the never-fitted final layer raises."""
+    with pytest.raises(ValueError):
+        fitted_lens.coordinate_patch(
+            toy_model, torch.randn(toy_model.cfg.d_model), N_LAYERS - 1, 3, 5, k=1
+        )
+
+
+def test_coordinate_patch_swap_matches_pseudoinverse_oracle() -> None:
+    """Restricted oracle: a planted two-atom positive swap matches the pseudoinverse intervention
+    swap_hooks performs, ``x + V(sigma(c) - c)`` with ``c = V^+ x``. The pseudoinverse appears only
+    in this test; the core never inverts a basis."""
+    dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.6, 0.8, 0.0]])
+    activation = 2.0 * dictionary[0] + 3.0 * dictionary[1] + torch.tensor([0.0, 0.0, 4.0])
+
+    result = solve_coordinate_patch(
+        activation, dictionary, source_idx=0, target_idx=1, k=2, mode="swap"
+    )
+    basis = dictionary[[0, 1]].T
+    coordinates = torch.linalg.pinv(basis) @ activation
+    expected = activation + basis @ (coordinates[[1, 0]] - coordinates)
+
+    torch.testing.assert_close(result.patched, expected, atol=1e-5, rtol=1e-5)
+
+
+def _fit_lens_with_parallel_target(*, exact: bool) -> tuple["_ToyBridge", JacobianLens]:
+    """Fit a lens on a model whose token-5 unembedding is (near-)parallel to token 3's, so the
+    lens vectors for 3 and 5 collide."""
+    model = _ToyBridge()
+    with torch.no_grad():
+        source = model.unembed.weight[3]
+        if exact:
+            model.unembed.weight[5].copy_(2 * source)
+        else:
+            noise = torch.randn_like(source)
+            noise -= noise.dot(source) / source.square().sum() * source
+            noise *= 0.05 * source.norm() / noise.norm()  # cosine ~= 0.99875
+            model.unembed.weight[5].copy_(source + noise)
+    lens = JacobianLens.fit(
+        model,
+        ["a toy prompt"],
+        corpus=CORPUS,
+        dim_batch=4,
+        skip_first_positions=SKIP_FIRST,
+        show_progress=False,
+    )
+    return model, lens
+
+
+def _pin_source_atom(
+    model: "_ToyBridge", lens: JacobianLens
+) -> tuple[torch.Tensor, JSpaceDecomposition]:
+    """A supplied decomposition that pins atom 3 active, so the near-duplicate atom 5 cannot shadow
+    it during selection. ``activation = 2 * dictionary[3]`` lies exactly in that atom's span."""
+    activation = 2.0 * lens.lens_vector_dictionary(model, 0)[3]
+    decomposition = JSpaceDecomposition(
+        support=torch.tensor([3]),
+        coordinates=torch.tensor([2.0]),
+        selected_support=torch.tensor([3]),
+        reconstruction=activation.clone(),
+        j_space_component=activation.clone(),
+        non_j_space_component=torch.zeros_like(activation),
+    )
+    return activation, decomposition
+
+
+def test_coordinate_patch_propagates_core_near_parallel_warning() -> None:
+    """The wrapper adds no warning handling: the core's near-parallel warning surfaces unchanged."""
+    model, lens = _fit_lens_with_parallel_target(exact=False)
+    activation, decomposition = _pin_source_atom(model, lens)
+    with pytest.warns(UserWarning, match="near-parallel"):
+        lens.coordinate_patch(model, activation, 0, 3, 5, decomposition=decomposition)
+
+
+def test_coordinate_patch_propagates_core_conditioning_warning() -> None:
+    """A colinear target makes the edit basis rank deficient; that core warning must propagate."""
+    model, lens = _fit_lens_with_parallel_target(exact=True)
+    activation, decomposition = _pin_source_atom(model, lens)
+    with pytest.warns(UserWarning, match="rank deficient"):
+        lens.coordinate_patch(model, activation, 0, 3, 5, decomposition=decomposition)
 
 
 def test_occupancy_on_toy_model_raw_activation(

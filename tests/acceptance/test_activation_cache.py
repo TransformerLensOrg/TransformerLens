@@ -5,7 +5,7 @@ import torch
 from fancy_einsum import einsum
 
 from transformer_lens import HookedTransformer, utils
-from transformer_lens.utils import Slice
+from transformer_lens.utilities import Slice
 
 # Create IOI prompts
 ioi_prompt_formats = [

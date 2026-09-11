@@ -7,8 +7,6 @@ optional attention mapping, MoE MLP, and fold_ln disabled.
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MoEBridge,
@@ -26,6 +24,8 @@ class Qwen3NextArchitectureAdapter(Qwen3ArchitectureAdapter):
     """
 
     def __init__(self, cfg: Any) -> None:
+        # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
+        # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 
@@ -47,7 +47,3 @@ class Qwen3NextArchitectureAdapter(Qwen3ArchitectureAdapter):
                 "dense_out": LinearBridge(name="down_proj", optional=True),
             },
         )
-
-    def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Slice query half from gated q_proj.weight for weight-space analysis."""
-        return self._preprocess_gated_q_proj(state_dict, self.cfg.n_heads, self.cfg.d_head)

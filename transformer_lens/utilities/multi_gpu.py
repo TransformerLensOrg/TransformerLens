@@ -251,8 +251,15 @@ def is_mixed_cpu_gpu(values: Any) -> bool:
 def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
     """Cast materialized floating parameters while preserving Accelerate offload hooks.
 
-    Skips one-byte floats (FP8 dtypes like float8_e8m0fnu) which are quantizer-owned
-    scale parameters — casting them corrupts the quantization format.
+    Only safe on a model with no active quantizer; go through
+    ``maybe_cast_floating_params`` for anything that came out of ``from_pretrained``.
+
+    The one-byte-float skip below is a backstop against the worst corruption, not an
+    ownership test. Quantizer-owned scales are float32 as often as FP8: transformers'
+    finegrained-FP8 stores ``weight_scale_inv`` as float32 unless the checkpoint asks
+    for ue8m0 scales, and fbgemm-FP8 stores its scales as float32 outright. A dtype
+    cannot say who owns a tensor.
+    See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
     """
     from accelerate.utils import align_module_device
 
@@ -263,8 +270,10 @@ def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
                     continue
                 if param.device.type == "meta":
                     continue
-                # Skip one-byte floats (FP8 scale tensors): they are quantizer-owned
-                # and casting them breaks the weight/scale pair relationship.
+                # Backstop, not an ownership test. One-byte floats are the case
+                # where a cast is silently unrecoverable, so they are refused even
+                # here; wider quantizer-owned scales exist and are NOT caught, which
+                # is why callers gate on the model's quantizer instead of on dtype.
                 if param.dtype.itemsize < 2:
                     continue
                 param.data = param.data.to(dtype=dtype)
@@ -273,11 +282,21 @@ def cast_floating_params_to_dtype(model: nn.Module, dtype: torch.dtype) -> None:
 def maybe_cast_floating_params(model: nn.Module, dtype: torch.dtype) -> None:
     """Cast floating params to dtype, skipping models with active quantization.
 
-    When a model has an active quantization_config, the quantizer owns specific
-    dtypes (e.g., FP8 scales) that must not be overwritten. This helper wraps
-    the cast with that check.
+    The skip is whole-model on purpose. ``from_pretrained`` has already settled the
+    load dtype by this point, and on a quantized checkpoint that is the quantizer's
+    *effective* dtype, not necessarily the requested one: quantizers may override it
+    in ``HfQuantizer.update_dtype`` (AWQ downgrades bfloat16 to float16 whenever CUDA
+    or XPU is available, whatever the placement; fbgemm-FP8 and FP-Quant force
+    bfloat16). Re-casting here would overwrite those
+    deliberate choices along with genuinely quantizer-owned storage, and dtype alone
+    cannot tell the two apart.
+
+    The gate releases in step with HF: a dequantized load has its
+    ``quantization_config`` deleted by ``HfQuantizer.remove_quantization_config``, so
+    ``quantization_method`` returns None and normalization resumes.
 
     See: https://github.com/TransformerLensOrg/TransformerLens/issues/1713
+    See: https://github.com/TransformerLensOrg/TransformerLens/issues/1743
     """
     from transformer_lens.utilities.quantization import quantization_method
 

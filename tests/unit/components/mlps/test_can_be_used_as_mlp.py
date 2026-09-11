@@ -7,7 +7,7 @@ from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import solu
+from transformer_lens.utilities import solu
 
 
 @pytest.fixture

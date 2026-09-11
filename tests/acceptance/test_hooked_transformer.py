@@ -13,7 +13,7 @@ from transformer_lens.loading_from_pretrained import (
     OFFICIAL_MODEL_NAMES,
     get_official_model_name,
 )
-from transformer_lens.utils import clear_huggingface_cache
+from transformer_lens.utilities import clear_huggingface_cache
 
 
 def _tokenizer_loads(name: str) -> bool:

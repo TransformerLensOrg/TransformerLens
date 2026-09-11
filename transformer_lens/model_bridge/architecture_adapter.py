@@ -293,12 +293,23 @@ class ArchitectureAdapter:
         For example, Gemma models scale embeddings by sqrt(d_model).
 
         Args:
-            state_dict: The state dictionary with HuggingFace format keys
+            state_dict: The state dictionary, keyed in TransformerLens format. The caller
+                passes ``bridge.state_dict()``, so keys have already been renamed by
+                ``convert_hf_key_to_tl_key`` — match ``blocks.0.attn.q.weight``, not
+                ``model.layers.0.self_attn.q_proj.weight``. An override that matches
+                HuggingFace names silently matches nothing.
 
         Returns:
             The modified state dictionary (default implementation returns unchanged)
         """
         return state_dict
+
+    def postprocess_weights(self, bridge: Any) -> None:
+        """Apply architecture-specific updates after processed weights are installed.
+
+        Args:
+            bridge: The TransformerBridge whose live source components received the weights.
+        """
 
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.

@@ -6,7 +6,7 @@ Tests the core functionality without loading large models to keep CI fast.
 import pytest
 import torch
 
-import transformer_lens.utils as utils
+from transformer_lens import utilities as utils
 
 
 class TestJointQKVAttentionBridgeIntegration:

@@ -29,7 +29,9 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
     Reads the bridge components' TL-layout weight properties (``W_Q``,
     ``W_in``, ...), which already account for layout conversion and weight
     processing. For missing weights, returns zero tensors of appropriate shape
-    instead of raising exceptions. Skips attn keys for non-attention layers.
+    instead of raising exceptions. Skips attn keys for non-attention layers, and
+    omits ``pos_embed.W_pos`` for rotary models (which have no learned position
+    table), matching HookedTransformer's parameter set.
     LayerNorm params (``blocks.{i}.ln1.w`` etc.) are included when the modules
     still carry them (i.e. before folding) so consumers can detect fold state.
 
@@ -62,7 +64,13 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
     params_dict["embed.W_E"] = embed if embed is not None else _zeros(cfg.d_vocab, cfg.d_model)
 
     pos = _tensor_attr(getattr(bridge, "pos_embed", None), "W_pos", "weight")
-    params_dict["pos_embed.W_pos"] = pos if pos is not None else _zeros(cfg.n_ctx, cfg.d_model)
+    if pos is not None:
+        params_dict["pos_embed.W_pos"] = pos
+    elif getattr(cfg, "positional_embedding_type", "standard") != "rotary":
+        # Rotary models have no learned position table, and HookedTransformer never
+        # registers pos_embed for them — fabricating one would advertise a weight the
+        # architecture lacks and allocate n_ctx x d_model (GBs on an 8B model).
+        params_dict["pos_embed.W_pos"] = _zeros(cfg.n_ctx, cfg.d_model)
 
     for layer_idx in range(cfg.n_layers):
         if layer_idx >= len(bridge.blocks):

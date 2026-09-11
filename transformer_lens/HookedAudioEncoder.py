@@ -216,6 +216,12 @@ class HookedAudioEncoder(HookedRootModule):
             if one_zero_attention_mask is not None:
                 one_zero_attention_mask = one_zero_attention_mask.to(self.cfg.device)
 
+        if one_zero_attention_mask is not None:
+            # HF zeroes pad frames before the positional conv (kernel 128 smears
+            # pad content into real frames otherwise); masked_fill, not HF's
+            # in-place write, so the caller's tensor survives.
+            frames = frames.masked_fill(~one_zero_attention_mask.bool().unsqueeze(-1), 0.0)
+
         position_embeddings = self.hubert_model.encoder.pos_conv_embed(frames)
         resid = frames + position_embeddings
         resid = self.hubert_model.encoder.layer_norm(resid)

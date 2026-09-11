@@ -7,7 +7,6 @@ Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 from typing import Any, Optional, Union
 
 import torch
-from typeguard import typechecked
 from typing_extensions import Literal
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
@@ -27,7 +26,6 @@ class SVDInterpreter:
         else:
             self.params = {name: param for name, param in model.named_parameters()}
 
-    @typechecked
     def get_singular_vectors(
         self,
         vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],

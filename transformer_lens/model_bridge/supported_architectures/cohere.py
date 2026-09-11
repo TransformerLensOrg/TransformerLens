@@ -94,6 +94,10 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         # Cohere-specific dynamic attribute accessed later in preprocess_weights.
         _ls = getattr(cfg, "logit_scale", None)
         self.cfg.logit_scale = float(_ls) if _ls is not None else 0.0625  # type: ignore[attr-defined]
+        self._logit_scale_fold_pending = False
+        # Separate from cfg.logit_scale, which callers (apply_output_logits_transform,
+        # tests) read as Cohere's declared constant and must never see mutated.
+        self._logit_scale_already_folded = False
 
         # --- RoPE theta (informational metadata) ---
         # CohereRotaryEmbedding reads config.rope_parameters["rope_theta"] directly;
@@ -154,17 +158,36 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
     def preprocess_weights(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Fold logit_scale into unembed weights before ProcessWeights runs.
 
-        bridge.py lines 726-732 clone unembed.weight before calling this, so
+        bridge.py clones unembed.weight before calling this, so
         scaling does not affect the tied embed.weight.
         logit_scale=1.0 is a no-op (skipped for efficiency).
         """
+        self._logit_scale_fold_pending = False
+        if self._logit_scale_already_folded:
+            return state_dict
         scale: float = getattr(self.cfg, "logit_scale")  # always set by __init__
         if scale != 1.0:
             for key in ("unembed.weight", "unembed.bias"):
                 if key in state_dict:
                     orig_dtype = state_dict[key].dtype
                     state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
+                    self._logit_scale_fold_pending = True
         return state_dict
+
+    def postprocess_weights(self, bridge: Any) -> None:
+        """Disable HF's outer scale after folding it into the live unembed weights."""
+        if not self._logit_scale_fold_pending:
+            return
+
+        model = getattr(bridge, "original_model", None)
+        if model is not None and hasattr(model, "logit_scale"):
+            model.logit_scale = 1.0
+        # Remember the fold happened without touching cfg.logit_scale itself: a repeat
+        # preprocess_weights() call (direct, or via a second process_weights()) must not
+        # re-fold the already-scaled unembed, but cfg.logit_scale is the model's declared
+        # constant and other readers (apply_output_logits_transform, tests) need it intact.
+        self._logit_scale_already_folded = True
+        self._logit_scale_fold_pending = False
 
     def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
         """Match Cohere's ``lm_head -> logit_scale -> optional softcap`` path."""

@@ -82,7 +82,9 @@ from transformer_lens.model_bridge.generalized_components.mpt_alibi_attention im
     MPTALiBiAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.normalization import (
+    LayerNormPreBridge,
     NormalizationBridge,
+    RMSNormPreBridge,
 )
 from transformer_lens.model_bridge.generalized_components.opaque_block import (
     OpaqueBlockBridge,
@@ -167,8 +169,10 @@ __all__ = [
     "ALiBiJointQKVAttentionBridge",
     "RotaryEmbeddingBridge",
     "PosEmbedBridge",
+    "LayerNormPreBridge",
     "NormalizationBridge",
     "RMSNormalizationBridge",
+    "RMSNormPreBridge",
     "JointQKVAttentionBridge",
     "JointQKVPositionEmbeddingsAttentionBridge",
     "JointGateUpMLPBridge",

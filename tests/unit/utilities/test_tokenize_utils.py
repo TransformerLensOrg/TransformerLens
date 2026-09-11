@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import torch
 
-from transformer_lens import utils
+from transformer_lens import utilities as utils
 
 
 def test_attention_mask_uses_explicit_padding_side(gpt2_tokenizer) -> None:

@@ -187,8 +187,20 @@ class NeoxArchitectureAdapter(ArchitectureAdapter):
                 config=self.cfg,
                 use_native_layernorm_autograd=True,
             ),
-            "unembed": UnembeddingBridge(name="embed_out"),
+            "unembed": UnembeddingBridge(name="lm_head"),
         }
+
+    def prepare_model(self, hf_model: Any) -> None:
+        """Fix up the unembed target once the real HF module tree is available.
+
+        transformers >= 5.14 renamed ``GPTNeoXForCausalLM.embed_out`` to
+        ``lm_head``; the repo's locked 5.13.0 still exposes ``embed_out``. The
+        component_mapping is built in ``__init__`` before any HF model exists,
+        so the ``lm_head`` default above can't be hasattr-checked until now.
+        """
+        super().prepare_model(hf_model)
+        if not hasattr(hf_model, "lm_head") and hasattr(hf_model, "embed_out"):
+            self.components["unembed"].name = "embed_out"
 
     def split_qkv_matrix(
         self, original_attention_component: Any

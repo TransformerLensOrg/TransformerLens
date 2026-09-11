@@ -60,8 +60,9 @@ References:
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import torch
 
@@ -92,6 +93,58 @@ _GRADIENT_BACKTRACK_STEPS = 20
 #: selected support scale-invariant. It is deliberately coarser than the activity threshold:
 #: selection is a float32 correlation decision, activity a check against the float64 solve.
 _CORRELATION_RELATIVE_TOLERANCE = math.sqrt(torch.finfo(torch.float32).eps)
+
+#: Shared near-parallel policy for lens-space interventions. Two atoms whose absolute cosine
+#: reaches this threshold span an ill-conditioned pair: a coordinate swap between them is
+#: approximately a no-op. Both the anchored coordinate patch and ``JacobianLens.swap_hooks``
+#: read this one definition so their near-parallel diagnostics never drift apart.
+_SWAP_WARN_COSINE = 0.99
+#: Above this cosine ``swap_hooks`` refuses the intervention: inverting a two-atom basis whose
+#: columns are near-collinear is numerically hopeless. The anchored coordinate patch inverts
+#: nothing, so it only reads ``_SWAP_WARN_COSINE`` and never raises on this threshold.
+_SWAP_ERROR_COSINE = 0.999
+
+
+def _linalg_on_cpu_if_mps(op: Callable[..., torch.Tensor], *tensors: torch.Tensor) -> torch.Tensor:
+    """Run a linear-algebra op that MPS lacks a kernel for, restoring the input device.
+
+    Several LAPACK-backed ``torch.linalg`` routines (``pinv``, ``svdvals``) are unimplemented on
+    the MPS backend, so callers must round-trip through CPU. This centralizes the shared
+    detect-device -> ``.cpu()`` -> op -> restore idiom: off MPS ``op`` is called on the input
+    tensors unchanged, and on MPS it is called on their CPU copies with the result moved back to
+    the input device. All inputs must share one device.
+    """
+    device = tensors[0].device
+    if device.type == "mps":
+        return op(*(tensor.cpu() for tensor in tensors)).to(device)
+    return op(*tensors)
+
+
+def _diagnose_intervention_pair(
+    unit_vectors: torch.Tensor, *, description: str, stacklevel: int
+) -> float:
+    """Apply the shared near-parallel warn/raise policy to two unit-normalized vectors.
+
+    Returns the signed cosine. Warns above :data:`_SWAP_WARN_COSINE` and raises above
+    :data:`_SWAP_ERROR_COSINE`. Used by interventions that invert a two-atom basis (e.g.
+    ``swap_hooks``); the anchored coordinate patch, which performs no inverse, warns without
+    raising and does not call this helper.
+    """
+    cosine = float((unit_vectors[0] @ unit_vectors[1]).item())
+    abs_cosine = abs(cosine)
+    if not math.isfinite(abs_cosine) or abs_cosine >= _SWAP_ERROR_COSINE:
+        raise ValueError(
+            f"{description} are numerically near-parallel "
+            f"(abs cosine={abs_cosine:.6f}); choose better-separated concepts"
+        )
+    if abs_cosine >= _SWAP_WARN_COSINE:
+        warnings.warn(
+            f"{description} are poorly conditioned "
+            f"(abs cosine={abs_cosine:.6f}); the intervention may be amplified",
+            UserWarning,
+            stacklevel=stacklevel,
+        )
+    return cosine
 
 
 @dataclass
@@ -201,8 +254,8 @@ def _nonnegative_least_squares(active_atoms: torch.Tensor, target: torch.Tensor)
     result_dtype = target.dtype
     result_device = target.device
     work_device = torch.device("cpu") if target.device.type == "mps" else target.device
-    work_atoms = active_atoms.to(device=work_device, dtype=torch.float64)
-    work_target = target.to(device=work_device, dtype=torch.float64)
+    work_atoms = active_atoms.to(device=work_device).to(dtype=torch.float64)
+    work_target = target.to(device=work_device).to(dtype=torch.float64)
     if not bool(torch.isfinite(work_atoms).all()) or not bool(torch.isfinite(work_target).all()):
         raise ValueError("active_atoms and target must contain only finite values")
 
@@ -435,7 +488,11 @@ def get_sparse_decomposition(
     # swap_hooks. That span can be larger than the active support when a selected coordinate is
     # zero, so the projection differs from the nonnegative reconstruction in that case.
     if selected:
-        j_space_component = selected_atoms @ (torch.linalg.pinv(selected_atoms) @ target)
+        j_space_component = _linalg_on_cpu_if_mps(
+            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
+            selected_atoms,
+            target,
+        )
     else:
         j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
