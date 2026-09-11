@@ -190,15 +190,22 @@ def _head_weights(
 ]:
     """Return ``(W_Q_h, W_K_h, W_V_h, W_O_h)`` for one head as float tensors.
 
-    The upcast to ``float`` promotes fp16/bf16 weights before the SVD, where
-    reduced precision is a known source of instability.
+    Reads the single block's per-head weights rather than the full-model
+    ``W_Q``/``W_K``/``W_V``/``W_O`` stacks, so only one layer is materialized. On
+    grouped-query attention ``W_K``/``W_V`` carry one row per key-value head, so the
+    query head is mapped to its key-value head (query head ``h`` reads kv head
+    ``h // (n_heads // n_kv_heads)``); a no-op for multi-head attention, where the
+    head counts already match. The upcast to ``float`` promotes fp16/bf16 weights
+    before the SVD, where reduced precision is a known source of instability.
     """
-    return (
-        model.W_Q[layer, head].float(),
-        model.W_K[layer, head].float(),
-        model.W_V[layer, head].float(),
-        model.W_O[layer, head].float(),
-    )
+    attn = model.blocks[layer].attn
+    W_Q_h = attn.W_Q[head].float()  # [d_model, d_head]
+    W_O_h = attn.W_O[head].float()  # [d_head, d_model]
+    n_kv_heads = attn.W_K.shape[0]
+    kv_head = head // (model.cfg.n_heads // n_kv_heads)
+    W_K_h = attn.W_K[kv_head].float()  # [d_model, d_head]
+    W_V_h = attn.W_V[kv_head].float()  # [d_model, d_head]
+    return W_Q_h, W_K_h, W_V_h, W_O_h
 
 
 def _degeneracy_blocks(S: Float[torch.Tensor, "rank"], eps: float) -> List[List[int]]:

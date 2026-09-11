@@ -5,6 +5,7 @@ degeneracy guard directly, so no model is loaded and no pretrained weights are d
 """
 
 import warnings
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -15,9 +16,45 @@ from transformer_lens.tools.analysis.svd_circuits import (
     RankReportRow,
     _degeneracy_blocks,
     _factored_head_svd,
+    decompose_head,
 )
 
 D_MODEL, D_HEAD = 12, 4
+
+
+class _StubAttn:
+    def __init__(self, W_Q, W_K, W_V, W_O):
+        self.W_Q, self.W_K, self.W_V, self.W_O = W_Q, W_K, W_V, W_O
+
+
+class _StubBlock:
+    def __init__(self, attn):
+        self.attn = attn
+
+
+class _StubModel:
+    """Model-free stand-in exposing cfg.n_layers/n_heads and blocks[i].attn.W_*.
+
+    W_K/W_V carry ``n_kv_heads`` rows (the grouped-query layout); W_Q/W_O carry
+    ``n_heads`` rows, matching the per-block shapes ``decompose_head`` reads.
+    """
+
+    def __init__(
+        self,
+        n_heads,
+        n_kv_heads,
+        n_layers=1,
+        d_model=D_MODEL,
+        d_head=D_HEAD,
+        seed=0,
+    ):
+        g = torch.Generator().manual_seed(seed)
+        W_Q = torch.randn(n_heads, d_model, d_head, generator=g)
+        W_K = torch.randn(n_kv_heads, d_model, d_head, generator=g)
+        W_V = torch.randn(n_kv_heads, d_model, d_head, generator=g)
+        W_O = torch.randn(n_heads, d_head, d_model, generator=g)
+        self.cfg = SimpleNamespace(n_layers=n_layers, n_heads=n_heads)
+        self.blocks = [_StubBlock(_StubAttn(W_Q, W_K, W_V, W_O)) for _ in range(n_layers)]
 
 
 # --------------------------------------------------------------------------- #
@@ -211,3 +248,79 @@ def test_degeneracy_blocks_groups_equal_run_directly():
 def test_degeneracy_blocks_on_well_separated_are_all_singletons():
     blocks = _degeneracy_blocks(torch.tensor([8.0, 4.0, 2.0, 1.0]), eps=1e-2)
     assert blocks == [[0], [1], [2], [3]]
+
+
+# --------------------------------------------------------------------------- #
+# decompose_head wiring and input guards (model-free, via _StubModel)
+# --------------------------------------------------------------------------- #
+def test_decompose_head_mha_reads_requested_head():
+    """MHA stub (n_heads == n_kv_heads): each head's OV decomposes its own W_V/W_O."""
+    model = _StubModel(n_heads=4, n_kv_heads=4)
+    attn = model.blocks[0].attn
+    for h in range(4):
+        result = decompose_head(model, layer=0, head=h, which=("OV",))
+        S_ref = torch.linalg.svd(attn.W_V[h] @ attn.W_O[h]).S
+        assert torch.allclose(result.OV.S, S_ref[:D_HEAD], atol=1e-4)
+
+
+def test_decompose_head_gqa_maps_query_to_kv_head():
+    """GQA stub (4 query heads, 2 kv heads): every head decomposes without IndexError,
+    and heads 0,1 recover kv head 0's W_K/W_V while heads 2,3 recover kv head 1's."""
+    model = _StubModel(n_heads=4, n_kv_heads=2)
+    attn = model.blocks[0].attn
+    n_heads = model.cfg.n_heads
+    n_kv_heads = attn.W_K.shape[0]
+    for h in range(n_heads):
+        result = decompose_head(model, layer=0, head=h, which=("QK", "OV"))
+        kv_head = h // (n_heads // n_kv_heads)
+        ov_ref = torch.linalg.svd(attn.W_V[kv_head] @ attn.W_O[h]).S
+        qk_ref = torch.linalg.svd(attn.W_Q[h] @ attn.W_K[kv_head].transpose(-1, -2)).S
+        assert torch.allclose(result.OV.S, ov_ref[:D_HEAD], atol=1e-4)
+        assert torch.allclose(result.QK.S, qk_ref[:D_HEAD], atol=1e-4)
+
+
+def test_decompose_head_qk_transpose_wiring():
+    """QK factors W_Q_h and W_K_h.T; res.QK.S matches svd(W_Q_h @ W_K_h.T)."""
+    model = _StubModel(n_heads=4, n_kv_heads=4)
+    attn = model.blocks[0].attn
+    result = decompose_head(model, layer=0, head=2, which=("QK",))
+    S_ref = torch.linalg.svd(attn.W_Q[2] @ attn.W_K[2].transpose(-1, -2)).S
+    assert torch.allclose(result.QK.S, S_ref[:D_HEAD], atol=1e-4)
+
+
+def test_decompose_head_which_filter():
+    """which=("OV",) returns only OV; which=("QK",) returns only QK."""
+    model = _StubModel(n_heads=2, n_kv_heads=2)
+    ov_only = decompose_head(model, layer=0, head=0, which=("OV",))
+    assert ov_only.OV is not None and ov_only.QK is None
+    qk_only = decompose_head(model, layer=0, head=0, which=("QK",))
+    assert qk_only.QK is not None and qk_only.OV is None
+
+
+def test_decompose_head_rejects_bad_layer():
+    model = _StubModel(n_heads=2, n_kv_heads=2, n_layers=1)
+    with pytest.raises(ValueError):
+        decompose_head(model, layer=1, head=0)
+
+
+def test_decompose_head_rejects_bad_head():
+    model = _StubModel(n_heads=2, n_kv_heads=2)
+    with pytest.raises(ValueError):
+        decompose_head(model, layer=0, head=2)
+
+
+def test_decompose_head_rejects_empty_which():
+    model = _StubModel(n_heads=2, n_kv_heads=2)
+    with pytest.raises(ValueError):
+        decompose_head(model, layer=0, head=0, which=())
+
+
+def test_decompose_head_rejects_unknown_which():
+    """An unknown which entry is rejected; the jaxtyping/beartype import hook enforced
+    by this suite's pytest config raises its own violation before the manual ValueError
+    guard runs, so the check is on the exception class name rather than ValueError."""
+    model = _StubModel(n_heads=2, n_kv_heads=2)
+    with pytest.raises(Exception) as exc_info:
+        decompose_head(model, layer=0, head=0, which=("QK", "XX"))
+    exc_name = type(exc_info.value).__name__
+    assert "TypeCheckError" in exc_name or "Beartype" in exc_name
