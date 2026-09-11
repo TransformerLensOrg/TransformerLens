@@ -32,10 +32,10 @@ near-equal gap threshold ``eps``.
 
 Example::
 
-    from transformer_lens import HookedTransformer
+    from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.tools.analysis.svd_circuits import decompose_head
 
-    model = HookedTransformer.from_pretrained("gpt2", device="cpu")
+    model = TransformerBridge.boot_transformers("gpt2", device="cpu")
     decomposition = decompose_head(model, layer=0, head=0)
     ov = decomposition.OV
     for row in ov.rank_report:
@@ -335,13 +335,12 @@ def decompose_head(
 ) -> HeadDecomposition:
     """Decompose a head's QK (``W_Q W_K^T``) and/or OV (``W_V W_O``) maps via SVD.
 
-    Weight-space only: this reads the head's weights and needs no forward pass and
-    no compatibility mode. Works with both ``HookedTransformer`` and
-    ``TransformerBridge`` because they share the ``W_Q``/``W_K``/``W_V``/``W_O``
-    layout and ``cfg``.
+    Weight-space only: this reads the head's per-block weights via the bridge's
+    ``model.blocks[layer].attn`` accessors and needs no forward pass and no
+    compatibility mode.
 
     Args:
-        model: A ``HookedTransformer`` or ``TransformerBridge``.
+        model: A ``TransformerBridge``.
         layer: Layer of the head to decompose.
         head: Head index within the layer.
         which: Which maps to decompose, any subset of ``("QK", "OV")``.
