@@ -4,8 +4,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 import torch
-from beartype.roar import BeartypeCallHintParamViolation
 
+from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.tools.analysis import (
     fit_sparse_probe as exported_fit_sparse_probe,
 )
@@ -288,6 +288,12 @@ def test_binary_metrics_zero_division_policy():
     [
         (torch.ones(0, 2), torch.empty(0, dtype=torch.int64), {}, "non-empty"),
         (torch.tensor([[1.0], [float("nan")]]), torch.tensor([0, 1]), {}, "finite"),
+        (
+            torch.ones(4, 2, dtype=torch.float8_e4m3fn),
+            torch.tensor([0, 1, 0, 1]),
+            {},
+            "supported dtype",
+        ),
         (torch.ones(4, 2), torch.zeros(4, dtype=torch.int64), {}, "exactly two"),
         (torch.ones(6, 2), torch.tensor([0, 1, 2, 0, 1, 2]), {}, "exactly two"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"positive_label": 2}, "positive_label"),
@@ -325,14 +331,13 @@ def test_rejects_invalid_inputs(features, labels, kwargs, message):
         ([[1.0], [2.0], [3.0], [4.0]], torch.tensor([0, 1, 0, 1])),
         (torch.ones(4), torch.tensor([0, 1, 0, 1])),
         (torch.ones(4, 2, dtype=torch.int64), torch.tensor([0, 1, 0, 1])),
-        (torch.ones(4, 2, dtype=torch.float8_e4m3fn), torch.tensor([0, 1, 0, 1])),
         (torch.ones(4, 2), torch.tensor([0.0, 1.0, 0.0, 1.0])),
         (torch.ones(4, 2), torch.tensor([[0, 1], [0, 1]])),
         (torch.ones(4, 2), torch.tensor([0, 1, 0])),
     ],
 )
 def test_runtime_typecheck_rejects_invalid_tensor_contracts(features, labels):
-    with pytest.raises(BeartypeCallHintParamViolation):
+    with pytest.raises(TYPECHECK_ERRORS):
         fit_sparse_probe(features, labels, k=1)
 
 
