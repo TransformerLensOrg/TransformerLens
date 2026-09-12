@@ -16,10 +16,13 @@ import torch
 from transformer_lens.tools.analysis.svd_circuits import (
     DegenerateDirectionError,
     HeadSVD,
+    LogitSignature,
     RankReportRow,
     _degeneracy_blocks,
     _factored_head_svd,
     decompose_head,
+    logit_signature,
+    vocab_readout,
 )
 
 D_MODEL, D_HEAD = 12, 4
@@ -529,3 +532,59 @@ def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
     projected_via_U = ov.U[:, 0] @ W_U
     assert not torch.allclose(projected_via_U, reference[:, 0, 0], atol=1e-2)
     assert not torch.allclose(projected_via_U, -reference[:, 0, 0], atol=1e-2)
+
+
+# --------------------------------------------------------------------------- #
+# vocab_readout / logit_signature (OV output-direction readout)
+# --------------------------------------------------------------------------- #
+def test_vocab_readout_shape_and_which_guard():
+    """vocab_readout returns [d_vocab, k] for OV, and rejects QK input and out-of-range k."""
+    ov = _factored_head_svd(*_random_ov(), which="OV", layer=0, head=0, eps=1e-2)
+    vocab_size = 20
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, vocab_size))
+
+    result = vocab_readout(model, ov, k=3)
+    assert result.shape == (vocab_size, 3)
+
+    qk = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="QK", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="OV"):
+        vocab_readout(model, qk, k=1)
+
+    with pytest.raises(ValueError, match="k must be"):
+        vocab_readout(model, ov, k=D_HEAD + 1)
+
+
+def test_vocab_readout_raises_without_compatibility_mode(tiny_bridge):
+    """A TransformerBridge without compatibility mode enabled refuses to project through W_U."""
+    decomposition = decompose_head(tiny_bridge, layer=0, head=0, which=("OV",))
+    with pytest.raises(ValueError, match="enable_compatibility_mode"):
+        vocab_readout(tiny_bridge, decomposition.OV)
+
+
+def test_logit_signature_matches_manual_projection():
+    """logit_signature's reconstruction matches a hand-computed S[i] * V[:, i] projection."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    vocab_size = 16
+    W_U = torch.randn(D_MODEL, vocab_size)
+    model = SimpleNamespace(W_U=W_U)
+    token_ids = torch.tensor([1, 5, 9])
+
+    result = logit_signature(model, ov, direction=0, tokens=token_ids)
+    assert isinstance(result, LogitSignature)
+    expected = (ov.S[0] * ov.V[:, 0]) @ W_U[:, token_ids]
+    assert torch.allclose(result.values, expected, atol=1e-5)
+    assert result.direction == 0
+
+
+def test_logit_signature_raises_on_degenerate_direction():
+    """A rotation-ambiguous direction's 'signature' is not attributable, so this must raise."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([5.0, 3.0, 3.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, 8))
+    with pytest.raises(DegenerateDirectionError):
+        logit_signature(model, ov, direction=1, tokens=torch.tensor([0]))

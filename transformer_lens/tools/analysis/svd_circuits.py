@@ -52,7 +52,7 @@ Example::
 """
 
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Sequence, Tuple
+from typing import List, Literal, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float
@@ -420,3 +420,116 @@ def decompose_head(
             W_V_h, W_O_h, which="OV", layer=layer, head=head, eps=eps, null_rtol=null_rtol
         )
     return HeadDecomposition(layer=layer, head=head, QK=qk, OV=ov)
+
+
+def _validate_bridge_compatibility(model) -> None:
+    """Reject a ``TransformerBridge`` whose ``W_U`` would give a silently wrong projection.
+
+    ``HookedTransformer`` always has the final LayerNorm folded into ``W_U``, so this
+    only fires for ``TransformerBridge``. Mirrors the compatibility-mode check other
+    unembedding-touching analysis tools already run, without any hybrid-architecture
+    restriction: projecting a rank-1 OV direction through ``W_U`` does not depend on
+    the block-layout assumptions that check exists for elsewhere.
+    """
+    # Lazy import - keeps the module importable without the bridge as a hard dependency.
+    from transformer_lens.model_bridge import TransformerBridge
+
+    if not isinstance(model, TransformerBridge):
+        return
+    if not getattr(model, "compatibility_mode", False):
+        raise ValueError(
+            "Projecting an OV direction through W_U on a TransformerBridge requires "
+            "compatibility mode, so that LayerNorm weights are folded into W_U. Call "
+            "`model.enable_compatibility_mode()` after loading the bridge, then retry."
+        )
+
+
+def vocab_readout(
+    model, head_svd: HeadSVD, *, k: int = 10
+) -> Float[torch.Tensor, "d_vocab k"]:
+    """Project the top-k OV output directions through the unembedding.
+
+    Requires ``head_svd.which == "OV"``: QK produces no write direction to project
+    (see the module docstring). On a ``TransformerBridge``, compatibility mode must
+    be enabled so ``W_U`` carries the folded final LayerNorm weights;
+    ``HookedTransformer`` always has this folding applied.
+
+    Does not call ``head_svd.require_isolated``: a degenerate direction's vocab
+    readout is still a well-defined projection, unlike a per-direction causal claim,
+    so it is not gated here. The contract that no direction is reported without a
+    passing causal patch is enforced by :func:`patch_along_directions`.
+
+    Args:
+        model: A ``TransformerBridge`` (with compatibility mode enabled) or a
+            ``HookedTransformer``; only its ``W_U`` is read.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        k: Number of top singular directions to project.
+
+    Returns:
+        ``W_U.T @ head_svd.V[:, :k]``, shape ``[d_vocab, k]``: column i is
+        direction i's projection through the unembedding.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, if ``k`` is not in
+            ``(0, rank]``, or if ``model`` is a ``TransformerBridge`` without
+            compatibility mode enabled.
+    """
+    if head_svd.which != "OV":
+        raise ValueError(f"vocab_readout requires an OV HeadSVD, got which={head_svd.which!r}")
+    rank = head_svd.V.shape[1]
+    if not 0 < k <= rank:
+        raise ValueError(f"k must be in (0, {rank}], got {k!r}")
+    _validate_bridge_compatibility(model)
+    return model.W_U.T @ head_svd.V[:, :k].float()
+
+
+@dataclass
+class LogitSignature:
+    """Rank-1-reconstruction logit effect for one OV direction, per requested token.
+
+    Attributes:
+        direction: Which ``HeadSVD`` column this reconstructs.
+        values: Signed logit contribution, aligned with the requested tokens.
+    """
+
+    direction: int
+    values: Float[torch.Tensor, "token"]
+
+
+def logit_signature(
+    model,
+    head_svd: HeadSVD,
+    direction: int,
+    tokens: Union[int, Sequence[int], torch.Tensor],
+) -> LogitSignature:
+    """Signed logit effect of one OV direction's rank-1 reconstruction on the given tokens.
+
+    Pure weight-space computation: reconstructs the head's OV output along a single
+    singular direction (``S[direction] * V[:, direction]``, never ``U`` - see the
+    module docstring) and projects it through ``W_U`` restricted to ``tokens``. Runs
+    no forward pass and builds no cache.
+
+    Args:
+        model: A ``TransformerBridge`` (with compatibility mode enabled) or a
+            ``HookedTransformer``; only its ``W_U`` is read.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        direction: Column index of the singular direction to reconstruct.
+        tokens: Token id(s) to read the logit effect for.
+
+    Returns:
+        A :class:`LogitSignature` with one value per requested token.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, or if ``model`` is a
+            ``TransformerBridge`` without compatibility mode enabled.
+        DegenerateDirectionError: If ``direction`` is not attributable alone (see
+            :meth:`HeadSVD.require_isolated`).
+    """
+    if head_svd.which != "OV":
+        raise ValueError(f"logit_signature requires an OV HeadSVD, got which={head_svd.which!r}")
+    head_svd.require_isolated(direction)
+    _validate_bridge_compatibility(model)
+    token_ids = torch.as_tensor(tokens, dtype=torch.long).reshape(-1)
+    reconstruction = (head_svd.S[direction] * head_svd.V[:, direction]).float()
+    values = reconstruction @ model.W_U[:, token_ids]
+    return LogitSignature(direction=direction, values=values)
