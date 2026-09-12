@@ -367,7 +367,8 @@ class IOIDataset(Dataset):
             nouns: Dict mapping placeholder names to lists of nouns. Defaults to built-in nouns.
             num_samples: Number of samples to generate.
             symmetric: If True, generate both orderings of each name pair.
-            prepend_bos: If True, prepend the BOS token to each prompt.
+            prepend_bos: If True, prepend one BOS token to each prompt. Tokenizer-added special
+                tokens are disabled, so False leaves the prompt without a BOS.
             seed: Optional random seed for reproducibility. If None, the current
                 random state is used (samples will vary across runs).
         """
