@@ -52,7 +52,7 @@ Example::
 """
 
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Sequence, Tuple, Union
+from typing import Callable, List, Literal, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float
@@ -597,3 +597,182 @@ def project_activations(
     coefficients = result @ head_svd.V
     str_tokens = model.to_str_tokens(prompt)
     return ActivationProjection(head_svd=head_svd, coefficients=coefficients, str_tokens=str_tokens)
+
+
+def _validate_retained_blocks(head_svd: HeadSVD, retained: Sequence[int]) -> None:
+    """Raise if ``retained`` splits a degenerate block instead of keeping it whole or empty.
+
+    A degenerate block's members are defined only up to a rotation (or, for a null
+    block, arbitrary null-space vectors), so attributing a causal effect to part of the
+    block while dropping the rest would let a caller route around the guard
+    :meth:`HeadSVD.require_isolated` already enforces per direction.
+    """
+    retained_set = set(retained)
+    for block in head_svd.degenerate_blocks():
+        block_set = set(block)
+        overlap = retained_set & block_set
+        if overlap and overlap != block_set:
+            raise DegenerateDirectionError(
+                f"retained directions {sorted(overlap)} split block {sorted(block_set)} of "
+                f"the {head_svd.which} SVD of head L{head_svd.layer}H{head_svd.head}, whose "
+                f"members are not separated by a relative gap of eps={head_svd.eps:g} or are "
+                f"jointly null. Keep or ablate the whole block, not part of it."
+            )
+
+
+def _resolve_retained(
+    head_svd: HeadSVD, keep: Optional[Sequence[int]], ablate: Optional[Sequence[int]]
+) -> List[int]:
+    """Resolve ``keep``/``ablate`` to the sorted list of retained direction indices.
+
+    Exactly one of ``keep``/``ablate`` must be given; ``ablate``'s complement over the
+    map's full rank becomes the retained set. Raises :class:`DegenerateDirectionError`
+    if the result would split a degenerate block (see :func:`_validate_retained_blocks`).
+    """
+    if (keep is None) == (ablate is None):
+        raise ValueError("patch_along_directions requires exactly one of keep or ablate")
+    rank = head_svd.V.shape[1]
+    if keep is not None:
+        retained = sorted(set(keep))
+    else:
+        assert ablate is not None
+        ablate_set = set(ablate)
+        retained = [i for i in range(rank) if i not in ablate_set]
+    _validate_retained_blocks(head_svd, retained)
+    return retained
+
+
+def _make_subspace_hook(head: int, projector: Float[torch.Tensor, "d_model d_model"]):
+    """Build a ``hook_result`` hook that reconstructs one head's output onto ``span(projector)``.
+
+    Leaves every other head's slice of the ``[batch, pos, head_index, d_model]`` tensor
+    untouched. Clones before mutating so the hook never writes into the activation the
+    forward pass itself is still using.
+    """
+
+    def hook_fn(activation: torch.Tensor, hook) -> torch.Tensor:
+        activation = activation.clone()
+        activation[:, :, head, :] = activation[:, :, head, :] @ projector.to(activation.dtype)
+        return activation
+
+    return hook_fn
+
+
+@dataclass
+class PatchResult:
+    """Result of causally patching a head's output onto a chosen OV singular subspace.
+
+    Attributes:
+        head_svd: The OV decomposition patched against.
+        retained: Direction indices whose span the head's output was reconstructed
+            onto; the complement was zeroed.
+        original_metric: Metric value on the unmodified prompt.
+        patched_metric: Metric value after the subspace reconstruction.
+        delta_metric: ``patched_metric - original_metric``.
+        baseline_delta_metric: ``delta_metric`` from reconstructing onto a random
+            subspace of the same rank as ``retained``, instead of the requested one.
+        gated: True only if ``abs(delta_metric)`` exceeds ``abs(baseline_delta_metric)``
+            (or an explicit threshold, if one was passed): a subfunction is causally
+            load-bearing only if it beats an equally-sized random subspace, not merely
+            "moves the metric at all".
+    """
+
+    head_svd: HeadSVD
+    retained: List[int]
+    original_metric: float
+    patched_metric: float
+    delta_metric: float
+    baseline_delta_metric: float
+    gated: bool
+
+
+@torch.no_grad()
+def patch_along_directions(
+    model,
+    head_svd: HeadSVD,
+    prompt: Union[str, torch.Tensor],
+    metric: Callable[[torch.Tensor], float],
+    *,
+    keep: Optional[Sequence[int]] = None,
+    ablate: Optional[Sequence[int]] = None,
+    threshold: Optional[float] = None,
+    rng: Optional[torch.Generator] = None,
+) -> PatchResult:
+    """Causally validate a claimed OV subfunction by reconstructing the head's output onto it.
+
+    Requires ``head_svd.which == "OV"``: this reconstructs the write/output basis
+    ``V``, and QK has no such vector (see the module docstring). Runs the prompt three
+    times with ``use_attn_result`` enabled: once unmodified, once with the head's
+    ``hook_result`` slice reconstructed onto ``span(head_svd.V[:, retained])``, and once
+    onto a random orthonormal subspace of the same width, so a moved metric can be
+    compared against the effect of an equally-sized but arbitrary subspace instead of
+    being read as significant on its own. Restores the model's prior ``use_attn_result``
+    setting afterward.
+
+    Args:
+        model: A ``TransformerBridge`` or ``HookedTransformer``.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        prompt: A single prompt: a string or a ``[1, pos]`` token tensor.
+        metric: A function from the model's logits to a scalar.
+        keep: Direction indices to retain; the rest are zeroed. Exactly one of
+            ``keep``/``ablate`` must be given.
+        ablate: Direction indices to zero; the rest are retained.
+        threshold: Explicit gate threshold. Defaults to ``None``, which uses
+            ``abs(baseline_delta_metric)`` instead.
+        rng: Optional generator for the random baseline subspace, for reproducibility.
+
+    Returns:
+        A :class:`PatchResult` describing the patched, baseline, and original metrics.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, or if ``keep``/``ablate`` are both
+            given or both omitted.
+        DegenerateDirectionError: If the retained directions split a degenerate block
+            (see :func:`_validate_retained_blocks`).
+    """
+    if head_svd.which != "OV":
+        raise ValueError(
+            f"patch_along_directions requires an OV HeadSVD, got which={head_svd.which!r}"
+        )
+    retained = _resolve_retained(head_svd, keep, ablate)
+
+    V = head_svd.V
+    kept_projector = V[:, retained] @ V[:, retained].transpose(-2, -1)
+
+    d_model = V.shape[0]
+    width = len(retained)
+    random_input = torch.randn(d_model, width, generator=rng, dtype=V.dtype)
+    random_basis, _ = torch.linalg.qr(random_input)
+    baseline_projector = random_basis @ random_basis.transpose(-2, -1)
+
+    hook_name = f"blocks.{head_svd.layer}.attn.hook_result"
+    previous = getattr(model.cfg, "use_attn_result", False)
+    model.set_use_attn_result(True)
+    try:
+        original_metric = float(metric(model(prompt)))
+        patched_logits = model.run_with_hooks(
+            prompt, fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, kept_projector))]
+        )
+        patched_metric = float(metric(patched_logits))
+        baseline_logits = model.run_with_hooks(
+            prompt,
+            fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, baseline_projector))],
+        )
+        baseline_metric = float(metric(baseline_logits))
+    finally:
+        model.set_use_attn_result(previous)
+
+    delta_metric = patched_metric - original_metric
+    baseline_delta_metric = baseline_metric - original_metric
+    gate_threshold = abs(baseline_delta_metric) if threshold is None else threshold
+    gated = abs(delta_metric) > gate_threshold
+
+    return PatchResult(
+        head_svd=head_svd,
+        retained=retained,
+        original_metric=original_metric,
+        patched_metric=patched_metric,
+        delta_metric=delta_metric,
+        baseline_delta_metric=baseline_delta_metric,
+        gated=gated,
+    )

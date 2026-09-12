@@ -6,6 +6,7 @@ downloaded. A few tests instantiate a tiny, randomly-initialized TransformerBrid
 no Hub access) where a real per-head decomposition is needed for a cross-check.
 """
 
+import math
 import warnings
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -18,11 +19,13 @@ from transformer_lens.tools.analysis.svd_circuits import (
     DegenerateDirectionError,
     HeadSVD,
     LogitSignature,
+    PatchResult,
     RankReportRow,
     _degeneracy_blocks,
     _factored_head_svd,
     decompose_head,
     logit_signature,
+    patch_along_directions,
     project_activations,
     vocab_readout,
 )
@@ -641,6 +644,146 @@ def test_project_activations_restores_use_attn_result(tiny_bridge):
         for initial in (False, True):
             tiny_bridge.set_use_attn_result(initial)
             project_activations(tiny_bridge, decomposition.OV, torch.tensor([[5, 63, 7, 9]]))
+            assert tiny_bridge.cfg.use_attn_result == initial
+    finally:
+        tiny_bridge.set_use_attn_result(original)
+
+
+# --------------------------------------------------------------------------- #
+# patch_along_directions (mandatory causal gate)
+# --------------------------------------------------------------------------- #
+class _PatchStubModel:
+    """Model-free stand-in for patch_along_directions' run_with_hooks/metric protocol.
+
+    Exposes a single fixed per-head "hook_result" activation that a hook can intercept
+    exactly as ``run_with_hooks`` would present it (the hook receives the activation and
+    a hook object, and returns the replacement), then reduces it to a scalar the same
+    way for the unmodified, patched, and baseline calls, so the block guard and gating
+    arithmetic can be tested without a real forward pass.
+    """
+
+    def __init__(self, d_model, n_heads, pos=3, seed=0):
+        g = torch.Generator().manual_seed(seed)
+        self.cfg = SimpleNamespace(use_attn_result=False)
+        self._result = torch.randn(1, pos, n_heads, d_model, generator=g)
+        self._readout = torch.randn(d_model, generator=g)
+
+    def set_use_attn_result(self, value):
+        self.cfg.use_attn_result = value
+
+    def _logits(self, result):
+        return result.sum(dim=2) @ self._readout  # [batch, pos]
+
+    def __call__(self, prompt):
+        return self._logits(self._result)
+
+    def run_with_hooks(self, prompt, fwd_hooks):
+        activation = self._result
+        for name, hook_fn in fwd_hooks:
+            activation = hook_fn(activation, hook=SimpleNamespace(name=name))
+        return self._logits(activation)
+
+
+def test_patch_along_directions_which_guard():
+    """QK has no write direction to reconstruct onto, so a QK HeadSVD is refused."""
+    qk = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="QK", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="OV"):
+        patch_along_directions(SimpleNamespace(), qk, "prompt", lambda logits: 0.0, keep=[0])
+
+
+def test_patch_along_directions_requires_keep_xor_ablate():
+    """Passing both keep and ablate, or neither, is refused before any model access."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    metric = lambda logits: 0.0
+    with pytest.raises(ValueError, match="exactly one"):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", metric, keep=[0], ablate=[1])
+    with pytest.raises(ValueError, match="exactly one"):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", metric)
+
+
+def test_patch_along_directions_rejects_partial_degenerate_block():
+    """keep must take a degenerate block whole or not at all; a partial slice is refused,
+    and the whole block plus an isolated direction is accepted."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([5.0, 3.0, 3.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    metric = lambda logits: 0.0
+    with pytest.raises(DegenerateDirectionError):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", metric, keep=[0, 1])
+
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    result = patch_along_directions(
+        stub, ov, "prompt", lambda logits: float(logits.sum()), keep=[0, 1, 2]
+    )
+    assert isinstance(result, PatchResult)
+    assert result.retained == [0, 1, 2]
+
+
+def test_patch_along_directions_reports_delta_and_restores_use_attn_result():
+    """delta_metric is patched minus original metric, gated follows the documented
+    comparison against baseline_delta_metric, and use_attn_result is restored after."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    metric = lambda logits: float(logits.sum())
+    for initial in (False, True):
+        stub.set_use_attn_result(initial)
+        result = patch_along_directions(
+            stub, ov, "prompt", metric, keep=[0], rng=torch.Generator().manual_seed(0)
+        )
+        assert result.delta_metric == pytest.approx(result.patched_metric - result.original_metric)
+        assert math.isfinite(result.baseline_delta_metric)
+        expected_gated = abs(result.delta_metric) > abs(result.baseline_delta_metric)
+        assert result.gated == expected_gated
+        assert stub.cfg.use_attn_result == initial
+
+
+def test_patch_along_directions_discriminates_causal_direction(tiny_bridge):
+    """Ablating the head's strongest OV direction should move a metric aligned with that
+    direction materially more than ablating its weakest, least load-bearing direction."""
+    layer, head = 0, 0
+    decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
+    ov = decomposition.OV
+    strong = ov.rank_report[0].idx
+    weak = ov.rank_report[-1].idx
+    assert not ov.is_degenerate(strong)
+    assert not ov.is_degenerate(weak)
+
+    target_token = int((ov.V[:, strong] @ tiny_bridge.W_U).argmax())
+    prompt = torch.tensor([[5, 63, 7, 9]])
+
+    def metric(logits):
+        return logits[0, -1, target_token].item()
+
+    strong_result = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, ablate=[strong], rng=torch.Generator().manual_seed(0)
+    )
+    weak_result = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, ablate=[weak], rng=torch.Generator().manual_seed(0)
+    )
+    assert isinstance(strong_result, PatchResult)
+    assert math.isfinite(strong_result.baseline_delta_metric)
+    assert math.isfinite(weak_result.baseline_delta_metric)
+    assert abs(strong_result.delta_metric) > abs(weak_result.delta_metric)
+
+
+def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
+    """use_attn_result is restored to its prior value regardless of what it started as."""
+    decomposition = decompose_head(tiny_bridge, 0, 0, which=("OV",))
+    ov = decomposition.OV
+    metric = lambda logits: float(logits.sum())
+    original = tiny_bridge.cfg.use_attn_result
+    try:
+        for initial in (False, True):
+            tiny_bridge.set_use_attn_result(initial)
+            patch_along_directions(
+                tiny_bridge, ov, torch.tensor([[5, 63, 7, 9]]), metric, keep=[ov.rank_report[0].idx]
+            )
             assert tiny_bridge.cfg.use_attn_result == initial
     finally:
         tiny_bridge.set_use_attn_result(original)
