@@ -391,14 +391,14 @@ class IOIDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
-        prompt = self.tokenizer.encode(sample["text"])
+        prompt = self.tokenizer.encode(sample["text"], add_special_tokens=False)
         if self.prepend_bos:
             prompt = [self.tokenizer.bos_token_id] + prompt
 
         return {
             "prompt": torch.LongTensor(prompt),
-            "IO": torch.LongTensor(self.tokenizer.encode(sample["IO"])),
-            "S": torch.LongTensor(self.tokenizer.encode(sample["S"])),
+            "IO": torch.LongTensor(self.tokenizer.encode(sample["IO"], add_special_tokens=False)),
+            "S": torch.LongTensor(self.tokenizer.encode(sample["S"], add_special_tokens=False)),
         }
 
     def get_sample(self, symmetric=False) -> List[Dict[str, str]]:
