@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.jacobian\_lens\_coordinate\_patch module
+=========================================================================
+
+.. automodule:: transformer_lens.tools.analysis.jacobian_lens_coordinate_patch
+   :members:
+   :undoc-members:
+   :show-inheritance:

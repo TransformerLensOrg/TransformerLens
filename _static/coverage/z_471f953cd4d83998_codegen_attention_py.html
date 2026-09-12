@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/model_bridge/generalized_components/codegen_attention.py: 76%</title>
+    <title>Coverage for transformer_lens/model_bridge/generalized_components/codegen_attention.py: 75%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/model_bridge/generalized_components/codegen_attention.py</b>:
-            <span class="pc_cov">76%</span>
+            <span class="pc_cov">75%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">85 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">70<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">15<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">69<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">16<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">6<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_471f953cd4d83998_conv1d_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -264,13 +264,13 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t180" href="#t180">180</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t181" href="#t181">181</a></span><span class="t">        <span class="nam">causal</span><span class="op">[</span><span class="op">:</span><span class="op">,</span> <span class="num">0</span><span class="op">]</span> <span class="op">=</span> <span class="nam">causal</span><span class="op">[</span><span class="op">:</span><span class="op">,</span> <span class="num">0</span><span class="op">]</span><span class="op">.</span><span class="nam">masked_fill</span><span class="op">(</span><span class="nam">mask_upper</span><span class="op">,</span> <span class="nam">min_val</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t182" href="#t182">182</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t183" href="#t183">183</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t184" href="#t184">184</a></span><span class="t">            <span class="str">"hidden_states"</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">randn</span><span class="op">(</span><span class="nam">batch_size</span><span class="op">,</span> <span class="nam">seq_len</span><span class="op">,</span> <span class="nam">d_model</span><span class="op">,</span> <span class="nam">device</span><span class="op">=</span><span class="nam">device</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">dtype</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t185" href="#t185">185</a></span><span class="t">            <span class="str">"position_ids"</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">arange</span><span class="op">(</span><span class="nam">seq_len</span><span class="op">,</span> <span class="nam">device</span><span class="op">=</span><span class="nam">device</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t186" href="#t186">186</a></span><span class="t">            <span class="op">.</span><span class="nam">unsqueeze</span><span class="op">(</span><span class="num">0</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t187" href="#t187">187</a></span><span class="t">            <span class="op">.</span><span class="nam">expand</span><span class="op">(</span><span class="nam">batch_size</span><span class="op">,</span> <span class="op">-</span><span class="num">1</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t188" href="#t188">188</a></span><span class="t">            <span class="str">"attention_mask"</span><span class="op">:</span> <span class="nam">causal</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t189" href="#t189">189</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t183" href="#t183">183</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t184" href="#t184">184</a></span><span class="t">            <span class="str">"hidden_states"</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">randn</span><span class="op">(</span><span class="nam">batch_size</span><span class="op">,</span> <span class="nam">seq_len</span><span class="op">,</span> <span class="nam">d_model</span><span class="op">,</span> <span class="nam">device</span><span class="op">=</span><span class="nam">device</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">dtype</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t185" href="#t185">185</a></span><span class="t">            <span class="str">"position_ids"</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">arange</span><span class="op">(</span><span class="nam">seq_len</span><span class="op">,</span> <span class="nam">device</span><span class="op">=</span><span class="nam">device</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t186" href="#t186">186</a></span><span class="t">            <span class="op">.</span><span class="nam">unsqueeze</span><span class="op">(</span><span class="num">0</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t187" href="#t187">187</a></span><span class="t">            <span class="op">.</span><span class="nam">expand</span><span class="op">(</span><span class="nam">batch_size</span><span class="op">,</span> <span class="op">-</span><span class="num">1</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t188" href="#t188">188</a></span><span class="t">            <span class="str">"attention_mask"</span><span class="op">:</span> <span class="nam">causal</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t189" href="#t189">189</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t190" href="#t190">190</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t191" href="#t191">191</a></span><span class="t">    <span class="com"># ------------------------------------------------------------------</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t192" href="#t192">192</a></span><span class="t">    <span class="com"># Component wiring</span>&nbsp;</span><span class="r"></span></p>
@@ -458,7 +458,7 @@
             <a class="nav" href="z_471f953cd4d83998_conv1d_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

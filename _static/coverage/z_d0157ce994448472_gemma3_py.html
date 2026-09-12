@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/model_bridge/supported_architectures/gemma3.py: 51%</title>
+    <title>Coverage for transformer_lens/model_bridge/supported_architectures/gemma3.py: 49%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/model_bridge/supported_architectures/gemma3.py</b>:
-            <span class="pc_cov">51%</span>
+            <span class="pc_cov">49%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">29 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">20<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">9<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">19<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">10<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">0<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_d0157ce994448472_gemma3_multimodal_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -237,7 +237,7 @@
     <p class="mis show_mis"><span class="n"><a id="t153" href="#t153">153</a></span><span class="t">                <span class="key">if</span> <span class="nam">hasattr</span><span class="op">(</span><span class="nam">hf_attn</span><span class="op">,</span> <span class="str">"q_norm"</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t154" href="#t154">154</a></span><span class="t">                    <span class="nam">hf_attn</span><span class="op">.</span><span class="nam">q_norm</span><span class="op">.</span><span class="nam">use_native_layernorm_autograd</span> <span class="op">=</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t155" href="#t155">155</a></span><span class="t">                <span class="key">if</span> <span class="nam">hasattr</span><span class="op">(</span><span class="nam">hf_attn</span><span class="op">,</span> <span class="str">"k_norm"</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t156" href="#t156">156</a></span><span class="t">                    <span class="nam">hf_attn</span><span class="op">.</span><span class="nam">k_norm</span><span class="op">.</span><span class="nam">use_native_layernorm_autograd</span> <span class="op">=</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t156" href="#t156">156</a></span><span class="t">                    <span class="nam">hf_attn</span><span class="op">.</span><span class="nam">k_norm</span><span class="op">.</span><span class="nam">use_native_layernorm_autograd</span> <span class="op">=</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -247,7 +247,7 @@
             <a class="nav" href="z_d0157ce994448472_gemma3_multimodal_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

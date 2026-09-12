@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/benchmarks/utils.py: 62%</title>
+    <title>Coverage for transformer_lens/benchmarks/utils.py: 59%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/benchmarks/utils.py</b>:
-            <span class="pc_cov">62%</span>
+            <span class="pc_cov">59%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">186 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">121<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">65<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">115<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">71<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">12<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_883333ca9eff91b8_vision_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -166,11 +166,11 @@
     <p class="pln"><span class="n"><a id="t82" href="#t82">82</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t83" href="#t83">83</a></span><span class="t"><span class="key">def</span> <span class="nam">filter_expected_missing_hooks</span><span class="op">(</span><span class="nam">hook_names</span><span class="op">:</span> <span class="nam">Collection</span><span class="op">[</span><span class="nam">str</span><span class="op">]</span><span class="op">)</span> <span class="op">-></span> <span class="nam">list</span><span class="op">[</span><span class="nam">str</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t84" href="#t84">84</a></span><span class="t">    <span class="str">"""Filter out hook names that bridge models are expected to be missing."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t85" href="#t85">85</a></span><span class="t">    <span class="key">return</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t86" href="#t86">86</a></span><span class="t">        <span class="nam">h</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t87" href="#t87">87</a></span><span class="t">        <span class="key">for</span> <span class="nam">h</span> <span class="key">in</span> <span class="nam">hook_names</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t88" href="#t88">88</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">any</span><span class="op">(</span><span class="nam">pattern</span> <span class="key">in</span> <span class="nam">h</span> <span class="key">for</span> <span class="nam">pattern</span> <span class="key">in</span> <span class="nam">BRIDGE_EXPECTED_MISSING_PATTERNS</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t">    <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t85" href="#t85">85</a></span><span class="t">    <span class="key">return</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t86" href="#t86">86</a></span><span class="t">        <span class="nam">h</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t87" href="#t87">87</a></span><span class="t">        <span class="key">for</span> <span class="nam">h</span> <span class="key">in</span> <span class="nam">hook_names</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t88" href="#t88">88</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">any</span><span class="op">(</span><span class="nam">pattern</span> <span class="key">in</span> <span class="nam">h</span> <span class="key">for</span> <span class="nam">pattern</span> <span class="key">in</span> <span class="nam">BRIDGE_EXPECTED_MISSING_PATTERNS</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t">    <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t91" href="#t91">91</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t92" href="#t92">92</a></span><span class="t"><span class="nam">_DEFAULT_WAVEFORM_SAMPLES</span> <span class="op">=</span> <span class="num">16000</span>&nbsp;</span><span class="r"></span></p>
@@ -282,11 +282,11 @@
     <p class="mis show_mis"><span class="n"><a id="t198" href="#t198">198</a></span><span class="t">                <span class="nam">detail_lines</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="fst">f"</span><span class="fst">  </span><span class="op">{</span><span class="nam">key</span><span class="op">}</span><span class="fst">: </span><span class="op">{</span><span class="nam">value</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t">            <span class="nam">result</span> <span class="op">+=</span> <span class="str">"\n"</span> <span class="op">+</span> <span class="str">"\n"</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">detail_lines</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t201" href="#t201">201</a></span><span class="t">        <span class="key">return</span> <span class="nam">result</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t201" href="#t201">201</a></span><span class="t">        <span class="key">return</span> <span class="nam">result</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t203" href="#t203">203</a></span><span class="t">    <span class="key">def</span> <span class="nam">print_immediate</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t204" href="#t204">204</a></span><span class="t">        <span class="str">"""Print this result immediately to console."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t205" href="#t205">205</a></span><span class="t">        <span class="nam">print</span><span class="op">(</span><span class="nam">str</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t205" href="#t205">205</a></span><span class="t">        <span class="nam">print</span><span class="op">(</span><span class="nam">str</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t206" href="#t206">206</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t207" href="#t207">207</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t208" href="#t208">208</a></span><span class="t"><span class="op">@</span><span class="nam">dataclass</span>&nbsp;</span><span class="r"></span></p>
@@ -428,19 +428,19 @@
     <p class="mis show_mis"><span class="n"><a id="t344" href="#t344">344</a></span><span class="t">    <span class="nam">rel_diff</span> <span class="op">=</span> <span class="nam">diff</span> <span class="op">/</span> <span class="op">(</span><span class="nam">torch</span><span class="op">.</span><span class="nam">abs</span><span class="op">(</span><span class="nam">tensor1</span><span class="op">)</span> <span class="op">+</span> <span class="num">1e-10</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t345" href="#t345">345</a></span><span class="t">    <span class="nam">mean_rel</span> <span class="op">=</span> <span class="nam">rel_diff</span><span class="op">.</span><span class="nam">mean</span><span class="op">(</span><span class="op">)</span><span class="op">.</span><span class="nam">item</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t346" href="#t346">346</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t347" href="#t347">347</a></span><span class="t">    <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t348" href="#t348">348</a></span><span class="t">        <span class="nam">name</span><span class="op">=</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t349" href="#t349">349</a></span><span class="t">        <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">DANGER</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t350" href="#t350">350</a></span><span class="t">        <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Tensors differ: max_diff=</span><span class="op">{</span><span class="nam">max_diff</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst">, mean_rel=</span><span class="op">{</span><span class="nam">mean_rel</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t351" href="#t351">351</a></span><span class="t">        <span class="nam">details</span><span class="op">=</span><span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t352" href="#t352">352</a></span><span class="t">            <span class="str">"max_diff"</span><span class="op">:</span> <span class="nam">max_diff</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t353" href="#t353">353</a></span><span class="t">            <span class="str">"mean_diff"</span><span class="op">:</span> <span class="nam">mean_diff</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t354" href="#t354">354</a></span><span class="t">            <span class="str">"mean_rel"</span><span class="op">:</span> <span class="nam">mean_rel</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t355" href="#t355">355</a></span><span class="t">            <span class="str">"atol"</span><span class="op">:</span> <span class="nam">atol</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">            <span class="str">"rtol"</span><span class="op">:</span> <span class="nam">rtol</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t357" href="#t357">357</a></span><span class="t">        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t">        <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t347" href="#t347">347</a></span><span class="t">    <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t348" href="#t348">348</a></span><span class="t">        <span class="nam">name</span><span class="op">=</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t349" href="#t349">349</a></span><span class="t">        <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">DANGER</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t350" href="#t350">350</a></span><span class="t">        <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Tensors differ: max_diff=</span><span class="op">{</span><span class="nam">max_diff</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst">, mean_rel=</span><span class="op">{</span><span class="nam">mean_rel</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t351" href="#t351">351</a></span><span class="t">        <span class="nam">details</span><span class="op">=</span><span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t352" href="#t352">352</a></span><span class="t">            <span class="str">"max_diff"</span><span class="op">:</span> <span class="nam">max_diff</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t353" href="#t353">353</a></span><span class="t">            <span class="str">"mean_diff"</span><span class="op">:</span> <span class="nam">mean_diff</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t354" href="#t354">354</a></span><span class="t">            <span class="str">"mean_rel"</span><span class="op">:</span> <span class="nam">mean_rel</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t355" href="#t355">355</a></span><span class="t">            <span class="str">"atol"</span><span class="op">:</span> <span class="nam">atol</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">            <span class="str">"rtol"</span><span class="op">:</span> <span class="nam">rtol</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t357" href="#t357">357</a></span><span class="t">        <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t">        <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t360" href="#t360">360</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t361" href="#t361">361</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t362" href="#t362">362</a></span><span class="t"><span class="key">def</span> <span class="nam">compare_scalars</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -470,13 +470,13 @@
     <p class="run run2"><span class="n"><a id="t386" href="#t386">386</a></span><span class="t">            <span class="nam">details</span><span class="op">=</span><span class="op">{</span><span class="str">"diff"</span><span class="op">:</span> <span class="nam">diff</span><span class="op">,</span> <span class="str">"atol"</span><span class="op">:</span> <span class="nam">atol</span><span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t387" href="#t387">387</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t388" href="#t388">388</a></span><span class="t">    <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t389" href="#t389">389</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t390" href="#t390">390</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">DANGER</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t392" href="#t392">392</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Scalars differ: </span><span class="op">{</span><span class="nam">scalar1</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst"> vs </span><span class="op">{</span><span class="nam">scalar2</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t393" href="#t393">393</a></span><span class="t">            <span class="nam">details</span><span class="op">=</span><span class="op">{</span><span class="str">"diff"</span><span class="op">:</span> <span class="nam">diff</span><span class="op">,</span> <span class="str">"atol"</span><span class="op">:</span> <span class="nam">atol</span><span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t394" href="#t394">394</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t395" href="#t395">395</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t389" href="#t389">389</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t390" href="#t390">390</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">DANGER</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t392" href="#t392">392</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Scalars differ: </span><span class="op">{</span><span class="nam">scalar1</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst"> vs </span><span class="op">{</span><span class="nam">scalar2</span><span class="op">:</span><span class="fst">.6f</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t393" href="#t393">393</a></span><span class="t">            <span class="nam">details</span><span class="op">=</span><span class="op">{</span><span class="str">"diff"</span><span class="op">:</span> <span class="nam">diff</span><span class="op">,</span> <span class="str">"atol"</span><span class="op">:</span> <span class="nam">atol</span><span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t394" href="#t394">394</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t395" href="#t395">395</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t396" href="#t396">396</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t397" href="#t397">397</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t398" href="#t398">398</a></span><span class="t"><span class="key">def</span> <span class="nam">format_results</span><span class="op">(</span><span class="nam">results</span><span class="op">:</span> <span class="nam">List</span><span class="op">[</span><span class="nam">BenchmarkResult</span><span class="op">]</span><span class="op">)</span> <span class="op">-></span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -542,7 +542,7 @@
     <p class="pln"><span class="n"><a id="t458" href="#t458">458</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t459" href="#t459">459</a></span><span class="t">    <span class="nam">output</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="str">"="</span> <span class="op">*</span> <span class="num">80</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t460" href="#t460">460</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t461" href="#t461">461</a></span><span class="t">    <span class="key">return</span> <span class="str">"\n"</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">output</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t461" href="#t461">461</a></span><span class="t">    <span class="key">return</span> <span class="str">"\n"</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">output</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t462" href="#t462">462</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t463" href="#t463">463</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t464" href="#t464">464</a></span><span class="t"><span class="key">def</span> <span class="nam">bridge_self_target_loss</span><span class="op">(</span><span class="nam">bridge</span><span class="op">,</span> <span class="nam">test_text</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -562,7 +562,7 @@
             <a class="nav" href="z_883333ca9eff91b8_vision_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

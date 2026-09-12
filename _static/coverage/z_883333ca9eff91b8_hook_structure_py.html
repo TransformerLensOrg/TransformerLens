@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/benchmarks/hook_structure.py: 5%</title>
+    <title>Coverage for transformer_lens/benchmarks/hook_structure.py: 4%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/benchmarks/hook_structure.py</b>:
-            <span class="pc_cov">5%</span>
+            <span class="pc_cov">4%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">149 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">12<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">137<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">9<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">140<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">0<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_883333ca9eff91b8_main_benchmark_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -264,12 +264,12 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t180" href="#t180">180</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t181" href="#t181">181</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t182" href="#t182">182</a></span><span class="t">    <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t183" href="#t183">183</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t184" href="#t184">184</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="str">"forward_hooks_structure"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t185" href="#t185">185</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">ERROR</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t186" href="#t186">186</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Forward hooks structure check failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t187" href="#t187">187</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t188" href="#t188">188</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t183" href="#t183">183</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t184" href="#t184">184</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="str">"forward_hooks_structure"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t185" href="#t185">185</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">ERROR</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t186" href="#t186">186</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Forward hooks structure check failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t187" href="#t187">187</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t188" href="#t188">188</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t189" href="#t189">189</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t190" href="#t190">190</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t191" href="#t191">191</a></span><span class="t"><span class="key">def</span> <span class="nam">benchmark_backward_hooks_structure</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -459,12 +459,12 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t375" href="#t375">375</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t376" href="#t376">376</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t377" href="#t377">377</a></span><span class="t">    <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t378" href="#t378">378</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t379" href="#t379">379</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="str">"backward_hooks_structure"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t380" href="#t380">380</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">ERROR</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t381" href="#t381">381</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Backward hooks structure check failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t382" href="#t382">382</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t383" href="#t383">383</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t378" href="#t378">378</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t379" href="#t379">379</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="str">"backward_hooks_structure"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t380" href="#t380">380</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">ERROR</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t381" href="#t381">381</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Backward hooks structure check failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t382" href="#t382">382</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t383" href="#t383">383</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t384" href="#t384">384</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t385" href="#t385">385</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t386" href="#t386">386</a></span><span class="t"><span class="key">def</span> <span class="nam">benchmark_activation_cache_structure</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -573,17 +573,17 @@
     <p class="mis show_mis"><span class="n"><a id="t489" href="#t489">489</a></span><span class="t">    <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t490" href="#t490">490</a></span><span class="t">        <span class="key">import</span> <span class="nam">traceback</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t491" href="#t491">491</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t492" href="#t492">492</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t493" href="#t493">493</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="str">"activation_cache_structure"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t494" href="#t494">494</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">ERROR</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t495" href="#t495">495</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Activation cache structure check failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t496" href="#t496">496</a></span><span class="t">            <span class="nam">details</span><span class="op">=</span><span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t497" href="#t497">497</a></span><span class="t">                <span class="str">"error_type"</span><span class="op">:</span> <span class="nam">type</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">.</span><span class="nam">__name__</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t498" href="#t498">498</a></span><span class="t">                <span class="str">"error_message"</span><span class="op">:</span> <span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t499" href="#t499">499</a></span><span class="t">                <span class="str">"traceback"</span><span class="op">:</span> <span class="nam">traceback</span><span class="op">.</span><span class="nam">format_exc</span><span class="op">(</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t500" href="#t500">500</a></span><span class="t">            <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t501" href="#t501">501</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t502" href="#t502">502</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t492" href="#t492">492</a></span><span class="t">        <span class="key">return</span> <span class="nam">BenchmarkResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t493" href="#t493">493</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="str">"activation_cache_structure"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t494" href="#t494">494</a></span><span class="t">            <span class="nam">severity</span><span class="op">=</span><span class="nam">BenchmarkSeverity</span><span class="op">.</span><span class="nam">ERROR</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t495" href="#t495">495</a></span><span class="t">            <span class="nam">message</span><span class="op">=</span><span class="fst">f"</span><span class="fst">Activation cache structure check failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t496" href="#t496">496</a></span><span class="t">            <span class="nam">details</span><span class="op">=</span><span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t497" href="#t497">497</a></span><span class="t">                <span class="str">"error_type"</span><span class="op">:</span> <span class="nam">type</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">.</span><span class="nam">__name__</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t498" href="#t498">498</a></span><span class="t">                <span class="str">"error_message"</span><span class="op">:</span> <span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t499" href="#t499">499</a></span><span class="t">                <span class="str">"traceback"</span><span class="op">:</span> <span class="nam">traceback</span><span class="op">.</span><span class="nam">format_exc</span><span class="op">(</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t500" href="#t500">500</a></span><span class="t">            <span class="op">}</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t501" href="#t501">501</a></span><span class="t">            <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t502" href="#t502">502</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -593,7 +593,7 @@
             <a class="nav" href="z_883333ca9eff91b8_main_benchmark_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

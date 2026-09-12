@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/benchmarks/component_outputs.py: 66%</title>
+    <title>Coverage for transformer_lens/benchmarks/component_outputs.py: 65%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/benchmarks/component_outputs.py</b>:
-            <span class="pc_cov">66%</span>
+            <span class="pc_cov">65%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">467 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">329<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">138<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">323<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">144<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">47<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_883333ca9eff91b8_encoder_common_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -134,7 +134,7 @@
     <p class="mis show_mis"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">max_diff</span> <span class="op">></span> <span class="num">1e-4</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t">            <span class="key">return</span> <span class="str">"medium"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t">            <span class="key">return</span> <span class="str">"low"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t">            <span class="key">return</span> <span class="str">"low"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t"><span class="op">@</span><span class="nam">dataclass</span>&nbsp;</span><span class="r"></span></p>
@@ -204,7 +204,7 @@
     <p class="pln"><span class="n"><a id="t120" href="#t120">120</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t121" href="#t121">121</a></span><span class="t">        <span class="key">if</span> <span class="nam">result</span><span class="op">.</span><span class="nam">error_message</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t122" href="#t122">122</a></span><span class="t">            <span class="nam">print</span><span class="op">(</span><span class="fst">f"</span><span class="fst">  Error: </span><span class="op">{</span><span class="nam">result</span><span class="op">.</span><span class="nam">error_message</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t123" href="#t123">123</a></span><span class="t">        <span class="nam">print</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t123" href="#t123">123</a></span><span class="t">        <span class="nam">print</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t124" href="#t124">124</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t125" href="#t125">125</a></span><span class="t">    <span class="key">def</span> <span class="nam">get_component_type_summary</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">Dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">int</span><span class="op">]</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t126" href="#t126">126</a></span><span class="t">        <span class="str">"""Get a summary of results grouped by component type.</span>&nbsp;</span><span class="r"></span></p>
@@ -246,7 +246,7 @@
     <p class="mis show_mis"><span class="n"><a id="t162" href="#t162">162</a></span><span class="t">                <span class="key">if</span> <span class="nam">severity</span> <span class="key">in</span> <span class="nam">failures</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t163" href="#t163">163</a></span><span class="t">                    <span class="nam">failures</span><span class="op">[</span><span class="nam">severity</span><span class="op">]</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="nam">result</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t164" href="#t164">164</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t165" href="#t165">165</a></span><span class="t">        <span class="key">return</span> <span class="nam">failures</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t165" href="#t165">165</a></span><span class="t">        <span class="key">return</span> <span class="nam">failures</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t166" href="#t166">166</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t167" href="#t167">167</a></span><span class="t">    <span class="key">def</span> <span class="nam">print_detailed_analysis</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t168" href="#t168">168</a></span><span class="t">        <span class="str">"""Print detailed analysis of benchmark results."""</span>&nbsp;</span><span class="r"></span></p>
@@ -278,7 +278,7 @@
     <p class="mis show_mis"><span class="n"><a id="t194" href="#t194">194</a></span><span class="t">                    <span class="key">if</span> <span class="nam">count</span> <span class="op">></span> <span class="num">3</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t195" href="#t195">195</a></span><span class="t">                        <span class="nam">print</span><span class="op">(</span><span class="fst">f"</span><span class="fst">  ... and </span><span class="op">{</span><span class="nam">count</span> <span class="op">-</span> <span class="num">3</span><span class="op">}</span><span class="fst"> more</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t196" href="#t196">196</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t197" href="#t197">197</a></span><span class="t">        <span class="nam">print</span><span class="op">(</span><span class="str">"="</span> <span class="op">*</span> <span class="num">80</span> <span class="op">+</span> <span class="str">"\n"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t197" href="#t197">197</a></span><span class="t">        <span class="nam">print</span><span class="op">(</span><span class="str">"="</span> <span class="op">*</span> <span class="num">80</span> <span class="op">+</span> <span class="str">"\n"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t198" href="#t198">198</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t"><span class="key">def</span> <span class="nam">_is_ssm_mixer_internal</span><span class="op">(</span><span class="nam">component_path</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span> <span class="op">-></span> <span class="nam">bool</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -837,15 +837,15 @@
     <p class="run run2"><span class="n"><a id="t753" href="#t753">753</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t754" href="#t754">754</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t755" href="#t755">755</a></span><span class="t">        <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t756" href="#t756">756</a></span><span class="t">            <span class="key">return</span> <span class="nam">ComponentTestResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t757" href="#t757">757</a></span><span class="t">                <span class="nam">component_path</span><span class="op">=</span><span class="nam">component_path</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t758" href="#t758">758</a></span><span class="t">                <span class="nam">component_type</span><span class="op">=</span><span class="nam">type</span><span class="op">(</span><span class="nam">component</span><span class="op">)</span><span class="op">.</span><span class="nam">__name__</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t759" href="#t759">759</a></span><span class="t">                <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t760" href="#t760">760</a></span><span class="t">                <span class="nam">max_diff</span><span class="op">=</span><span class="nam">float</span><span class="op">(</span><span class="str">"inf"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t761" href="#t761">761</a></span><span class="t">                <span class="nam">mean_diff</span><span class="op">=</span><span class="nam">float</span><span class="op">(</span><span class="str">"inf"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t762" href="#t762">762</a></span><span class="t">                <span class="nam">output_shape</span><span class="op">=</span><span class="op">(</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t763" href="#t763">763</a></span><span class="t">                <span class="nam">error_message</span><span class="op">=</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t764" href="#t764">764</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t756" href="#t756">756</a></span><span class="t">            <span class="key">return</span> <span class="nam">ComponentTestResult</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t757" href="#t757">757</a></span><span class="t">                <span class="nam">component_path</span><span class="op">=</span><span class="nam">component_path</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t758" href="#t758">758</a></span><span class="t">                <span class="nam">component_type</span><span class="op">=</span><span class="nam">type</span><span class="op">(</span><span class="nam">component</span><span class="op">)</span><span class="op">.</span><span class="nam">__name__</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t759" href="#t759">759</a></span><span class="t">                <span class="nam">passed</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t760" href="#t760">760</a></span><span class="t">                <span class="nam">max_diff</span><span class="op">=</span><span class="nam">float</span><span class="op">(</span><span class="str">"inf"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t761" href="#t761">761</a></span><span class="t">                <span class="nam">mean_diff</span><span class="op">=</span><span class="nam">float</span><span class="op">(</span><span class="str">"inf"</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t762" href="#t762">762</a></span><span class="t">                <span class="nam">output_shape</span><span class="op">=</span><span class="op">(</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t763" href="#t763">763</a></span><span class="t">                <span class="nam">error_message</span><span class="op">=</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t764" href="#t764">764</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t765" href="#t765">765</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t766" href="#t766">766</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t767" href="#t767">767</a></span><span class="t">    <span class="key">def</span> <span class="nam">_add_direct_attention_mask_if_needed</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -1014,7 +1014,7 @@
     <p class="run"><span class="n"><a id="t930" href="#t930">930</a></span><span class="t">                <span class="key">return</span> <span class="nam">component</span><span class="op">(</span><span class="nam">test_input</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t931" href="#t931">931</a></span><span class="t">            <span class="key">except</span> <span class="nam">TypeError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t932" href="#t932">932</a></span><span class="t">                <span class="com"># Try with hidden_states kwarg</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t933" href="#t933">933</a></span><span class="t">                <span class="key">return</span> <span class="nam">component</span><span class="op">(</span><span class="nam">hidden_states</span><span class="op">=</span><span class="nam">test_input</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t933" href="#t933">933</a></span><span class="t">                <span class="key">return</span> <span class="nam">component</span><span class="op">(</span><span class="nam">hidden_states</span><span class="op">=</span><span class="nam">test_input</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t934" href="#t934">934</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t935" href="#t935">935</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get_test_input_for_component</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t936" href="#t936">936</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span> <span class="nam">component_path</span><span class="op">:</span> <span class="nam">str</span><span class="op">,</span> <span class="nam">test_inputs</span><span class="op">:</span> <span class="nam">Dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -1182,7 +1182,7 @@
             <a class="nav" href="z_883333ca9eff91b8_encoder_common_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

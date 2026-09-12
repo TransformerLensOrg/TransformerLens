@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.projection_kernel module" href="transformer_lens.tools.analysis.projection_kernel.html" /><link rel="prev" title="transformer_lens.tools.analysis.jacobian_lens module" href="transformer_lens.tools.analysis.jacobian_lens.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.projection_kernel module" href="transformer_lens.tools.analysis.projection_kernel.html" /><link rel="prev" title="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.jacobian_lens_decomposition module - TransformerLens Documentation</title>
@@ -519,11 +519,15 @@
 </li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -565,6 +569,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.parameter_swap.html">transformer_lens.utilities.parameter_swap module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
@@ -613,6 +618,8 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
@@ -1084,14 +1091,14 @@ atoms and <code class="docutils literal notranslate"><span class="pre">selected_
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="transformer_lens.tools.analysis.jacobian_lens.html">
+          <a class="prev-page" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">transformer_lens.tools.analysis.jacobian_lens module</div>
+                <div class="title">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</div>
                 
               </div>
             </a>

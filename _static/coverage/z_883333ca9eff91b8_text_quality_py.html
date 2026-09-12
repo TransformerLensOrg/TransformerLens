@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/benchmarks/text_quality.py: 80%</title>
+    <title>Coverage for transformer_lens/benchmarks/text_quality.py: 79%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/benchmarks/text_quality.py</b>:
-            <span class="pc_cov">80%</span>
+            <span class="pc_cov">79%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">327 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">269<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">58<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">266<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">61<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">27<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_883333ca9eff91b8_text_quality_profiles_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -183,7 +183,7 @@
     <p class="run"><span class="n"><a id="t99" href="#t99">99</a></span><span class="t">            <span class="nam">loss</span> <span class="op">=</span> <span class="nam">judge</span><span class="op">(</span><span class="nam">input_ids</span><span class="op">,</span> <span class="nam">labels</span><span class="op">=</span><span class="nam">labels</span><span class="op">)</span><span class="op">.</span><span class="nam">loss</span><span class="op">.</span><span class="nam">item</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t100" href="#t100">100</a></span><span class="t">        <span class="key">return</span> <span class="nam">math</span><span class="op">.</span><span class="nam">exp</span><span class="op">(</span><span class="nam">loss</span><span class="op">)</span><span class="op">,</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t101" href="#t101">101</a></span><span class="t">    <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">e</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t">        <span class="key">return</span> <span class="nam">float</span><span class="op">(</span><span class="str">"inf"</span><span class="op">)</span><span class="op">,</span> <span class="fst">f"</span><span class="fst">Perplexity computation failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t">        <span class="key">return</span> <span class="nam">float</span><span class="op">(</span><span class="str">"inf"</span><span class="op">)</span><span class="op">,</span> <span class="fst">f"</span><span class="fst">Perplexity computation failed: </span><span class="op">{</span><span class="nam">str</span><span class="op">(</span><span class="nam">e</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t"><span class="key">def</span> <span class="nam">_compute_repetition_penalty</span><span class="op">(</span><span class="nam">text</span><span class="op">:</span> <span class="nam">str</span><span class="op">,</span> <span class="nam">ns</span><span class="op">:</span> <span class="nam">Tuple</span><span class="op">[</span><span class="nam">int</span><span class="op">,</span> <span class="op">...</span><span class="op">]</span> <span class="op">=</span> <span class="op">(</span><span class="num">2</span><span class="op">,</span> <span class="num">3</span><span class="op">,</span> <span class="num">4</span><span class="op">)</span><span class="op">)</span> <span class="op">-></span> <span class="nam">float</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -437,7 +437,7 @@
     <p class="par par2 ru2 show_par"><span class="n"><a id="t353" href="#t353">353</a></span><span class="t">        <span class="key">and</span> <span class="nam">token_id</span> <span class="op">!=</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">tokenizer</span><span class="op">,</span> <span class="str">"unk_token_id"</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par par2 ru2 show_par"><span class="n"><a id="t354" href="#t354">354</a></span><span class="t">    <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t355" href="#t355">355</a></span><span class="t">        <span class="key">return</span> <span class="nam">int</span><span class="op">(</span><span class="nam">token_id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">    <span class="key">return</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">    <span class="key">return</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t357" href="#t357">357</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t"><span class="key">def</span> <span class="nam">_build_model_input</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -787,7 +787,7 @@
     <p class="mis show_mis"><span class="n"><a id="t703" href="#t703">703</a></span><span class="t">                <span class="key">del</span> <span class="nam">judge_model</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t704" href="#t704">704</a></span><span class="t">            <span class="key">if</span> <span class="nam">tokenizer</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t705" href="#t705">705</a></span><span class="t">                <span class="key">del</span> <span class="nam">tokenizer</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t706" href="#t706">706</a></span><span class="t">            <span class="nam">gc</span><span class="op">.</span><span class="nam">collect</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t706" href="#t706">706</a></span><span class="t">            <span class="nam">gc</span><span class="op">.</span><span class="nam">collect</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -797,7 +797,7 @@
             <a class="nav" href="z_883333ca9eff91b8_text_quality_profiles_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

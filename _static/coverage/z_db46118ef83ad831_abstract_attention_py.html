@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/components/abstract_attention.py: 85%</title>
+    <title>Coverage for transformer_lens/components/abstract_attention.py: 84%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/components/abstract_attention.py</b>:
-            <span class="pc_cov">85%</span>
+            <span class="pc_cov">84%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">407 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">354<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">53<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">349<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">58<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">30<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_db46118ef83ad831_attention_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -280,7 +280,7 @@
     <p class="pln"><span class="n"><a id="t196" href="#t196">196</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t197" href="#t197">197</a></span><span class="t"><span class="str">        Returns a FactoredMatrix, with left matrix W_V [head_index, d_model, d_head] and right matrix W_O [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model]. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the OV circuit of a head k, attn.OV[k] works.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t198" href="#t198">198</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t">        <span class="key">return</span> <span class="nam">FactoredMatrix</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">W_V</span><span class="op">,</span> <span class="nam">self</span><span class="op">.</span><span class="nam">W_O</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t">        <span class="key">return</span> <span class="nam">FactoredMatrix</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">W_V</span><span class="op">,</span> <span class="nam">self</span><span class="op">.</span><span class="nam">W_O</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t201" href="#t201">201</a></span><span class="t">    <span class="op">@</span><span class="nam">property</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">    <span class="key">def</span> <span class="nam">QK</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">FactoredMatrix</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -294,7 +294,7 @@
     <p class="mis show_mis"><span class="n"><a id="t210" href="#t210">210</a></span><span class="t">        <span class="nam">W_K_transpose</span> <span class="op">=</span> <span class="nam">einops</span><span class="op">.</span><span class="nam">rearrange</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t211" href="#t211">211</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">W_K</span><span class="op">,</span> <span class="str">"head_index d_model d_head -> head_index d_head d_model"</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t212" href="#t212">212</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t213" href="#t213">213</a></span><span class="t">        <span class="key">return</span> <span class="nam">FactoredMatrix</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">W_Q</span><span class="op">,</span> <span class="nam">W_K_transpose</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t213" href="#t213">213</a></span><span class="t">        <span class="key">return</span> <span class="nam">FactoredMatrix</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">W_Q</span><span class="op">,</span> <span class="nam">W_K_transpose</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t214" href="#t214">214</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t215" href="#t215">215</a></span><span class="t">    <span class="key">def</span> <span class="nam">forward</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t216" href="#t216">216</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -536,7 +536,7 @@
     <p class="pln"><span class="n"><a id="t452" href="#t452">452</a></span><span class="t">        <span class="com"># Reshape from [batch, pos, head_index, d_head] to [batch * pos * head_index, d_head]</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t453" href="#t453">453</a></span><span class="t">        <span class="nam">d_head</span> <span class="op">=</span> <span class="nam">x</span><span class="op">.</span><span class="nam">shape</span><span class="op">[</span><span class="op">-</span><span class="num">1</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t454" href="#t454">454</a></span><span class="t">        <span class="nam">x_normed</span> <span class="op">=</span> <span class="nam">norm_module</span><span class="op">(</span><span class="nam">x</span><span class="op">.</span><span class="nam">reshape</span><span class="op">(</span><span class="op">-</span><span class="num">1</span><span class="op">,</span> <span class="nam">d_head</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t455" href="#t455">455</a></span><span class="t">        <span class="key">return</span> <span class="nam">x_normed</span><span class="op">.</span><span class="nam">reshape</span><span class="op">(</span><span class="nam">x</span><span class="op">.</span><span class="nam">shape</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t455" href="#t455">455</a></span><span class="t">        <span class="key">return</span> <span class="nam">x_normed</span><span class="op">.</span><span class="nam">reshape</span><span class="op">(</span><span class="nam">x</span><span class="op">.</span><span class="nam">shape</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t456" href="#t456">456</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t457" href="#t457">457</a></span><span class="t">    <span class="key">def</span> <span class="nam">calculate_qkv_matrices</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t458" href="#t458">458</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -628,10 +628,10 @@
     <p class="run run2"><span class="n"><a id="t544" href="#t544">544</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t545" href="#t545">545</a></span><span class="t">            <span class="key">return</span> <span class="nam">complex_attn_linear</span><span class="op">(</span><span class="nam">input</span><span class="op">,</span> <span class="nam">split_weight</span><span class="op">,</span> <span class="nam">bias</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t546" href="#t546">546</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t547" href="#t547">547</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t548" href="#t548">548</a></span><span class="t">            <span class="str">"4-bit QKV projection input must have shape [batch, pos, d_model] or "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t549" href="#t549">549</a></span><span class="t">            <span class="str">"[batch, pos, head_index, d_model]."</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t550" href="#t550">550</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t547" href="#t547">547</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t548" href="#t548">548</a></span><span class="t">            <span class="str">"4-bit QKV projection input must have shape [batch, pos, d_model] or "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t549" href="#t549">549</a></span><span class="t">            <span class="str">"[batch, pos, head_index, d_model]."</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t550" href="#t550">550</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t551" href="#t551">551</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t552" href="#t552">552</a></span><span class="t">    <span class="key">def</span> <span class="nam">_apply_logn_scaling</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">q</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="nam">kv_cache_pos_offset</span><span class="op">:</span> <span class="nam">int</span><span class="op">)</span> <span class="op">-></span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t553" href="#t553">553</a></span><span class="t">        <span class="str">"""Qwen-1's log-n query scaling past the training length (eval only).</span>&nbsp;</span><span class="r"></span></p>
@@ -972,7 +972,7 @@
     <p class="pln"><span class="n"><a id="t888" href="#t888">888</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t889" href="#t889">889</a></span><span class="t">    <span class="key">def</span> <span class="nam">_extend_mask</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">new_size</span><span class="op">:</span> <span class="nam">int</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t890" href="#t890">890</a></span><span class="t">        <span class="str">"""Deprecated no-op kept for external callers."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t891" href="#t891">891</a></span><span class="t">        <span class="key">del</span> <span class="nam">new_size</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t891" href="#t891">891</a></span><span class="t">        <span class="key">del</span> <span class="nam">new_size</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t892" href="#t892">892</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t893" href="#t893">893</a></span><span class="t">    <span class="key">def</span> <span class="nam">_load_from_state_dict</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t894" href="#t894">894</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -1147,7 +1147,7 @@
             <a class="nav" href="z_db46118ef83ad831_attention_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

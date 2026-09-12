@@ -127,9 +127,9 @@ for English, and may not be the same for other languages.
 #bt-root .bt-pag .bt-ellip { padding: 4px 6px; color: var(--color-foreground-muted, #999); }
 #bt-root .bt-empty { text-align: center; padding: 40px 20px; color: var(--color-foreground-muted, #999); }
 #bt-root thead th[data-sort] { cursor: pointer; user-select: none; }
-#bt-root thead th[data-sort]::after { content: ' \25B2\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
-#bt-root thead th[data-sort].bt-asc::after { content: ' \25B2'; opacity: 0.8; }
-#bt-root thead th[data-sort].bt-desc::after { content: ' \25BC'; opacity: 0.8; }
+#bt-root thead th[data-sort]::after { content: ' \\25B2\\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
+#bt-root thead th[data-sort].bt-asc::after { content: ' \\25B2'; opacity: 0.8; }
+#bt-root thead th[data-sort].bt-desc::after { content: ' \\25BC'; opacity: 0.8; }
 </style>
 
 <div id="bt-root">

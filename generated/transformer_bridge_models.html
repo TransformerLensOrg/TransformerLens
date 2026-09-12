@@ -519,11 +519,15 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="code/transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4 has-children"><a class="reference internal" href="code/transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -565,6 +569,7 @@
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.parameter_swap.html">transformer_lens.utilities.parameter_swap module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
@@ -613,6 +618,8 @@
 <li class="toctree-l1"><a class="reference internal" href="../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
+<li class="toctree-l1"><a class="reference internal" href="demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="demos/Main_Demo.html#Setup">Setup</a></li>
@@ -790,9 +797,9 @@ for English, and may not be the same for other languages.</p>
 #bt-root .bt-pag .bt-ellip { padding: 4px 6px; color: var(--color-foreground-muted, #999); }
 #bt-root .bt-empty { text-align: center; padding: 40px 20px; color: var(--color-foreground-muted, #999); }
 #bt-root thead th[data-sort] { cursor: pointer; user-select: none; }
-#bt-root thead th[data-sort]::after { content: ' \25B2\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
-#bt-root thead th[data-sort].bt-asc::after { content: ' \25B2'; opacity: 0.8; }
-#bt-root thead th[data-sort].bt-desc::after { content: ' \25BC'; opacity: 0.8; }
+#bt-root thead th[data-sort]::after { content: ' \\25B2\\25BC'; font-size: 9px; opacity: 0.3; margin-left: 4px; }
+#bt-root thead th[data-sort].bt-asc::after { content: ' \\25B2'; opacity: 0.8; }
+#bt-root thead th[data-sort].bt-desc::after { content: ' \\25BC'; opacity: 0.8; }
 </style>
 
 <div id="bt-root">

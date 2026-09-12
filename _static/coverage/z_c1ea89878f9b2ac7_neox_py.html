@@ -55,8 +55,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">34 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">34<span class="text"> run</span></button>
+            <span class="text">35 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">35<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">0<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">0<span class="text"> partial</span></button>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_c1ea89878f9b2ac7_olmo_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -138,9 +138,12 @@
     <p class="run"><span class="n"><a id="t54" href="#t54">54</a></span><span class="t">    <span class="nam">state_dict</span><span class="op">[</span><span class="str">"ln_final.w"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">gpt_neox</span><span class="op">.</span><span class="nam">final_layer_norm</span><span class="op">.</span><span class="nam">weight</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t55" href="#t55">55</a></span><span class="t">    <span class="nam">state_dict</span><span class="op">[</span><span class="str">"ln_final.b"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">gpt_neox</span><span class="op">.</span><span class="nam">final_layer_norm</span><span class="op">.</span><span class="nam">bias</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t56" href="#t56">56</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t">    <span class="nam">state_dict</span><span class="op">[</span><span class="str">"unembed.W_U"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">embed_out</span><span class="op">.</span><span class="nam">weight</span><span class="op">.</span><span class="nam">T</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t">    <span class="nam">state_dict</span><span class="op">[</span><span class="str">"unembed.b_U"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">zeros</span><span class="op">(</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">d_vocab</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t">    <span class="key">return</span> <span class="nam">state_dict</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t57" href="#t57">57</a></span><span class="t">    <span class="com"># transformers >= 5.14 renamed GPTNeoXForCausalLM.embed_out to lm_head;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t58" href="#t58">58</a></span><span class="t">    <span class="com"># the repo's locked 5.13.0 still exposes embed_out, so support both.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t59" href="#t59">59</a></span><span class="t">    <span class="nam">unembed</span> <span class="op">=</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">lm_head</span> <span class="key">if</span> <span class="nam">hasattr</span><span class="op">(</span><span class="nam">neox</span><span class="op">,</span> <span class="str">"lm_head"</span><span class="op">)</span> <span class="key">else</span> <span class="nam">neox</span><span class="op">.</span><span class="nam">embed_out</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t60" href="#t60">60</a></span><span class="t">    <span class="nam">state_dict</span><span class="op">[</span><span class="str">"unembed.W_U"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">unembed</span><span class="op">.</span><span class="nam">weight</span><span class="op">.</span><span class="nam">T</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t61" href="#t61">61</a></span><span class="t">    <span class="nam">state_dict</span><span class="op">[</span><span class="str">"unembed.b_U"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">zeros</span><span class="op">(</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">d_vocab</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">=</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">dtype</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">    <span class="key">return</span> <span class="nam">state_dict</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -150,7 +153,7 @@
             <a class="nav" href="z_c1ea89878f9b2ac7_olmo_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

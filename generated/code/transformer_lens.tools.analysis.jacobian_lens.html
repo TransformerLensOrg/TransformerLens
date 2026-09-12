@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.jacobian_lens_decomposition module" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html" /><link rel="prev" title="transformer_lens.tools.analysis.direct_path_patching module" href="transformer_lens.tools.analysis.direct_path_patching.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html" /><link rel="prev" title="transformer_lens.tools.analysis.direct_path_patching module" href="transformer_lens.tools.analysis.direct_path_patching.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.jacobian_lens module - TransformerLens Documentation</title>
@@ -519,11 +519,15 @@
 </li>
 <li class="toctree-l3 current has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -565,6 +569,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.parameter_swap.html">transformer_lens.utilities.parameter_swap module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
@@ -613,6 +618,8 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
@@ -787,8 +794,91 @@ and normalized on every hook invocation). Defaults to all.</p></li>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache">
 <span class="sig-name descname"><span class="pre">clear_device_cache</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache" title="Link to this definition">¶</a></dt>
-<dd><p>Release lazily cached Jacobian copies and full-vocabulary dictionaries on
-accelerator devices.</p>
+<dd><p>Release cached Jacobians, dictionaries, and unembedding snapshots on devices.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch">
+<span class="sig-name descname"><span class="pre">coordinate_patch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_or_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decomposition</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition"><span class="pre">JSpaceDecomposition</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'substitute'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nonnegative_orthogonal_matching_pursuit'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html#transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.CoordinatePatch" title="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.CoordinatePatch"><span class="pre">CoordinatePatch</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch" title="Link to this definition">¶</a></dt>
+<dd><p>Patch sparse J-space coordinates for an activation at <code class="docutils literal notranslate"><span class="pre">layer</span></code>.</p>
+<p>The activation may be a raw <code class="docutils literal notranslate"><span class="pre">[d_model]</span></code> vector or a prompt paired with <code class="docutils literal notranslate"><span class="pre">position</span></code>,
+exactly as in <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose"><code class="xref py py-meth docutils literal notranslate"><span class="pre">decompose()</span></code></a>. <code class="docutils literal notranslate"><span class="pre">source_token</span></code> must occur in the active sparse support.
+<code class="docutils literal notranslate"><span class="pre">substitute</span></code> replaces the target coordinate with the source coordinate and zeros the
+source; <code class="docutils literal notranslate"><span class="pre">swap</span></code> exchanges them. Other coordinates and <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">-</span> <span class="pre">reconstruction</span></code> are fixed.</p>
+<p>A supplied <code class="docutils literal notranslate"><span class="pre">decomposition</span></code> avoids repeating the vocabulary-scale sparse solve after its
+activation and dictionary compatibility have been validated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>activation_or_prompt</strong> – An activation vector, or a prompt (string / token tensor).</p></li>
+<li><p><strong>layer</strong> – Source layer (must be a fitted source layer).</p></li>
+<li><p><strong>source_token</strong> – Active source concept, as a single-token string or token id.</p></li>
+<li><p><strong>target_token</strong> – Distinct target concept, as a single-token string or token id.</p></li>
+<li><p><strong>position</strong> – Token position when a prompt is given; <code class="docutils literal notranslate"><span class="pre">None</span></code> for a raw activation.</p></li>
+<li><p><strong>decomposition</strong> – Optional compatible decomposition of this activation and dictionary.</p></li>
+<li><p><strong>k</strong> – Sparse-solver upper bound when <code class="docutils literal notranslate"><span class="pre">decomposition</span></code> is not supplied.</p></li>
+<li><p><strong>mode</strong> – <code class="docutils literal notranslate"><span class="pre">&quot;substitute&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;swap&quot;</span></code>.</p></li>
+<li><p><strong>alpha</strong> – Finite interpolation strength; zero is an exact no-op.</p></li>
+<li><p><strong>algorithm</strong> – Sparse coefficient-update rule when solving a fresh decomposition.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <code class="xref py py-class docutils literal notranslate"><span class="pre">CoordinatePatch</span></code> containing the edited frame, diagnostics, and activation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch_hooks">
+<span class="sig-name descname"><span class="pre">coordinate_patch_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decomposition_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MutableMapping</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition"><span class="pre">JSpaceDecomposition</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'substitute'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nonnegative_orthogonal_matching_pursuit'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch_hooks" title="Link to this definition">¶</a></dt>
+<dd><p>Hooks that anchor-patch one J-space coordinate live, per forward-pass position.</p>
+<p>Unlike <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch"><code class="xref py py-meth docutils literal notranslate"><span class="pre">coordinate_patch()</span></code></a>, which edits one already-captured activation offline,
+this installs a forward hook that solves <code class="xref py py-func docutils literal notranslate"><span class="pre">solve_coordinate_patch()</span></code> independently for
+every <code class="docutils literal notranslate"><span class="pre">(batch_idx,</span> <span class="pre">position)</span></code> pair at each requested layer – a vocabulary-scale sparse
+decomposition per pair, per hook firing, unless <code class="docutils literal notranslate"><span class="pre">decomposition_cache</span></code> supplies one
+already validated for that <code class="docutils literal notranslate"><span class="pre">(layer,</span> <span class="pre">batch_idx,</span> <span class="pre">position)</span></code> key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The model the hooks will run on.</p></li>
+<li><p><strong>source_token</strong> – Active source concept, as a single-token string or token id.</p></li>
+<li><p><strong>target_token</strong> – Distinct target concept, as a single-token string or token id.</p></li>
+<li><p><strong>layers</strong> – Layers to intervene at.</p></li>
+<li><p><strong>positions</strong> – Chunk-local positions to patch (negative indices allowed and normalized on
+every hook invocation). Required – there is no full-sequence default, because a
+silent default would trigger a vocabulary-scale solve at every position.</p></li>
+<li><p><strong>decomposition_cache</strong> – Optional caller-owned mapping from <code class="docutils literal notranslate"><span class="pre">(layer,</span> <span class="pre">batch_idx,</span>
+<span class="pre">position)</span></code> to a previously validated
+<a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html#transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition" title="transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition"><code class="xref py py-class docutils literal notranslate"><span class="pre">JSpaceDecomposition</span></code></a>.
+A hit skips the vocabulary-scale scan; a miss solves and populates the cache.
+Purely a performance path – correctness does not depend on it.</p></li>
+<li><p><strong>k</strong> – Sparse-solver upper bound on a cache miss.</p></li>
+<li><p><strong>mode</strong> – <code class="docutils literal notranslate"><span class="pre">&quot;substitute&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;swap&quot;</span></code>.</p></li>
+<li><p><strong>alpha</strong> – Finite interpolation strength; zero is an exact no-op.</p></li>
+<li><p><strong>algorithm</strong> – Sparse coefficient-update rule on a cache miss.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">[(hook_name,</span> <span class="pre">fn),</span> <span class="pre">...]</span></code> for <code class="docutils literal notranslate"><span class="pre">model.hooks(fwd_hooks=...)</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">positions</span></code> is empty, if <code class="docutils literal notranslate"><span class="pre">source_token</span></code> and <code class="docutils literal notranslate"><span class="pre">target_token</span></code>
+    resolve to the same id, or if <code class="docutils literal notranslate"><span class="pre">source_token</span></code> is not in the top-<code class="docutils literal notranslate"><span class="pre">k</span></code> active
+    support of every patched <code class="docutils literal notranslate"><span class="pre">(batch_idx,</span> <span class="pre">position)</span></code> pair <em>at the moment its hook
+    fires</em> – the whole forward pass fails rather than silently patching a subset.
+    This precondition is stronger and more order-dependent than “active on a clean
+    forward pass”: in a band of layers an earlier hook’s patch edits the residual
+    that a later layer re-decomposes, and <code class="docutils literal notranslate"><span class="pre">substitute</span></code>/<code class="docutils literal notranslate"><span class="pre">swap</span></code> zero or move the
+    source coordinate, so the source can be removed from a later layer’s active
+    support even though it was active on an unhooked pass. Stacking layers or
+    positions therefore makes this progressively harder to satisfy.</p>
+</dd>
+<dt class="field-even">Warns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>UserWarning</strong> – Once per call, naming the number of layers and positions that will
+perform a live vocabulary-scale solve on every cache miss.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -861,7 +951,8 @@ across prompt slices.</p>
 <li><p><strong>model</strong> – A raw <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>. Model parameters are temporarily
 frozen (<code class="docutils literal notranslate"><span class="pre">requires_grad=False</span></code>) during fitting and restored
 after. Cotangents and activation gradients use the model dtype;
-fit with a float32 model for the highest-fidelity estimator.</p></li>
+fit with a float32 model for the highest-fidelity estimator. The
+model and all of its submodules must be in evaluation mode.</p></li>
 <li><p><strong>prompts</strong> – Prompt strings. Prompts too short to contain a valid
 position (<code class="docutils literal notranslate"><span class="pre">seq_len</span> <span class="pre">&lt;=</span> <span class="pre">skip_first_positions</span> <span class="pre">+</span> <span class="pre">1</span></code>) are skipped
 with a warning and do not count toward <code class="docutils literal notranslate"><span class="pre">n_prompts</span></code>.</p></li>
@@ -885,8 +976,8 @@ average.</p></li>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>TypeError</strong> – If model is not a <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
-<li><p><strong>ValueError</strong> – On compatibility mode, invalid provenance or layer
-    indices, or if no prompt was long enough to fit on.</p></li>
+<li><p><strong>ValueError</strong> – On compatibility mode, training mode, invalid provenance
+    or layer indices, or if no prompt was long enough to fit on.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1002,12 +1093,13 @@ weight-processing mismatches fail here rather than at first use.</p>
 <span class="sig-name descname"><span class="pre">lens_vector_dictionary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vector_dictionary" title="Link to this definition">¶</a></dt>
 <dd><p>Full-vocabulary J-lens dictionary at <code class="docutils literal notranslate"><span class="pre">layer</span></code>: <code class="docutils literal notranslate"><span class="pre">[d_vocab,</span> <span class="pre">d_model]</span></code>.</p>
 <p>Row <code class="docutils literal notranslate"><span class="pre">t</span></code> is the J-lens vector <code class="docutils literal notranslate"><span class="pre">v_t</span> <span class="pre">=</span> <span class="pre">J[layer]^T</span> <span class="pre">W_U[:,</span> <span class="pre">t]</span></code> – this is
-<a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors"><code class="xref py py-meth docutils literal notranslate"><span class="pre">lens_vectors()</span></code></a> over the entire vocabulary. The result is cached per
-(layer, device) so a sparse decomposition can reuse it; <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="xref py py-meth docutils literal notranslate"><span class="pre">clear_device_cache()</span></code></a>
-releases it.</p>
+<a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.lens_vectors"><code class="xref py py-meth docutils literal notranslate"><span class="pre">lens_vectors()</span></code></a> over the entire vocabulary. The result is cached while the
+model’s unembedding is unchanged so a sparse decomposition can reuse it;
+<a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="xref py py-meth docutils literal notranslate"><span class="pre">clear_device_cache()</span></code></a> releases it.</p>
 <p>The dictionary is vocabulary-sized and cached on the model’s device
 (<code class="docutils literal notranslate"><span class="pre">d_vocab</span> <span class="pre">*</span> <span class="pre">d_model</span></code> fp32 values, on the order of gigabytes for a large
-vocabulary), one entry per requested layer.</p>
+vocabulary), one entry per requested layer. One detached copy of <code class="docutils literal notranslate"><span class="pre">W_U</span></code> is
+retained per device to detect changes without transferring weights to the host.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1245,23 +1337,57 @@ and normalized on every hook invocation). Defaults to all.</p></li>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks">
-<span class="sig-name descname"><span class="pre">swap_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks" title="Link to this definition">¶</a></dt>
-<dd><p>Hooks that swap two concepts’ coordinates in lens space.</p>
-<p>The paper’s patching-in-lens-coordinates intervention: with
-<code class="docutils literal notranslate"><span class="pre">V</span> <span class="pre">=</span> <span class="pre">[v_s,</span> <span class="pre">v_t]</span></code> and lens coordinates <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">V⁺</span> <span class="pre">h</span></code> (pseudoinverse),
-the update is <code class="docutils literal notranslate"><span class="pre">h</span> <span class="pre">&lt;-</span> <span class="pre">h</span> <span class="pre">+</span> <span class="pre">alpha</span> <span class="pre">*</span> <span class="pre">V</span> <span class="pre">(sigma(c)</span> <span class="pre">-</span> <span class="pre">c)</span></code> where <code class="docutils literal notranslate"><span class="pre">sigma</span></code>
-exchanges the two coordinates. The component of <code class="docutils literal notranslate"><span class="pre">h</span></code> orthogonal to
-<code class="docutils literal notranslate"><span class="pre">span{v_s,</span> <span class="pre">v_t}</span></code> is untouched. <code class="docutils literal notranslate"><span class="pre">alpha=2</span></code> is the paper’s
-“double-strength” swap.</p>
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_clamp_hooks">
+<span class="sig-name descname"><span class="pre">swap_clamp_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ActivationCache</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_clamp_hooks" title="Link to this definition">¶</a></dt>
+<dd><p>Hooks that clamp lens coordinates to their clean-run exchange.</p>
+<p>For each layer, this projects the corresponding activation from
+<code class="docutils literal notranslate"><span class="pre">clean_cache</span></code> into that layer’s lens basis, exchanges its source and
+target coordinates once, and holds the live activation at that fixed
+target. Unlike <a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks"><code class="xref py py-meth docutils literal notranslate"><span class="pre">swap_hooks()</span></code></a>, the update is idempotent at each
+layer: <code class="docutils literal notranslate"><span class="pre">h</span> <span class="pre">&lt;-</span> <span class="pre">h</span> <span class="pre">+</span> <span class="pre">V</span> <span class="pre">(c_target</span> <span class="pre">-</span> <span class="pre">V⁺h)</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> – The model the hooks will run on.</p></li>
 <li><p><strong>source_token</strong> – The concept to remove (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;</span> <span class="pre">France&quot;</span></code>).</p></li>
 <li><p><strong>target_token</strong> – The concept to install (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;</span> <span class="pre">China&quot;</span></code>).</p></li>
-<li><p><strong>layers</strong> – Layers to intervene at (the paper clamps the swap across an
-intermediate-layer band).</p></li>
+<li><p><strong>layers</strong> – Layers to intervene at.</p></li>
+<li><p><strong>clean_cache</strong> – Activations from an unmodified <code class="docutils literal notranslate"><span class="pre">run_with_cache</span></code> at
+each requested layer’s <code class="docutils literal notranslate"><span class="pre">blocks.{layer}.hook_out</span></code> name. Either
+the <code class="docutils literal notranslate"><span class="pre">ActivationCache</span></code> it returns by default or the plain dict
+from <code class="docutils literal notranslate"><span class="pre">return_cache_object=False</span></code> is accepted.</p></li>
+<li><p><strong>positions</strong> – Chunk-local positions to clamp (negative indices allowed
+and normalized against the clean activations). Defaults to all.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">[(hook_name,</span> <span class="pre">fn),</span> <span class="pre">...]</span></code> for <code class="docutils literal notranslate"><span class="pre">model.hooks(fwd_hooks=...)</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks">
+<span class="sig-name descname"><span class="pre">swap_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks" title="Link to this definition">¶</a></dt>
+<dd><p>Hooks that swap two concepts’ <em>live</em> coordinates in lens space.</p>
+<p>The paper’s patching-in-lens-coordinates intervention: with
+<code class="docutils literal notranslate"><span class="pre">V</span> <span class="pre">=</span> <span class="pre">[v_s,</span> <span class="pre">v_t]</span></code> and lens coordinates <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">V⁺</span> <span class="pre">h</span></code> (pseudoinverse),
+the update is <code class="docutils literal notranslate"><span class="pre">h</span> <span class="pre">&lt;-</span> <span class="pre">h</span> <span class="pre">+</span> <span class="pre">alpha</span> <span class="pre">*</span> <span class="pre">V</span> <span class="pre">(sigma(c)</span> <span class="pre">-</span> <span class="pre">c)</span></code> where <code class="docutils literal notranslate"><span class="pre">sigma</span></code>
+exchanges the two coordinates. The component of <code class="docutils literal notranslate"><span class="pre">h</span></code> orthogonal to
+<code class="docutils literal notranslate"><span class="pre">span{v_s,</span> <span class="pre">v_t}</span></code> is untouched. <code class="docutils literal notranslate"><span class="pre">alpha=2</span></code> is the paper’s
+“double-strength” swap.</p>
+<p>This transform re-reads <code class="docutils literal notranslate"><span class="pre">c</span></code> from the activation seen by every hook.
+It is therefore an involution when applied repeatedly in a subspace
+whose coordinates are preserved between layers: a second application
+can undo the first. For the paper’s multi-layer clamp protocol, use
+<a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_clamp_hooks" title="transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_clamp_hooks"><code class="xref py py-meth docutils literal notranslate"><span class="pre">swap_clamp_hooks()</span></code></a> with activations cached from the clean run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The model the hooks will run on.</p></li>
+<li><p><strong>source_token</strong> – The concept to remove (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;</span> <span class="pre">France&quot;</span></code>).</p></li>
+<li><p><strong>target_token</strong> – The concept to install (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;</span> <span class="pre">China&quot;</span></code>).</p></li>
+<li><p><strong>layers</strong> – Layers to intervene at.</p></li>
 <li><p><strong>alpha</strong> – Swap strength.</p></li>
 <li><p><strong>positions</strong> – Chunk-local positions to swap (negative indices allowed
 and normalized on every hook invocation). Defaults to all.</p></li>
@@ -1495,12 +1621,12 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">
+          <a class="next-page" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.tools.analysis.jacobian_lens_decomposition module</div>
+                <div class="title">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -1553,6 +1679,8 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.metadata"><code class="docutils literal notranslate"><span class="pre">JacobianLens.metadata</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.ablation_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.ablation_hooks()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.clear_device_cache"><code class="docutils literal notranslate"><span class="pre">JacobianLens.clear_device_cache()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch"><code class="docutils literal notranslate"><span class="pre">JacobianLens.coordinate_patch()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.coordinate_patch_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.coordinate_patch_hooks()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.decompose"><code class="docutils literal notranslate"><span class="pre">JacobianLens.decompose()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fit"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fit()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.fraction_of_variance"><code class="docutils literal notranslate"><span class="pre">JacobianLens.fraction_of_variance()</span></code></a></li>
@@ -1566,6 +1694,7 @@ with the <code class="docutils literal notranslate"><span class="pre">pos</span>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.save"><code class="docutils literal notranslate"><span class="pre">JacobianLens.save()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.source_layers"><code class="docutils literal notranslate"><span class="pre">JacobianLens.source_layers</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.steering_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.steering_hooks()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_clamp_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.swap_clamp_hooks()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.swap_hooks"><code class="docutils literal notranslate"><span class="pre">JacobianLens.swap_hooks()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.transport"><code class="docutils literal notranslate"><span class="pre">JacobianLens.transport()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.jacobian_lens.JacobianLens.validate_model"><code class="docutils literal notranslate"><span class="pre">JacobianLens.validate_model()</span></code></a></li>

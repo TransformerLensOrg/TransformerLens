@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/tools/model_registry/schemas.py: 89%</title>
+    <title>Coverage for transformer_lens/tools/model_registry/schemas.py: 88%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/tools/model_registry/schemas.py</b>:
-            <span class="pc_cov">89%</span>
+            <span class="pc_cov">88%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">142 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">133<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">9<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">131<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">11<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">7<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_b6a6f921386a1412_validate_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -442,13 +442,13 @@
     <p class="pln"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t">    <span class="key">def</span> <span class="nam">to_dict</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t360" href="#t360">360</a></span><span class="t">        <span class="str">"""Convert to a JSON-serializable dictionary."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t361" href="#t361">361</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t362" href="#t362">362</a></span><span class="t">            <span class="str">"architecture_id"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">architecture_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t363" href="#t363">363</a></span><span class="t">            <span class="str">"is_supported"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">is_supported</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t364" href="#t364">364</a></span><span class="t">            <span class="str">"model_count"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">model_count</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t365" href="#t365">365</a></span><span class="t">            <span class="str">"verified_count"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">verified_count</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t366" href="#t366">366</a></span><span class="t">            <span class="str">"example_models"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">example_models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t367" href="#t367">367</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t361" href="#t361">361</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t362" href="#t362">362</a></span><span class="t">            <span class="str">"architecture_id"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">architecture_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t363" href="#t363">363</a></span><span class="t">            <span class="str">"is_supported"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">is_supported</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t364" href="#t364">364</a></span><span class="t">            <span class="str">"model_count"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">model_count</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t365" href="#t365">365</a></span><span class="t">            <span class="str">"verified_count"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">verified_count</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t366" href="#t366">366</a></span><span class="t">            <span class="str">"example_models"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">example_models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t367" href="#t367">367</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t368" href="#t368">368</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t369" href="#t369">369</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t370" href="#t370">370</a></span><span class="t"><span class="op">@</span><span class="nam">dataclass</span>&nbsp;</span><span class="r"></span></p>
@@ -471,13 +471,13 @@
     <p class="pln"><span class="n"><a id="t387" href="#t387">387</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t388" href="#t388">388</a></span><span class="t">    <span class="key">def</span> <span class="nam">to_dict</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t389" href="#t389">389</a></span><span class="t">        <span class="str">"""Convert to a JSON-serializable dictionary."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t390" href="#t390">390</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t">            <span class="str">"architecture_id"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">architecture_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t392" href="#t392">392</a></span><span class="t">            <span class="str">"total_models"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">total_models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t393" href="#t393">393</a></span><span class="t">            <span class="str">"total_downloads"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">total_downloads</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t394" href="#t394">394</a></span><span class="t">            <span class="str">"priority_score"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">priority_score</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t395" href="#t395">395</a></span><span class="t">            <span class="str">"top_models"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">top_models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t396" href="#t396">396</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t390" href="#t390">390</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t">            <span class="str">"architecture_id"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">architecture_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t392" href="#t392">392</a></span><span class="t">            <span class="str">"total_models"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">total_models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t393" href="#t393">393</a></span><span class="t">            <span class="str">"total_downloads"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">total_downloads</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t394" href="#t394">394</a></span><span class="t">            <span class="str">"priority_score"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">priority_score</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t395" href="#t395">395</a></span><span class="t">            <span class="str">"top_models"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">top_models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t396" href="#t396">396</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -487,7 +487,7 @@
             <a class="nav" href="z_b6a6f921386a1412_validate_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

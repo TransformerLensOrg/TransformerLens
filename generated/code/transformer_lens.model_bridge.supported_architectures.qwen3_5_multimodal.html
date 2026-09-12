@@ -519,11 +519,15 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -565,6 +569,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.parameter_swap.html">transformer_lens.utilities.parameter_swap module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
@@ -613,6 +618,8 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
@@ -682,12 +689,6 @@ forward; this adapter only supplies the component mapping (hooks + weights).</p>
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.component_mapping">
 <span class="sig-name descname"><span class="pre">component_mapping</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ComponentMapping</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.component_mapping" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Slice query half from gated q_proj.weight (matcher is path-prefix-agnostic).</p>
-</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.required_libraries">
@@ -771,7 +772,6 @@ forward; this adapter only supplies the component mapping (hooks + weights).</p>
 <li><a class="reference internal" href="#">transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal module</a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.component_mapping</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.required_libraries"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.required_libraries</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.required_libraries_group"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.required_libraries_group</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.uses_split_attention</span></code></a></li>

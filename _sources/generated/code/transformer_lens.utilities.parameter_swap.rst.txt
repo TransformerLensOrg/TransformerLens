@@ -1,0 +1,7 @@
+transformer\_lens.utilities.parameter\_swap module
+==================================================
+
+.. automodule:: transformer_lens.utilities.parameter_swap
+   :members:
+   :undoc-members:
+   :show-inheritance:

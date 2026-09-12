@@ -28,6 +28,7 @@ Submodules
    transformer_lens.utilities.logits_utils
    transformer_lens.utilities.matrix
    transformer_lens.utilities.multi_gpu
+   transformer_lens.utilities.parameter_swap
    transformer_lens.utilities.quantization
    transformer_lens.utilities.slice
    transformer_lens.utilities.tensors

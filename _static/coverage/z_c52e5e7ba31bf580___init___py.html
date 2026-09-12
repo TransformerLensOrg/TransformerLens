@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/lit/__init__.py: 31%</title>
+    <title>Coverage for transformer_lens/lit/__init__.py: 25%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/lit/__init__.py</b>:
-            <span class="pc_cov">31%</span>
+            <span class="pc_cov">25%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">61 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">25<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">36<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">20<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">41<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">1<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_c52e5e7ba31bf580_constants_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -284,7 +284,7 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t201" href="#t201">201</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">    <span class="nam">logger</span><span class="op">.</span><span class="nam">info</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Starting LIT server at http://</span><span class="op">{</span><span class="nam">host</span><span class="op">}</span><span class="fst">:</span><span class="op">{</span><span class="nam">port</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t203" href="#t203">203</a></span><span class="t">    <span class="nam">server</span><span class="op">.</span><span class="nam">serve</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t203" href="#t203">203</a></span><span class="t">    <span class="nam">server</span><span class="op">.</span><span class="nam">serve</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t204" href="#t204">204</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t205" href="#t205">205</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t206" href="#t206">206</a></span><span class="t"><span class="key">class</span> <span class="nam">LITWidget</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -341,13 +341,13 @@
     <p class="pln"><span class="n"><a id="t257" href="#t257">257</a></span><span class="t">        <span class="com"># Remove default_layout from kwargs as it's handled internally by LitWidget</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t258" href="#t258">258</a></span><span class="t">        <span class="nam">kwargs</span><span class="op">.</span><span class="nam">pop</span><span class="op">(</span><span class="str">"default_layout"</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t259" href="#t259">259</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t260" href="#t260">260</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span> <span class="op">=</span> <span class="nam">notebook</span><span class="op">.</span><span class="nam">LitWidget</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">            <span class="nam">models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">            <span class="nam">wrapped_datasets</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">            <span class="nam">height</span><span class="op">=</span><span class="nam">height</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t">            <span class="nam">render</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>  <span class="com"># Don't auto-render</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t">            <span class="op">**</span><span class="nam">kwargs</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t266" href="#t266">266</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t260" href="#t260">260</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span> <span class="op">=</span> <span class="nam">notebook</span><span class="op">.</span><span class="nam">LitWidget</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t261" href="#t261">261</a></span><span class="t">            <span class="nam">models</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t262" href="#t262">262</a></span><span class="t">            <span class="nam">wrapped_datasets</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t263" href="#t263">263</a></span><span class="t">            <span class="nam">height</span><span class="op">=</span><span class="nam">height</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t">            <span class="nam">render</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>  <span class="com"># Don't auto-render</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t">            <span class="op">**</span><span class="nam">kwargs</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t266" href="#t266">266</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t267" href="#t267">267</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t268" href="#t268">268</a></span><span class="t">    <span class="op">@</span><span class="nam">property</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t269" href="#t269">269</a></span><span class="t">    <span class="key">def</span> <span class="nam">url</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -360,7 +360,7 @@
     <p class="pln"><span class="n"><a id="t276" href="#t276">276</a></span><span class="t"><span class="str">            The URL to access the LIT UI.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t277" href="#t277">277</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t278" href="#t278">278</a></span><span class="t">        <span class="nam">port</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span><span class="op">.</span><span class="nam">_server</span><span class="op">.</span><span class="nam">port</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t279" href="#t279">279</a></span><span class="t">        <span class="key">return</span> <span class="fst">f"</span><span class="fst">http://localhost:</span><span class="op">{</span><span class="nam">port</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t279" href="#t279">279</a></span><span class="t">        <span class="key">return</span> <span class="fst">f"</span><span class="fst">http://localhost:</span><span class="op">{</span><span class="nam">port</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t280" href="#t280">280</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t281" href="#t281">281</a></span><span class="t">    <span class="key">def</span> <span class="nam">render</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">open_in_new_tab</span><span class="op">:</span> <span class="nam">bool</span> <span class="op">=</span> <span class="key">False</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t282" href="#t282">282</a></span><span class="t">        <span class="str">"""Render the LIT widget.</span>&nbsp;</span><span class="r"></span></p>
@@ -373,11 +373,11 @@
     <p class="pln"><span class="n"><a id="t289" href="#t289">289</a></span><span class="t"><span class="str">            If rendering doesn't work in your environment (e.g., VSCode),</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t290" href="#t290">290</a></span><span class="t"><span class="str">            use `print(widget.url)` and open that URL in your browser.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span><span class="op">.</span><span class="nam">render</span><span class="op">(</span><span class="nam">open_in_new_tab</span><span class="op">=</span><span class="nam">open_in_new_tab</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span><span class="op">.</span><span class="nam">render</span><span class="op">(</span><span class="nam">open_in_new_tab</span><span class="op">=</span><span class="nam">open_in_new_tab</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t293" href="#t293">293</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t294" href="#t294">294</a></span><span class="t">    <span class="key">def</span> <span class="nam">stop</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t295" href="#t295">295</a></span><span class="t">        <span class="str">"""Stop the widget's server and free resources."""</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t296" href="#t296">296</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span><span class="op">.</span><span class="nam">stop</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t296" href="#t296">296</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_widget</span><span class="op">.</span><span class="nam">stop</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t297" href="#t297">297</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t298" href="#t298">298</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t299" href="#t299">299</a></span><span class="t"><span class="com"># Version info</span>&nbsp;</span><span class="r"></span></p>
@@ -391,7 +391,7 @@
             <a class="nav" href="z_c52e5e7ba31bf580_constants_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

@@ -235,6 +235,11 @@ include the fitting provenance and validation results.
 
 ## Sparse decomposition (J-space coordinates)
 
+A detailed open-weight A–F replication is available in the
+[Jacobian Lens decomposition demo](../generated/demos/Jacobian_Lens_Decomposition_Demo).
+It profiles selected-span variance, random-control occupancy, ranked-readout overlap,
+solver trade-offs, and decomposition-guided causal ablations.
+
 A fitted lens also decomposes an activation into the concepts it is *disposed to say*.
 `JacobianLens.decompose` writes an activation `x` at layer ℓ as a sparse **nonnegative**
 combination of J-lens vectors `v_t = J_ℓ^T W_U[:, t]` (one direction per vocabulary token),
@@ -273,8 +278,7 @@ So two vector outputs also need not coincide:
 
 - `reconstruction` -- the nonnegative combination over the active `support`.
 - `j_space_component` (the *J-space component*) -- the orthogonal projection of the activation onto
-  the span of `selected_support` -- with `non_j_space_component = x - j_space_component`, the
-  residual the interventions leave unchanged.
+  the span of `selected_support` -- with `non_j_space_component = x - j_space_component`.
 
 For the default exact NNLS re-solve the `reconstruction` equals the projection onto the *active*
 support (KKT stationarity), so it differs from `j_space_component` exactly when a selected vector
@@ -298,6 +302,107 @@ the paper; its projected step is accepted only when it does not increase the res
 algorithms share the same greedy selection *rule* but, because their coefficient residuals
 differ, may select different vectors at later steps and so return a different `support` and
 `reconstruction`.
+
+### Coordinate patching
+
+`JacobianLens.coordinate_patch` turns a decomposition into an anchored causal edit. Given
+`x = residual + reconstruction`, it changes only named coordinates in the active sparse frame and
+keeps `residual = x - reconstruction` plus every other coordinate fixed. This residual differs from
+`non_j_space_component` when `selected_support` contains zero-coordinate atoms.
+
+```python
+prompt = "The Eiffel Tower is in the city of"
+decomposition = lens.decompose(model, prompt, layer=6, position=-1, k=8)
+source_id = int(decomposition.support[0])
+patch = lens.coordinate_patch(
+    model,
+    prompt,
+    layer=6,
+    source_token=source_id,
+    target_token=" Paris",
+    position=-1,
+    decomposition=decomposition,
+    mode="substitute",
+)
+patched_activation = patch.patched
+```
+
+`substitute` sets the source coordinate to zero and the target to the source value, overwriting an
+existing target coordinate (the discarded value is reported in `overwritten_target_coordinate`).
+`swap` exchanges the two values. An absent target is appended at zero, and `alpha` interpolates
+between the original and edited coordinates (`alpha=0` is an exact no-op). The source must be active
+and source and target must be distinct.
+
+Both diagnostics warn but never raise, because an anchored reconstruction needs no inverse:
+
+- **Poor conditioning.** When the column-normalized active-plus-target basis is rank deficient or its
+  `basis_condition_number` exceeds `1 / sqrt(float32 eps)` (≈ 2896), coordinate patching emits a
+  `UserWarning` that names the measured condition number; coordinate attribution is then non-unique,
+  but the edit still completes.
+- **Near-parallel source/target.** When the absolute source–target cosine (reported signed in
+  `source_target_cosine`) exceeds `_SWAP_WARN_COSINE` (0.99), coordinate patching emits a
+  `UserWarning` that names the measured cosine, since a swap between near-parallel atoms is close to
+  a no-op. Unlike `swap_hooks`, which raises above `_SWAP_ERROR_COSINE` (0.999), the patch core only
+  warns at the parallel extreme.
+
+Read the measured condition number and cosine straight out of each warning message (and from the
+`basis_condition_number` and `source_target_cosine` fields on the returned `CoordinatePatch`) to
+judge how much to trust the edit.
+
+Without `decomposition=`, coordinate patching runs the vocabulary-scale sparse decomposition first.
+Reuse a compatible result for repeated edits to avoid that scan. `coordinate_patch` returns an
+offline activation and diagnostics, not forward hooks; see "Dynamic coordinate-patch hooks" below
+for the live variant, which performs the same scan per `(batch, position)` pair on every forward
+pass unless a cache hit avoids it.
+
+### Dynamic coordinate-patch hooks
+
+`JacobianLens.coordinate_patch_hooks` installs the same anchored edit as a forward hook, so it can
+run inside `model.run_with_hooks(...)` instead of on one pre-captured activation:
+
+```python
+hooks = lens.coordinate_patch_hooks(
+    model,
+    source_token=source_id,
+    target_token=" Paris",
+    layers=[6],
+    positions=[-1],
+    mode="substitute",
+)
+with model.hooks(fwd_hooks=hooks):
+    patched_logits = model(tokens)
+```
+
+Two departures from `coordinate_patch`, both deliberate:
+
+- **`positions` is required.** There is no full-sequence default: each hooked position performs
+  its own vocabulary-scale sparse decomposition (unless a cache hit avoids it), and a silent
+  full-sequence default would trigger that scan at every position without the caller asking for
+  it.
+- **`decomposition_cache` (optional, caller-owned).** A plain `dict` (or any `MutableMapping`)
+  keyed `(layer, batch_idx, position)`. Pass the same dict across repeated `model.hooks(...)` calls
+  on the same prompt (e.g. holding the prompt fixed while varying `alpha` or `mode` in an
+  interactive loop) to skip the vocabulary-scale scan on every hit; a miss solves once and
+  populates the cache. This is purely a performance path — a cache hit and a fresh solve produce
+  an identical patch. The `position` in the `(layer, batch_idx, position)` key is the
+  **chunk-local** index into the activation the hook sees, not an absolute sequence position, so the
+  cache is valid **only across passes with identical chunking** — the same prompt sliced the same
+  way. Do not reuse one cache across decode steps (with `use_past_kv_cache=True` the prefill sees
+  `[1, seq, d]` while each decode step sees `[1, 1, d]`, so step 2's position `0` collides with the
+  prefill's position `0` and the mismatched precomputed coordinates raise an NNLS stationarity error
+  that does not point back here) or across prompts of different lengths. For those, use a fresh cache
+  per shape.
+
+Every `(batch_idx, position)` pair gets its own independent decomposition and edit: a source
+concept inactive at one pair never affects another pair in the same batch or call. If the source
+is inactive at **any** pair touched by a hook firing, the whole forward pass raises — there is no
+silent partial application across a batch.
+
+Calling `coordinate_patch_hooks(...)` emits one `UserWarning` naming the number of layers and
+positions it installs, since every one of those `(layer, position)` combinations performs a live,
+vocabulary-scale solve on every forward pass unless `decomposition_cache` already has an entry for
+it. The conditioning and near-parallel warnings described above still fire from inside the hook,
+per pair, exactly as they would from an offline `coordinate_patch` call on that pair's activation.
 
 ### Interpreting the numbers honestly
 

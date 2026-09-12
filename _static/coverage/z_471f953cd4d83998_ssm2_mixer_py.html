@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/model_bridge/generalized_components/ssm2_mixer.py: 94%</title>
+    <title>Coverage for transformer_lens/model_bridge/generalized_components/ssm2_mixer.py: 92%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/model_bridge/generalized_components/ssm2_mixer.py</b>:
-            <span class="pc_cov">94%</span>
+            <span class="pc_cov">92%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">127 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">124<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">3<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">122<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">5<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">7<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_471f953cd4d83998_ssm_block_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -170,7 +170,7 @@
     <p class="mis show_mis"><span class="n"><a id="t86" href="#t86">86</a></span><span class="t">            <span class="key">return</span> <span class="nam">output</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t87" href="#t87">87</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">output</span><span class="op">,</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">87&#x202F;&#x219B;&#x202F;89</span><span class="annotate long">line 87 didn't jump to line 89 because the condition on line 87 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t88" href="#t88">88</a></span><span class="t">            <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">hook_out</span><span class="op">(</span><span class="nam">output</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t">        <span class="key">return</span> <span class="nam">output</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t89" href="#t89">89</a></span><span class="t">        <span class="key">return</span> <span class="nam">output</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t91" href="#t91">91</a></span><span class="t">    <span class="key">def</span> <span class="nam">_eager_scan_forward</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t92" href="#t92">92</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span> <span class="nam">hidden_states</span><span class="op">:</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="nam">attention_mask</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -372,7 +372,7 @@
     <p class="run"><span class="n"><a id="t288" href="#t288">288</a></span><span class="t">                <span class="nam">val</span> <span class="op">=</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">oc</span><span class="op">,</span> <span class="nam">module_attr</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t289" href="#t289">289</a></span><span class="t">                <span class="key">if</span> <span class="nam">val</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">289&#x202F;&#x219B;&#x202F;291</span><span class="annotate long">line 289 didn't jump to line 291 because the condition on line 289 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t290" href="#t290">290</a></span><span class="t">                    <span class="key">return</span> <span class="nam">val</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t">            <span class="key">return</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">cfg</span><span class="op">,</span> <span class="nam">cfg_attr</span><span class="op">,</span> <span class="nam">default</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t">            <span class="key">return</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">cfg</span><span class="op">,</span> <span class="nam">cfg_attr</span><span class="op">,</span> <span class="nam">default</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t293" href="#t293">293</a></span><span class="t">        <span class="nam">num_heads</span> <span class="op">=</span> <span class="nam">int</span><span class="op">(</span><span class="nam">_mamba_dim</span><span class="op">(</span><span class="str">"num_heads"</span><span class="op">,</span> <span class="str">"n_heads"</span><span class="op">,</span> <span class="num">0</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t294" href="#t294">294</a></span><span class="t">        <span class="nam">head_dim</span> <span class="op">=</span> <span class="nam">int</span><span class="op">(</span><span class="nam">_mamba_dim</span><span class="op">(</span><span class="str">"head_dim"</span><span class="op">,</span> <span class="str">"d_head"</span><span class="op">,</span> <span class="num">0</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -425,7 +425,7 @@
             <a class="nav" href="z_471f953cd4d83998_ssm_block_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-01 16:23 +0000
+            created at 2026-09-12 00:48 +0000
         </p>
     </div>
 </footer>

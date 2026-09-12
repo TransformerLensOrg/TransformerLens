@@ -519,11 +519,15 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -565,6 +569,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.logits_utils.html">transformer_lens.utilities.logits_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.matrix.html">transformer_lens.utilities.matrix module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.multi_gpu.html">transformer_lens.utilities.multi_gpu module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.parameter_swap.html">transformer_lens.utilities.parameter_swap module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
@@ -613,6 +618,8 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
@@ -718,7 +725,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.prepare_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.baichuan.html#transformer_lens.model_bridge.supported_architectures.baichuan.BaichuanArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.setup_component_testing()</span></code></a></li>
 </ul>
 </li>
@@ -827,6 +833,7 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.__init__()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter.apply_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.apply_output_logits_transform()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter.postprocess_weights"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.postprocess_weights()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.cohere.html#transformer_lens.model_bridge.supported_architectures.cohere.CohereArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
@@ -1189,7 +1196,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.internlm2.html#transformer_lens.model_bridge.supported_architectures.internlm2.InternLM2ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.internlm2.html#transformer_lens.model_bridge.supported_architectures.internlm2.InternLM2ArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.internlm2.html#transformer_lens.model_bridge.supported_architectures.internlm2.InternLM2ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.prepare_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.internlm2.html#transformer_lens.model_bridge.supported_architectures.internlm2.InternLM2ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.internlm2.html#transformer_lens.model_bridge.supported_architectures.internlm2.InternLM2ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.setup_component_testing()</span></code></a></li>
 </ul>
 </li>
@@ -1519,6 +1525,7 @@
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html">transformer_lens.model_bridge.supported_architectures.neox module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html#transformer_lens.model_bridge.supported_architectures.neox.NeoxArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html#transformer_lens.model_bridge.supported_architectures.neox.NeoxArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html#transformer_lens.model_bridge.supported_architectures.neox.NeoxArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.prepare_model()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html#transformer_lens.model_bridge.supported_architectures.neox.NeoxArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.setup_component_testing()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.neox.html#transformer_lens.model_bridge.supported_architectures.neox.NeoxArchitectureAdapter.split_qkv_matrix"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.split_qkv_matrix()</span></code></a></li>
 </ul>
@@ -1702,7 +1709,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5.html#transformer_lens.model_bridge.supported_architectures.qwen3_5.Qwen3_5ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1711,7 +1717,6 @@
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.Qwen3_5MoeArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.Qwen3_5MoeArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.Qwen3_5MoeArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter.prepare_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.Qwen3_5MoeArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_moe.Qwen3_5MoeMultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeMultimodalArchitectureAdapter</span></code></a></li>
@@ -1720,7 +1725,6 @@
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html">transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.component_mapping</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.required_libraries"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.required_libraries</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.required_libraries_group"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.required_libraries_group</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.html#transformer_lens.model_bridge.supported_architectures.qwen3_5_multimodal.Qwen3_5MultimodalArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.uses_split_attention</span></code></a></li>
@@ -1737,10 +1741,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_next.html">transformer_lens.model_bridge.supported_architectures.qwen3_next module</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_next.html#transformer_lens.model_bridge.supported_architectures.qwen3_next.Qwen3NextArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3NextArchitectureAdapter</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_next.html#transformer_lens.model_bridge.supported_architectures.qwen3_next.Qwen3NextArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3NextArchitectureAdapter.preprocess_weights()</span></code></a></li>
-</ul>
-</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_next.html#transformer_lens.model_bridge.supported_architectures.qwen3_next.Qwen3NextArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3NextArchitectureAdapter</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_vl.html">transformer_lens.model_bridge.supported_architectures.qwen3_vl module</a><ul>
@@ -2106,6 +2107,8 @@ no other hook point allows filtering them before HF’s forward call.</p></li>
 <p>Architecture adapter for Baichuan models (v1 and v2).</p>
 <p>Baichuan uses combined QKV via W_pack (nn.Linear(h, 3*h)) with RoPE,
 RMSNorm, and gated MLP (SwiGLU). Per-layer rotary embeddings.</p>
+<p>The attention bridge splits W_pack at load and drops the fused key from the
+state dict, so fold_ln sees ordinary q/k/v keys and needs no help here.</p>
 <section id="id1">
 <h3>Optional Parameters (may not exist in state_dict):<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
 <p>Baichuan models do NOT have biases on any projection:</p>
@@ -2141,12 +2144,6 @@ float32 is also an upgrade over its bfloat16 checkpoint values.</p>
 <p>Baichuan2 Chat also uses NormHead which row-normalizes lm_head during
 forward. We apply that once here so the bridge sees the normalized
 weights directly without needing NormHead’s forward path.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Split fused W_pack QKV and optionally fold layer norms.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -2406,10 +2403,16 @@ It has a weight parameter but NO bias parameter.</p></li>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.postprocess_weights">
+<span class="sig-name descname"><span class="pre">postprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.postprocess_weights" title="Link to this definition">¶</a></dt>
+<dd><p>Disable HF’s outer scale after folding it into the live unembed weights.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.preprocess_weights">
 <span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
 <dd><p>Fold logit_scale into unembed weights before ProcessWeights runs.</p>
-<p>bridge.py lines 726-732 clone unembed.weight before calling this, so
+<p>bridge.py clones unembed.weight before calling this, so
 scaling does not affect the tied embed.weight.
 logit_scale=1.0 is a no-op (skipped for efficiency).</p>
 </dd></dl>
@@ -3185,16 +3188,15 @@ but the attribute was never propagated from HF config.</p>
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchitectureAdapter</span></code></a></p>
 <p>Architecture adapter for InternLM2 models.</p>
 <p>InternLM2 uses remote code (trust_remote_code=True) and differs from Llama in:
-- Fused interleaved GQA wqkv weight (not standard [Q|K|V] split)
-- Non-standard module names: tok_embeddings, output, attention, feed_forward,</p>
+- Fused interleaved GQA wqkv weight (not standard [Q|K|V] split). The attention</p>
 <blockquote>
-<div><p>wqkv/wo, w1(gate)/w3(up)/w2(down), attention_norm, ffn_norm</p>
+<div><p>bridge splits it at load and drops the fused key from the state dict, so
+fold_ln sees ordinary q/k/v keys and needs no special handling here.</p>
 </div></blockquote>
 <ul class="simple">
+<li><p>Non-standard module names: tok_embeddings, output, attention, feed_forward,
+wqkv/wo, w1(gate)/w3(up)/w2(down), attention_norm, ffn_norm</p></li>
 <li><p>Per-layer rotary_emb (no model-level shared instance)</p></li>
-<li><p>supports_fold_ln=False: fold_ln is done manually in preprocess_weights because
-the bridge state dict has the fused qkv key, not split q/k/v keys, so
-fold_layer_norm’s extract_attention_tensors_for_folding would silently skip attn.</p></li>
 </ul>
 <p>Optional parameters (may not exist in state_dict):
 - blocks.{i}.attn.b_Q / b_K / b_V / b_O — config.bias=False on shipped models
@@ -3212,16 +3214,6 @@ fold_layer_norm’s extract_attention_tensors_for_folding would silently skip at
 <dd><p>Restore per-layer rotary <code class="docutils literal notranslate"><span class="pre">inv_freq</span></code> lost to meta-device loading – this
 remote code predates HF’s <code class="docutils literal notranslate"><span class="pre">original_inv_freq</span></code> auto-restore, so positions
 would otherwise rotate by random values.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Fold layer norms into QKV and MLP weights.</p>
-<p>Standard fold_ln can’t reach split Q/K/V when wqkv is fused in the bridge state dict.
-We extract and fold here, then write split keys so RearrangeTensorConversion can follow.
-MLP projections (w1/w2/w3) are separate linears so they fold normally.
-Mirrors phi3.py.preprocess_weights, adapted for InternLM2’s layout.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -3946,6 +3938,16 @@ NemotronHModel’s own initialization.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.prepare_model">
+<span class="sig-name descname"><span class="pre">prepare_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.prepare_model" title="Link to this definition">¶</a></dt>
+<dd><p>Fix up the unembed target once the real HF module tree is available.</p>
+<p>transformers &gt;= 5.14 renamed <code class="docutils literal notranslate"><span class="pre">GPTNeoXForCausalLM.embed_out</span></code> to
+<code class="docutils literal notranslate"><span class="pre">lm_head</span></code>; the repo’s locked 5.13.0 still exposes <code class="docutils literal notranslate"><span class="pre">embed_out</span></code>. The
+component_mapping is built in <code class="docutils literal notranslate"><span class="pre">__init__</span></code> before any HF model exists,
+so the <code class="docutils literal notranslate"><span class="pre">lm_head</span></code> default above can’t be hasattr-checked until now.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.setup_component_testing">
 <span class="sig-name descname"><span class="pre">setup_component_testing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bridge_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.setup_component_testing" title="Link to this definition">¶</a></dt>
 <dd><p>Set up rotary embedding references for GPT-NeoX/StableLM component testing.</p>
@@ -4583,12 +4585,6 @@ because MoEBridge does not handle the dense Qwen3MoeMLP path.</p>
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3.html#transformer_lens.model_bridge.supported_architectures.qwen3.Qwen3ArchitectureAdapter" title="transformer_lens.model_bridge.supported_architectures.qwen3.Qwen3ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">Qwen3ArchitectureAdapter</span></code></a></p>
 <p>Hybrid linear-attention + full-attention with sparse MoE MLP.</p>
 <p>Same hybrid design as Qwen3.5 but with MoE instead of dense MLP.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3NextArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3NextArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Slice query half from gated q_proj.weight for weight-space analysis.</p>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -4628,7 +4624,7 @@ because MoEBridge does not handle the dense Qwen3MoeMLP path.</p>
 <p>Hybrid linear-attention + full-attention with dense gated MLP.</p>
 <p>Inherits Qwen3 config/attention/MLP structure. Differences:
 - Attention + linear_attn are optional (per-layer type)
-- Gated q_proj (2x wide) sliced by preprocess_weights for weight analysis</p>
+- Gated q_proj: [query|gate] is split at forward time, never in weight space</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_loading">
 <span class="sig-name descname"><span class="pre">prepare_loading</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_loading" title="Link to this definition">¶</a></dt>
@@ -4642,15 +4638,6 @@ text-only Qwen3_5ForCausalLM.</p>
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_model">
 <span class="sig-name descname"><span class="pre">prepare_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_model" title="Link to this definition">¶</a></dt>
 <dd><p>Reject full multimodal Qwen3.5 models on this text-only adapter.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Slice query half from gated q_proj.weight for weight-space analysis.</p>
-<p>In processed mode, W_Q is the pure query projection (for composition
-scores, logit lens). Gate signal available in unprocessed mode on
-full-attention layers via blocks.N.attn.hook_q_gate.</p>
 </dd></dl>
 
 </dd></dl>
@@ -4673,12 +4660,6 @@ full-attention layers via blocks.N.attn.hook_q_gate.</p>
 <dd><p>Reject full multimodal Qwen3.5-MoE models on this text-only adapter.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Slice query half from gated q_proj.weight for weight-space analysis.</p>
-</dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -4695,12 +4676,6 @@ full-attention layers via blocks.N.attn.hook_q_gate.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.supported_architectures.</span></span><span class="sig-name descname"><span class="pre">Qwen3_5MultimodalArchitectureAdapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3.html#transformer_lens.model_bridge.supported_architectures.qwen3.Qwen3ArchitectureAdapter" title="transformer_lens.model_bridge.supported_architectures.qwen3.Qwen3ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">Qwen3ArchitectureAdapter</span></code></a></p>
 <p>Full vision-language adapter for Qwen3_5ForConditionalGeneration.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights">
-<span class="sig-name descname"><span class="pre">preprocess_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights" title="Link to this definition">¶</a></dt>
-<dd><p>Slice query half from gated q_proj.weight (matcher is path-prefix-agnostic).</p>
-</dd></dl>
-
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.required_libraries">
 <span class="sig-name descname"><span class="pre">required_libraries</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['torchvision']</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.required_libraries" title="Link to this definition">¶</a></dt>
@@ -5284,7 +5259,6 @@ Mamba-2 step.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.prepare_model()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.BaichuanArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">BaichuanArchitectureAdapter.setup_component_testing()</span></code></a></li>
 </ul>
 </li>
@@ -5333,6 +5307,7 @@ Mamba-2 step.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.apply_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.apply_output_logits_transform()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.postprocess_weights"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.postprocess_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.CohereArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">CohereArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
@@ -5502,7 +5477,6 @@ Mamba-2 step.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.prepare_model()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.InternLM2ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">InternLM2ArchitectureAdapter.setup_component_testing()</span></code></a></li>
 </ul>
 </li>
@@ -5670,6 +5644,7 @@ Mamba-2 step.</p>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.__init__()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.prepare_model()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.setup_component_testing()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NeoxArchitectureAdapter.split_qkv_matrix"><code class="docutils literal notranslate"><span class="pre">NeoxArchitectureAdapter.split_qkv_matrix()</span></code></a></li>
 </ul>
@@ -5758,10 +5733,7 @@ Mamba-2 step.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3MoeArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Qwen3MoeArchitectureAdapter.__init__()</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3NextArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3NextArchitectureAdapter</span></code></a><ul>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3NextArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3NextArchitectureAdapter.preprocess_weights()</span></code></a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3NextArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3NextArchitectureAdapter</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3VLArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3VLArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3VLArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">Qwen3VLArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3VLArchitectureAdapter.required_libraries"><code class="docutils literal notranslate"><span class="pre">Qwen3VLArchitectureAdapter.required_libraries</span></code></a></li>
@@ -5772,18 +5744,15 @@ Mamba-2 step.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.prepare_model()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter.prepare_loading"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter.prepare_loading()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter.prepare_model()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeArchitectureAdapter.preprocess_weights()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MoeMultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MoeMultimodalArchitectureAdapter</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter</span></code></a><ul>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.required_libraries"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.required_libraries</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Qwen3_5MultimodalArchitectureAdapter.required_libraries_group"><code class="docutils literal notranslate"><span class="pre">Qwen3_5MultimodalArchitectureAdapter.required_libraries_group</span></code></a></li>
 </ul>

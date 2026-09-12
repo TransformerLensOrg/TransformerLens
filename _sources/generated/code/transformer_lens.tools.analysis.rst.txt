@@ -7,11 +7,15 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   transformer_lens.tools.analysis.attribution_patching
+   transformer_lens.tools.analysis.backward_lens
    transformer_lens.tools.analysis.direct_logit_attribution
    transformer_lens.tools.analysis.direct_path_patching
    transformer_lens.tools.analysis.jacobian_lens
+   transformer_lens.tools.analysis.jacobian_lens_coordinate_patch
    transformer_lens.tools.analysis.jacobian_lens_decomposition
    transformer_lens.tools.analysis.projection_kernel
+   transformer_lens.tools.analysis.svd_circuits
 
 Module contents
 ---------------
