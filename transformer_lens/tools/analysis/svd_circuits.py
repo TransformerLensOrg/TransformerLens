@@ -5,7 +5,7 @@ map ``W_Q W_K^T`` that scores source positions, and the output-value map
 ``W_V W_O`` that writes the attended value back into the residual stream. This
 tool takes the singular value decomposition of each map for one head and exposes
 the singular values (how much each direction matters) together with the left and
-right singular vectors (the output and input directions they act on).
+right singular vectors that span the map's input and output spaces.
 
 The decomposition is weight-space only: it reads ``W_Q``/``W_K``/``W_V``/``W_O``
 and needs no forward pass, no activation cache, and no compatibility mode. Each
@@ -14,9 +14,18 @@ map is kept factored through
 ``d_model x d_model`` product is never materialized and the returned rank is
 bounded by ``d_head``.
 
-Right singular vectors are read from :attr:`~transformer_lens.FactoredMatrix.FactoredMatrix.V`
-(its columns are the right singular vectors). The historical ``.Vh`` alias is
-deprecated and returns the same tensor, so it is never used here.
+For a factored map ``A @ B`` (``A: [ldim, mdim]``, ``B: [mdim, rdim]``), the SVD's
+``U`` columns live in ``A``'s input space (``ldim``) and ``V`` columns live in
+``B``'s output space (``rdim``): feeding ``x = U[:, i]`` through the map gives
+``x @ (A @ B) == S[i] * V[:, i]``, never the reverse. For OV (``A = W_V_h``,
+``B = W_O_h``), ``U``'s columns are therefore the value-computation *input*
+directions this head reads from the residual stream, and ``V``'s columns are the
+*output* directions it writes back into the residual stream - the ones to
+project through ``W_U`` for a vocab or logit readout. For QK (``A = W_Q_h``,
+``B = W_K_h.transpose(-1, -2)``), both ``U`` (destination/query-read) and ``V``
+(source/key-read) are read directions; QK only ever produces a scalar attention
+score, so neither is a write direction. The historical ``.Vh`` alias returns the
+same tensor as ``.V`` and is never used here.
 
 Adjacent singular values closer than a relative gap ``eps`` leave their singular
 directions defined only up to a rotation, so the result carries a per-direction
@@ -43,7 +52,7 @@ Example::
 """
 
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Sequence, Tuple
+from typing import Callable, List, Literal, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Float
@@ -104,10 +113,15 @@ class HeadSVD:
         which: Which map this decomposes, ``"QK"`` or ``"OV"``.
         layer: Layer of the decomposed head.
         head: Head index within the layer.
-        U: Left singular vectors, ``[d_model, rank]`` (column i is output direction i).
+        U: Left singular vectors, ``[d_model, rank]``: column i is the map's input
+            direction i (for OV, the residual-stream direction this head's value
+            computation reads from; for QK, the destination/query-read direction).
         S: Singular values, ``[rank]``, sorted descending.
-        V: Right singular vectors, ``[d_model, rank]`` (column i is input direction i).
-            The reconstruction is ``U @ S.diag() @ V.transpose(-2, -1)``.
+        V: Right singular vectors, ``[d_model, rank]``: column i is the map's output
+            direction i for OV (the residual-stream direction this head writes into,
+            the one to project through ``W_U``), or the source/key-read direction for
+            QK (QK produces no write direction). The reconstruction is
+            ``U @ S.diag() @ V.transpose(-2, -1)``.
         rank_report: Per-direction :class:`RankReportRow` list, aligned with the
             columns of ``U``/``V``.
         eps: Relative gap below which adjacent directions share a block; every block
@@ -406,3 +420,359 @@ def decompose_head(
             W_V_h, W_O_h, which="OV", layer=layer, head=head, eps=eps, null_rtol=null_rtol
         )
     return HeadDecomposition(layer=layer, head=head, QK=qk, OV=ov)
+
+
+def _validate_bridge_compatibility(model) -> None:
+    """Reject a ``TransformerBridge`` whose ``W_U`` would give a silently wrong projection.
+
+    ``HookedTransformer`` always has the final LayerNorm folded into ``W_U``, so this
+    only fires for ``TransformerBridge``. Mirrors the compatibility-mode check other
+    unembedding-touching analysis tools already run, without any hybrid-architecture
+    restriction: projecting a rank-1 OV direction through ``W_U`` does not depend on
+    the block-layout assumptions that check exists for elsewhere.
+    """
+    # Lazy import - keeps the module importable without the bridge as a hard dependency.
+    from transformer_lens.model_bridge import TransformerBridge
+
+    if not isinstance(model, TransformerBridge):
+        return
+    if not getattr(model, "compatibility_mode", False):
+        raise ValueError(
+            "Projecting an OV direction through W_U on a TransformerBridge requires "
+            "compatibility mode, so that LayerNorm weights are folded into W_U. Call "
+            "`model.enable_compatibility_mode()` after loading the bridge, then retry."
+        )
+
+
+def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tensor, "d_vocab k"]:
+    """Project the top-k OV output directions through the unembedding.
+
+    Requires ``head_svd.which == "OV"``: QK produces no write direction to project
+    (see the module docstring). On a ``TransformerBridge``, compatibility mode must
+    be enabled so ``W_U`` carries the folded final LayerNorm weights;
+    ``HookedTransformer`` always has this folding applied.
+
+    Does not call ``head_svd.require_isolated``: a degenerate direction's vocab
+    readout is still a well-defined projection, unlike a per-direction causal claim,
+    so it is not gated here. The contract that no direction is reported without a
+    passing causal patch is enforced by :func:`patch_along_directions`.
+
+    Args:
+        model: A ``TransformerBridge`` (with compatibility mode enabled) or a
+            ``HookedTransformer``; only its ``W_U`` is read.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        k: Number of top singular directions to project.
+
+    Returns:
+        ``W_U.T @ head_svd.V[:, :k]``, shape ``[d_vocab, k]``: column i is
+        direction i's projection through the unembedding.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, if ``k`` is not in
+            ``(0, rank]``, or if ``model`` is a ``TransformerBridge`` without
+            compatibility mode enabled.
+    """
+    if head_svd.which != "OV":
+        raise ValueError(f"vocab_readout requires an OV HeadSVD, got which={head_svd.which!r}")
+    rank = head_svd.V.shape[1]
+    if not 0 < k <= rank:
+        raise ValueError(f"k must be in (0, {rank}], got {k!r}")
+    _validate_bridge_compatibility(model)
+    return model.W_U.T @ head_svd.V[:, :k].float()
+
+
+@dataclass
+class LogitSignature:
+    """Rank-1-reconstruction logit effect for one OV direction, per requested token.
+
+    Attributes:
+        direction: Which ``HeadSVD`` column this reconstructs.
+        values: Signed logit contribution, aligned with the requested tokens.
+    """
+
+    direction: int
+    values: Float[torch.Tensor, "token"]
+
+
+def logit_signature(
+    model,
+    head_svd: HeadSVD,
+    direction: int,
+    tokens: Union[int, Sequence[int], torch.Tensor],
+) -> LogitSignature:
+    """Signed logit effect of one OV direction's rank-1 reconstruction on the given tokens.
+
+    Pure weight-space computation: reconstructs the head's OV output along a single
+    singular direction (``S[direction] * V[:, direction]``, never ``U`` - see the
+    module docstring) and projects it through ``W_U`` restricted to ``tokens``. Runs
+    no forward pass and builds no cache.
+
+    Args:
+        model: A ``TransformerBridge`` (with compatibility mode enabled) or a
+            ``HookedTransformer``; only its ``W_U`` is read.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        direction: Column index of the singular direction to reconstruct.
+        tokens: Token id(s) to read the logit effect for.
+
+    Returns:
+        A :class:`LogitSignature` with one value per requested token.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, or if ``model`` is a
+            ``TransformerBridge`` without compatibility mode enabled.
+        DegenerateDirectionError: If ``direction`` is not attributable alone (see
+            :meth:`HeadSVD.require_isolated`).
+    """
+    if head_svd.which != "OV":
+        raise ValueError(f"logit_signature requires an OV HeadSVD, got which={head_svd.which!r}")
+    head_svd.require_isolated(direction)
+    _validate_bridge_compatibility(model)
+    token_ids = torch.as_tensor(tokens, dtype=torch.long).reshape(-1)
+    reconstruction = (head_svd.S[direction] * head_svd.V[:, direction]).float()
+    values = reconstruction @ model.W_U[:, token_ids]
+    return LogitSignature(direction=direction, values=values)
+
+
+@dataclass
+class ActivationProjection:
+    """Per-position coefficients of a head's actual output in its OV output basis.
+
+    Attributes:
+        head_svd: The OV decomposition this was projected against.
+        coefficients: ``[pos, rank]``; ``coefficients[:, i]`` is the signed amount of
+            singular direction ``i`` (``head_svd.V[:, i]``) present in the head's actual
+            output at each position. Summing ``coefficients[:, i] * head_svd.V[:, i]``
+            over ``i`` reconstructs the head's real per-position output to numerical
+            precision, since ``V``'s columns are orthonormal and this projects onto the
+            exact basis the head writes in.
+        str_tokens: Tokenized prompt, aligned with the position axis, for display.
+    """
+
+    head_svd: HeadSVD
+    coefficients: Float[torch.Tensor, "pos rank"]
+    str_tokens: List[str]
+
+
+def project_activations(
+    model, head_svd: HeadSVD, prompt: Union[str, torch.Tensor]
+) -> ActivationProjection:
+    """Project a head's actual per-position output onto its OV singular directions.
+
+    Requires ``head_svd.which == "OV"``: this projects onto the write/output basis
+    ``V``, and QK has no such vector (see the module docstring). Runs a real forward
+    pass with ``use_attn_result`` enabled to read the per-head output
+    (``hook_result``), then projects it onto ``head_svd.V``. Restores the model's
+    prior ``use_attn_result`` setting afterward, since flipping that config flag as a
+    side effect of a read-only analysis call would surprise a caller who already had
+    hooks or a cache built around its prior state.
+
+    Args:
+        model: A ``TransformerBridge`` or ``HookedTransformer``.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        prompt: A single prompt (not a batch): a string or a ``[1, pos]`` token tensor.
+
+    Returns:
+        An :class:`ActivationProjection` with the per-position coefficients.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, or if ``prompt`` is not a single
+            (batch-size-1) prompt.
+    """
+    if head_svd.which != "OV":
+        raise ValueError(
+            f"project_activations requires an OV HeadSVD, got which={head_svd.which!r}"
+        )
+    previous = getattr(model.cfg, "use_attn_result", False)
+    model.set_use_attn_result(True)
+    try:
+        _, cache = model.run_with_cache(prompt)
+    finally:
+        model.set_use_attn_result(previous)
+    result = cache[("result", head_svd.layer, "attn")][..., head_svd.head, :]
+    if result.shape[0] != 1:
+        raise ValueError(
+            f"project_activations requires a single prompt, got batch={result.shape[0]}"
+        )
+    result = result.squeeze(0).to(head_svd.V.dtype)
+    coefficients = result @ head_svd.V
+    str_tokens = model.to_str_tokens(prompt)
+    return ActivationProjection(head_svd=head_svd, coefficients=coefficients, str_tokens=str_tokens)
+
+
+def _validate_retained_blocks(head_svd: HeadSVD, retained: Sequence[int]) -> None:
+    """Raise if ``retained`` splits a degenerate block instead of keeping it whole or empty.
+
+    A degenerate block's members are defined only up to a rotation (or, for a null
+    block, arbitrary null-space vectors), so attributing a causal effect to part of the
+    block while dropping the rest would let a caller route around the guard
+    :meth:`HeadSVD.require_isolated` already enforces per direction.
+    """
+    retained_set = set(retained)
+    for block in head_svd.degenerate_blocks():
+        block_set = set(block)
+        overlap = retained_set & block_set
+        if overlap and overlap != block_set:
+            raise DegenerateDirectionError(
+                f"retained directions {sorted(overlap)} split block {sorted(block_set)} of "
+                f"the {head_svd.which} SVD of head L{head_svd.layer}H{head_svd.head}, whose "
+                f"members are not separated by a relative gap of eps={head_svd.eps:g} or are "
+                f"jointly null. Keep or ablate the whole block, not part of it."
+            )
+
+
+def _resolve_retained(
+    head_svd: HeadSVD, keep: Optional[Sequence[int]], ablate: Optional[Sequence[int]]
+) -> List[int]:
+    """Resolve ``keep``/``ablate`` to the sorted list of retained direction indices.
+
+    Exactly one of ``keep``/``ablate`` must be given; ``ablate``'s complement over the
+    map's full rank becomes the retained set. Raises :class:`DegenerateDirectionError`
+    if the result would split a degenerate block (see :func:`_validate_retained_blocks`).
+    """
+    if (keep is None) == (ablate is None):
+        raise ValueError("patch_along_directions requires exactly one of keep or ablate")
+    rank = head_svd.V.shape[1]
+    if keep is not None:
+        retained = sorted(set(keep))
+    else:
+        assert ablate is not None
+        ablate_set = set(ablate)
+        retained = [i for i in range(rank) if i not in ablate_set]
+    _validate_retained_blocks(head_svd, retained)
+    return retained
+
+
+def _make_subspace_hook(head: int, projector: Float[torch.Tensor, "d_model d_model"]):
+    """Build a ``hook_result`` hook that reconstructs one head's output onto ``span(projector)``.
+
+    Leaves every other head's slice of the ``[batch, pos, head_index, d_model]`` tensor
+    untouched. Clones before mutating so the hook never writes into the activation the
+    forward pass itself is still using.
+    """
+
+    def hook_fn(activation: torch.Tensor, hook) -> torch.Tensor:
+        activation = activation.clone()
+        activation[:, :, head, :] = activation[:, :, head, :] @ projector.to(activation.dtype)
+        return activation
+
+    return hook_fn
+
+
+@dataclass
+class PatchResult:
+    """Result of causally patching a head's output onto a chosen OV singular subspace.
+
+    Attributes:
+        head_svd: The OV decomposition patched against.
+        retained: Direction indices whose span the head's output was reconstructed
+            onto; the complement was zeroed.
+        original_metric: Metric value on the unmodified prompt.
+        patched_metric: Metric value after the subspace reconstruction.
+        delta_metric: ``patched_metric - original_metric``.
+        baseline_delta_metric: ``delta_metric`` from reconstructing onto a random
+            subspace of the same rank as ``retained``, instead of the requested one.
+        gated: True only if ``abs(delta_metric)`` exceeds ``abs(baseline_delta_metric)``
+            (or an explicit threshold, if one was passed): a subfunction is causally
+            load-bearing only if it beats an equally-sized random subspace, not merely
+            "moves the metric at all".
+    """
+
+    head_svd: HeadSVD
+    retained: List[int]
+    original_metric: float
+    patched_metric: float
+    delta_metric: float
+    baseline_delta_metric: float
+    gated: bool
+
+
+@torch.no_grad()
+def patch_along_directions(
+    model,
+    head_svd: HeadSVD,
+    prompt: Union[str, torch.Tensor],
+    metric: Callable[[torch.Tensor], float],
+    *,
+    keep: Optional[Sequence[int]] = None,
+    ablate: Optional[Sequence[int]] = None,
+    threshold: Optional[float] = None,
+    rng: Optional[torch.Generator] = None,
+) -> PatchResult:
+    """Causally validate a claimed OV subfunction by reconstructing the head's output onto it.
+
+    Requires ``head_svd.which == "OV"``: this reconstructs the write/output basis
+    ``V``, and QK has no such vector (see the module docstring). Runs the prompt three
+    times with ``use_attn_result`` enabled: once unmodified, once with the head's
+    ``hook_result`` slice reconstructed onto ``span(head_svd.V[:, retained])``, and once
+    onto a random orthonormal subspace of the same width, so a moved metric can be
+    compared against the effect of an equally-sized but arbitrary subspace instead of
+    being read as significant on its own. Restores the model's prior ``use_attn_result``
+    setting afterward.
+
+    Args:
+        model: A ``TransformerBridge`` or ``HookedTransformer``.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        prompt: A single prompt: a string or a ``[1, pos]`` token tensor.
+        metric: A function from the model's logits to a scalar.
+        keep: Direction indices to retain; the rest are zeroed. Exactly one of
+            ``keep``/``ablate`` must be given.
+        ablate: Direction indices to zero; the rest are retained.
+        threshold: Explicit gate threshold. Defaults to ``None``, which uses
+            ``abs(baseline_delta_metric)`` instead.
+        rng: Optional generator for the random baseline subspace, for reproducibility.
+
+    Returns:
+        A :class:`PatchResult` describing the patched, baseline, and original metrics.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, or if ``keep``/``ablate`` are both
+            given or both omitted.
+        DegenerateDirectionError: If the retained directions split a degenerate block
+            (see :func:`_validate_retained_blocks`).
+    """
+    if head_svd.which != "OV":
+        raise ValueError(
+            f"patch_along_directions requires an OV HeadSVD, got which={head_svd.which!r}"
+        )
+    retained = _resolve_retained(head_svd, keep, ablate)
+
+    V = head_svd.V
+    kept_projector = V[:, retained] @ V[:, retained].transpose(-2, -1)
+
+    d_model = V.shape[0]
+    width = len(retained)
+    random_input = torch.randn(d_model, width, generator=rng, dtype=V.dtype)
+    random_basis, _ = torch.linalg.qr(random_input)
+    baseline_projector = random_basis @ random_basis.transpose(-2, -1)
+
+    hook_name = f"blocks.{head_svd.layer}.attn.hook_result"
+    previous = getattr(model.cfg, "use_attn_result", False)
+    model.set_use_attn_result(True)
+    try:
+        original_metric = float(metric(model(prompt)))
+        patched_logits = model.run_with_hooks(
+            prompt, fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, kept_projector))]
+        )
+        patched_metric = float(metric(patched_logits))
+        baseline_logits = model.run_with_hooks(
+            prompt,
+            fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, baseline_projector))],
+        )
+        baseline_metric = float(metric(baseline_logits))
+    finally:
+        model.set_use_attn_result(previous)
+
+    delta_metric = patched_metric - original_metric
+    baseline_delta_metric = baseline_metric - original_metric
+    gate_threshold = abs(baseline_delta_metric) if threshold is None else threshold
+    gated = abs(delta_metric) > gate_threshold
+
+    return PatchResult(
+        head_svd=head_svd,
+        retained=retained,
+        original_metric=original_metric,
+        patched_metric=patched_metric,
+        delta_metric=delta_metric,
+        baseline_delta_metric=baseline_delta_metric,
+        gated=gated,
+    )

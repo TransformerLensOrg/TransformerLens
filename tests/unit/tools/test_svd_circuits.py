@@ -1,22 +1,33 @@
 """Unit tests for per-head QK/OV singular-vector decomposition.
 
-Model-free: they build synthetic weight tensors and exercise the factored SVD and the
-degeneracy guard directly, so no model is loaded and no pretrained weights are downloaded.
+Mostly model-free: most tests build synthetic weight tensors and exercise the factored SVD
+and the degeneracy guard directly, so no model is loaded and no pretrained weights are
+downloaded. A few tests instantiate a tiny, randomly-initialized TransformerBridge (CPU-only,
+no Hub access) where a real per-head decomposition is needed for a cross-check.
 """
 
+import math
 import warnings
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 import torch
 
 from transformer_lens.tools.analysis.svd_circuits import (
+    ActivationProjection,
     DegenerateDirectionError,
     HeadSVD,
+    LogitSignature,
+    PatchResult,
     RankReportRow,
     _degeneracy_blocks,
     _factored_head_svd,
     decompose_head,
+    logit_signature,
+    patch_along_directions,
+    project_activations,
+    vocab_readout,
 )
 
 D_MODEL, D_HEAD = 12, 4
@@ -470,3 +481,309 @@ def test_decompose_head_rejects_bare_string_which():
     model = _StubModel(n_heads=2, n_kv_heads=2)
     with pytest.raises(ValueError, match="sequence"):
         decompose_head(model, layer=0, head=0, which="QK")
+
+
+# --------------------------------------------------------------------------- #
+# OV output-direction convention (cross-check against SVDInterpreter)
+# --------------------------------------------------------------------------- #
+@pytest.fixture(scope="module")
+def tiny_bridge():
+    """Tiny GPT-2 bridge: MHA (n_heads == n_kv_heads), CPU-only, no Hub access."""
+    from transformers import GPT2Config, GPT2LMHeadModel
+
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.supported_architectures.gpt2 import (
+        GPT2ArchitectureAdapter,
+    )
+
+    torch.manual_seed(0)
+    hf_model = GPT2LMHeadModel(
+        GPT2Config(n_embd=32, n_layer=1, n_head=2, vocab_size=64, n_positions=32)
+    ).eval()
+    cfg = TransformerBridgeConfig(
+        d_model=32,
+        d_head=16,
+        n_heads=2,
+        n_layers=1,
+        n_ctx=32,
+        d_vocab=64,
+        architecture="GPT2LMHeadModel",
+    )
+    tokenizer = MagicMock()
+    # A real tokenizer isn't available (no-download fixture), but to_str_tokens's return
+    # value is jaxtyped-checked as List[str], so batch_decode must return actual strings.
+    tokenizer.batch_decode = lambda tokens_list, **kwargs: [str(ids[0]) for ids in tokens_list]
+    return TransformerBridge(hf_model, GPT2ArchitectureAdapter(cfg), tokenizer=tokenizer)
+
+
+def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
+    """OV's write/vocab-readout direction is ``.V``, not ``.U`` - checked against the
+    already-shipped ``SVDInterpreter``, not just internal self-consistency, so the
+    assertion cannot pass under either U/V labeling by construction."""
+    from transformer_lens.SVDInterpreter import SVDInterpreter
+
+    layer, head = 0, 0
+    decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
+    ov = decomposition.OV
+    W_U = tiny_bridge.W_U
+
+    interpreter = SVDInterpreter(tiny_bridge)
+    reference = interpreter.get_singular_vectors("OV", layer, head_index=head, num_vectors=1)
+
+    projected_via_V = ov.V[:, 0] @ W_U
+    assert torch.allclose(projected_via_V, reference[:, 0, 0], atol=1e-4) or torch.allclose(
+        projected_via_V, -reference[:, 0, 0], atol=1e-4
+    )
+
+    projected_via_U = ov.U[:, 0] @ W_U
+    assert not torch.allclose(projected_via_U, reference[:, 0, 0], atol=1e-2)
+    assert not torch.allclose(projected_via_U, -reference[:, 0, 0], atol=1e-2)
+
+
+# --------------------------------------------------------------------------- #
+# vocab_readout / logit_signature (OV output-direction readout)
+# --------------------------------------------------------------------------- #
+def test_vocab_readout_shape_and_which_guard():
+    """vocab_readout returns [d_vocab, k] for OV, and rejects QK input and out-of-range k."""
+    ov = _factored_head_svd(*_random_ov(), which="OV", layer=0, head=0, eps=1e-2)
+    vocab_size = 20
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, vocab_size))
+
+    result = vocab_readout(model, ov, k=3)
+    assert result.shape == (vocab_size, 3)
+
+    qk = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="QK", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="OV"):
+        vocab_readout(model, qk, k=1)
+
+    with pytest.raises(ValueError, match="k must be"):
+        vocab_readout(model, ov, k=D_HEAD + 1)
+
+
+def test_vocab_readout_raises_without_compatibility_mode(tiny_bridge):
+    """A TransformerBridge without compatibility mode enabled refuses to project through W_U."""
+    decomposition = decompose_head(tiny_bridge, layer=0, head=0, which=("OV",))
+    with pytest.raises(ValueError, match="enable_compatibility_mode"):
+        vocab_readout(tiny_bridge, decomposition.OV)
+
+
+def test_logit_signature_matches_manual_projection():
+    """logit_signature's reconstruction matches a hand-computed S[i] * V[:, i] projection."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    vocab_size = 16
+    W_U = torch.randn(D_MODEL, vocab_size)
+    model = SimpleNamespace(W_U=W_U)
+    token_ids = torch.tensor([1, 5, 9])
+
+    result = logit_signature(model, ov, direction=0, tokens=token_ids)
+    assert isinstance(result, LogitSignature)
+    expected = (ov.S[0] * ov.V[:, 0]) @ W_U[:, token_ids]
+    assert torch.allclose(result.values, expected, atol=1e-5)
+    assert result.direction == 0
+
+
+def test_logit_signature_raises_on_degenerate_direction():
+    """A rotation-ambiguous direction's 'signature' is not attributable, so this must raise."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([5.0, 3.0, 3.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, 8))
+    with pytest.raises(DegenerateDirectionError):
+        logit_signature(model, ov, direction=1, tokens=torch.tensor([0]))
+
+
+# --------------------------------------------------------------------------- #
+# project_activations (per-position firing coefficients in the OV output basis)
+# --------------------------------------------------------------------------- #
+def test_project_activations_which_guard():
+    """QK has no write direction to project onto, so a QK HeadSVD is refused."""
+    qk = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="QK", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="OV"):
+        project_activations(SimpleNamespace(), qk, "hello world")
+
+
+def test_project_activations_reconstructs_head_output(tiny_bridge):
+    """Coefficients recovered against V reconstruct the actual cached hook_result slice."""
+    layer, head = 0, 0
+    decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
+    # A raw token tensor, not a string: tiny_bridge's tokenizer is a MagicMock and cannot
+    # tokenize text, but a token-id tensor bypasses that path entirely.
+    prompt = torch.tensor([[5, 63, 7, 9]])
+
+    projection = project_activations(tiny_bridge, decomposition.OV, prompt)
+    assert isinstance(projection, ActivationProjection)
+    assert projection.head_svd is decomposition.OV
+
+    previous = tiny_bridge.cfg.use_attn_result
+    tiny_bridge.set_use_attn_result(True)
+    try:
+        _, cache = tiny_bridge.run_with_cache(prompt)
+    finally:
+        tiny_bridge.set_use_attn_result(previous)
+    expected = cache[("result", layer, "attn")][0, :, head, :]
+
+    reconstructed = projection.coefficients @ decomposition.OV.V.transpose(-2, -1)
+    assert torch.allclose(reconstructed, expected, atol=1e-4)
+    assert projection.str_tokens == tiny_bridge.to_str_tokens(prompt)
+
+
+def test_project_activations_restores_use_attn_result(tiny_bridge):
+    """use_attn_result is restored to its prior value regardless of what it started as."""
+    decomposition = decompose_head(tiny_bridge, 0, 0, which=("OV",))
+    original = tiny_bridge.cfg.use_attn_result
+    try:
+        for initial in (False, True):
+            tiny_bridge.set_use_attn_result(initial)
+            project_activations(tiny_bridge, decomposition.OV, torch.tensor([[5, 63, 7, 9]]))
+            assert tiny_bridge.cfg.use_attn_result == initial
+    finally:
+        tiny_bridge.set_use_attn_result(original)
+
+
+# --------------------------------------------------------------------------- #
+# patch_along_directions (mandatory causal gate)
+# --------------------------------------------------------------------------- #
+class _PatchStubModel:
+    """Model-free stand-in for patch_along_directions' run_with_hooks/metric protocol.
+
+    Exposes a single fixed per-head "hook_result" activation that a hook can intercept
+    exactly as ``run_with_hooks`` would present it (the hook receives the activation and
+    a hook object, and returns the replacement), then reduces it to a scalar the same
+    way for the unmodified, patched, and baseline calls, so the block guard and gating
+    arithmetic can be tested without a real forward pass.
+    """
+
+    def __init__(self, d_model, n_heads, pos=3, seed=0):
+        g = torch.Generator().manual_seed(seed)
+        self.cfg = SimpleNamespace(use_attn_result=False)
+        self._result = torch.randn(1, pos, n_heads, d_model, generator=g)
+        self._readout = torch.randn(d_model, generator=g)
+
+    def set_use_attn_result(self, value):
+        self.cfg.use_attn_result = value
+
+    def _logits(self, result):
+        return result.sum(dim=2) @ self._readout  # [batch, pos]
+
+    def __call__(self, prompt):
+        return self._logits(self._result)
+
+    def run_with_hooks(self, prompt, fwd_hooks):
+        activation = self._result
+        for name, hook_fn in fwd_hooks:
+            activation = hook_fn(activation, hook=SimpleNamespace(name=name))
+        return self._logits(activation)
+
+
+def test_patch_along_directions_which_guard():
+    """QK has no write direction to reconstruct onto, so a QK HeadSVD is refused."""
+    qk = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="QK", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="OV"):
+        patch_along_directions(SimpleNamespace(), qk, "prompt", lambda logits: 0.0, keep=[0])
+
+
+def test_patch_along_directions_requires_keep_xor_ablate():
+    """Passing both keep and ablate, or neither, is refused before any model access."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    metric = lambda logits: 0.0
+    with pytest.raises(ValueError, match="exactly one"):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", metric, keep=[0], ablate=[1])
+    with pytest.raises(ValueError, match="exactly one"):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", metric)
+
+
+def test_patch_along_directions_rejects_partial_degenerate_block():
+    """keep must take a degenerate block whole or not at all; a partial slice is refused,
+    and the whole block plus an isolated direction is accepted."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([5.0, 3.0, 3.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    metric = lambda logits: 0.0
+    with pytest.raises(DegenerateDirectionError):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", metric, keep=[0, 1])
+
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    result = patch_along_directions(
+        stub, ov, "prompt", lambda logits: float(logits.sum()), keep=[0, 1, 2]
+    )
+    assert isinstance(result, PatchResult)
+    assert result.retained == [0, 1, 2]
+
+
+def test_patch_along_directions_reports_delta_and_restores_use_attn_result():
+    """delta_metric is patched minus original metric, gated follows the documented
+    comparison against baseline_delta_metric, and use_attn_result is restored after."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    metric = lambda logits: float(logits.sum())
+    for initial in (False, True):
+        stub.set_use_attn_result(initial)
+        result = patch_along_directions(
+            stub, ov, "prompt", metric, keep=[0], rng=torch.Generator().manual_seed(0)
+        )
+        assert result.delta_metric == pytest.approx(result.patched_metric - result.original_metric)
+        assert math.isfinite(result.baseline_delta_metric)
+        expected_gated = abs(result.delta_metric) > abs(result.baseline_delta_metric)
+        assert result.gated == expected_gated
+        assert stub.cfg.use_attn_result == initial
+
+
+def test_patch_along_directions_discriminates_causal_direction(tiny_bridge):
+    """Ablating the head's strongest OV direction should move a metric aligned with that
+    direction materially more than ablating its weakest, least load-bearing direction."""
+    layer, head = 0, 0
+    decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
+    ov = decomposition.OV
+    strong = ov.rank_report[0].idx
+    weak = ov.rank_report[-1].idx
+    assert not ov.is_degenerate(strong)
+    assert not ov.is_degenerate(weak)
+
+    target_token = int((ov.V[:, strong] @ tiny_bridge.W_U).argmax())
+    prompt = torch.tensor([[5, 63, 7, 9]])
+
+    def metric(logits):
+        return logits[0, -1, target_token].item()
+
+    strong_result = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, ablate=[strong], rng=torch.Generator().manual_seed(0)
+    )
+    weak_result = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, ablate=[weak], rng=torch.Generator().manual_seed(0)
+    )
+    assert isinstance(strong_result, PatchResult)
+    assert math.isfinite(strong_result.baseline_delta_metric)
+    assert math.isfinite(weak_result.baseline_delta_metric)
+    assert abs(strong_result.delta_metric) > abs(weak_result.delta_metric)
+
+
+def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
+    """use_attn_result is restored to its prior value regardless of what it started as."""
+    decomposition = decompose_head(tiny_bridge, 0, 0, which=("OV",))
+    ov = decomposition.OV
+    metric = lambda logits: float(logits.sum())
+    original = tiny_bridge.cfg.use_attn_result
+    try:
+        for initial in (False, True):
+            tiny_bridge.set_use_attn_result(initial)
+            patch_along_directions(
+                tiny_bridge, ov, torch.tensor([[5, 63, 7, 9]]), metric, keep=[ov.rank_report[0].idx]
+            )
+            assert tiny_bridge.cfg.use_attn_result == initial
+    finally:
+        tiny_bridge.set_use_attn_result(original)
