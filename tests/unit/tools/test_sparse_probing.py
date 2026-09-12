@@ -6,11 +6,25 @@ import pytest
 import torch
 from beartype.roar import BeartypeCallHintParamViolation
 
+from transformer_lens.tools.analysis import (
+    fit_sparse_probe as exported_fit_sparse_probe,
+)
+from transformer_lens.tools.analysis import (
+    sweep_sparse_probe as exported_sweep_sparse_probe,
+)
 from transformer_lens.tools.analysis.sparse_probing import (
+    SparseProbeControl,
     SparseProbeResult,
+    SparseProbeSweep,
     _binary_metrics,
     fit_sparse_probe,
+    sweep_sparse_probe,
 )
+
+
+def test_public_analysis_exports():
+    assert exported_fit_sparse_probe is fit_sparse_probe
+    assert exported_sweep_sparse_probe is sweep_sparse_probe
 
 
 def _planted_data(
@@ -113,8 +127,10 @@ def test_unweighted_classification_policy_is_explicit():
     features, labels = _planted_data(n_examples=100, n_features=6)
 
     result = fit_sparse_probe(features, labels, k=2, class_weight=None, seed=2)
+    sweep = sweep_sparse_probe(features, labels, ks=[1], class_weight=None, seed=2)
 
     assert result.class_weight is None
+    assert sweep.results[0].class_weight is None
 
 
 def test_standardization_is_train_only_and_heldout_values_do_not_change_selection():
@@ -318,3 +334,134 @@ def test_rejects_invalid_inputs(features, labels, kwargs, message):
 def test_runtime_typecheck_rejects_invalid_tensor_contracts(features, labels):
     with pytest.raises(BeartypeCallHintParamViolation):
         fit_sparse_probe(features, labels, k=1)
+
+
+def test_sweep_reuses_one_split_and_has_nested_selected_supports():
+    features, labels = _planted_data(n_examples=180, n_features=10)
+
+    sweep = sweep_sparse_probe(features, labels, ks=[1, 2, 4], seed=23)
+    independent = fit_sparse_probe(features, labels, k=2, seed=23)
+
+    assert isinstance(sweep, SparseProbeSweep)
+    assert sweep.ks == (1, 2, 4)
+    for result in sweep.results:
+        assert torch.equal(result.train_indices, sweep.results[0].train_indices)
+        assert torch.equal(result.test_indices, sweep.results[0].test_indices)
+    assert torch.equal(sweep.results[0].selected_features, sweep.results[1].selected_features[:1])
+    assert torch.equal(sweep.results[1].selected_features, sweep.results[2].selected_features[:2])
+    assert torch.equal(sweep.results[1].selected_features, independent.selected_features)
+    assert sweep.results[1].metrics == independent.metrics
+
+
+def test_disabled_controls_return_empty_aligned_results():
+    features, labels = _planted_data(n_examples=100, n_features=8)
+
+    sweep = sweep_sparse_probe(features, labels, ks=[1, 3], seed=1)
+
+    for k, random_control, shuffle_control in zip(
+        sweep.ks,
+        sweep.random_coordinate_controls,
+        sweep.label_shuffle_controls,
+        strict=True,
+    ):
+        assert isinstance(random_control, SparseProbeControl)
+        assert random_control.supports.shape == (0, k)
+        assert shuffle_control.supports.shape == (0, k)
+        for metric_values in (
+            random_control.accuracy,
+            random_control.precision,
+            random_control.recall,
+            random_control.f1,
+            shuffle_control.accuracy,
+            shuffle_control.precision,
+            shuffle_control.recall,
+            shuffle_control.f1,
+        ):
+            assert metric_values.shape == (0,)
+            assert metric_values.dtype == torch.float64
+
+
+def test_controls_are_deterministic_use_unique_supports_and_do_not_touch_global_rng():
+    features, labels = _planted_data(n_examples=140, n_features=12)
+    torch.manual_seed(919)
+    state_before = torch.random.get_rng_state()
+
+    first = sweep_sparse_probe(
+        features,
+        labels,
+        ks=[2],
+        n_random_subsets=4,
+        n_label_shuffles=4,
+        seed=5,
+    )
+    second = sweep_sparse_probe(
+        features,
+        labels,
+        ks=[2],
+        n_random_subsets=4,
+        n_label_shuffles=4,
+        seed=5,
+    )
+
+    assert torch.equal(torch.random.get_rng_state(), state_before)
+    for left, right in (
+        (first.random_coordinate_controls[0], second.random_coordinate_controls[0]),
+        (first.label_shuffle_controls[0], second.label_shuffle_controls[0]),
+    ):
+        assert torch.equal(left.supports, right.supports)
+        assert torch.equal(left.accuracy, right.accuracy)
+        assert torch.equal(left.precision, right.precision)
+        assert torch.equal(left.recall, right.recall)
+        assert torch.equal(left.f1, right.f1)
+        for support in left.supports:
+            assert torch.unique(support).numel() == 2
+
+
+def test_controls_remain_below_a_strong_planted_feature():
+    features, labels = _planted_data(n_examples=200, n_features=32, seed=6)
+
+    sweep = sweep_sparse_probe(
+        features,
+        labels,
+        ks=[1],
+        n_random_subsets=8,
+        n_label_shuffles=8,
+        seed=18,
+    )
+
+    actual_f1 = sweep.results[0].metrics.f1
+    assert actual_f1 > 0.98
+    assert float(sweep.random_coordinate_controls[0].f1.median()) < actual_f1 - 0.2
+    assert float(sweep.label_shuffle_controls[0].f1.median()) < actual_f1 - 0.2
+
+
+def test_larger_k_improves_distributed_decodability_without_assigning_a_representation_label():
+    generator = torch.Generator().manual_seed(77)
+    labels = torch.arange(800) % 2
+    features = torch.randn(800, 20, generator=generator)
+    features[:, :4] += 0.55 * (2 * labels[:, None] - 1)
+    permutation = torch.randperm(800, generator=generator)
+
+    sweep = sweep_sparse_probe(features[permutation], labels[permutation], ks=[1, 4], seed=3)
+
+    assert sweep.results[1].metrics.f1 > sweep.results[0].metrics.f1 + 0.08
+    assert not hasattr(sweep, "representation_label")
+
+
+@pytest.mark.parametrize(
+    ("ks", "kwargs", "message"),
+    [
+        ([], {}, "ks must"),
+        ([1, 1], {}, "strictly increasing"),
+        ([2, 1], {}, "strictly increasing"),
+        ([1, 9], {}, "feature count"),
+        ([True], {}, "positive integers"),
+        ([1], {"n_random_subsets": -1}, "n_random_subsets"),
+        ([1], {"n_label_shuffles": -1}, "n_label_shuffles"),
+    ],
+)
+def test_sweep_rejects_invalid_grid_and_control_counts(ks, kwargs, message):
+    features, labels = _planted_data(n_examples=80, n_features=8)
+
+    with pytest.raises(ValueError, match=message):
+        sweep_sparse_probe(features, labels, ks=ks, **kwargs)

@@ -9,6 +9,7 @@ monosemanticity, or superposition.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -75,6 +76,28 @@ class SparseProbeResult:
     gradient_inf_norm: float
     iterations: int
     function_evaluations: int
+
+
+@dataclass(frozen=True)
+class SparseProbeControl:
+    """Raw held-out metric distributions for one control at one sparsity."""
+
+    supports: Int[torch.Tensor, "repeat selected_feature"]
+    accuracy: Float[torch.Tensor, "repeat"]
+    precision: Float[torch.Tensor, "repeat"]
+    recall: Float[torch.Tensor, "repeat"]
+    f1: Float[torch.Tensor, "repeat"]
+
+
+@dataclass(frozen=True)
+class SparseProbeSweep:
+    """Probe results and aligned controls over a strictly increasing k-grid."""
+
+    ks: tuple[int, ...]
+    results: tuple[SparseProbeResult, ...]
+    random_coordinate_controls: tuple[SparseProbeControl, ...]
+    label_shuffle_controls: tuple[SparseProbeControl, ...]
+    seed: int
 
 
 @dataclass(frozen=True)
@@ -455,6 +478,59 @@ def _fit_result(
     )
 
 
+def _fit_control(
+    validated: _ValidatedInputs,
+    train_indices: torch.Tensor,
+    test_indices: torch.Tensor,
+    selected_features: torch.Tensor,
+    train_labels: torch.Tensor,
+) -> SparseProbeMetrics:
+    train_features, test_features, _, _, _ = _selected_data(
+        validated.features,
+        selected_features,
+        train_indices,
+        test_indices,
+        validated.preprocess,
+    )
+    fit = _fit_logistic(
+        train_features,
+        train_labels,
+        class_weight=validated.class_weight,
+        l2_strength=validated.l2_strength,
+        max_iter=validated.max_iter,
+        gradient_tolerance=validated.gradient_tolerance,
+    )
+    test_labels = validated.canonical_labels[test_indices]
+    return _binary_metrics(test_features @ fit.coefficients + fit.intercept, test_labels)
+
+
+def _control_result(
+    supports: list[torch.Tensor],
+    metrics: list[SparseProbeMetrics],
+    k: int,
+) -> SparseProbeControl:
+    support_tensor = torch.stack(supports) if supports else torch.empty((0, k), dtype=torch.int64)
+
+    def metric_tensor(name: str) -> torch.Tensor:
+        return torch.tensor(
+            [float(getattr(metric, name)) for metric in metrics], dtype=torch.float64
+        )
+
+    return SparseProbeControl(
+        supports=support_tensor,
+        accuracy=metric_tensor("accuracy"),
+        precision=metric_tensor("precision"),
+        recall=metric_tensor("recall"),
+        f1=metric_tensor("f1"),
+    )
+
+
+def _nonnegative_integer(value: int, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative integer, got {value!r}")
+    return value
+
+
 def fit_sparse_probe(
     features: Float[torch.Tensor, "example feature"],
     labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
@@ -525,4 +601,141 @@ def fit_sparse_probe(
         test_indices,
         feature_scores,
         selected_features,
+    )
+
+
+def sweep_sparse_probe(
+    features: Float[torch.Tensor, "example feature"],
+    labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
+    *,
+    ks: Sequence[int],
+    test_fraction: int | float = 0.3,
+    positive_label: int | bool = 1,
+    preprocess: str = "none",
+    class_weight: str | None = "balanced",
+    l2_strength: int | float = 1e-2,
+    n_random_subsets: int = 0,
+    n_label_shuffles: int = 0,
+    seed: int = 0,
+    max_iter: int = 200,
+    gradient_tolerance: int | float = 1e-7,
+) -> SparseProbeSweep:
+    """Fit sparse probes and optional controls over one fixed train/test split.
+
+    ``ks`` must contain strictly increasing positive integers. Random-coordinate
+    controls sample supports without replacement. Label-shuffle controls permute
+    training labels, repeat selection and fitting, then evaluate against the
+    untouched held-out labels. Control arrays contain raw metrics and do not
+    represent automatic significance tests.
+
+    Args:
+        features: Finite float16/bfloat16/float32/float64 tensor shaped
+            ``[example, feature]``.
+        labels: Boolean or integer binary labels shaped ``[example]``.
+        ks: Strictly increasing unique sparsity levels.
+        test_fraction: Requested held-out fraction within each class.
+        positive_label: Label defining the positive class and score sign.
+        preprocess: ``"none"`` or train-only ``"standardize"``.
+        class_weight: ``"balanced"`` or ``None``, shared by every fit.
+        l2_strength: Positive coefficient penalty shared by every fit.
+        n_random_subsets: Random-coordinate control fits per sparsity level.
+        n_label_shuffles: Shuffled-training-label control fits per sparsity level.
+        seed: Local CPU-generator seed for splitting and controls.
+        max_iter: Maximum LBFGS iterations per fit.
+        gradient_tolerance: Required final objective-gradient infinity norm.
+
+    Returns:
+        Main probe results plus aligned raw control distributions.
+
+    Raises:
+        ValueError: If the grid, controls, inputs, or options are invalid.
+        RuntimeError: If any main or control fit fails to converge.
+    """
+    if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence):
+        raise ValueError("ks must be a non-empty sequence of positive integers")
+    k_values = tuple(ks)
+    if not k_values:
+        raise ValueError("ks must be a non-empty sequence of positive integers")
+    if any(isinstance(k, bool) or not isinstance(k, int) or k < 1 for k in k_values):
+        raise ValueError("ks must contain positive integers")
+    if any(right <= left for left, right in zip(k_values, k_values[1:])):
+        raise ValueError("ks must be strictly increasing and unique")
+    random_count = _nonnegative_integer(n_random_subsets, "n_random_subsets")
+    shuffle_count = _nonnegative_integer(n_label_shuffles, "n_label_shuffles")
+    validated = _validate_inputs(
+        features,
+        labels,
+        k=k_values[-1],
+        test_fraction=test_fraction,
+        positive_label=positive_label,
+        preprocess=preprocess,
+        class_weight=class_weight,
+        l2_strength=l2_strength,
+        seed=seed,
+        max_iter=max_iter,
+        gradient_tolerance=gradient_tolerance,
+    )
+    generator = torch.Generator(device="cpu").manual_seed(validated.seed)
+    train_indices, test_indices = _stratified_split(
+        validated.canonical_labels, validated.test_fraction, generator
+    )
+    train_labels = validated.canonical_labels[train_indices]
+    feature_scores = _feature_scores(validated.features, train_labels, train_indices)
+    ranked_features = torch.argsort(feature_scores.abs(), descending=True, stable=True)
+    results = tuple(
+        _fit_result(
+            validated,
+            train_indices,
+            test_indices,
+            feature_scores,
+            ranked_features[:k],
+        )
+        for k in k_values
+    )
+
+    random_controls = []
+    shuffle_controls = []
+    feature_count = validated.features.shape[1]
+    for k in k_values:
+        random_supports = []
+        random_metrics = []
+        for _ in range(random_count):
+            support = torch.randperm(feature_count, generator=generator)[:k].sort().values
+            random_supports.append(support)
+            random_metrics.append(
+                _fit_control(
+                    validated,
+                    train_indices,
+                    test_indices,
+                    support,
+                    train_labels,
+                )
+            )
+        random_controls.append(_control_result(random_supports, random_metrics, k))
+
+        shuffle_supports = []
+        shuffle_metrics = []
+        for _ in range(shuffle_count):
+            permutation = torch.randperm(train_labels.numel(), generator=generator)
+            shuffled_labels = train_labels[permutation]
+            shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
+            support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:k]
+            shuffle_supports.append(support)
+            shuffle_metrics.append(
+                _fit_control(
+                    validated,
+                    train_indices,
+                    test_indices,
+                    support,
+                    shuffled_labels,
+                )
+            )
+        shuffle_controls.append(_control_result(shuffle_supports, shuffle_metrics, k))
+
+    return SparseProbeSweep(
+        ks=k_values,
+        results=results,
+        random_coordinate_controls=tuple(random_controls),
+        label_shuffle_controls=tuple(shuffle_controls),
+        seed=validated.seed,
     )
