@@ -1,11 +1,14 @@
 """Unit tests for per-head QK/OV singular-vector decomposition.
 
-Model-free: they build synthetic weight tensors and exercise the factored SVD and the
-degeneracy guard directly, so no model is loaded and no pretrained weights are downloaded.
+Mostly model-free: most tests build synthetic weight tensors and exercise the factored SVD
+and the degeneracy guard directly, so no model is loaded and no pretrained weights are
+downloaded. A few tests instantiate a tiny, randomly-initialized TransformerBridge (CPU-only,
+no Hub access) where a real per-head decomposition is needed for a cross-check.
 """
 
 import warnings
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -470,3 +473,59 @@ def test_decompose_head_rejects_bare_string_which():
     model = _StubModel(n_heads=2, n_kv_heads=2)
     with pytest.raises(ValueError, match="sequence"):
         decompose_head(model, layer=0, head=0, which="QK")
+
+
+# --------------------------------------------------------------------------- #
+# OV output-direction convention (cross-check against SVDInterpreter)
+# --------------------------------------------------------------------------- #
+@pytest.fixture(scope="module")
+def tiny_bridge():
+    """Tiny GPT-2 bridge: MHA (n_heads == n_kv_heads), CPU-only, no Hub access."""
+    from transformers import GPT2Config, GPT2LMHeadModel
+
+    from transformer_lens.config.transformer_bridge_config import (
+        TransformerBridgeConfig,
+    )
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.supported_architectures.gpt2 import (
+        GPT2ArchitectureAdapter,
+    )
+
+    torch.manual_seed(0)
+    hf_model = GPT2LMHeadModel(
+        GPT2Config(n_embd=32, n_layer=1, n_head=2, vocab_size=64, n_positions=32)
+    ).eval()
+    cfg = TransformerBridgeConfig(
+        d_model=32,
+        d_head=16,
+        n_heads=2,
+        n_layers=1,
+        n_ctx=32,
+        d_vocab=64,
+        architecture="GPT2LMHeadModel",
+    )
+    return TransformerBridge(hf_model, GPT2ArchitectureAdapter(cfg), tokenizer=MagicMock())
+
+
+def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
+    """OV's write/vocab-readout direction is ``.V``, not ``.U`` - checked against the
+    already-shipped ``SVDInterpreter``, not just internal self-consistency, so the
+    assertion cannot pass under either U/V labeling by construction."""
+    from transformer_lens.SVDInterpreter import SVDInterpreter
+
+    layer, head = 0, 0
+    decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
+    ov = decomposition.OV
+    W_U = tiny_bridge.W_U
+
+    interpreter = SVDInterpreter(tiny_bridge)
+    reference = interpreter.get_singular_vectors("OV", layer, head_index=head, num_vectors=1)
+
+    projected_via_V = ov.V[:, 0] @ W_U
+    assert torch.allclose(projected_via_V, reference[:, 0, 0], atol=1e-4) or torch.allclose(
+        projected_via_V, -reference[:, 0, 0], atol=1e-4
+    )
+
+    projected_via_U = ov.U[:, 0] @ W_U
+    assert not torch.allclose(projected_via_U, reference[:, 0, 0], atol=1e-2)
+    assert not torch.allclose(projected_via_U, -reference[:, 0, 0], atol=1e-2)

@@ -5,7 +5,7 @@ map ``W_Q W_K^T`` that scores source positions, and the output-value map
 ``W_V W_O`` that writes the attended value back into the residual stream. This
 tool takes the singular value decomposition of each map for one head and exposes
 the singular values (how much each direction matters) together with the left and
-right singular vectors (the output and input directions they act on).
+right singular vectors that span the map's input and output spaces.
 
 The decomposition is weight-space only: it reads ``W_Q``/``W_K``/``W_V``/``W_O``
 and needs no forward pass, no activation cache, and no compatibility mode. Each
@@ -14,9 +14,18 @@ map is kept factored through
 ``d_model x d_model`` product is never materialized and the returned rank is
 bounded by ``d_head``.
 
-Right singular vectors are read from :attr:`~transformer_lens.FactoredMatrix.FactoredMatrix.V`
-(its columns are the right singular vectors). The historical ``.Vh`` alias is
-deprecated and returns the same tensor, so it is never used here.
+For a factored map ``A @ B`` (``A: [ldim, mdim]``, ``B: [mdim, rdim]``), the SVD's
+``U`` columns live in ``A``'s input space (``ldim``) and ``V`` columns live in
+``B``'s output space (``rdim``): feeding ``x = U[:, i]`` through the map gives
+``x @ (A @ B) == S[i] * V[:, i]``, never the reverse. For OV (``A = W_V_h``,
+``B = W_O_h``), ``U``'s columns are therefore the value-computation *input*
+directions this head reads from the residual stream, and ``V``'s columns are the
+*output* directions it writes back into the residual stream - the ones to
+project through ``W_U`` for a vocab or logit readout. For QK (``A = W_Q_h``,
+``B = W_K_h.transpose(-1, -2)``), both ``U`` (destination/query-read) and ``V``
+(source/key-read) are read directions; QK only ever produces a scalar attention
+score, so neither is a write direction. The historical ``.Vh`` alias returns the
+same tensor as ``.V`` and is never used here.
 
 Adjacent singular values closer than a relative gap ``eps`` leave their singular
 directions defined only up to a rotation, so the result carries a per-direction
@@ -104,10 +113,15 @@ class HeadSVD:
         which: Which map this decomposes, ``"QK"`` or ``"OV"``.
         layer: Layer of the decomposed head.
         head: Head index within the layer.
-        U: Left singular vectors, ``[d_model, rank]`` (column i is output direction i).
+        U: Left singular vectors, ``[d_model, rank]``: column i is the map's input
+            direction i (for OV, the residual-stream direction this head's value
+            computation reads from; for QK, the destination/query-read direction).
         S: Singular values, ``[rank]``, sorted descending.
-        V: Right singular vectors, ``[d_model, rank]`` (column i is input direction i).
-            The reconstruction is ``U @ S.diag() @ V.transpose(-2, -1)``.
+        V: Right singular vectors, ``[d_model, rank]``: column i is the map's output
+            direction i for OV (the residual-stream direction this head writes into,
+            the one to project through ``W_U``), or the source/key-read direction for
+            QK (QK produces no write direction). The reconstruction is
+            ``U @ S.diag() @ V.transpose(-2, -1)``.
         rank_report: Per-direction :class:`RankReportRow` list, aligned with the
             columns of ``U``/``V``.
         eps: Relative gap below which adjacent directions share a block; every block
