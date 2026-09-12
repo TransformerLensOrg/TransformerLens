@@ -444,9 +444,7 @@ def _validate_bridge_compatibility(model) -> None:
         )
 
 
-def vocab_readout(
-    model, head_svd: HeadSVD, *, k: int = 10
-) -> Float[torch.Tensor, "d_vocab k"]:
+def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tensor, "d_vocab k"]:
     """Project the top-k OV output directions through the unembedding.
 
     Requires ``head_svd.which == "OV"``: QK produces no write direction to project
@@ -533,3 +531,69 @@ def logit_signature(
     reconstruction = (head_svd.S[direction] * head_svd.V[:, direction]).float()
     values = reconstruction @ model.W_U[:, token_ids]
     return LogitSignature(direction=direction, values=values)
+
+
+@dataclass
+class ActivationProjection:
+    """Per-position coefficients of a head's actual output in its OV output basis.
+
+    Attributes:
+        head_svd: The OV decomposition this was projected against.
+        coefficients: ``[pos, rank]``; ``coefficients[:, i]`` is the signed amount of
+            singular direction ``i`` (``head_svd.V[:, i]``) present in the head's actual
+            output at each position. Summing ``coefficients[:, i] * head_svd.V[:, i]``
+            over ``i`` reconstructs the head's real per-position output to numerical
+            precision, since ``V``'s columns are orthonormal and this projects onto the
+            exact basis the head writes in.
+        str_tokens: Tokenized prompt, aligned with the position axis, for display.
+    """
+
+    head_svd: HeadSVD
+    coefficients: Float[torch.Tensor, "pos rank"]
+    str_tokens: List[str]
+
+
+def project_activations(
+    model, head_svd: HeadSVD, prompt: Union[str, torch.Tensor]
+) -> ActivationProjection:
+    """Project a head's actual per-position output onto its OV singular directions.
+
+    Requires ``head_svd.which == "OV"``: this projects onto the write/output basis
+    ``V``, and QK has no such vector (see the module docstring). Runs a real forward
+    pass with ``use_attn_result`` enabled to read the per-head output
+    (``hook_result``), then projects it onto ``head_svd.V``. Restores the model's
+    prior ``use_attn_result`` setting afterward, since flipping that config flag as a
+    side effect of a read-only analysis call would surprise a caller who already had
+    hooks or a cache built around its prior state.
+
+    Args:
+        model: A ``TransformerBridge`` or ``HookedTransformer``.
+        head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
+        prompt: A single prompt (not a batch): a string or a ``[1, pos]`` token tensor.
+
+    Returns:
+        An :class:`ActivationProjection` with the per-position coefficients.
+
+    Raises:
+        ValueError: If ``head_svd.which != "OV"``, or if ``prompt`` is not a single
+            (batch-size-1) prompt.
+    """
+    if head_svd.which != "OV":
+        raise ValueError(
+            f"project_activations requires an OV HeadSVD, got which={head_svd.which!r}"
+        )
+    previous = getattr(model.cfg, "use_attn_result", False)
+    model.set_use_attn_result(True)
+    try:
+        _, cache = model.run_with_cache(prompt)
+    finally:
+        model.set_use_attn_result(previous)
+    result = cache[("result", head_svd.layer, "attn")][..., head_svd.head, :]
+    if result.shape[0] != 1:
+        raise ValueError(
+            f"project_activations requires a single prompt, got batch={result.shape[0]}"
+        )
+    result = result.squeeze(0).to(head_svd.V.dtype)
+    coefficients = result @ head_svd.V
+    str_tokens = model.to_str_tokens(prompt)
+    return ActivationProjection(head_svd=head_svd, coefficients=coefficients, str_tokens=str_tokens)

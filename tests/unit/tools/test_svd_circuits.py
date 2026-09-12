@@ -14,6 +14,7 @@ import pytest
 import torch
 
 from transformer_lens.tools.analysis.svd_circuits import (
+    ActivationProjection,
     DegenerateDirectionError,
     HeadSVD,
     LogitSignature,
@@ -22,6 +23,7 @@ from transformer_lens.tools.analysis.svd_circuits import (
     _factored_head_svd,
     decompose_head,
     logit_signature,
+    project_activations,
     vocab_readout,
 )
 
@@ -507,7 +509,11 @@ def tiny_bridge():
         d_vocab=64,
         architecture="GPT2LMHeadModel",
     )
-    return TransformerBridge(hf_model, GPT2ArchitectureAdapter(cfg), tokenizer=MagicMock())
+    tokenizer = MagicMock()
+    # A real tokenizer isn't available (no-download fixture), but to_str_tokens's return
+    # value is jaxtyped-checked as List[str], so batch_decode must return actual strings.
+    tokenizer.batch_decode = lambda tokens_list, **kwargs: [str(ids[0]) for ids in tokens_list]
+    return TransformerBridge(hf_model, GPT2ArchitectureAdapter(cfg), tokenizer=tokenizer)
 
 
 def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
@@ -588,3 +594,53 @@ def test_logit_signature_raises_on_degenerate_direction():
     model = SimpleNamespace(W_U=torch.randn(D_MODEL, 8))
     with pytest.raises(DegenerateDirectionError):
         logit_signature(model, ov, direction=1, tokens=torch.tensor([0]))
+
+
+# --------------------------------------------------------------------------- #
+# project_activations (per-position firing coefficients in the OV output basis)
+# --------------------------------------------------------------------------- #
+def test_project_activations_which_guard():
+    """QK has no write direction to project onto, so a QK HeadSVD is refused."""
+    qk = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="QK", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="OV"):
+        project_activations(SimpleNamespace(), qk, "hello world")
+
+
+def test_project_activations_reconstructs_head_output(tiny_bridge):
+    """Coefficients recovered against V reconstruct the actual cached hook_result slice."""
+    layer, head = 0, 0
+    decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
+    # A raw token tensor, not a string: tiny_bridge's tokenizer is a MagicMock and cannot
+    # tokenize text, but a token-id tensor bypasses that path entirely.
+    prompt = torch.tensor([[5, 63, 7, 9]])
+
+    projection = project_activations(tiny_bridge, decomposition.OV, prompt)
+    assert isinstance(projection, ActivationProjection)
+    assert projection.head_svd is decomposition.OV
+
+    previous = tiny_bridge.cfg.use_attn_result
+    tiny_bridge.set_use_attn_result(True)
+    try:
+        _, cache = tiny_bridge.run_with_cache(prompt)
+    finally:
+        tiny_bridge.set_use_attn_result(previous)
+    expected = cache[("result", layer, "attn")][0, :, head, :]
+
+    reconstructed = projection.coefficients @ decomposition.OV.V.transpose(-2, -1)
+    assert torch.allclose(reconstructed, expected, atol=1e-4)
+    assert projection.str_tokens == tiny_bridge.to_str_tokens(prompt)
+
+
+def test_project_activations_restores_use_attn_result(tiny_bridge):
+    """use_attn_result is restored to its prior value regardless of what it started as."""
+    decomposition = decompose_head(tiny_bridge, 0, 0, which=("OV",))
+    original = tiny_bridge.cfg.use_attn_result
+    try:
+        for initial in (False, True):
+            tiny_bridge.set_use_attn_result(initial)
+            project_activations(tiny_bridge, decomposition.OV, torch.tensor([[5, 63, 7, 9]]))
+            assert tiny_bridge.cfg.use_attn_result == initial
+    finally:
+        tiny_bridge.set_use_attn_result(original)
