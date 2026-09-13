@@ -41,7 +41,7 @@ from transformer_lens.tools.analysis._model_state import require_eval_mode
 MetricFn = Callable[[torch.Tensor], torch.Tensor]
 NamesFilter = Union[str, Sequence[str], Callable[[str], bool], None]
 
-NodeKind = Literal["embed", "attn_head_out", "mlp_out"]
+NodeKind = Literal["embed", "attn_head_out", "mlp_out", "q_input", "k_input", "v_input", "mlp_in"]
 Granularity = Literal["node", "edge"]
 
 
@@ -62,15 +62,23 @@ class GradientCache:
 
 @dataclass(frozen=True)
 class Node:
-    """A node in the residual-stream computational graph at node granularity.
+    """A node in the residual-stream computational graph.
 
     Nodes are the typed, hashable keys the attribution sweep scores. Each node
     is identified by ``(kind, layer, position, head)``; ``kind`` selects the node
-    family and constrains which of ``layer``/``head`` apply:
+    family and constrains which of ``layer``/``head`` apply. Three kinds are
+    *writers* -- they contribute a value into the residual stream:
 
     - ``"embed"``: the token embedding write. ``layer`` and ``head`` are ``None``.
     - ``"attn_head_out"``: one attention head's output. ``layer`` and ``head`` set.
     - ``"mlp_out"``: one layer's MLP output. ``layer`` set, ``head`` is ``None``.
+
+    Four kinds are *readers* -- they consume the residual stream as an edge's
+    destination (see :func:`enumerate_edges`):
+
+    - ``"q_input"`` / ``"k_input"`` / ``"v_input"``: one attention head's split
+      Q/K/V input. ``layer`` and ``head`` set.
+    - ``"mlp_in"``: one layer's MLP entry. ``layer`` set, ``head`` is ``None``.
 
     ``position`` is the sequence index the node is read at. The invariants above
     are enforced in ``__post_init__`` so a malformed key raises rather than
@@ -94,6 +102,14 @@ class Node:
                 raise ValueError("mlp_out nodes need a layer")
             if self.head is not None:
                 raise ValueError("mlp_out nodes take no head")
+        elif self.kind in ("q_input", "k_input", "v_input"):
+            if self.layer is None or self.head is None:
+                raise ValueError(f"{self.kind} nodes need both layer and head")
+        elif self.kind == "mlp_in":
+            if self.layer is None:
+                raise ValueError("mlp_in nodes need a layer")
+            if self.head is not None:
+                raise ValueError("mlp_in nodes take no head")
         else:
             raise ValueError(f"unknown node kind {self.kind!r}")
 
@@ -102,15 +118,21 @@ class Node:
         """The cache hook point this node reads from.
 
         Uses the standard ``TransformerBridge`` alias names (``hook_embed``,
-        ``blocks.{l}.attn.hook_z``, ``blocks.{l}.hook_mlp_out``); the per-head
-        ``attn_head_out`` node slices head ``self.head`` out of the shared
-        ``hook_z`` tensor.
+        ``blocks.{l}.attn.hook_z``, ``blocks.{l}.hook_mlp_out``,
+        ``blocks.{l}.attn.hook_q_input``/``hook_k_input``/``hook_v_input``,
+        ``blocks.{l}.hook_mlp_in``); the per-head nodes (``attn_head_out``,
+        ``q_input``, ``k_input``, ``v_input``) slice head ``self.head`` out of
+        the shared per-head tensor.
         """
         if self.kind == "embed":
             return "hook_embed"
         if self.kind == "attn_head_out":
             return f"blocks.{self.layer}.attn.hook_z"
-        return f"blocks.{self.layer}.hook_mlp_out"
+        if self.kind == "mlp_out":
+            return f"blocks.{self.layer}.hook_mlp_out"
+        if self.kind in ("q_input", "k_input", "v_input"):
+            return f"blocks.{self.layer}.attn.hook_{self.kind}"
+        return f"blocks.{self.layer}.hook_mlp_in"
 
 
 @dataclass(frozen=True)
@@ -304,6 +326,106 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
                 nodes.append(Node(kind="attn_head_out", layer=layer, head=head, position=position))
             nodes.append(Node(kind="mlp_out", layer=layer, position=position))
     return nodes
+
+
+def _assert_edges_unique(edges: Sequence[tuple[Node, Node]]) -> None:
+    """Raise if any writer -> reader pair appears more than once in ``edges``.
+
+    A writer feeding two distinct readers (a head's output feeding both the
+    next layer's attention input and this layer's MLP input, say) is two
+    edges; this guards the enumeration against a construction bug that
+    collapses or duplicates a single ``(writer, reader)`` pair instead.
+    """
+    seen: set[tuple[Node, Node]] = set()
+    for edge in edges:
+        if edge in seen:
+            raise ValueError(f"edge {edge} enumerated more than once")
+        seen.add(edge)
+
+
+def _required_edge_reader_hook_names(n_layers: int) -> list[str]:
+    """The MLP-entry hook point edge enumeration additionally requires per layer.
+
+    ``_required_hook_names(..., granularity="edge")`` covers the per-head
+    attention hooks a writer/reader pair into or out of a head needs. Edges
+    into the MLP also read the MLP entry point, ``attn.hook_mlp_in``'s
+    layer-level sibling ``hook_mlp_in``, gated on ``cfg.use_hook_mlp_in`` the
+    same way the per-head hooks are gated on their own flags.
+    """
+    return [f"blocks.{layer}.hook_mlp_in" for layer in range(n_layers)]
+
+
+def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]:
+    """Enumerate every writer -> reader edge in the residual-stream graph.
+
+    At a fixed sequence position, the residual stream is a running sum: a
+    reader (a head's split Q/K/V input, or a layer's MLP entry) is fed by
+    every writer (the embed write, every attention head's output, every
+    layer's MLP output) that precedes it. Building the graph position-by-position
+    tracks which writers are "available" so far and connects each new reader to
+    all of them, then adds that layer's writers to the available set before
+    moving on -- so a writer never edges to a reader upstream of it, and a
+    writer feeding both a direct edge and a through-MLP edge produces two
+    distinct ``(u, v)`` pairs rather than one summed together.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``.
+        cache: A :class:`GradientCache` holding at least the required hook points
+            for edge granularity.
+
+    Returns:
+        The edge list as ``(writer, reader)`` node pairs; no pair repeats.
+
+    Raises:
+        ValueError: if any required hook point is absent from ``cache`` -- the
+            graph is never silently truncated.
+    """
+    n_layers = int(model.cfg.n_layers)
+    _check_required_hooks(
+        cache,
+        _required_hook_names(n_layers, granularity="edge")
+        + _required_edge_reader_hook_names(n_layers),
+        "edge graph",
+        "Cache with a names_filter that keeps the edge-granularity hook set: "
+        "hook_embed, blocks.*.attn.hook_z, blocks.*.hook_mlp_out, "
+        "blocks.*.attn.hook_result, blocks.*.attn.hook_q_input, "
+        "blocks.*.attn.hook_k_input, blocks.*.attn.hook_v_input, and "
+        "blocks.*.hook_mlp_in.",
+    )
+
+    seq_len = cache.activations["hook_embed"].shape[1]
+    edges: list[tuple[Node, Node]] = []
+
+    for position in range(seq_len):
+        available: list[Node] = [Node(kind="embed", position=position)]
+        for layer in range(n_layers):
+            n_heads = cache.activations[f"blocks.{layer}.attn.hook_z"].shape[2]
+
+            attn_reader_kinds: tuple[NodeKind, NodeKind, NodeKind] = (
+                "q_input",
+                "k_input",
+                "v_input",
+            )
+            attn_readers = [
+                Node(kind=kind, layer=layer, head=head, position=position)
+                for kind in attn_reader_kinds
+                for head in range(n_heads)
+            ]
+            for reader in attn_readers:
+                edges.extend((writer, reader) for writer in available)
+
+            available = available + [
+                Node(kind="attn_head_out", layer=layer, head=head, position=position)
+                for head in range(n_heads)
+            ]
+
+            mlp_reader = Node(kind="mlp_in", layer=layer, position=position)
+            edges.extend((writer, mlp_reader) for writer in available)
+
+            available = available + [Node(kind="mlp_out", layer=layer, position=position)]
+
+    _assert_edges_unique(edges)
+    return edges
 
 
 def _as_predicate(names_filter: NamesFilter) -> Callable[[str], bool]:

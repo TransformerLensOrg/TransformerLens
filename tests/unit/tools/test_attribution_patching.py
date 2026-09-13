@@ -24,12 +24,14 @@ from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
     GradientCache,
     Node,
+    _assert_edges_unique,
     _check_required_hooks,
     _ensure_edge_hook_flags,
     _node_effects,
     _required_hook_names,
     attribution_patch,
     cache_activation_and_gradient,
+    enumerate_edges,
     enumerate_nodes,
 )
 
@@ -1011,3 +1013,116 @@ def test_missing_edge_hook_raises_instead_of_silently_shrinking_the_graph() -> N
 
     with pytest.raises(ValueError, match="attn.hook_result"):
         _check_required_hooks(cache, edge_names, "edge graph", "enable use_attn_result.")
+
+
+# ---------------------------------------------------------------------------
+# Edge enumeration in the typed graph
+# ---------------------------------------------------------------------------
+#
+# An edge u -> v carries writer u's residual-stream contribution into reader
+# v's input. Readers are the per-head split-QKV inputs (q_input/k_input/
+# v_input) and the MLP entry (mlp_in); writers are the existing node kinds
+# (embed, attn_head_out, mlp_out). At a fixed sequence position, a reader
+# connects to every writer that precedes it in the residual stream so far --
+# the graph never mixes across positions, matching the per-position Node key.
+
+
+def _synthetic_edge_cache(
+    n_layers: int = N_LAYERS,
+    seq_len: int = SEQ_LEN,
+    n_heads: int = N_HEADS,
+    d_head: int = D_HEAD,
+    d_model: int = D_MODEL,
+) -> GradientCache:
+    """A cache whose keys/shapes carry the edge-granularity hook points.
+
+    Edge enumeration only reads hook names and tensor shapes, so the contents
+    can be zeros; this keeps the graph test model-free and independent of any
+    forward pass.
+    """
+    cache = _synthetic_node_cache(
+        n_layers=n_layers, seq_len=seq_len, n_heads=n_heads, d_head=d_head, d_model=d_model
+    )
+    for layer in range(n_layers):
+        cache.activations[f"blocks.{layer}.attn.hook_result"] = torch.zeros(
+            1, seq_len, n_heads, d_model
+        )
+        for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
+            cache.activations[f"blocks.{layer}.attn.{input_hook}"] = torch.zeros(
+                1, seq_len, n_heads, d_model
+            )
+        cache.activations[f"blocks.{layer}.hook_mlp_in"] = torch.zeros(1, seq_len, d_model)
+    cache.gradients = {name: None for name in cache.activations}
+    return cache
+
+
+def test_reader_node_hook_name_and_key_validation() -> None:
+    assert (
+        Node(kind="q_input", layer=0, head=1, position=2).hook_name == "blocks.0.attn.hook_q_input"
+    )
+    assert (
+        Node(kind="k_input", layer=1, head=0, position=0).hook_name == "blocks.1.attn.hook_k_input"
+    )
+    assert (
+        Node(kind="v_input", layer=0, head=0, position=0).hook_name == "blocks.0.attn.hook_v_input"
+    )
+    assert Node(kind="mlp_in", layer=1, position=0).hook_name == "blocks.1.hook_mlp_in"
+
+    # The typed key rejects malformed reader nodes rather than building a wrong graph.
+    with pytest.raises(ValueError):
+        Node(kind="q_input", layer=0, position=0)  # head missing
+    with pytest.raises(ValueError):
+        Node(kind="mlp_in", layer=0, head=0, position=0)  # head not allowed
+
+
+def _expected_edge_count(n_layers: int, n_heads: int, seq_len: int) -> int:
+    """Independent count of writer -> reader pairs for the dense per-position graph.
+
+    At each position, a reader connects to every writer enumerated so far: the
+    three per-head QKV readers at a layer see everything upstream of that
+    layer's attention, and the MLP reader additionally sees that layer's own
+    attention writes.
+    """
+    total_per_position = 0
+    available = 1  # embed
+    for _ in range(n_layers):
+        total_per_position += 3 * n_heads * available  # q/k/v readers
+        available += n_heads  # this layer's attn_head_out writers
+        total_per_position += available  # mlp_in reader
+        available += 1  # this layer's mlp_out writer
+    return seq_len * total_per_position
+
+
+def test_enumerate_edges_returns_expected_writer_reader_pairs() -> None:
+    cache = _synthetic_edge_cache()
+    edges = enumerate_edges(_cfg_stub(), cache)
+
+    assert len(edges) == _expected_edge_count(N_LAYERS, N_HEADS, SEQ_LEN)
+    assert len(set(edges)) == len(edges)  # no duplicate (u, v) pairs
+    assert all(writer.position == reader.position for writer, reader in edges)
+
+    # embed is the first writer at its position, so every reader at that
+    # position has a direct edge from it.
+    readers_at_0 = {reader for writer, reader in edges if writer.position == 0}
+    for reader in readers_at_0:
+        assert (Node(kind="embed", position=0), reader) in edges
+
+    # the final layer's MLP output has no downstream reader in this graph.
+    terminal_writer = Node(kind="mlp_out", layer=N_LAYERS - 1, position=0)
+    assert all(writer != terminal_writer for writer, _ in edges)
+
+
+def test_enumerate_edges_raises_on_missing_reader_hook() -> None:
+    cache = _synthetic_edge_cache()
+    del cache.activations["blocks.0.hook_mlp_in"]
+
+    with pytest.raises(ValueError, match="blocks.0.hook_mlp_in"):
+        enumerate_edges(_cfg_stub(), cache)
+
+
+def test_assert_edges_unique_raises_on_duplicate() -> None:
+    reader = Node(kind="mlp_in", layer=0, position=0)
+    writer = Node(kind="embed", position=0)
+
+    with pytest.raises(ValueError, match="more than once"):
+        _assert_edges_unique([(writer, reader), (writer, reader)])
