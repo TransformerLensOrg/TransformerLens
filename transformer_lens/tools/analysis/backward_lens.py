@@ -2,7 +2,9 @@
 
 The Backward Lens represents a linear weight gradient as a sum of token-position
 outer products and projects residual-width factors into the model vocabulary.
-The public API currently supports raw GPT-2 ``TransformerBridge`` models.
+The public API supports raw dense-MLP decoder-only ``TransformerBridge`` models
+(for example GPT-2 and Pythia/GPT-NeoX), reading each MLP projection's weight
+layout from the Bridge component rather than the model class.
 """
 
 from __future__ import annotations
@@ -55,7 +57,7 @@ class VocabularyRanking:
 
 @dataclass(frozen=True)
 class BackwardLensMatrixResult:
-    """Factors and vocabulary readouts for one GPT-2 MLP weight matrix.
+    """Factors and vocabulary readouts for one dense MLP weight matrix.
 
     ``factors`` contains the full linear factorization. ``projected_factor`` says
     whether its residual-width ``forward_inputs`` or raw-gradient
@@ -228,8 +230,8 @@ class BackwardLensResult:
 
 
 @dataclass(frozen=True)
-class _GPT2LayerGradientFactors:
-    """Detached gradient factors for both MLP projections in one GPT-2 layer."""
+class _MLPLayerGradientFactors:
+    """Detached gradient factors for both MLP projections in one layer."""
 
     layer: int
     input_projection: LinearGradientFactors
@@ -237,17 +239,16 @@ class _GPT2LayerGradientFactors:
 
 
 @dataclass(frozen=True)
-class _GPT2GradientCapture:
-    """Private Commit-2 result for one GPT-2 next-token loss.
+class _DenseMLPGradientCapture:
+    """Private capture result for one dense-MLP next-token loss.
 
-    Tensor fields are detached, owned CPU copies. Public vocabulary-facing result
-    contracts are introduced with the projection API.
+    Tensor fields are detached, owned CPU copies.
     """
 
     prompt_token_ids: Int[torch.Tensor, "1 position"]
     target_token_id: int
     loss: float
-    layers: tuple[_GPT2LayerGradientFactors, ...]
+    layers: tuple[_MLPLayerGradientFactors, ...]
 
 
 def _validate_floating_matrix(name: str, tensor: Any) -> Float[torch.Tensor, "rows columns"]:
@@ -546,16 +547,17 @@ def _validate_requested_layers(model: Any, layers: Sequence[int]) -> tuple[int, 
     return requested
 
 
-def _require_raw_gpt2_bridge(model: Any) -> None:
-    """Require the raw GPT-2 Bridge capabilities used by gradient capture."""
+def _require_raw_dense_mlp_bridge(model: Any) -> None:
+    """Require the raw dense-MLP Bridge capabilities used by gradient capture.
+
+    The architecture is not constrained by class; support is decided per
+    projection from the Bridge weight-layout oracle in projection discovery.
+    """
     from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.model_bridge.supported_architectures.gpt2 import (
-        GPT2ArchitectureAdapter,
-    )
 
     if not isinstance(model, TransformerBridge):
         raise TypeError(
-            "Backward Lens supports TransformerBridge only; load GPT-2 with "
+            "Backward Lens supports TransformerBridge only; load the model with "
             "TransformerBridge.boot_transformers(...)."
         )
     if getattr(model, "compatibility_mode", False):
@@ -564,7 +566,7 @@ def _require_raw_gpt2_bridge(model: Any) -> None:
         )
     if getattr(model, "_weights_processed", False):
         raise ValueError(
-            "Backward Lens requires original GPT-2 weights; this Bridge processed its weights"
+            "Backward Lens requires original model weights; this Bridge processed its weights"
         )
     if int(model.cfg.n_devices) > 1:
         raise ValueError(
@@ -572,48 +574,73 @@ def _require_raw_gpt2_bridge(model: Any) -> None:
             "projections, final normalization, and unembed must be co-located; "
             f"device-map dispatch with cfg.n_devices={model.cfg.n_devices} is not supported"
         )
-    if not isinstance(model.adapter, GPT2ArchitectureAdapter):
-        raise NotImplementedError(
-            "Backward Lens currently supports the GPT2ArchitectureAdapter only; "
-            f"got {type(model.adapter).__name__}"
-        )
     if bool(getattr(model.cfg, "gated_mlp", False)):
-        raise NotImplementedError("Backward Lens currently requires dense, non-gated GPT-2 MLPs")
+        raise NotImplementedError("Backward Lens currently requires dense, non-gated MLPs")
     if model.tokenizer is None:
-        raise ValueError("Backward Lens requires a GPT-2 Bridge with a tokenizer")
+        raise ValueError("Backward Lens requires a TransformerBridge with a tokenizer")
     for component in ("blocks", "ln_final", "unembed"):
         if not hasattr(model, component):
             raise ValueError(f"Backward Lens requires the standard {component} component")
 
 
-def _get_gpt2_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple[Any, Any]]:
-    """Return validated live GPT-2 Conv1D input/output projection bridges."""
-    from transformers.pytorch_utils import Conv1D
+@dataclass(frozen=True)
+class _MLPLinear:
+    """One validated dense-MLP linear projection with its resolved weight layout."""
 
+    projection: Any
+    weight_layout: WeightLayout
+
+
+def _get_dense_mlp_projections(
+    model: Any, layers: tuple[int, ...]
+) -> dict[int, tuple[_MLPLinear, _MLPLinear]]:
+    """Return validated live dense-MLP input/output projection bridges.
+
+    Each projection's storage orientation is resolved from the Bridge weight-layout
+    oracle, so Conv1D ``[in, out]`` and ``torch.nn.Linear`` ``[out, in]`` weights are
+    both accepted without inspecting the model class. Projections whose wrapped
+    module the oracle cannot orient are rejected.
+    """
     from transformer_lens.hook_points import HookPoint
     from transformer_lens.model_bridge.generalized_components import (
         LinearBridge,
         MLPBridge,
     )
-
-    expected_shapes = (
-        (int(model.cfg.d_model), int(model.cfg.d_mlp)),
-        (int(model.cfg.d_mlp), int(model.cfg.d_model)),
+    from transformer_lens.model_bridge.generalized_components.mlp import (
+        weight_layout_in_out,
     )
-    projections: dict[int, tuple[Any, Any]] = {}
+
+    d_model = int(model.cfg.d_model)
+    d_mlp = int(model.cfg.d_mlp)
+    # Feature counts are fixed by the MLP role; storage order follows the layout.
+    # Input maps d_model -> d_mlp, output maps d_mlp -> d_model.
+    feature_pairs = ((d_model, d_mlp), (d_mlp, d_model))
+    projections: dict[int, tuple[_MLPLinear, _MLPLinear]] = {}
     for layer in layers:
         mlp = model.blocks[layer].mlp
         if not isinstance(mlp, MLPBridge) or getattr(mlp, "gate", None) is not None:
             raise ValueError(f"layer {layer} must have a dense, non-gated MLPBridge")
         pair = (getattr(mlp, "in", None), getattr(mlp, "out", None))
-        for name, projection, expected_shape in zip(
-            ("input", "output"), pair, expected_shapes, strict=True
+        records: list[_MLPLinear] = []
+        for name, projection, feature_pair in zip(
+            ("input", "output"), pair, feature_pairs, strict=True
         ):
             if not isinstance(projection, LinearBridge):
                 raise ValueError(f"layer {layer} {name} projection must be a LinearBridge")
-            if not isinstance(projection.original_component, Conv1D):
-                raise ValueError(f"layer {layer} {name} projection must wrap GPT-2 Conv1D")
-            weight = projection.original_component.weight
+            layout_flag = weight_layout_in_out(projection)
+            if layout_flag is None:
+                raise ValueError(
+                    f"layer {layer} {name} projection has an unknown weight layout; "
+                    "Backward Lens supports Conv1D or torch.nn.Linear MLP projections"
+                )
+            weight_layout: WeightLayout = "in_out" if layout_flag else "out_in"
+            in_features, out_features = feature_pair
+            expected_shape = (
+                (in_features, out_features)
+                if weight_layout == "in_out"
+                else (out_features, in_features)
+            )
+            weight = getattr(projection.original_component, "weight", None)
             if not isinstance(weight, torch.nn.Parameter):
                 raise ValueError(
                     f"layer {layer} {name} original weight must be a trainable Parameter"
@@ -631,7 +658,8 @@ def _get_gpt2_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, 
                 projection.hook_out, HookPoint
             ):
                 raise ValueError(f"layer {layer} {name} projection is missing Bridge hook points")
-        projections[layer] = pair
+            records.append(_MLPLinear(projection=projection, weight_layout=weight_layout))
+        projections[layer] = (records[0], records[1])
     return projections
 
 
@@ -652,14 +680,15 @@ def _capture_once(
 
 @contextmanager
 def _capture_projection_tensors(
-    projections: dict[int, tuple[Any, Any]],
+    projections: dict[int, tuple[_MLPLinear, _MLPLinear]],
 ) -> Iterator[dict[tuple[int, str, str], torch.Tensor]]:
     """Capture exact linear boundaries while preserving every pre-existing hook."""
     captured: dict[tuple[int, str, str], torch.Tensor] = {}
     handles: list[Any] = []
     try:
         for layer, pair in projections.items():
-            for name, projection in zip(("input", "output"), pair, strict=True):
+            for name, record in zip(("input", "output"), pair, strict=True):
+                projection = record.projection
                 input_key = (layer, name, "forward_input")
                 output_key = (layer, name, "output")
                 # Existing hook_in edits must run first so this is the actual linear input.
@@ -712,13 +741,13 @@ def _preserve_model_rng(model: Any) -> Iterator[None]:
             torch.mps.set_rng_state(mps_state)
 
 
-def _capture_gpt2_mlp_gradient_factors(
+def _capture_dense_mlp_gradient_factors(
     model: Any,
     prompt: str,
     target_token: str,
     layers: Sequence[int],
-) -> _GPT2GradientCapture:
-    """Capture exact GPT-2 MLP weight-gradient factors for one next-token loss.
+) -> _DenseMLPGradientCapture:
+    """Capture exact dense-MLP weight-gradient factors for one next-token loss.
 
     The analysis performs one grad-enabled forward and exactly one
     :func:`torch.autograd.grad` call. It does not call ``backward``, touch
@@ -729,9 +758,9 @@ def _capture_gpt2_mlp_gradient_factors(
             "Backward Lens cannot capture gradients inside torch.inference_mode(); "
             "exit inference_mode before running the analysis"
         )
-    _require_raw_gpt2_bridge(model)
+    _require_raw_dense_mlp_bridge(model)
     requested_layers = _validate_requested_layers(model, layers)
-    projections = _get_gpt2_mlp_projections(model, requested_layers)
+    projections = _get_dense_mlp_projections(model, requested_layers)
     if not isinstance(prompt, str):
         raise TypeError("prompt must be a string")
     if prompt == "":
@@ -759,17 +788,15 @@ def _capture_gpt2_mlp_gradient_factors(
     input_device = next(model.original_model.parameters()).device
     prompt_tokens = prompt_tokens.to(input_device)
     weights = [
-        projection.original_component.weight
+        record.projection.original_component.weight
         for layer in requested_layers
-        for projection in projections[layer]
+        for record in projections[layer]
     ]
     with _preserve_model_rng(model), torch.enable_grad():
         with _capture_projection_tensors(projections) as captured:
             logits = model(prompt_tokens)
             if not isinstance(logits, torch.Tensor) or logits.ndim != 3 or logits.shape[0] != 1:
-                raise RuntimeError(
-                    "GPT-2 Bridge must return logits with shape [1, position, vocab]"
-                )
+                raise RuntimeError("the Bridge must return logits with shape [1, position, vocab]")
             target = torch.tensor([target_token_id], device=logits.device)
             loss = F.cross_entropy(logits[:, -1, :], target)
             if not bool(torch.isfinite(loss)):
@@ -786,6 +813,7 @@ def _capture_gpt2_mlp_gradient_factors(
     layer_results = []
     for index, layer in enumerate(requested_layers):
         input_offset = 2 * index
+        input_record, output_record = projections[layer]
         input_factors = _build_linear_gradient_factors(
             _single_batch_matrix(
                 f"layer {layer} input projection input",
@@ -795,7 +823,7 @@ def _capture_gpt2_mlp_gradient_factors(
                 f"layer {layer} input projection gradient", output_gradients[input_offset]
             ),
             weight_gradients[input_offset],
-            weight_layout="in_out",
+            weight_layout=input_record.weight_layout,
         )
         output_factors = _build_linear_gradient_factors(
             _single_batch_matrix(
@@ -807,16 +835,16 @@ def _capture_gpt2_mlp_gradient_factors(
                 output_gradients[input_offset + 1],
             ),
             weight_gradients[input_offset + 1],
-            weight_layout="in_out",
+            weight_layout=output_record.weight_layout,
         )
         layer_results.append(
-            _GPT2LayerGradientFactors(
+            _MLPLayerGradientFactors(
                 layer=layer,
                 input_projection=input_factors,
                 output_projection=output_factors,
             )
         )
-    return _GPT2GradientCapture(
+    return _DenseMLPGradientCapture(
         prompt_token_ids=prompt_tokens.detach().cpu().clone(),
         target_token_id=target_token_id,
         loss=float(loss.detach()),
@@ -825,16 +853,17 @@ def _capture_gpt2_mlp_gradient_factors(
 
 
 class BackwardLens:
-    """Analyze GPT-2 MLP weight gradients in the output vocabulary basis.
+    """Analyze dense MLP weight gradients in the output vocabulary basis.
 
-    The analyzer accepts a fresh, raw GPT-2 :class:`TransformerBridge`. Results
-    retain no model or tokenizer reference and contain detached CPU-owned tensors.
-    Raw backward signals are loss gradients; gradient descent subtracts them.
+    The analyzer accepts a fresh, raw dense-MLP :class:`TransformerBridge` such as
+    GPT-2 or Pythia/GPT-NeoX. Results retain no model or tokenizer reference and
+    contain detached CPU-owned tensors. Raw backward signals are loss gradients;
+    gradient descent subtracts them.
     """
 
     def __init__(self, model: Any):
-        """Validate and retain the raw GPT-2 Bridge used for analyses."""
-        _require_raw_gpt2_bridge(model)
+        """Validate and retain the raw dense-MLP Bridge used for analyses."""
+        _require_raw_dense_mlp_bridge(model)
         self._model = model
 
     def analyze(
@@ -852,7 +881,7 @@ class BackwardLens:
         Args:
             prompt: Non-empty unbatched prompt text.
             target_token: Text encoding to exactly one token without BOS.
-            layers: Unique GPT-2 layer indices in desired result order.
+            layers: Unique layer indices in desired result order.
             normalized: Also project unit-normalized nonzero factors using the
                 Normalized Logit Lens. Raw projections are always returned.
             top_k: Number of largest and smallest values and token ids retained
@@ -873,7 +902,7 @@ class BackwardLens:
             raise ValueError(f"top_k must be in [1, {vocabulary_size}]; got {top_k!r}")
         if not isinstance(return_full_logits, bool):
             raise TypeError("return_full_logits must be a bool")
-        capture = _capture_gpt2_mlp_gradient_factors(self._model, prompt, target_token, layers)
+        capture = _capture_dense_mlp_gradient_factors(self._model, prompt, target_token, layers)
         layer_results: list[BackwardLensLayerResult] = []
         absolute_errors: list[float] = []
         relative_errors: list[float] = []
