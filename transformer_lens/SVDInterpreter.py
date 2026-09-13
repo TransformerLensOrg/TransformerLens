@@ -4,7 +4,7 @@ Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 :class:`transformer_lens.HookedTransformer`.
 """
 
-from typing import Any, Optional, Union
+from typing import Any, NoReturn, Optional, Union
 
 import torch
 from typing_extensions import Literal
@@ -74,6 +74,10 @@ class SVDInterpreter:
             layer_index: The index of the layer.
             num_vectors: Number of vectors.
             head_index: Index of the head.
+
+        Raises:
+            NotImplementedError: If the requested layer does not expose a single dense MLP weight,
+                such as a sparse-MoE layer that requires an expert-aware interpretation.
         """
 
         if head_index is None:
@@ -145,7 +149,10 @@ class SVDInterpreter:
             0 <= layer_index < self.cfg.n_layers
         ), f"Layer index must be between 0 and {self.cfg.n_layers-1} but got {layer_index}"
 
-        w_in = self.params[f"blocks.{layer_index}.mlp.W_in"].T
+        key = f"blocks.{layer_index}.mlp.W_in"
+        if key not in self.params:
+            self._raise_unsupported_mlp_weight("w_in", layer_index)
+        w_in = self.params[key].T
 
         if f"blocks.{layer_index}.ln2.w" in self.params:  # If fold_ln == False
             ln_2 = self.params[f"blocks.{layer_index}.ln2.w"]
@@ -160,4 +167,14 @@ class SVDInterpreter:
             0 <= layer_index < self.cfg.n_layers
         ), f"Layer index must be between 0 and {self.cfg.n_layers-1} but got {layer_index}"
 
-        return self.params[f"blocks.{layer_index}.mlp.W_out"]
+        key = f"blocks.{layer_index}.mlp.W_out"
+        if key not in self.params:
+            self._raise_unsupported_mlp_weight("w_out", layer_index)
+        return self.params[key]
+
+    def _raise_unsupported_mlp_weight(self, weight_name: str, layer_index: int) -> NoReturn:
+        raise NotImplementedError(
+            f"SVDInterpreter cannot analyze {weight_name} for layer {layer_index}: "
+            "the layer does not expose a single dense MLP weight. Sparse MoE layers "
+            "require an explicit expert-aware interpretation."
+        )
