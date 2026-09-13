@@ -7,19 +7,35 @@ answers correctly), norm-matched random-atom controls (isolate "this concept mat
 from "any edit of similar magnitude would have mattered"), and bootstrap uncertainty on
 every reported rate.
 
-This module is layered bottom-up and built out across several stages. This stage is
-model-free: it establishes the prompt corpus schema and the rank/margin metric shared by
-every later stage (baseline filtering, control-token selection, the trial runner, and
-artifact serialization).
+This module is layered bottom-up and built out across several stages: the model-free prompt
+corpus and rank/margin metric, baseline-capability filtering, norm-matched control-token
+selection, and this stage's per-trial runner, which wires the first three together with real
+``coordinate_patch_hooks`` calls against a live model.
 """
 
 from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
-from typing import Container, Dict, Iterator, List, Sequence, Tuple
+from typing import (
+    Any,
+    Container,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 import torch
+
+from transformer_lens.tools.analysis.jacobian_lens import DEFAULT_K, JacobianLens
+from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
+    JSpaceDecomposition,
+)
 
 
 @dataclass(frozen=True)
@@ -181,3 +197,212 @@ def select_norm_matched_control_token(
     generator = torch.Generator(device=dictionary.device).manual_seed(seed)
     pick = int(torch.randint(len(candidates), (1,), generator=generator).item())
     return candidates[pick]
+
+
+def _resolve_answer_token_id(model: Any, word: str) -> int:
+    """Resolves a concept or answer word to the token id it maps to as a continuation.
+
+    Prepends a leading space so the id matches how the word tokenizes when it follows
+    other prompt text (e.g. " Paris", not "Paris"), the same convention the corpus
+    templates themselves rely on.
+    """
+    return int(model.to_single_token(f" {word}"))
+
+
+@dataclass(frozen=True)
+class TrialResult:
+    """One ``(function, source, target, layer)`` causal-swap trial's full record."""
+
+    function: str
+    source: str
+    target: str
+    layer: int
+    status: Literal["ok", "skipped_source_inactive"]
+    baseline: AnswerMetrics
+    real_target_metrics: Optional[AnswerMetrics]
+    control_token_id: Optional[int]
+    control_target_metrics: Optional[AnswerMetrics]
+    error: Optional[str]
+
+
+def run_causal_swap_trial(
+    lens: JacobianLens,
+    model: Any,
+    trial_spec: PromptTrialSpec,
+    layer: int,
+    *,
+    decomposition_cache: Optional[MutableMapping[Tuple[int, int, int], JSpaceDecomposition]] = None,
+    control_tolerance: float = 0.1,
+    control_seed: int = 0,
+    alpha: float = 1.0,
+    k: int = DEFAULT_K,
+) -> TrialResult:
+    """Runs one causal-swap trial: baseline, then real and control coordinate-patch conditions.
+
+    A baseline forward pass scores the prompt's own (unperturbed) source answer. A
+    norm-matched control token is then selected from ``layer``'s lens-vector dictionary,
+    excluding the source token, the real target token, and both prompts' answer tokens. The
+    real and control conditions each install ``coordinate_patch_hooks`` at ``layer`` and
+    position ``-1``, sharing one ``decomposition_cache`` so only the first of the two performs
+    the vocabulary-scale decomposition; both are scored against the target's own answer token,
+    so a real-vs-control gap isolates "swapping toward this concept mattered" from "any
+    edit of this magnitude would have mattered."
+
+    If either condition's ``coordinate_patch_hooks`` call raises ``ValueError`` (the source is
+    not in the active support at this layer), the trial is recorded with
+    ``status="skipped_source_inactive"`` and the caught message in ``error``, rather than
+    propagating the exception -- ``coordinate_patch_hooks`` itself stays fail-fast; only this
+    harness catches the failure. ``coordinate_patch_hooks``'s own ``UserWarning``s (both the
+    per-call install notice and any solver-side conditioning warning) are not suppressed here
+    and propagate to the caller unchanged.
+
+    Args:
+        lens: The fitted lens.
+        model: The model to run trials against.
+        trial_spec: The prompt, source/target concepts, and their answer words.
+        layer: The single layer to patch at.
+        decomposition_cache: Shared cache passed to both the real and control
+            ``coordinate_patch_hooks`` calls. A fresh cache is used if omitted.
+        control_tolerance: Relative tolerance for the norm-matched control token.
+        control_seed: Seed for the control token's deterministic selection.
+        alpha: Interpolation strength forwarded to ``coordinate_patch_hooks``.
+        k: Sparse-solver upper bound forwarded to ``coordinate_patch_hooks``.
+
+    Returns:
+        The trial's :class:`TrialResult`.
+    """
+    if decomposition_cache is None:
+        decomposition_cache = {}
+    tokens = model.to_tokens(trial_spec.prompt)
+    source_id = _resolve_answer_token_id(model, trial_spec.source)
+    target_id = _resolve_answer_token_id(model, trial_spec.target)
+    source_answer_id = _resolve_answer_token_id(model, trial_spec.source_answer)
+    target_answer_id = _resolve_answer_token_id(model, trial_spec.target_answer)
+
+    with torch.no_grad():
+        baseline_logits = model(tokens)[0, -1].float()
+    baseline_metrics = compute_answer_metrics(baseline_logits, source_answer_id)
+
+    dictionary = lens.lens_vector_dictionary(model, layer)
+    control_token_id = select_norm_matched_control_token(
+        dictionary,
+        target_id,
+        excluded_ids={source_id, source_answer_id, target_answer_id},
+        tolerance=control_tolerance,
+        seed=control_seed,
+    )
+
+    def _condition_metrics(condition_target_id: int) -> AnswerMetrics:
+        hooks = lens.coordinate_patch_hooks(
+            model,
+            source_id,
+            condition_target_id,
+            layers=[layer],
+            positions=[-1],
+            decomposition_cache=decomposition_cache,
+            k=k,
+            alpha=alpha,
+        )
+        with model.hooks(fwd_hooks=hooks), torch.no_grad():
+            condition_logits = model(tokens)[0, -1].float()
+        return compute_answer_metrics(condition_logits, target_answer_id)
+
+    try:
+        real_metrics = _condition_metrics(target_id)
+        control_metrics = _condition_metrics(control_token_id)
+    except ValueError as exc:
+        return TrialResult(
+            function=trial_spec.function,
+            source=trial_spec.source,
+            target=trial_spec.target,
+            layer=layer,
+            status="skipped_source_inactive",
+            baseline=baseline_metrics,
+            real_target_metrics=None,
+            control_token_id=control_token_id,
+            control_target_metrics=None,
+            error=str(exc),
+        )
+
+    return TrialResult(
+        function=trial_spec.function,
+        source=trial_spec.source,
+        target=trial_spec.target,
+        layer=layer,
+        status="ok",
+        baseline=baseline_metrics,
+        real_target_metrics=real_metrics,
+        control_token_id=control_token_id,
+        control_target_metrics=control_metrics,
+        error=None,
+    )
+
+
+def run_causal_swap_benchmark(
+    lens: JacobianLens,
+    model: Any,
+    corpus: BenchmarkCorpus,
+    layers: Sequence[int],
+    **trial_kwargs: Any,
+) -> Tuple[List[TrialResult], List[BaselineRecord]]:
+    """Runs the full causal-swap sweep: baseline filtering, then every surviving trial.
+
+    Each ``(function, source)`` prompt's baseline is computed once -- it does not depend on
+    ``layer`` -- and only prompts that survive :func:`filter_baseline_capable` proceed to
+    :func:`run_causal_swap_trial`, once per remaining ``layer``. Each trial gets its own fresh
+    ``decomposition_cache``: the cache key is ``(layer, batch_idx, position)``, which collides
+    across different prompts run as independent single-example forward passes, so a cache may
+    only be reused within one trial's real/control pair, never across trials.
+
+    Args:
+        lens: The fitted lens.
+        model: The model to run trials against.
+        corpus: The prompt corpus to sweep.
+        layers: Layers to sweep as an independent trial dimension.
+        **trial_kwargs: Forwarded to :func:`run_causal_swap_trial` (``control_tolerance``,
+            ``control_seed``, ``alpha``, ``k``; ``decomposition_cache`` is not accepted here
+            since each trial always uses its own).
+
+    Returns:
+        ``(trials, excluded_baselines)``.
+    """
+    all_specs = list(iter_prompt_trials(corpus))
+    specs_by_prompt: Dict[Tuple[str, str], List[PromptTrialSpec]] = {}
+    baselines: List[BaselineRecord] = []
+    for spec in all_specs:
+        prompt_key = (spec.function, spec.source)
+        if prompt_key not in specs_by_prompt:
+            specs_by_prompt[prompt_key] = []
+            tokens = model.to_tokens(spec.prompt)
+            with torch.no_grad():
+                baseline_logits = model(tokens)[0, -1].float()
+            source_answer_id = _resolve_answer_token_id(model, spec.source_answer)
+            baselines.append(
+                BaselineRecord(
+                    function=spec.function,
+                    source=spec.source,
+                    prompt=spec.prompt,
+                    metrics=compute_answer_metrics(baseline_logits, source_answer_id),
+                )
+            )
+        specs_by_prompt[prompt_key].append(spec)
+
+    capable, excluded = filter_baseline_capable(baselines)
+    capable_prompt_keys = {(record.function, record.source) for record in capable}
+
+    trials: List[TrialResult] = []
+    for layer in layers:
+        for prompt_key, specs in specs_by_prompt.items():
+            if prompt_key not in capable_prompt_keys:
+                continue
+            for spec in specs:
+                trials.append(
+                    run_causal_swap_trial(
+                        lens,
+                        model,
+                        spec,
+                        layer,
+                        **trial_kwargs,
+                    )
+                )
+    return trials, excluded
