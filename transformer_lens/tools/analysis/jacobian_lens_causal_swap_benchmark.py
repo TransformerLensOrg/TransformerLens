@@ -1,0 +1,115 @@
+"""Causal coordinate-swap benchmark for ``JacobianLens.coordinate_patch_hooks``.
+
+Measures whether an anchored J-space coordinate edit installed live inside a forward pass
+via ``coordinate_patch_hooks`` causes a directional change in model output, under three
+controls: baseline-capability filtering (only intervene on prompts the model already
+answers correctly), norm-matched random-atom controls (isolate "this concept mattered"
+from "any edit of similar magnitude would have mattered"), and bootstrap uncertainty on
+every reported rate.
+
+This module is layered bottom-up and built out across several stages. This stage is
+model-free: it establishes the prompt corpus schema and the rank/margin metric shared by
+every later stage (baseline filtering, control-token selection, the trial runner, and
+artifact serialization).
+"""
+
+from __future__ import annotations
+
+import itertools
+from dataclasses import dataclass
+from typing import Dict, Iterator, Sequence
+
+import torch
+
+
+@dataclass(frozen=True)
+class FunctionSpec:
+    """A templated prompt function evaluated over a shared set of concepts.
+
+    ``template`` takes a single ``{arg}`` placeholder, e.g. ``"The capital of {arg} is"``.
+    ``answers`` maps each concept to its answer word under this function, e.g.
+    ``{"France": "Paris"}``.
+    """
+
+    name: str
+    template: str
+    answers: Dict[str, str]
+
+
+@dataclass(frozen=True)
+class BenchmarkCorpus:
+    """A named set of concepts and the prompt functions evaluated over them."""
+
+    name: str
+    concepts: Sequence[str]
+    functions: Sequence[FunctionSpec]
+
+
+@dataclass(frozen=True)
+class PromptTrialSpec:
+    """One (function, ordered source/target concept pair) prompt instance."""
+
+    function: str
+    source: str
+    target: str
+    prompt: str
+    source_answer: str
+    target_answer: str
+
+
+def iter_prompt_trials(corpus: BenchmarkCorpus) -> Iterator[PromptTrialSpec]:
+    """Yields one spec per (function, ordered source/target concept pair).
+
+    Ordered pairs are every element of ``itertools.permutations(corpus.concepts, 2)``, the
+    same cross product Jacobian_Lens_Demo.ipynb's country benchmark already uses, now as
+    tested library code instead of a notebook cell.
+    """
+    for function in corpus.functions:
+        for source, target in itertools.permutations(corpus.concepts, 2):
+            yield PromptTrialSpec(
+                function=function.name,
+                source=source,
+                target=target,
+                prompt=function.template.format(arg=source),
+                source_answer=function.answers[source],
+                target_answer=function.answers[target],
+            )
+
+
+@dataclass(frozen=True)
+class AnswerMetrics:
+    """Rank/margin/tie metrics for one target token against one next-token logit vector."""
+
+    top1_token_id: int
+    target_rank: int
+    target_is_top1: bool
+    target_tied_for_top: bool
+    target_logit_margin: float
+
+
+def compute_answer_metrics(logits: torch.Tensor, target_token_id: int) -> AnswerMetrics:
+    """Computes rank/margin/tie metrics for ``target_token_id`` against ``logits``.
+
+    Ports Jacobian_Lens_Demo.ipynb's ``_target_metrics`` cell verbatim (arithmetic
+    unchanged, only renamed and restructured into a dataclass), so results stay directly
+    comparable with that notebook's already-reviewed success/rank definitions.
+    """
+    if logits.ndim != 1 or logits.numel() < 2:
+        raise ValueError("expected one-dimensional next-token logits")
+    if not 0 <= target_token_id < logits.shape[0]:
+        raise ValueError("target token id is outside the vocabulary")
+    if not torch.isfinite(logits).all():
+        raise ValueError("logits must be finite")
+
+    target_logit = logits[target_token_id]
+    top_logit = logits.max()
+    top1_token_id = int(logits.argmax().item())
+    top_logit_tie_count = int((logits == top_logit).sum().item())
+    competitors = torch.cat((logits[:target_token_id], logits[target_token_id + 1 :]))
+    return AnswerMetrics(
+        top1_token_id=top1_token_id,
+        target_rank=int((logits > target_logit).sum().item()) + 1,
+        target_is_top1=top1_token_id == target_token_id,
+        target_tied_for_top=bool(target_logit == top_logit) and top_logit_tie_count > 1,
+        target_logit_margin=float((target_logit - competitors.max()).item()),
+    )
