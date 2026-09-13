@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
-from typing import Dict, Iterator, Sequence
+from typing import Dict, Iterator, List, Sequence, Tuple
 
 import torch
 
@@ -113,3 +113,29 @@ def compute_answer_metrics(logits: torch.Tensor, target_token_id: int) -> Answer
         target_tied_for_top=bool(target_logit == top_logit) and top_logit_tie_count > 1,
         target_logit_margin=float((target_logit - competitors.max()).item()),
     )
+
+
+@dataclass(frozen=True)
+class BaselineRecord:
+    """A source prompt's own-answer metrics under the unperturbed baseline forward pass."""
+
+    function: str
+    source: str
+    prompt: str
+    metrics: AnswerMetrics
+
+
+def filter_baseline_capable(
+    baselines: Sequence[BaselineRecord],
+) -> Tuple[List[BaselineRecord], List[BaselineRecord]]:
+    """Splits baseline records into (capable, excluded) prompts.
+
+    A prompt is baseline-capable when the model's own deterministic argmax already matches
+    the source's answer (``metrics.target_is_top1``); only such prompts are eligible for
+    later intervention trials, so an edit's effect is never measured against a prompt the
+    unperturbed model already gets wrong. Order-preserving in both outputs; never mutates
+    ``baselines``.
+    """
+    capable = [record for record in baselines if record.metrics.target_is_top1]
+    excluded = [record for record in baselines if not record.metrics.target_is_top1]
+    return capable, excluded

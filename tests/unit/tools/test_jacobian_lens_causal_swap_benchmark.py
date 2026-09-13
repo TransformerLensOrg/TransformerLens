@@ -8,9 +8,12 @@ import pytest
 import torch
 
 from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+    AnswerMetrics,
+    BaselineRecord,
     BenchmarkCorpus,
     FunctionSpec,
     compute_answer_metrics,
+    filter_baseline_capable,
     iter_prompt_trials,
 )
 
@@ -70,3 +73,31 @@ def test_compute_answer_metrics_pins_deterministic_argmax_tie_semantics() -> Non
     assert metrics.target_rank == 1
     assert metrics.target_is_top1 is False
     assert metrics.target_tied_for_top is True
+
+
+def test_filter_baseline_capable_splits_by_deterministic_argmax() -> None:
+    correct = BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, False, 2.0))
+    wrong = BaselineRecord("f", "B", "p2", AnswerMetrics(3, 5, False, False, -1.0))
+    capable, excluded = filter_baseline_capable([correct, wrong])
+    assert capable == [correct]
+    assert excluded == [wrong]
+
+
+def test_filter_baseline_capable_all_wrong_excludes_every_record() -> None:
+    wrong = BaselineRecord("currency", "France", "p", AnswerMetrics(9, 4, False, False, -3.0))
+    capable, excluded = filter_baseline_capable([wrong, wrong])
+    assert capable == []
+    assert len(excluded) == 2
+
+
+def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> None:
+    records = [
+        BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, False, 2.0)),
+        BaselineRecord("f", "B", "p2", AnswerMetrics(3, 5, False, False, -1.0)),
+        BaselineRecord("f", "C", "p3", AnswerMetrics(0, 1, True, False, 1.0)),
+    ]
+    original = list(records)
+    capable, excluded = filter_baseline_capable(records)
+    assert [r.source for r in capable] == ["A", "C"]
+    assert [r.source for r in excluded] == ["B"]
+    assert records == original
