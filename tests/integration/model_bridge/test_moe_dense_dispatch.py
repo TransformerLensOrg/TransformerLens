@@ -90,9 +90,12 @@ def test_dense_layer_weights_reach_get_params() -> None:
     # them apart only if their weights actually differ.
     assert not torch.equal(hf_mlp.gate_proj.weight, hf_mlp.up_proj.weight)
 
-    # Sparse layers legitimately have no single W_* and keep the placeholder.
+    # Sparse layers legitimately have no single W_*, so they are omitted rather
+    # than zero-filled: a zero placeholder reads as a real dense weight to
+    # weight-space analyses, an absent key does not.
     assert bridge.blocks[1].mlp.bound_dense is False
-    assert (params["blocks.1.mlp.W_in"] == 0).all()
+    assert "blocks.1.mlp.W_in" not in params
+    assert "blocks.1.mlp.W_out" not in params
 
 
 def test_hook_dict_follows_a_dense_to_sparse_rebind() -> None:
