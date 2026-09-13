@@ -24,7 +24,10 @@ from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
     GradientCache,
     Node,
+    _check_required_hooks,
+    _ensure_edge_hook_flags,
     _node_effects,
+    _required_hook_names,
     attribution_patch,
     cache_activation_and_gradient,
     enumerate_nodes,
@@ -796,3 +799,215 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
         assert (delta_m > 0) == (score > 0)  # denoising sign convention
         checked += 1
     assert checked > 0
+
+
+# ---------------------------------------------------------------------------
+# Edge-granularity hook requirements
+# ---------------------------------------------------------------------------
+#
+# Edges into and out of an attention head read hook points a node sweep never
+# needs: the per-head ``attn.hook_result`` (writer) and the split
+# ``attn.hook_q_input``/``hook_k_input``/``hook_v_input`` (reader). Both
+# families exist on the Bridge unconditionally but only fire once their owning
+# config flag is on.
+
+
+class _GatedEdgeHookBlock(nn.Module):
+    """A block exposing the per-head hook points edge granularity reads.
+
+    ``hook_result`` and the split ``hook_q_input``/``hook_k_input``/
+    ``hook_v_input`` mirror the real Bridge's fire-time gating: the HookPoints
+    exist unconditionally, but the block only calls them when the matching
+    ``cfg`` flag is on, so their activation is absent from a cache built while
+    the flag is off rather than present with a placeholder value.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int,
+        d_head: int,
+        layer: int,
+        dtype: torch.dtype,
+        cfg: SimpleNamespace,
+    ) -> None:
+        super().__init__()
+        self.cfg = cfg
+        self.n_heads = n_heads
+        self.d_head = d_head
+        self.w_z = nn.Linear(d_model, n_heads * d_head, bias=False, dtype=dtype)
+        self.w_o = nn.Linear(n_heads * d_head, d_model, bias=False, dtype=dtype)
+        self.w_mlp = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
+        for linear in (self.w_z, self.w_o, self.w_mlp):
+            nn.init.normal_(linear.weight, std=0.2)
+        self.hook_z = HookPoint()
+        self.hook_z.name = f"blocks.{layer}.attn.hook_z"
+        self.hook_mlp_out = HookPoint()
+        self.hook_mlp_out.name = f"blocks.{layer}.hook_mlp_out"
+        self.hook_result = HookPoint()
+        self.hook_result.name = f"blocks.{layer}.attn.hook_result"
+        self.hook_q_input = HookPoint()
+        self.hook_q_input.name = f"blocks.{layer}.attn.hook_q_input"
+        self.hook_k_input = HookPoint()
+        self.hook_k_input.name = f"blocks.{layer}.attn.hook_k_input"
+        self.hook_v_input = HookPoint()
+        self.hook_v_input.name = f"blocks.{layer}.attn.hook_v_input"
+
+    def forward(self, residual: torch.Tensor) -> torch.Tensor:
+        batch, seq, d_model = residual.shape
+        if self.cfg.use_split_qkv_input:
+            per_head_residual = residual.unsqueeze(-2).expand(batch, seq, self.n_heads, d_model)
+            self.hook_q_input(per_head_residual)
+            self.hook_k_input(per_head_residual)
+            self.hook_v_input(per_head_residual)
+
+        z = self.hook_z(self.w_z(residual).reshape(batch, seq, self.n_heads, self.d_head))
+        if self.cfg.use_attn_result:
+            # Distributive over per-head weight slicing: summing this per-head
+            # decomposition equals self.w_o(z_flat) exactly (no bias term to split).
+            w_o_per_head = self.w_o.weight.reshape(d_model, self.n_heads, self.d_head).permute(
+                1, 2, 0
+            )
+            per_head_out = self.hook_result(torch.einsum("bshd,hdm->bshm", z, w_o_per_head))
+            attn_out = per_head_out.sum(dim=-2)
+        else:
+            attn_out = self.w_o(z.reshape(batch, seq, self.n_heads * self.d_head))
+
+        residual = residual + attn_out
+        mlp_out = self.hook_mlp_out(self.w_mlp(residual))
+        return residual + mlp_out
+
+
+class _EdgeHookToyBridge(_LinearToyBridge):
+    """A tiny ``TransformerBridge`` whose blocks carry the edge-granularity hook points.
+
+    ``cfg.use_attn_result``/``cfg.use_split_qkv_input`` default to ``False``,
+    matching a real Bridge; ``set_use_attn_result``/``set_use_split_qkv_input``
+    toggle them.
+    """
+
+    def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
+        nn.Module.__init__(self)
+        self._hook_registry: dict[str, HookPoint] = {}
+        self.context_level = 0
+        torch.manual_seed(0)
+        self.cfg = SimpleNamespace(
+            n_layers=N_LAYERS,
+            d_model=D_MODEL,
+            d_vocab=D_VOCAB,
+            d_vocab_out=D_VOCAB,
+            model_name="edge-hook-toy-bridge",
+            dtype=dtype,
+            device="cpu",
+            use_attn_result=False,
+            use_split_qkv_input=False,
+        )
+        self.compatibility_mode = False
+        self._weights_processed = False
+        self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
+        nn.init.normal_(self.embed.weight, std=0.2)
+        self.hook_embed = HookPoint()
+        self.hook_embed.name = "hook_embed"
+        self.blocks = nn.ModuleList(
+            [
+                _GatedEdgeHookBlock(D_MODEL, N_HEADS, D_HEAD, layer, dtype, self.cfg)
+                for layer in range(N_LAYERS)
+            ]
+        )
+        self.ln_final = nn.Identity()
+        self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
+        nn.init.normal_(self.unembed.weight, std=0.2)
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        hooks: dict[str, HookPoint] = {"hook_embed": self.hook_embed}
+        for layer, block in enumerate(self.blocks):
+            hooks[f"blocks.{layer}.attn.hook_z"] = block.hook_z
+            hooks[f"blocks.{layer}.hook_mlp_out"] = block.hook_mlp_out
+            hooks[f"blocks.{layer}.attn.hook_result"] = block.hook_result
+            hooks[f"blocks.{layer}.attn.hook_q_input"] = block.hook_q_input
+            hooks[f"blocks.{layer}.attn.hook_k_input"] = block.hook_k_input
+            hooks[f"blocks.{layer}.attn.hook_v_input"] = block.hook_v_input
+        return hooks
+
+    def forward(
+        self, tokens: torch.Tensor, return_type: str | None = "logits"
+    ) -> torch.Tensor | None:
+        residual = self.hook_embed(self.embed(tokens))
+        for block in self.blocks:
+            residual = block(residual)
+        if return_type is None:
+            return None
+        return self.unembed(self.ln_final(residual))
+
+    def set_use_attn_result(self, use_attn_result: bool) -> None:
+        self.cfg.use_attn_result = use_attn_result
+
+    def set_use_split_qkv_input(self, use_split_qkv_input: bool) -> None:
+        self.cfg.use_split_qkv_input = use_split_qkv_input
+
+
+def test_required_hook_names_edge_granularity_adds_per_head_families() -> None:
+    node_names = set(_required_hook_names(N_LAYERS))
+    edge_names = set(_required_hook_names(N_LAYERS, granularity="edge"))
+
+    assert node_names < edge_names
+    for layer in range(N_LAYERS):
+        assert f"blocks.{layer}.attn.hook_result" in edge_names
+        assert f"blocks.{layer}.attn.hook_q_input" in edge_names
+        assert f"blocks.{layer}.attn.hook_k_input" in edge_names
+        assert f"blocks.{layer}.attn.hook_v_input" in edge_names
+
+
+def test_ensure_edge_hook_flags_enables_required_bridge_flags() -> None:
+    model = _EdgeHookToyBridge()
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+
+    _ensure_edge_hook_flags(model)
+
+    assert model.cfg.use_attn_result is True
+    assert model.cfg.use_split_qkv_input is True
+
+
+def test_edge_hook_flags_populate_the_per_head_cache() -> None:
+    model = _EdgeHookToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_names = _required_hook_names(N_LAYERS, granularity="edge")
+
+    cache = cache_activation_and_gradient(model, tokens, metric, names_filter=edge_names)
+
+    assert set(cache.activations) == set(edge_names)
+    for layer in range(N_LAYERS):
+        assert cache.activations[f"blocks.{layer}.attn.hook_result"].shape == (
+            1,
+            SEQ_LEN,
+            N_HEADS,
+            D_MODEL,
+        )
+        for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
+            assert cache.activations[f"blocks.{layer}.attn.{input_hook}"].shape == (
+                1,
+                SEQ_LEN,
+                N_HEADS,
+                D_MODEL,
+            )
+
+    # No missing hook points: the shared check is a no-op.
+    _check_required_hooks(cache, edge_names, "edge graph", "hint unused when nothing is missing")
+
+
+def test_missing_edge_hook_raises_instead_of_silently_shrinking_the_graph() -> None:
+    model = _EdgeHookToyBridge()  # flags left off: per-head hooks never fire
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_names = _required_hook_names(N_LAYERS, granularity="edge")
+
+    cache = cache_activation_and_gradient(model, tokens, metric, names_filter=edge_names)
+
+    assert "blocks.0.attn.hook_result" not in cache.activations
+
+    with pytest.raises(ValueError, match="attn.hook_result"):
+        _check_required_hooks(cache, edge_names, "edge graph", "enable use_attn_result.")

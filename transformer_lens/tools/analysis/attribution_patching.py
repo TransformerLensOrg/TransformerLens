@@ -201,13 +201,69 @@ class AttributionResult:
         )
 
 
-def _required_hook_names(n_layers: int) -> list[str]:
-    """Hook points the node graph reads: embed plus per-layer attn-z and mlp-out."""
+def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> list[str]:
+    """Hook points a sweep at ``granularity`` reads.
+
+    Node granularity needs the embed write plus each layer's attn-z and
+    mlp-out. Edge granularity additionally needs the per-head hook points on
+    both sides of an edge into or out of an attention head: ``attn.hook_result``
+    (writer -- a head's own contribution before the sum into the residual
+    stream) and the split ``attn.hook_q_input``/``hook_k_input``/``hook_v_input``
+    (reader -- the residual each head's Q/K/V projection reads separately).
+    """
     names = ["hook_embed"]
     for layer in range(n_layers):
         names.append(f"blocks.{layer}.attn.hook_z")
         names.append(f"blocks.{layer}.hook_mlp_out")
+        if granularity == "edge":
+            names.append(f"blocks.{layer}.attn.hook_result")
+            names.append(f"blocks.{layer}.attn.hook_q_input")
+            names.append(f"blocks.{layer}.attn.hook_k_input")
+            names.append(f"blocks.{layer}.attn.hook_v_input")
     return names
+
+
+def _ensure_edge_hook_flags(model: Any) -> None:
+    """Turn on the Bridge flags edge granularity's per-head hook points require.
+
+    ``attn.hook_result`` and the split ``attn.hook_q_input``/``hook_k_input``/
+    ``hook_v_input`` hook points exist on the Bridge unconditionally but only
+    fire when ``cfg.use_attn_result`` / ``cfg.use_split_qkv_input`` are on, so
+    an edge sweep must enable both before caching or the writer- and
+    reader-side hook points it needs never populate.
+
+    Memory caveat: enabling these flags makes every cached per-head tensor
+    ``[batch, seq, n_heads, d_model]`` instead of the summed
+    ``[batch, seq, d_model]`` residual. That is fine on a model the size of
+    gpt2-small; it does not scale to models with many heads or layers.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg`` and
+            ``set_use_attn_result``/``set_use_split_qkv_input``.
+    """
+    if not model.cfg.use_attn_result:
+        model.set_use_attn_result(True)
+    if not model.cfg.use_split_qkv_input:
+        model.set_use_split_qkv_input(True)
+
+
+def _check_required_hooks(
+    cache: GradientCache, required_names: Sequence[str], graph: str, hint: str
+) -> None:
+    """Raise if any of ``required_names`` is absent from ``cache.activations``.
+
+    Shared by every granularity's graph-construction step, so a cache built
+    with too narrow a ``names_filter`` -- or one produced while a required
+    Bridge flag was off -- fails loudly instead of silently producing a
+    truncated graph.
+    """
+    missing = [name for name in required_names if name not in cache.activations]
+    if missing:
+        raise ValueError(
+            f"{graph} requires hook points missing from the cache: "
+            + ", ".join(missing)
+            + f". {hint}"
+        )
 
 
 def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
@@ -230,14 +286,13 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
             graph is never silently truncated.
     """
     n_layers = int(model.cfg.n_layers)
-    missing = [name for name in _required_hook_names(n_layers) if name not in cache.activations]
-    if missing:
-        raise ValueError(
-            "node graph requires hook points missing from the cache: "
-            + ", ".join(missing)
-            + ". Cache with a names_filter that keeps hook_embed, "
-            "blocks.*.attn.hook_z, and blocks.*.hook_mlp_out."
-        )
+    _check_required_hooks(
+        cache,
+        _required_hook_names(n_layers),
+        "node graph",
+        "Cache with a names_filter that keeps hook_embed, blocks.*.attn.hook_z, "
+        "and blocks.*.hook_mlp_out.",
+    )
 
     seq_len = cache.activations["hook_embed"].shape[1]
 
