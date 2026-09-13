@@ -15,6 +15,7 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     compute_answer_metrics,
     filter_baseline_capable,
     iter_prompt_trials,
+    select_norm_matched_control_token,
 )
 
 
@@ -101,3 +102,51 @@ def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> 
     assert [r.source for r in capable] == ["A", "C"]
     assert [r.source for r in excluded] == ["B"]
     assert records == original
+
+
+def test_select_norm_matched_control_token_is_deterministic_given_seed() -> None:
+    torch.manual_seed(0)
+    dictionary = torch.randn(20, 4)
+    first = select_norm_matched_control_token(
+        dictionary, target_token_id=5, excluded_ids=set(), seed=1
+    )
+    second = select_norm_matched_control_token(
+        dictionary, target_token_id=5, excluded_ids=set(), seed=1
+    )
+    assert first == second
+
+
+def test_select_norm_matched_control_token_respects_tolerance_and_exclusions() -> None:
+    dictionary = torch.zeros(5, 3)
+    dictionary[0] = torch.tensor([1.0, 0.0, 0.0])  # norm 1, target
+    dictionary[1] = torch.tensor([1.05, 0.0, 0.0])  # norm 1.05, within 10%
+    dictionary[2] = torch.tensor([2.0, 0.0, 0.0])  # norm 2, outside tolerance
+    dictionary[3] = torch.tensor([0.98, 0.0, 0.0])  # norm 0.98, within 10%, but excluded
+    dictionary[4] = torch.tensor([5.0, 0.0, 0.0])  # far outside tolerance
+    chosen = select_norm_matched_control_token(
+        dictionary, target_token_id=0, excluded_ids={3}, tolerance=0.1, seed=0
+    )
+    assert chosen == 1
+
+
+def test_select_norm_matched_control_token_raises_when_no_candidate_survives() -> None:
+    dictionary = torch.eye(3) * torch.tensor([1.0, 10.0, 100.0]).unsqueeze(1)
+    with pytest.raises(ValueError, match="no candidate token"):
+        select_norm_matched_control_token(
+            dictionary, target_token_id=0, excluded_ids=set(), tolerance=0.01, seed=0
+        )
+
+
+def test_select_norm_matched_control_token_always_excludes_the_target_itself() -> None:
+    dictionary = torch.ones(
+        3, 2
+    )  # every atom has an identical norm -- target would trivially "match" itself
+    chosen = select_norm_matched_control_token(
+        dictionary, target_token_id=1, excluded_ids=set(), seed=0
+    )
+    assert chosen != 1
+
+
+def test_select_norm_matched_control_token_rejects_non_2d_dictionary() -> None:
+    with pytest.raises(ValueError, match="2-D"):
+        select_norm_matched_control_token(torch.ones(3), target_token_id=0, excluded_ids=set())

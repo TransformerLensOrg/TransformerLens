@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Sequence, Tuple
+from typing import Container, Dict, Iterator, List, Sequence, Tuple
 
 import torch
 
@@ -139,3 +139,45 @@ def filter_baseline_capable(
     capable = [record for record in baselines if record.metrics.target_is_top1]
     excluded = [record for record in baselines if not record.metrics.target_is_top1]
     return capable, excluded
+
+
+def select_norm_matched_control_token(
+    dictionary: torch.Tensor,
+    target_token_id: int,
+    excluded_ids: Container[int],
+    *,
+    tolerance: float = 0.1,
+    seed: int = 0,
+) -> int:
+    """Deterministically selects a norm-matched control token id.
+
+    A candidate token id ``t`` qualifies when its ``dictionary`` atom norm is within
+    ``tolerance`` (relative to the target token's atom norm) and ``t`` is neither
+    ``target_token_id`` nor a member of ``excluded_ids``. One qualifying candidate is picked
+    with a seeded ``torch.Generator`` so the same ``seed`` always yields the same control
+    token. Raises ``ValueError`` if no candidate qualifies; the tolerance is never silently
+    widened and selection never falls back to the globally nearest atom.
+    """
+    if dictionary.ndim != 2:
+        raise ValueError(
+            f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
+        )
+    atom_norms = dictionary.float().norm(dim=1)
+    target_norm = atom_norms[target_token_id]
+    within_tolerance = (atom_norms - target_norm).abs() <= tolerance * target_norm
+    candidates = [
+        token_id
+        for token_id in range(dictionary.shape[0])
+        if token_id != target_token_id
+        and token_id not in excluded_ids
+        and bool(within_tolerance[token_id])
+    ]
+    if not candidates:
+        raise ValueError(
+            "no candidate token within relative tolerance "
+            f"{tolerance} of target_token_id={target_token_id}'s atom norm "
+            f"({float(target_norm):.4f})"
+        )
+    generator = torch.Generator(device=dictionary.device).manual_seed(seed)
+    pick = int(torch.randint(len(candidates), (1,), generator=generator).item())
+    return candidates[pick]
