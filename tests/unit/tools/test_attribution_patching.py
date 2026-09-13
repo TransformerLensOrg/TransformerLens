@@ -26,6 +26,8 @@ from transformer_lens.tools.analysis.attribution_patching import (
     Node,
     _assert_edges_unique,
     _check_required_hooks,
+    _edge_effects,
+    _edge_hook_names,
     _ensure_edge_hook_flags,
     _node_effects,
     _required_hook_names,
@@ -1406,3 +1408,220 @@ def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() ->
 
         edge_sum = edge_result.node_scores.get(node, 0.0)
         assert direct_score == pytest.approx(edge_sum + escape_term, abs=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Commit 4 - exact-patch parity and mutation-checked reconstruction
+# ---------------------------------------------------------------------------
+#
+# Two guards on the edge-scoring identity Risk 1 warns about: a genuine
+# activation patch of a single edge must match _edge_effects' estimate (sign
+# always; magnitude too on this linear toy model), and mutating one writer's
+# captured contribution must change only the edges that writer feeds, never a
+# different edge's score.
+
+
+def _edge_writer_delta_vector(
+    clean_cache: GradientCache, corrupt_cache: GradientCache, writer: Node
+) -> torch.Tensor:
+    """The writer's own residual-stream delta at its position (and head, if any)."""
+    name = _writer_hook_name(writer)
+    delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+    if writer.kind == "attn_head_out":
+        return delta[0, writer.position, writer.head]
+    return delta[0, writer.position]
+
+
+def test_edge_scores_sum_to_the_readers_direct_input_change() -> None:
+    """Summed incoming-edge scores equal a reader's own first-order input-change score.
+
+    A reader's cached input is the running sum of every writer enumerate_edges
+    connects to it, so its clean-minus-corrupt delta is exactly the sum of
+    those writers' individual deltas -- an algebraic identity of the residual
+    stream's additive construction, independent of anything downstream of the
+    reader (linear or not). Dotting each side with the reader's gradient and
+    comparing must therefore match to floating-point precision.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    _assert_edges_unique(edges)
+    edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
+
+    readers = {reader for _writer, reader in edges}
+    checked = 0
+    for reader in readers:
+        name = reader.hook_name
+        delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+        grad = corrupt_cache.gradients[name]
+        assert grad is not None
+        if reader.kind in ("q_input", "k_input", "v_input"):
+            delta_vec = delta[0, reader.position, reader.head]
+            grad_vec = grad[0, reader.position, reader.head]
+        else:
+            delta_vec = delta[0, reader.position]
+            grad_vec = grad[0, reader.position]
+        direct_score = float((delta_vec * grad_vec).sum())
+
+        edge_sum = sum(
+            score for (_writer, edge_reader), score in edge_scores.items() if edge_reader == reader
+        )
+        assert edge_sum == pytest.approx(direct_score, abs=1e-6)
+        checked += 1
+
+    assert checked > 0
+
+
+def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> None:
+    """Perturbing one writer's captured contribution changes only that writer's edges.
+
+    ``_edge_effects`` reads each edge's writer delta and reader gradient from
+    two independently indexed tensors (writer position/head, reader
+    position/head). A slicing bug that mixed up either index could leak a
+    perturbation into an edge whose writer was never touched, or fail to move
+    an edge whose writer was. Perturbing a single head's slice of a shared
+    per-head tensor also exercises the narrower case: sibling heads and
+    positions inside the *same* cached tensor must stay untouched.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    _assert_edges_unique(edges)
+    baseline_scores = _edge_effects(clean_cache, corrupt_cache, edges)
+
+    writer = Node(kind="attn_head_out", layer=0, head=0, position=1)
+    assert any(edge_writer == writer for edge_writer, _reader in edges)
+
+    perturbation = torch.full((D_MODEL,), 0.37, dtype=clean_cache.activations["hook_embed"].dtype)
+    writer_name = _writer_hook_name(writer)
+    perturbed_activations = dict(clean_cache.activations)
+    perturbed_activations[writer_name] = perturbed_activations[writer_name].clone()
+    perturbed_activations[writer_name][0, writer.position, writer.head] += perturbation
+    perturbed_clean_cache = GradientCache(
+        activations=perturbed_activations,
+        gradients=clean_cache.gradients,
+        metric=clean_cache.metric,
+    )
+
+    mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
+
+    changed = 0
+    for edge in edges:
+        edge_writer, reader = edge
+        if edge_writer == writer:
+            grad = corrupt_cache.gradients[reader.hook_name]
+            assert grad is not None
+            if reader.kind in ("q_input", "k_input", "v_input"):
+                grad_vec = grad[0, reader.position, reader.head]
+            else:
+                grad_vec = grad[0, reader.position]
+            expected = baseline_scores[edge] + float((perturbation * grad_vec).sum())
+            assert mutated_scores[edge] == pytest.approx(expected)
+            changed += 1
+        else:
+            assert mutated_scores[edge] == baseline_scores[edge]
+
+    assert changed > 0
+
+
+# ---------------------------------------------------------------------------
+# Exact-patch parity
+# ---------------------------------------------------------------------------
+#
+# generic_activation_patch (transformer_lens/patching.py) is not used for this
+# check: its `model: HookedTransformer` parameter is enforced at runtime by
+# this repo's jaxtyping/beartype pytest configuration
+# (--jaxtyping-packages=transformer_lens,beartype.beartype), which rejects any
+# argument that is not actually a HookedTransformer instance -- including a
+# real TransformerBridge, not just this module's toy double. A `# type:
+# ignore` only silences the static checker; it cannot satisfy a runtime
+# isinstance check. The patch below is instead driven directly through the
+# same hooks() mechanism generic_activation_patch itself uses internally.
+
+
+def _patch_edge_toward_clean(
+    model: _EdgeScoringToyBridge,
+    corrupt: torch.Tensor,
+    reader: Node,
+    writer_delta: torch.Tensor,
+    metric_fn: Callable[[torch.Tensor], torch.Tensor],
+) -> float:
+    """Run the corrupt forward with only one writer's contribution to `reader` patched toward clean.
+
+    Adds `writer_delta` into the reader's cached input at its position, leaving
+    every other writer's contribution to that same reader -- and the rest of
+    the corrupt run -- untouched. This is the exact single-edge intervention
+    _edge_effects estimates to first order.
+    """
+
+    def hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        tensor = tensor.clone()
+        tensor[0, reader.position] = tensor[0, reader.position] + writer_delta
+        return tensor
+
+    with torch.no_grad(), model.hooks(fwd_hooks=[(reader.hook_name, hook)]):
+        return float(metric_fn(model(corrupt)))
+
+
+def test_exact_edge_patch_matches_edge_effects_sign_and_magnitude() -> None:
+    """A genuine single-edge activation patch matches _edge_effects' estimate.
+
+    On this fully linear toy Bridge the first-order estimate is exact, so both
+    sign and magnitude match; a nonlinear model would only be expected to
+    match in sign.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
+
+    reader = Node(kind="mlp_in", layer=1, position=1)
+    writers = [writer for writer, edge_reader in edges if edge_reader == reader]
+    assert {writer.kind for writer in writers} == {"embed", "attn_head_out", "mlp_out"}
+
+    with torch.no_grad():
+        m_corrupt = float(metric(model(corrupt)))
+
+    for writer in writers:
+        writer_delta = _edge_writer_delta_vector(clean_cache, corrupt_cache, writer)
+        patched_metric = _patch_edge_toward_clean(model, corrupt, reader, writer_delta, metric)
+
+        exact_delta_m = patched_metric - m_corrupt
+        score = edge_scores[(writer, reader)]
+        assert exact_delta_m == pytest.approx(score, abs=1e-5)
+        if abs(score) > 1e-6:
+            assert (exact_delta_m > 0) == (score > 0)
