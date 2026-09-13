@@ -15,8 +15,11 @@ selection, and this stage's per-trial runner, which wires the first three togeth
 
 from __future__ import annotations
 
+import hashlib
 import itertools
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import (
     Any,
     Container,
@@ -30,6 +33,7 @@ from typing import (
     Tuple,
 )
 
+import numpy as np
 import torch
 
 from transformer_lens.tools.analysis.jacobian_lens import DEFAULT_K, JacobianLens
@@ -406,3 +410,155 @@ def run_causal_swap_benchmark(
                     )
                 )
     return trials, excluded
+
+
+@dataclass(frozen=True)
+class BootstrapResult:
+    """A percentile-bootstrap confidence interval around a success rate."""
+
+    point_estimate: float
+    ci_low: float
+    ci_high: float
+    n_resamples: int
+    confidence: float
+
+
+def bootstrap_success_rate_ci(
+    successes: Sequence[bool],
+    *,
+    n_resamples: int = 10_000,
+    confidence: float = 0.95,
+    seed: int = 0,
+) -> BootstrapResult:
+    """Computes a seeded percentile-bootstrap confidence interval for a success rate.
+
+    Resamples trial indices with replacement ``n_resamples`` times using
+    ``numpy.random.default_rng(seed)`` (the reproducibility convention
+    :func:`~transformer_lens.tools.analysis.jacobian_lens_decomposition.estimate_occupancy`
+    already uses for its own random controls), and reports the ``confidence`` central
+    interval of the resampled success rates around the observed point estimate.
+
+    Raises:
+        ValueError: If ``successes`` is empty.
+    """
+    if len(successes) == 0:
+        raise ValueError("successes must be a non-empty sequence")
+    values = np.asarray([bool(success) for success in successes], dtype=np.float64)
+    n = values.shape[0]
+    point_estimate = float(values.mean())
+    rng = np.random.default_rng(seed)
+    resample_indices = rng.integers(0, n, size=(n_resamples, n))
+    resample_rates = values[resample_indices].mean(axis=1)
+    tail = (1.0 - confidence) / 2.0
+    ci_low = float(np.quantile(resample_rates, tail))
+    ci_high = float(np.quantile(resample_rates, 1.0 - tail))
+    return BootstrapResult(
+        point_estimate=point_estimate,
+        ci_low=ci_low,
+        ci_high=ci_high,
+        n_resamples=n_resamples,
+        confidence=confidence,
+    )
+
+
+_REQUIRED_MANIFEST_FIELDS = (
+    "model_id",
+    "model_revision",
+    "lens_repo",
+    "lens_file",
+    "lens_revision",
+    "corpus_name",
+    "layers",
+    "alpha",
+    "k",
+    "control_tolerance",
+    "control_seed",
+    "success_definition",
+    "baseline_definition",
+    "rank_definition",
+)
+
+
+def build_protocol_manifest(**fields: Any) -> Dict[str, Any]:
+    """Assembles a protocol manifest, requiring the benchmark's fixed field set.
+
+    Requires at least :data:`_REQUIRED_MANIFEST_FIELDS`, the same key set (and, where they
+    overlap, the same string values) as ``Jacobian_Lens_Demo.ipynb``'s existing
+    ``protocol_manifest`` cell.
+
+    Raises:
+        ValueError: If any required field is missing, naming the missing field(s).
+    """
+    missing = [name for name in _REQUIRED_MANIFEST_FIELDS if name not in fields]
+    if missing:
+        raise ValueError(f"protocol manifest is missing required field(s): {', '.join(missing)}")
+    return dict(fields)
+
+
+def fingerprint_manifest(manifest: Dict[str, Any]) -> str:
+    """Fingerprints a protocol manifest with the recipe ``Jacobian_Lens_Demo.ipynb`` uses."""
+    return hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+SCHEMA_VERSION = 1
+
+
+def serialize_artifact(
+    manifest: Dict[str, Any],
+    trials: Sequence[TrialResult],
+    excluded_baselines: Sequence[BaselineRecord],
+    real_ci: BootstrapResult,
+    control_ci: BootstrapResult,
+) -> Dict[str, Any]:
+    """Assembles a JSON-serializable artifact dict from a benchmark run's results."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "protocol_manifest": manifest,
+        "protocol_fingerprint": fingerprint_manifest(manifest),
+        "trials": [asdict(trial) for trial in trials],
+        "excluded_baselines": [asdict(record) for record in excluded_baselines],
+        "real_success_ci": asdict(real_ci),
+        "control_success_ci": asdict(control_ci),
+    }
+
+
+_REQUIRED_ARTIFACT_FIELDS = (
+    "schema_version",
+    "protocol_manifest",
+    "protocol_fingerprint",
+    "trials",
+    "excluded_baselines",
+    "real_success_ci",
+    "control_success_ci",
+)
+
+
+def load_artifact(path: Path) -> Dict[str, Any]:
+    """Reads and validates a frozen artifact produced by :func:`serialize_artifact`.
+
+    Validates that every required top-level key is present, that ``schema_version``
+    matches :data:`SCHEMA_VERSION`, and that ``protocol_fingerprint`` matches a fresh
+    :func:`fingerprint_manifest` of the loaded ``protocol_manifest`` -- catching a
+    hand-edited or corrupted artifact rather than trusting the stored fingerprint blindly.
+
+    Raises:
+        ValueError: Naming the missing or mismatched field.
+    """
+    artifact = json.loads(Path(path).read_text())
+    missing = [name for name in _REQUIRED_ARTIFACT_FIELDS if name not in artifact]
+    if missing:
+        raise ValueError(f"artifact is missing required field(s): {', '.join(missing)}")
+    if artifact["schema_version"] != SCHEMA_VERSION:
+        raise ValueError(
+            f"artifact schema_version {artifact['schema_version']!r} does not match the "
+            f"expected {SCHEMA_VERSION!r}"
+        )
+    expected_fingerprint = fingerprint_manifest(artifact["protocol_manifest"])
+    if artifact["protocol_fingerprint"] != expected_fingerprint:
+        raise ValueError(
+            "artifact protocol_fingerprint does not match a freshly computed fingerprint of "
+            "its protocol_manifest (the manifest may have been hand-edited or corrupted)"
+        )
+    return artifact

@@ -4,18 +4,30 @@ Model-free: these exercise the prompt-corpus cross product and the rank/margin m
 directly on plain tensors, so no model is loaded.
 """
 
+import dataclasses
+import hashlib
+import json
+from typing import Any, Dict, List
+
 import pytest
 import torch
 
 from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+    SCHEMA_VERSION,
     AnswerMetrics,
     BaselineRecord,
     BenchmarkCorpus,
     FunctionSpec,
+    TrialResult,
+    bootstrap_success_rate_ci,
+    build_protocol_manifest,
     compute_answer_metrics,
     filter_baseline_capable,
+    fingerprint_manifest,
     iter_prompt_trials,
+    load_artifact,
     select_norm_matched_control_token,
+    serialize_artifact,
 )
 
 
@@ -150,3 +162,135 @@ def test_select_norm_matched_control_token_always_excludes_the_target_itself() -
 def test_select_norm_matched_control_token_rejects_non_2d_dictionary() -> None:
     with pytest.raises(ValueError, match="2-D"):
         select_norm_matched_control_token(torch.ones(3), target_token_id=0, excluded_ids=set())
+
+
+def test_bootstrap_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval() -> None:
+    successes = [True, True, False, True, False, True, True, False]
+    result = bootstrap_success_rate_ci(successes, n_resamples=2000, seed=0)
+    assert result.ci_low <= result.point_estimate <= result.ci_high
+    assert 0.0 <= result.ci_low and result.ci_high <= 1.0
+    assert result.point_estimate == pytest.approx(sum(successes) / len(successes))
+
+
+def test_bootstrap_success_rate_ci_is_deterministic_given_seed() -> None:
+    successes = [True, False, True]
+    first = bootstrap_success_rate_ci(successes, seed=3)
+    second = bootstrap_success_rate_ci(successes, seed=3)
+    assert first == second
+
+
+def test_bootstrap_success_rate_ci_rejects_empty_input() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        bootstrap_success_rate_ci([])
+
+
+def test_fingerprint_manifest_matches_the_notebook_recipe() -> None:
+    manifest = {"b": 2, "a": 1}
+    expected = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert fingerprint_manifest(manifest) == expected
+
+
+def test_build_protocol_manifest_rejects_missing_required_field() -> None:
+    with pytest.raises(ValueError, match="model_id"):
+        build_protocol_manifest(model_revision="x")
+
+
+def _full_manifest_fields(**overrides: Any) -> Dict[str, Any]:
+    fields: Dict[str, Any] = dict(
+        model_id="gpt2",
+        model_revision="x",
+        lens_repo="r",
+        lens_file="f",
+        lens_revision="y",
+        corpus_name="toy",
+        layers=[1],
+        alpha=1.0,
+        k=8,
+        control_tolerance=0.1,
+        control_seed=0,
+        success_definition="target token id equals deterministic argmax token id",
+        baseline_definition="source answer token id equals deterministic argmax token id",
+        rank_definition="1 + count(logits strictly greater than target logit)",
+    )
+    fields.update(overrides)
+    return fields
+
+
+def test_serialize_then_load_artifact_round_trips(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    trials: List[TrialResult] = []
+    excluded: List[BaselineRecord] = []
+    real_ci = bootstrap_success_rate_ci([True, False])
+    control_ci = bootstrap_success_rate_ci([False, False])
+    artifact = serialize_artifact(manifest, trials, excluded, real_ci, control_ci)
+    path = tmp_path / "artifact.json"
+    path.write_text(json.dumps(artifact))
+    loaded = load_artifact(path)
+    assert loaded["protocol_fingerprint"] == artifact["protocol_fingerprint"]
+    assert loaded["schema_version"] == SCHEMA_VERSION
+
+
+def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields(layers=[6]))
+    trial = TrialResult(
+        function="capital",
+        source="France",
+        target="China",
+        layer=6,
+        status="ok",
+        baseline=AnswerMetrics(0, 1, True, False, 2.0),
+        real_target_metrics=AnswerMetrics(1, 1, True, False, 0.5),
+        control_token_id=42,
+        control_target_metrics=AnswerMetrics(2, 3, False, False, -0.1),
+        error=None,
+    )
+    excluded = [
+        BaselineRecord("currency", "Egypt", "prompt", AnswerMetrics(9, 4, False, False, -3.0))
+    ]
+    real_ci = bootstrap_success_rate_ci([True])
+    control_ci = bootstrap_success_rate_ci([False])
+    artifact = serialize_artifact(manifest, [trial], excluded, real_ci, control_ci)
+    path = tmp_path / "artifact.json"
+    path.write_text(json.dumps(artifact))
+    loaded = load_artifact(path)
+    assert loaded["trials"] == [dataclasses.asdict(trial)]
+    assert loaded["excluded_baselines"] == [dataclasses.asdict(excluded[0])]
+
+
+def test_load_artifact_rejects_tampered_fingerprint(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields(layers=[1]))
+    artifact = serialize_artifact(
+        manifest, [], [], bootstrap_success_rate_ci([True]), bootstrap_success_rate_ci([False])
+    )
+    artifact["protocol_manifest"]["layers"] = [2]
+    path = tmp_path / "bad.json"
+    path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="fingerprint"):
+        load_artifact(path)
+
+
+def test_load_artifact_rejects_wrong_schema_version(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    artifact = serialize_artifact(
+        manifest, [], [], bootstrap_success_rate_ci([True]), bootstrap_success_rate_ci([False])
+    )
+    artifact["schema_version"] = SCHEMA_VERSION + 1
+    artifact["protocol_fingerprint"] = fingerprint_manifest(artifact["protocol_manifest"])
+    path = tmp_path / "bad_version.json"
+    path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="schema_version"):
+        load_artifact(path)
+
+
+def test_load_artifact_rejects_missing_required_key(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    artifact = serialize_artifact(
+        manifest, [], [], bootstrap_success_rate_ci([True]), bootstrap_success_rate_ci([False])
+    )
+    del artifact["excluded_baselines"]
+    path = tmp_path / "bad_missing.json"
+    path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="excluded_baselines"):
+        load_artifact(path)
