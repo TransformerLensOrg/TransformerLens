@@ -29,6 +29,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _ensure_edge_hook_flags,
     _node_effects,
     _required_hook_names,
+    _writer_hook_name,
     attribution_patch,
     cache_activation_and_gradient,
     enumerate_edges,
@@ -322,9 +323,13 @@ def test_config_rejects_invalid_values() -> None:
         EdgeAttributionConfig(ig_steps=0)
 
 
-def test_config_unsupported_paths_raise_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="edge"):
-        EdgeAttributionConfig(granularity="edge")
+def test_config_accepts_edge_granularity() -> None:
+    config = EdgeAttributionConfig(granularity="edge")
+    assert config.granularity == "edge"
+    assert config.ig_steps == 1
+
+
+def test_config_ig_steps_above_one_raises_not_implemented() -> None:
     with pytest.raises(NotImplementedError, match="integrated gradient"):
         EdgeAttributionConfig(ig_steps=5)
 
@@ -344,11 +349,34 @@ def test_top_nodes_ranks_by_effect_magnitude() -> None:
     assert [node for node, _ in result.top_nodes(k=10)] == [big_negative, medium, small]
 
 
-def test_top_edges_not_implemented() -> None:
+def test_top_edges_ranks_by_effect_magnitude() -> None:
+    small = (Node(kind="embed", position=0), Node(kind="mlp_in", layer=0, position=0))
+    big_negative = (
+        Node(kind="embed", position=0),
+        Node(kind="q_input", layer=0, head=0, position=0),
+    )
+    medium = (
+        Node(kind="attn_head_out", layer=0, head=0, position=0),
+        Node(kind="mlp_in", layer=1, position=0),
+    )
+    result = AttributionResult(
+        node_scores={},
+        edge_scores={small: 0.1, big_negative: -5.0, medium: 2.0},
+    )
+
+    ranked = result.top_edges(k=2)
+    assert [(writer, reader) for writer, reader, _ in ranked] == [big_negative, medium]
+
+    # k beyond the edge count returns every edge, still magnitude-ordered.
+    full = result.top_edges(k=10)
+    assert [(writer, reader) for writer, reader, _ in full] == [big_negative, medium, small]
+    assert [score for _, _, score in full] == [-5.0, 2.0, 0.1]
+
+
+def test_top_edges_empty_when_no_edge_sweep_has_run() -> None:
     result = AttributionResult(node_scores={})
     assert result.edge_scores == {}
-    with pytest.raises(NotImplementedError, match="edge"):
-        result.top_edges()
+    assert result.top_edges() == []
 
 
 # ---------------------------------------------------------------------------
@@ -903,6 +931,7 @@ class _EdgeHookToyBridge(_LinearToyBridge):
             device="cpu",
             use_attn_result=False,
             use_split_qkv_input=False,
+            use_hook_mlp_in=False,
         )
         self.compatibility_mode = False
         self._weights_processed = False
@@ -948,6 +977,9 @@ class _EdgeHookToyBridge(_LinearToyBridge):
     def set_use_split_qkv_input(self, use_split_qkv_input: bool) -> None:
         self.cfg.use_split_qkv_input = use_split_qkv_input
 
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
+        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
 
 def test_required_hook_names_edge_granularity_adds_per_head_families() -> None:
     node_names = set(_required_hook_names(N_LAYERS))
@@ -965,11 +997,13 @@ def test_ensure_edge_hook_flags_enables_required_bridge_flags() -> None:
     model = _EdgeHookToyBridge()
     assert model.cfg.use_attn_result is False
     assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
 
     _ensure_edge_hook_flags(model)
 
     assert model.cfg.use_attn_result is True
     assert model.cfg.use_split_qkv_input is True
+    assert model.cfg.use_hook_mlp_in is True
 
 
 def test_edge_hook_flags_populate_the_per_head_cache() -> None:
@@ -1126,3 +1160,249 @@ def test_assert_edges_unique_raises_on_duplicate() -> None:
 
     with pytest.raises(ValueError, match="more than once"):
         _assert_edges_unique([(writer, reader), (writer, reader)])
+
+
+# ---------------------------------------------------------------------------
+# Commit 3 - edge scoring in attribution_patch
+# ---------------------------------------------------------------------------
+#
+# Edge scoring needs every reader hook to actually participate in the forward
+# computation, unlike _GatedEdgeHookBlock's probes above, which fire but are
+# discarded: a reader with no forward-graph path to the metric would receive
+# no gradient, leaving nothing genuine for _edge_effects to score.
+# _EdgeScoringBlock wires every per-head QKV input and the MLP entry into the
+# actual computation, so a cache built from it carries real, distinguishable
+# per-edge gradients.
+
+
+class _EdgeScoringBlock(nn.Module):
+    """A block whose split-QKV inputs and MLP entry are read, not just probed.
+
+    Each head's z is a linear combination of that head's own hook_q_input /
+    hook_k_input / hook_v_input, through independent per-head weights, so an
+    edge into one input family is distinguishable from an edge into another.
+    Whether a cfg flag is on only changes whether the corresponding HookPoint
+    fires (and so whether it is visible in a cache); the per-head
+    decomposition of the residual is distributive, so the computed value is
+    identical either way, mirroring _GatedEdgeHookBlock's hook_result split.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int,
+        d_head: int,
+        layer: int,
+        dtype: torch.dtype,
+        cfg: SimpleNamespace,
+    ) -> None:
+        super().__init__()
+        self.cfg = cfg
+        self.n_heads = n_heads
+        self.d_head = d_head
+        self.w_q = nn.Linear(d_model, n_heads * d_head, bias=False, dtype=dtype)
+        self.w_k = nn.Linear(d_model, n_heads * d_head, bias=False, dtype=dtype)
+        self.w_v = nn.Linear(d_model, n_heads * d_head, bias=False, dtype=dtype)
+        self.w_o = nn.Linear(n_heads * d_head, d_model, bias=False, dtype=dtype)
+        self.w_mlp = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
+        for linear in (self.w_q, self.w_k, self.w_v, self.w_o, self.w_mlp):
+            nn.init.normal_(linear.weight, std=0.2)
+        self.hook_z = HookPoint()
+        self.hook_z.name = f"blocks.{layer}.attn.hook_z"
+        self.hook_mlp_out = HookPoint()
+        self.hook_mlp_out.name = f"blocks.{layer}.hook_mlp_out"
+        self.hook_result = HookPoint()
+        self.hook_result.name = f"blocks.{layer}.attn.hook_result"
+        self.hook_q_input = HookPoint()
+        self.hook_q_input.name = f"blocks.{layer}.attn.hook_q_input"
+        self.hook_k_input = HookPoint()
+        self.hook_k_input.name = f"blocks.{layer}.attn.hook_k_input"
+        self.hook_v_input = HookPoint()
+        self.hook_v_input.name = f"blocks.{layer}.attn.hook_v_input"
+        self.hook_mlp_in = HookPoint()
+        self.hook_mlp_in.name = f"blocks.{layer}.hook_mlp_in"
+
+    def forward(self, residual: torch.Tensor) -> torch.Tensor:
+        batch, seq, d_model = residual.shape
+        per_head_residual = residual.unsqueeze(-2).expand(batch, seq, self.n_heads, d_model)
+        if self.cfg.use_split_qkv_input:
+            q_input = self.hook_q_input(per_head_residual)
+            k_input = self.hook_k_input(per_head_residual)
+            v_input = self.hook_v_input(per_head_residual)
+        else:
+            q_input = k_input = v_input = per_head_residual
+
+        w_q_per_head = self.w_q.weight.reshape(self.n_heads, self.d_head, d_model)
+        w_k_per_head = self.w_k.weight.reshape(self.n_heads, self.d_head, d_model)
+        w_v_per_head = self.w_v.weight.reshape(self.n_heads, self.d_head, d_model)
+        z = self.hook_z(
+            torch.einsum("bshm,hdm->bshd", q_input, w_q_per_head)
+            + torch.einsum("bshm,hdm->bshd", k_input, w_k_per_head)
+            + torch.einsum("bshm,hdm->bshd", v_input, w_v_per_head)
+        )
+
+        w_o_per_head = self.w_o.weight.reshape(d_model, self.n_heads, self.d_head).permute(1, 2, 0)
+        per_head_out_raw = torch.einsum("bshd,hdm->bshm", z, w_o_per_head)
+        if self.cfg.use_attn_result:
+            per_head_out = self.hook_result(per_head_out_raw)
+        else:
+            per_head_out = per_head_out_raw
+        residual = residual + per_head_out.sum(dim=-2)
+
+        mlp_in = self.hook_mlp_in(residual) if self.cfg.use_hook_mlp_in else residual
+        mlp_out = self.hook_mlp_out(self.w_mlp(mlp_in))
+        return residual + mlp_out
+
+
+class _EdgeScoringToyBridge(_LinearToyBridge):
+    """A tiny ``TransformerBridge`` whose edge-granularity hooks all sit on the data path.
+
+    Every reader hook point (``hook_q_input``/``hook_k_input``/``hook_v_input``,
+    ``hook_mlp_in``) and writer hook point (``hook_result``) that
+    :func:`enumerate_edges` connects is read by the forward computation itself,
+    so ``cache_activation_and_gradient``'s backward hooks capture real,
+    per-edge gradients.
+    """
+
+    def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
+        nn.Module.__init__(self)
+        self._hook_registry: dict[str, HookPoint] = {}
+        self.context_level = 0
+        torch.manual_seed(0)
+        self.cfg = SimpleNamespace(
+            n_layers=N_LAYERS,
+            d_model=D_MODEL,
+            d_vocab=D_VOCAB,
+            d_vocab_out=D_VOCAB,
+            model_name="edge-scoring-toy-bridge",
+            dtype=dtype,
+            device="cpu",
+            use_attn_result=False,
+            use_split_qkv_input=False,
+            use_hook_mlp_in=False,
+        )
+        self.compatibility_mode = False
+        self._weights_processed = False
+        self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
+        nn.init.normal_(self.embed.weight, std=0.2)
+        self.hook_embed = HookPoint()
+        self.hook_embed.name = "hook_embed"
+        self.blocks = nn.ModuleList(
+            [
+                _EdgeScoringBlock(D_MODEL, N_HEADS, D_HEAD, layer, dtype, self.cfg)
+                for layer in range(N_LAYERS)
+            ]
+        )
+        self.ln_final = nn.Identity()
+        self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
+        nn.init.normal_(self.unembed.weight, std=0.2)
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        hooks: dict[str, HookPoint] = {"hook_embed": self.hook_embed}
+        for layer, block in enumerate(self.blocks):
+            hooks[f"blocks.{layer}.attn.hook_z"] = block.hook_z
+            hooks[f"blocks.{layer}.hook_mlp_out"] = block.hook_mlp_out
+            hooks[f"blocks.{layer}.attn.hook_result"] = block.hook_result
+            hooks[f"blocks.{layer}.attn.hook_q_input"] = block.hook_q_input
+            hooks[f"blocks.{layer}.attn.hook_k_input"] = block.hook_k_input
+            hooks[f"blocks.{layer}.attn.hook_v_input"] = block.hook_v_input
+            hooks[f"blocks.{layer}.hook_mlp_in"] = block.hook_mlp_in
+        return hooks
+
+    def forward(
+        self, tokens: torch.Tensor, return_type: str | None = "logits"
+    ) -> torch.Tensor | None:
+        residual = self.hook_embed(self.embed(tokens))
+        for block in self.blocks:
+            residual = block(residual)
+        if return_type is None:
+            return None
+        return self.unembed(self.ln_final(residual))
+
+    def set_use_attn_result(self, use_attn_result: bool) -> None:
+        self.cfg.use_attn_result = use_attn_result
+
+    def set_use_split_qkv_input(self, use_split_qkv_input: bool) -> None:
+        self.cfg.use_split_qkv_input = use_split_qkv_input
+
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
+        self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
+
+def test_attribution_patch_edge_granularity_scores_every_edge_with_finite_values() -> None:
+    model = _EdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+
+    assert isinstance(result, AttributionResult)
+    assert len(result.edge_scores) == _expected_edge_count(N_LAYERS, N_HEADS, SEQ_LEN)
+    assert all(isinstance(score, float) for score in result.edge_scores.values())
+    assert all(math.isfinite(score) for score in result.edge_scores.values())
+
+    top = result.top_edges(k=5)
+    assert len(top) == 5
+    magnitudes = [abs(score) for _, _, score in top]
+    assert magnitudes == sorted(magnitudes, reverse=True)
+    for writer, reader, score in top:
+        assert (writer, reader) in result.edge_scores
+        assert result.edge_scores[(writer, reader)] == score
+
+
+def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() -> None:
+    """Edge aggregation plus the residual stream's escape term equals the direct node score.
+
+    A writer reaches the metric two ways: through every edge enumerate_edges gives
+    it (what the aggregation sums), and by surviving unread in the residual stream
+    all the way to the final MLP write -- the direct skip-connection carry-through,
+    which none of enumerate_edges' four reader kinds model (there is no "final
+    readout" reader in this graph). That escape term is the same shared vector for
+    every writer at a given position: the corrupt-run gradient at the last layer's
+    hook_mlp_out equals d(metric)/d(the final residual) exactly, since hook_mlp_out
+    feeds the final residual by pure addition and nothing else reads it. Dotting a
+    writer's own delta (measured at its _writer_hook_name, matching _edge_effects)
+    against that shared vector and adding it to the writer's edge-score sum
+    reconstructs its direct node score exactly, including for the final layer's MLP
+    output itself, which has no outgoing edge and so is reconstructed by the escape
+    term alone.
+    """
+    model = _EdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    edge_result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    node_result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="node")
+    )
+
+    edge_hook_names = _required_hook_names(N_LAYERS, granularity="edge")
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    escape_grad = corrupt_cache.gradients[f"blocks.{N_LAYERS - 1}.hook_mlp_out"]
+
+    terminal_writer = Node(kind="mlp_out", layer=N_LAYERS - 1, position=0)
+    assert terminal_writer not in edge_result.node_scores
+
+    for node, direct_score in node_result.node_scores.items():
+        name = _writer_hook_name(node)
+        delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+        if node.kind == "attn_head_out":
+            delta_vec = delta[0, node.position, node.head]
+        else:
+            delta_vec = delta[0, node.position]
+        escape_term = float((delta_vec * escape_grad[0, node.position]).sum())
+
+        edge_sum = edge_result.node_scores.get(node, 0.0)
+        assert direct_score == pytest.approx(edge_sum + escape_term, abs=1e-5)

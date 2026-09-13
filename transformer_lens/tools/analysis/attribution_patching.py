@@ -22,11 +22,11 @@ Memory note: gradients are retained only for hook points passing ``names_filter`
 Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.
 
-Scope: this build ships node granularity with plain attribution (``ig_steps=1``).
-Edge scoring (EAP), the integrated-gradient path (EAP-IG, ``ig_steps>1``), and
-ablate-outside faithfulness are not implemented yet; their API is declared here —
-``granularity="edge"`` and ``ig_steps>1`` raise :class:`NotImplementedError` — so
-downstream code can pin against a stable surface now.
+Scope: this build ships node and edge granularity with plain attribution
+(``ig_steps=1``). The integrated-gradient path (EAP-IG, ``ig_steps>1``) and
+ablate-outside faithfulness are not implemented yet; their API is declared here,
+and ``ig_steps>1`` raises :class:`NotImplementedError`, so downstream code can pin
+against a stable surface now.
 """
 
 from __future__ import annotations
@@ -155,13 +155,12 @@ class EdgeAttributionConfig:
     ``ig_steps`` exceeds 1. Collapsing them removes the invalid states (e.g.
     ``method="attribution", ig_steps=5``).
 
-    This build implements node granularity with plain attribution only.
-    ``granularity="edge"`` and ``ig_steps>1`` are accepted by the type but raise
-    :class:`NotImplementedError` at construction, so downstream code can import and
-    reference this API now while edge scoring and the integrated-gradient path are
-    not implemented yet. Once EAP-IG lands, the default flips to ``ig_steps=5``
-    (EAP-IG is the faithful default); until then the default is the only executable
-    value, ``ig_steps=1``.
+    This build implements node and edge granularity with plain attribution.
+    ``ig_steps>1`` is accepted by the type but raises :class:`NotImplementedError`
+    at construction, so downstream code can import and reference this API now
+    while the integrated-gradient path is not implemented yet. Once EAP-IG lands,
+    the default flips to ``ig_steps=5`` (EAP-IG is the faithful default); until
+    then the default is the only executable value, ``ig_steps=1``.
 
     Attributes:
         granularity: ``"node"`` or ``"edge"``. Defaults to ``"node"``.
@@ -174,11 +173,6 @@ class EdgeAttributionConfig:
     def __post_init__(self) -> None:
         if self.ig_steps < 1:
             raise ValueError(f"ig_steps must be >= 1, got {self.ig_steps}")
-        if self.granularity == "edge":
-            raise NotImplementedError(
-                "granularity='edge' (EAP edge scoring) is not implemented yet; this "
-                "build supports granularity='node' only."
-            )
         if self.ig_steps > 1:
             raise NotImplementedError(
                 "ig_steps>1 (EAP-IG integrated gradients) is not implemented yet; this "
@@ -195,10 +189,12 @@ class AttributionResult:
             ``(a_clean - a_corrupt) . d(metric)/d(a)``. A positive score means
             patching that node from corrupt toward clean moves the metric in the
             positive direction (the denoising convention pinned in the module
-            docstring).
+            docstring). For an edge-granularity sweep this is instead each
+            writer's aggregate over its own outgoing edge scores, which omits
+            its direct skip-connection contribution to the metric (see
+            :func:`attribution_patch`).
         edge_scores: Per-edge effect estimate keyed by ``(source, destination)``.
-            Declared here so the result API is stable across the PR series; it is
-            populated only once edge scoring lands and is empty for a node sweep.
+            Populated for an edge-granularity sweep; empty for a node sweep.
     """
 
     node_scores: dict[Node, float]
@@ -216,11 +212,15 @@ class AttributionResult:
         return ranked[:k]
 
     def top_edges(self, k: int = 10) -> list[tuple[Node, Node, float]]:
-        """The ``k`` highest-magnitude edges — populated once edge scoring lands."""
-        raise NotImplementedError(
-            "edge scoring is not implemented yet; run a node-granularity sweep and "
-            "use top_nodes()."
-        )
+        """The ``k`` edges with the largest effect magnitude, strongest first.
+
+        Ranking is by absolute score, matching ``top_nodes``: a large negative
+        edge effect is as causally important as a large positive one. Ties keep
+        enumeration order (stable sort). Requesting more than the available
+        edges returns all of them.
+        """
+        ranked = sorted(self.edge_scores.items(), key=lambda item: abs(item[1]), reverse=True)
+        return [(writer, reader, score) for (writer, reader), score in ranked[:k]]
 
 
 def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> list[str]:
@@ -246,27 +246,32 @@ def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> li
 
 
 def _ensure_edge_hook_flags(model: Any) -> None:
-    """Turn on the Bridge flags edge granularity's per-head hook points require.
+    """Turn on the Bridge flags edge granularity's hook points require.
 
-    ``attn.hook_result`` and the split ``attn.hook_q_input``/``hook_k_input``/
-    ``hook_v_input`` hook points exist on the Bridge unconditionally but only
-    fire when ``cfg.use_attn_result`` / ``cfg.use_split_qkv_input`` are on, so
-    an edge sweep must enable both before caching or the writer- and
-    reader-side hook points it needs never populate.
+    ``attn.hook_result``, the split ``attn.hook_q_input``/``hook_k_input``/
+    ``hook_v_input``, and ``hook_mlp_in`` all exist on the Bridge
+    unconditionally but only fire when their owning flag
+    (``cfg.use_attn_result`` / ``cfg.use_split_qkv_input`` /
+    ``cfg.use_hook_mlp_in``) is on, so an edge sweep must enable all three
+    before caching or the writer- and reader-side hook points it needs never
+    populate.
 
-    Memory caveat: enabling these flags makes every cached per-head tensor
-    ``[batch, seq, n_heads, d_model]`` instead of the summed
-    ``[batch, seq, d_model]`` residual. That is fine on a model the size of
-    gpt2-small; it does not scale to models with many heads or layers.
+    Memory caveat: enabling ``use_attn_result``/``use_split_qkv_input`` makes
+    every cached per-head tensor ``[batch, seq, n_heads, d_model]`` instead of
+    the summed ``[batch, seq, d_model]`` residual. That is fine on a model the
+    size of gpt2-small; it does not scale to models with many heads or layers.
 
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``cfg`` and
-            ``set_use_attn_result``/``set_use_split_qkv_input``.
+            ``set_use_attn_result``/``set_use_split_qkv_input``/
+            ``set_use_hook_mlp_in``.
     """
     if not model.cfg.use_attn_result:
         model.set_use_attn_result(True)
     if not model.cfg.use_split_qkv_input:
         model.set_use_split_qkv_input(True)
+    if not model.cfg.use_hook_mlp_in:
+        model.set_use_hook_mlp_in(True)
 
 
 def _check_required_hooks(
@@ -355,6 +360,17 @@ def _required_edge_reader_hook_names(n_layers: int) -> list[str]:
     return [f"blocks.{layer}.hook_mlp_in" for layer in range(n_layers)]
 
 
+def _edge_hook_names(n_layers: int) -> list[str]:
+    """Every hook point an edge-granularity sweep must cache.
+
+    The per-head attention hooks from ``_required_hook_names(..., granularity="edge")``
+    plus each layer's MLP-entry reader hook.
+    """
+    return _required_hook_names(n_layers, granularity="edge") + _required_edge_reader_hook_names(
+        n_layers
+    )
+
+
 def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]:
     """Enumerate every writer -> reader edge in the residual-stream graph.
 
@@ -383,8 +399,7 @@ def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]
     n_layers = int(model.cfg.n_layers)
     _check_required_hooks(
         cache,
-        _required_hook_names(n_layers, granularity="edge")
-        + _required_edge_reader_hook_names(n_layers),
+        _edge_hook_names(n_layers),
         "edge graph",
         "Cache with a names_filter that keeps the edge-granularity hook set: "
         "hook_embed, blocks.*.attn.hook_z, blocks.*.hook_mlp_out, "
@@ -614,6 +629,86 @@ def _node_effects(
     return scores
 
 
+def _writer_hook_name(node: Node) -> str:
+    """The residual-stream hook point holding a writer node's own contribution.
+
+    Distinct from ``Node.hook_name``: an ``attn_head_out`` node's ``hook_name``
+    resolves to ``attn.hook_z``, the pre-``hook_result`` value node granularity
+    scores. An edge's writer contribution must instead be measured in the same
+    ``d_model`` space a reader's gradient lives in, which is ``attn.hook_result``
+    -- the per-head decomposition of the head's contribution after it is
+    projected into the residual stream.
+    """
+    if node.kind == "embed":
+        return "hook_embed"
+    if node.kind == "attn_head_out":
+        return f"blocks.{node.layer}.attn.hook_result"
+    if node.kind == "mlp_out":
+        return f"blocks.{node.layer}.hook_mlp_out"
+    raise ValueError(f"{node.kind} is a reader kind and has no writer contribution")
+
+
+def _edge_effects(
+    clean_cache: GradientCache,
+    corrupt_cache: GradientCache,
+    edges: Sequence[tuple[Node, Node]],
+) -> dict[tuple[Node, Node], float]:
+    """Score every edge with ``(a_clean[u] - a_corrupt[u]) . d(metric)/d(input of v)``.
+
+    Mirrors ``_node_effects``: the delta is the writer's own residual
+    contribution (clean minus corrupt cache), dotted with the reader's
+    corrupt-run gradient -- the same denoising convention ``_node_effects``
+    uses. Unlike a node score, the delta and the gradient are read from two
+    different hook points (the writer's and the reader's), since an edge
+    measures how much of one component's output reaches another component's
+    input.
+    """
+    scores: dict[tuple[Node, Node], float] = {}
+    for writer, reader in edges:
+        writer_name = _writer_hook_name(writer)
+        reader_name = reader.hook_name
+        grad = corrupt_cache.gradients.get(reader_name)
+        if grad is None:
+            raise ValueError(
+                f"edge {(writer, reader)} reads its gradient at {reader_name!r}, but "
+                "the corrupt cache holds none there; cache with a names_filter that "
+                "retains this hook point."
+            )
+        delta = clean_cache.activations[writer_name] - corrupt_cache.activations[writer_name]
+        if writer.kind == "attn_head_out":
+            delta_vec = delta[0, writer.position, writer.head]
+        else:
+            delta_vec = delta[0, writer.position]
+        if reader.kind in ("q_input", "k_input", "v_input"):
+            grad_vec = grad[0, reader.position, reader.head]
+        else:
+            grad_vec = grad[0, reader.position]
+        scores[(writer, reader)] = float((delta_vec * grad_vec).sum())
+    return scores
+
+
+def _aggregate_edge_scores_to_writer_nodes(
+    edge_scores: dict[tuple[Node, Node], float],
+) -> dict[Node, float]:
+    """Sum each writer's outgoing edge scores into that writer's aggregate node score.
+
+    A writer's aggregate is the sum of its effects along every edge it feeds.
+    This is not the same quantity a node-granularity sweep measures directly at
+    the writer's own hook point: enumerate_edges' reader kinds (the per-head
+    Q/K/V inputs and the MLP entry) do not include a final-readout reader, so a
+    writer's direct skip-connection contribution to the metric -- the part of
+    its residual-stream write that is never read by a later component, only
+    carried forward by addition -- is absent from the aggregate. A writer with
+    no outgoing edge at all (the final layer's MLP output, which nothing in
+    this graph reads) has no aggregate entry, even though its direct node score
+    is generally nonzero.
+    """
+    totals: dict[Node, float] = {}
+    for (writer, _reader), score in edge_scores.items():
+        totals[writer] = totals.get(writer, 0.0) + score
+    return totals
+
+
 def attribution_patch(
     model: Any,
     clean: torch.Tensor,
@@ -621,12 +716,17 @@ def attribution_patch(
     metric_fn: MetricFn,
     config: EdgeAttributionConfig = EdgeAttributionConfig(),
 ) -> AttributionResult:
-    """Estimate every node's causal effect on ``metric_fn`` in two forwards + one backward.
+    """Estimate every component's causal effect on ``metric_fn`` in two forwards + one backward.
 
     For each clean/corrupt pair this runs a clean forward (for ``a_clean``) and a
     corrupt forward whose backward hooks capture ``g = d(metric)/d(a)`` (for
-    ``a_corrupt`` and its gradient), then scores each node with the
-    first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``.
+    ``a_corrupt`` and its gradient). At node granularity (``config.granularity ==
+    "node"``) each node is scored with the first-order Taylor estimate
+    ``effect(node) = (a_clean - a_corrupt) . g``. At edge granularity
+    (``config.granularity == "edge"``) each writer -> reader edge is scored with
+    ``effect(edge) = (a_clean[writer] - a_corrupt[writer]) . d(metric)/d(input of
+    reader)``, and ``node_scores`` holds each writer's aggregate effect (the sum
+    of its outgoing edge scores).
 
     Sign/direction convention (denoising form): gradients are taken on the *corrupt*
     run and the estimate points *toward* the clean activation, so a positive score
@@ -636,8 +736,8 @@ def attribution_patch(
 
     Dataset averaging: ``clean``/``corrupt`` may hold a batch of prompt pairs. Each
     pair is scored independently (per-example forward/backward, so its own
-    reconstruction identity holds) and per-node scores are averaged across the batch
-    before ranking.
+    reconstruction identity holds) and per-node (or per-edge) scores are averaged
+    across the batch before ranking.
 
     The model and every submodule must be in evaluation mode. Separate clean and
     corrupt forwards cannot produce meaningful activation differences if stochastic
@@ -650,12 +750,19 @@ def attribution_patch(
         corrupt: Corrupt token ids, shape ``[batch, seq]``, paired row-by-row with
             ``clean``.
         metric_fn: Maps single-example logits to a scalar to differentiate.
-        config: Sweep configuration. This PR supports node granularity with plain
-            attribution (``ig_steps=1``) only; other values raise at construction.
+        config: Sweep configuration. Node and edge granularity are both
+            supported with plain attribution (``ig_steps=1``); ``ig_steps>1``
+            raises at construction.
 
     Returns:
         An :class:`AttributionResult` whose ``node_scores`` are averaged over the
-        batch. ``edge_scores`` stays empty until edge scoring lands.
+        batch. For an edge-granularity sweep, ``edge_scores`` is populated too and
+        ``node_scores`` is the per-writer aggregate of those edge scores. This
+        aggregate is not the same quantity a node-granularity sweep on the same
+        model returns: it omits each writer's direct skip-connection contribution
+        to the metric, since no reader kind models a final readout (a writer with
+        no outgoing edge at all, such as the final layer's MLP output, has no
+        entry here even though its direct node score is generally nonzero).
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
@@ -663,8 +770,6 @@ def attribution_patch(
             position-by-position), or the model or one of its submodules is in
             training mode.
     """
-    del config  # node granularity + ig_steps=1 only; enforced at construction.
-
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
             "attribution_patch expects 2D [batch, seq] token tensors, got clean "
@@ -684,8 +789,34 @@ def attribution_patch(
 
     require_eval_mode(model, operation="attribution_patch()")
 
-    node_hook_names = _required_hook_names(int(model.cfg.n_layers))
     batch = int(clean.shape[0])
+    n_layers = int(model.cfg.n_layers)
+
+    if config.granularity == "edge":
+        _ensure_edge_hook_flags(model)
+        hook_names = _edge_hook_names(n_layers)
+        edge_totals: dict[tuple[Node, Node], float] = {}
+
+        for index in range(batch):
+            clean_cache = cache_activation_and_gradient(
+                model,
+                clean[index : index + 1],
+                metric_fn,
+                names_filter=hook_names,
+                compute_gradient=False,
+            )
+            corrupt_cache = cache_activation_and_gradient(
+                model, corrupt[index : index + 1], metric_fn, names_filter=hook_names
+            )
+            edges = enumerate_edges(model, corrupt_cache)
+            for edge, score in _edge_effects(clean_cache, corrupt_cache, edges).items():
+                edge_totals[edge] = edge_totals.get(edge, 0.0) + score
+
+        edge_scores = {edge: total / batch for edge, total in edge_totals.items()}
+        node_scores = _aggregate_edge_scores_to_writer_nodes(edge_scores)
+        return AttributionResult(node_scores=node_scores, edge_scores=edge_scores)
+
+    node_hook_names = _required_hook_names(n_layers)
     totals: dict[Node, float] = {}
 
     for index in range(batch):
