@@ -345,3 +345,134 @@ class TestGatedMLPRecomputeOrientation:
         (grad_x_oracle,) = torch.autograd.grad(down_oracle.sum(), x_oracle)
 
         torch.testing.assert_close(grad_x, grad_x_oracle)
+
+
+class TestPinnedReferenceParity:
+    """Tolerant parity against ``FarnoushRJ/RelP`` pinned at
+    ``8219d6dc417c3fd7f318342cf61cd2a0c20b7250``.
+
+    That repository vendors an unrelated pre-Bridge TransformerLens fork, so its
+    rule formulas are reimplemented here directly from the pinned commit's
+    component diffs rather than imported:
+
+    - LN-rule (``transformer_lens/components/rms_norm.py``): ``x / scale.detach()``.
+    - Identity-rule (``transformer_lens/utilities/activation_functions.py``,
+      class ``ModifiedAct``): ``zp = stabilize(x); zp * (act_fn(x) / zp).detach()``,
+      where ``stabilize(z) = z + ((z == 0) + sign(z)) * 1e-6``
+      (``transformer_lens/lrp_utils.py``).
+    - Half-rule (``transformer_lens/components/mlps/gated_mlp.py``):
+      ``z = u * v; z / 2 + (z / 2).detach()``.
+
+    The LN- and Half-rule reference formulas produce the same VJP as this module's
+    primitives to floating-point precision. The Identity-rule reference formula
+    does not: its epsilon stabilizer only approximates the paper-defined factor
+    away from ``x == 0``, and collapses to exactly zero at ``x == 0`` where the
+    paper-defined factor's removable-singularity limit is ``0.5``.
+    """
+
+    @staticmethod
+    def _reference_stabilize(z: torch.Tensor) -> torch.Tensor:
+        return z + ((z == 0).to(z.dtype) + torch.sign(z)) * 1e-6
+
+    @classmethod
+    def _reference_ln_rule_grad(cls, x: torch.Tensor, denom_fn) -> torch.Tensor:
+        x = x.clone().requires_grad_(True)
+        denom = denom_fn(x)
+        y = x / denom.detach()
+        (grad,) = torch.autograd.grad(y, x, grad_outputs=torch.ones_like(x))
+        return grad
+
+    @classmethod
+    def _reference_identity_rule_grad(cls, x: torch.Tensor, act_fn) -> torch.Tensor:
+        x = x.clone().requires_grad_(True)
+        z = act_fn(x)
+        zp = cls._reference_stabilize(x)
+        y = zp * (z / zp).detach()
+        (grad,) = torch.autograd.grad(y, x, grad_outputs=torch.ones_like(x))
+        return grad
+
+    @classmethod
+    def _reference_half_rule_grad(cls, u: torch.Tensor, v: torch.Tensor):
+        u = u.clone().requires_grad_(True)
+        v = v.clone().requires_grad_(True)
+        z = u * v
+        y = z / 2 + (z / 2).detach()
+        grad_u, grad_v = torch.autograd.grad(y, (u, v), grad_outputs=torch.ones_like(u))
+        return grad_u, grad_v
+
+    @pytest.mark.parametrize("dtype", DTYPES)
+    def test_ln_rule_matches_reference_grad(self, dtype):
+        def denom_fn(t: torch.Tensor) -> torch.Tensor:
+            return (t.pow(2).mean(-1, keepdim=True) + 1e-6).sqrt()
+
+        x = _sample_rows(dtype)
+
+        x_rule = _leaf(x, dtype)
+        denom_rule = denom_fn(x_rule)
+        y_rule = ln_rule(x_rule, denom_rule)
+        (grad_rule,) = torch.autograd.grad(y_rule, x_rule, grad_outputs=torch.ones_like(x_rule))
+
+        grad_reference = self._reference_ln_rule_grad(x, denom_fn)
+        torch.testing.assert_close(grad_rule, grad_reference)
+
+    @pytest.mark.parametrize("dtype", DTYPES)
+    @pytest.mark.parametrize(
+        "act_fn",
+        [F.silu, partial(F.gelu, approximate="none"), partial(F.gelu, approximate="tanh")],
+        ids=["silu", "gelu_exact", "gelu_tanh"],
+    )
+    def test_identity_rule_matches_reference_away_from_zero(self, dtype, act_fn):
+        x = _sample_rows(dtype)
+        nonzero_mask = x != 0
+
+        x_rule = _leaf(x, dtype)
+        y_rule = identity_rule(x_rule, act_fn)
+        (grad_rule,) = torch.autograd.grad(y_rule, x_rule, grad_outputs=torch.ones_like(x_rule))
+
+        grad_reference = self._reference_identity_rule_grad(x, act_fn)
+
+        torch.testing.assert_close(
+            grad_rule[nonzero_mask],
+            grad_reference[nonzero_mask],
+            rtol=1e-4,
+            atol=1e-5,
+        )
+
+    @pytest.mark.parametrize("dtype", DTYPES)
+    @pytest.mark.parametrize(
+        "act_fn",
+        [F.silu, partial(F.gelu, approximate="none"), partial(F.gelu, approximate="tanh")],
+        ids=["silu", "gelu_exact", "gelu_tanh"],
+    )
+    def test_identity_rule_exact_zero_discrepancy_is_documented(self, dtype, act_fn):
+        """At ``x == 0`` this module's Identity-rule uses the paper-defined
+        removable-singularity limit ``0.5``, while the pinned reference's epsilon
+        stabilizer yields exactly ``0``. Assert both values explicitly, rather than
+        letting a tolerance absorb the gap, so a change to either side's zero
+        handling is caught instead of silently passing.
+        """
+        x = torch.zeros(3, dtype=dtype)
+
+        x_rule = _leaf(x, dtype)
+        y_rule = identity_rule(x_rule, act_fn)
+        (grad_rule,) = torch.autograd.grad(y_rule, x_rule, grad_outputs=torch.ones_like(x_rule))
+        torch.testing.assert_close(grad_rule, torch.full_like(x, 0.5))
+
+        grad_reference = self._reference_identity_rule_grad(x, act_fn)
+        torch.testing.assert_close(grad_reference, torch.zeros_like(x))
+
+    @pytest.mark.parametrize("dtype", DTYPES)
+    def test_half_rule_matches_reference_grad(self, dtype):
+        u = _sample_rows(dtype)
+        v = _sample_rows(dtype).flip(0)
+
+        u_rule = _leaf(u, dtype)
+        v_rule = _leaf(v, dtype)
+        y_rule = half_rule(u_rule, v_rule)
+        grad_u_rule, grad_v_rule = torch.autograd.grad(
+            y_rule, (u_rule, v_rule), grad_outputs=torch.ones_like(u_rule)
+        )
+
+        grad_u_reference, grad_v_reference = self._reference_half_rule_grad(u, v)
+        torch.testing.assert_close(grad_u_rule, grad_u_reference)
+        torch.testing.assert_close(grad_v_rule, grad_v_reference)
