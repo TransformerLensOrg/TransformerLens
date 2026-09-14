@@ -199,6 +199,35 @@ _CANONICAL_MOUNTS: Mapping[str, Tuple[str, ...]] = {
 }
 
 
+def _iter_canonical_mount_candidates(
+    model: nn.Module, mount_names: Tuple[str, ...]
+) -> Iterator[Tuple[str, _RelevanceRuleCapable]]:
+    """Yield each distinct module reachable at one of ``mount_names``, once.
+
+    A bridge component reachable at a canonical mount name (for example
+    ``blocks.0.ln1``) is also reachable, under the same parent, through the
+    raw HF module tree the bridge wraps in place (for example
+    ``blocks.0._original_component.input_layernorm``) -- both names resolve to
+    the identical object. ``nn.Module.named_modules()`` deduplicates by object
+    identity and keeps only whichever path it visits first, which is the raw
+    HF-attribute path (registered before the canonical alias), so on a real
+    assembled model the canonical name is silently never seen. Walking with
+    ``remove_duplicate=False`` restores every path so the canonical name is
+    visible, and picking the fewest-dot-separated-segments path per object
+    (breaking a tie between two paths that both happen to end in a mount name,
+    such as ``mlp``, which HF's own attribute name also frequently matches)
+    reports the shallower, canonical-looking path rather than an internal one.
+    """
+    best_by_id: Dict[int, Tuple[str, _RelevanceRuleCapable]] = {}
+    for name, module in model.named_modules(remove_duplicate=False):
+        if name.rsplit(".", 1)[-1] not in mount_names:
+            continue
+        existing = best_by_id.get(id(module))
+        if existing is None or name.count(".") < existing[0].count("."):
+            best_by_id[id(module)] = (name, module)
+    yield from best_by_id.values()
+
+
 def _acquire_rule(module: _RelevanceRuleCapable, kind: str) -> None:
     """Enable ``module``'s ``kind`` rule only on the outermost scope that requests it.
 
@@ -252,9 +281,7 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
     skipped: List[str] = []
     for kind in requested_kinds:
         mount_names = _CANONICAL_MOUNTS.get(kind, ())
-        for name, module in model.named_modules():
-            if name.rsplit(".", 1)[-1] not in mount_names:
-                continue
+        for name, module in _iter_canonical_mount_candidates(model, mount_names):
             if isinstance(module, _RelevanceRuleCapable) and kind in module._relevance_rule_kinds:
                 installed.append((name, module, kind))
                 continue
