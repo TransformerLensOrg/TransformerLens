@@ -19,6 +19,7 @@ from transformers.pytorch_utils import Conv1D
 
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRules,
+    RelevanceRuleUnsupportedError,
     half_rule,
     identity_rule,
     use_relevance_rules,
@@ -33,7 +34,8 @@ from transformer_lens.model_bridge.generalized_components.linear import LinearBr
 
 
 class _Cfg:
-    hidden_act = "silu"
+    def __init__(self, hidden_act: str = "silu"):
+        self.hidden_act = hidden_act
 
 
 class _TinyGatedMLP(nn.Module):
@@ -75,11 +77,13 @@ def _make_projections(backing_class: str, d_model: int = 4, d_mlp: int = 8, bias
     )
 
 
-def _make_bridge(backing_class: str, bias: bool = True) -> tuple[_Block, _TinyGatedMLP]:
+def _make_bridge(
+    backing_class: str, bias: bool = True, hidden_act: str = "silu"
+) -> tuple[_Block, _TinyGatedMLP]:
     gate_proj, up_proj, down_proj = _make_projections(backing_class, bias=bias)
     hf_mlp = _TinyGatedMLP(gate_proj, up_proj, down_proj)
 
-    bridge = GatedMLPBridge(name="mlp", config=_Cfg())
+    bridge = GatedMLPBridge(name="mlp", config=_Cfg(hidden_act))
     gate_bridge = LinearBridge(name="gate_proj")
     in_bridge = LinearBridge(name="up_proj")
     out_bridge = LinearBridge(name="down_proj")
@@ -134,15 +138,30 @@ class TestGatedMLPRelevanceRuleCapability:
 
         assert bridge._relevance_rule_kinds == ()
 
-        x = torch.randn(2, 4, requires_grad=True)
+        # An opaque backing module implements no relevance-rule kind, so a requested
+        # rule cannot be installed here -- distinct from a mount with no protocol at
+        # all (reported skipped), this raises before any forward or backward pass.
+        with pytest.raises(RelevanceRuleUnsupportedError, match="mlp"):
+            with use_relevance_rules(
+                block, RelevanceRules(activation=True, multiplicative_gate=True)
+            ):
+                pass
+
+    def test_identity_rule_unsupported_for_relu_squared_activation(self):
+        block, _ = _make_bridge("nn.Linear", hidden_act="relu2")
+        assert block.mlp._relevance_rule_kinds == ("multiplicative_gate",)
+
+        with pytest.raises(RelevanceRuleUnsupportedError, match="mlp"):
+            with use_relevance_rules(block, RelevanceRules(activation=True)):
+                pass
+
+    def test_half_rule_remains_available_under_relu_squared_activation(self):
+        block, _ = _make_bridge("nn.Linear", hidden_act="relu2")
+        x = torch.randn(2, 4)
         baseline = block(x)
-        with use_relevance_rules(
-            block, RelevanceRules(activation=True, multiplicative_gate=True)
-        ) as coverage:
-            assert set(coverage.skipped) == {"mlp"}
-            assert coverage.installed == ()
-            active = block(x)
-            assert torch.equal(active, baseline)
+        with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)) as coverage:
+            assert coverage.installed == ("mlp",)
+            assert torch.equal(block(x), baseline)
 
 
 class TestGatedMLPRelevanceRuleForwardIdentity:

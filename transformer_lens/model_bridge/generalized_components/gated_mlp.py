@@ -16,18 +16,41 @@ from transformer_lens.model_bridge.generalized_components.mlp import (
 )
 
 
+def _resolve_activation_fn_name(config: Any) -> Optional[str]:
+    """The raw activation-name attribute a config exposes, in adapter priority order."""
+    if config is None:
+        return None
+    for attr in ("activation_function", "hidden_activation", "hidden_act", "act_fn"):
+        name = getattr(config, attr, None)
+        if name is not None:
+            return str(name)
+    return None
+
+
+_IDENTITY_RULE_UNSUPPORTED_ACTIVATIONS = {"relu", "relu2", "relu_2", "relu_squared"}
+
+
+def identity_rule_supports_activation(config: Any) -> bool:
+    """Whether the config's resolved activation form is safe for the Identity-rule.
+
+    The Identity-rule's backward multiplier is ``f(x) / x`` (the removable-singularity
+    limit filled in at zero) rather than the ordinary derivative -- the correct
+    LRP-style rule for SiLU and both GELU variants, but not for the relu family:
+    relu-squared's ratio reduces to ``relu(x)``, not its true derivative
+    ``2 * relu(x)``, and plain relu has no smooth two-sided derivative for the ratio
+    to represent at the removable singularity either. Both are therefore excluded
+    rather than silently applying a rule that does not hold for them.
+    """
+    return _resolve_activation_fn_name(config) not in _IDENTITY_RULE_UNSUPPORTED_ACTIVATIONS
+
+
 def resolve_activation_fn(config: Any) -> Callable:
     """Resolve activation function from a model config.
 
     Checks config attributes in order: activation_function, hidden_activation,
     hidden_act, act_fn. Maps common aliases to torch.nn.functional callables.
     """
-    act_fn_name = None
-    if config is not None:
-        for attr in ("activation_function", "hidden_activation", "hidden_act", "act_fn"):
-            act_fn_name = getattr(config, attr, None)
-            if act_fn_name is not None:
-                break
+    act_fn_name = _resolve_activation_fn_name(config)
 
     if act_fn_name is None or act_fn_name in ("silu", "swish"):
         return torch.nn.functional.silu
@@ -207,26 +230,71 @@ class GatedMLPBridge(MLPBridge):
         self._relevance_rule_activation_active = False
         self._relevance_rule_gate_active = False
 
-    @property
-    def _relevance_rule_kinds(self) -> Tuple[str, ...]:
-        """``("activation", "multiplicative_gate")`` only when the gate/up projections
-        are backed by an allowlisted HF module class (``nn.Linear`` or ``Conv1D``) in a
-        recognized orientation; empty otherwise, so an opaque or unrecognized backing
-        module is reported skipped rather than silently installing a rule the
-        weights-recompute cannot honor correctly.
+    def _is_gated_mlp_shaped(self) -> bool:
+        """Whether this instance has the gate/up/down submodules the recompute needs.
+
+        A container missing one of these was never wired up as a gated-MLP node at
+        all (a different architecture at this mount), which is benign
+        non-applicability rather than an unsupported configuration of a gated-MLP
+        node -- unlike an unrecognized weight-backing class or activation form,
+        which occupy exactly this node's shape but cannot be honored correctly.
         """
         if self.original_component is None:
-            return ()
+            return False
         gate_module = getattr(self, "gate", None)
         in_module = getattr(self, "in", None)
         out_module = getattr(self, "out", None)
-        if gate_module is None or in_module is None or out_module is None:
+        return gate_module is not None and in_module is not None and out_module is not None
+
+    def _has_recognized_weight_backing(self) -> bool:
+        """Whether gate/up/down are all backed by an allowlisted HF module class."""
+        gate_module = getattr(self, "gate", None)
+        in_module = getattr(self, "in", None)
+        out_module = getattr(self, "out", None)
+        return (
+            weight_layout_in_out(gate_module) is not None
+            and weight_layout_in_out(in_module) is not None
+            and weight_layout_in_out(out_module) is not None
+        )
+
+    @property
+    def _relevance_rule_kinds(self) -> Tuple[str, ...]:
+        """The relevance-rule kinds this instance can currently honor.
+
+        Empty when this is not a gated-MLP-shaped node, or when the gate/up/down
+        projections are not backed by an allowlisted HF module class (``nn.Linear``
+        or ``Conv1D``) in a recognized orientation, since the weights-recompute
+        cannot honor either rule correctly on an opaque backing module. Otherwise
+        always includes ``"multiplicative_gate"`` (the Half-rule does not depend on
+        the activation function) and includes ``"activation"`` only when the
+        configured activation form supports the Identity-rule, so a relu-family
+        activation is excluded independently of weight backing.
+        """
+        if not self._is_gated_mlp_shaped() or not self._has_recognized_weight_backing():
             return ()
-        if weight_layout_in_out(gate_module) is None or weight_layout_in_out(in_module) is None:
+        kinds: Tuple[str, ...] = ("multiplicative_gate",)
+        if identity_rule_supports_activation(self.config):
+            kinds = ("activation",) + kinds
+        return kinds
+
+    @property
+    def _relevance_rule_unsupported_kinds(self) -> Tuple[str, ...]:
+        """Kinds this gated-MLP node is expected to honor but currently cannot.
+
+        Unlike a kind simply absent from ``_relevance_rule_kinds`` because this is
+        not a gated-MLP-shaped node at all (benign non-applicability, reported
+        skipped), a gated-MLP node with an unrecognized weight-backing class or an
+        unsupported activation form is exactly the kind of component a caller
+        expects either rule to work on. Requesting one of these raises instead of
+        silently reporting the mount skipped.
+        """
+        if not self._is_gated_mlp_shaped():
             return ()
-        if weight_layout_in_out(out_module) is None:
-            return ()
-        return ("activation", "multiplicative_gate")
+        if not self._has_recognized_weight_backing():
+            return ("activation", "multiplicative_gate")
+        if not identity_rule_supports_activation(self.config):
+            return ("activation",)
+        return ()
 
     def _enable_relevance_rule(self, kind: str) -> None:
         """Activate the named rule for this instance's recompute path only."""

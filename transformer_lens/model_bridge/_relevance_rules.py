@@ -114,6 +114,21 @@ class RelevanceRuleConflictError(RuntimeError):
     """
 
 
+class RelevanceRuleUnsupportedError(RuntimeError):
+    """A requested relevance rule cannot be installed on an otherwise-capable component.
+
+    Raised at ``use_relevance_rules`` entry, before any forward or backward pass, when
+    a component reports the requested kind in its own ``_relevance_rule_unsupported_kinds``
+    -- for example a gated-MLP recompute path backed by an unrecognized weight-orientation
+    class, or an activation form the Identity-rule does not support. Distinct from a
+    kind that is simply absent from ``_relevance_rule_kinds`` without being named there
+    (reported ``skipped``, not raised): that covers a component not implementing the
+    protocol at all, or one whose mount genuinely never deals with the kind (for example
+    normalization on a dispatch path the LN-rule does not wrap), both benign
+    non-applicability rather than a rule request the component was expected to honor.
+    """
+
+
 @dataclasses.dataclass(frozen=True)
 class RelevanceRules:
     """Which relevance rules to request for the duration of a ``use_relevance_rules`` scope.
@@ -156,6 +171,12 @@ class _RelevanceRuleCapable(Protocol):
     only that kind's state, without touching model configuration, so the
     component's own state is the only thing that changes and only for the
     scope's duration.
+
+    A component may optionally also define ``_relevance_rule_unsupported_kinds``
+    (a ``Tuple[str, ...]``, not part of this structural protocol so components that
+    omit it stay isinstance-compatible) naming kinds it is expected to honor at its
+    mount but currently cannot -- ``use_relevance_rules`` raises
+    ``RelevanceRuleUnsupportedError`` for those instead of reporting them skipped.
     """
 
     _relevance_rule_kinds: Tuple[str, ...]
@@ -208,13 +229,20 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
     """Install the requested relevance rules on ``model`` only for this scope.
 
     Targeting is positional: a component is considered for a rule kind only when it
-    sits at that kind's canonical mount name (never by class). A component at a
-    canonical mount that does not implement ``_RelevanceRuleCapable`` for the
-    requested kind is reported as skipped rather than installed or raising. Scopes
-    over the same model are reference-counted, so an inner scope's exit never
-    disables a rule an outer scope still needs. No model configuration is mutated;
-    the only state that changes lives on the participating components, and only for
-    the scope's duration.
+    sits at that kind's canonical mount name (never by class). A canonical mount
+    occupied by a component that does not implement ``_RelevanceRuleCapable``, or
+    whose ``_relevance_rule_kinds`` simply omits the requested kind, is reported as
+    skipped -- both are benign non-applicability, covering a structurally different
+    architecture or a mount whose current dispatch path the rule does not wrap. A
+    component that additionally names the requested kind in its own
+    ``_relevance_rule_unsupported_kinds`` raises ``RelevanceRuleUnsupportedError``
+    instead: that names a kind the component is expected to honor at this mount but
+    cannot given its current configuration, so silently skipping it would let
+    analysis proceed as if the caller had never asked. Scopes over the same model
+    are reference-counted, so an inner scope's exit never disables a rule an outer
+    scope still needs. No model configuration is mutated; the only state that
+    changes lives on the participating components, and only for the scope's
+    duration.
     """
     requested_kinds = [
         field.name for field in dataclasses.fields(rules) if getattr(rules, field.name)
@@ -229,8 +257,14 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
                 continue
             if isinstance(module, _RelevanceRuleCapable) and kind in module._relevance_rule_kinds:
                 installed.append((name, module, kind))
-            else:
-                skipped.append(name)
+                continue
+            unsupported_kinds = getattr(module, "_relevance_rule_unsupported_kinds", ())
+            if isinstance(module, _RelevanceRuleCapable) and kind in unsupported_kinds:
+                raise RelevanceRuleUnsupportedError(
+                    f"{name!r} ({type(module).__name__}) cannot install the {kind!r} "
+                    "relevance rule: unsupported configuration for this component."
+                )
+            skipped.append(name)
 
     for _, module, kind in installed:
         _acquire_rule(module, kind)

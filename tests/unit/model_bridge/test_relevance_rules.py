@@ -21,6 +21,7 @@ import torch.nn as nn
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRuleCoverage,
     RelevanceRules,
+    RelevanceRuleUnsupportedError,
     ln_rule,
     use_relevance_rules,
 )
@@ -166,6 +167,21 @@ def test_unsupported_component_at_targeted_mount_is_skipped():
         assert isinstance(coverage, RelevanceRuleCoverage)
         assert set(coverage.installed) == {"ln1"}
         assert set(coverage.skipped) == {"ln2"}
+
+
+def test_requesting_unsupported_kind_on_capable_component_raises():
+    block = _tiny_block()
+    block.mlp = _FakeGatedMLPComponent()
+    # This mount implements the protocol and currently only supports "activation",
+    # but -- unlike a mount that never deals with "multiplicative_gate" at all --
+    # names it in _relevance_rule_unsupported_kinds as one it is expected to honor
+    # here and currently cannot, so requesting it raises instead of being skipped.
+    block.mlp._relevance_rule_kinds = ("activation",)
+    block.mlp._relevance_rule_unsupported_kinds = ("multiplicative_gate",)
+    with pytest.raises(RelevanceRuleUnsupportedError, match="mlp"):
+        with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)):
+            pass
+    assert block.mlp._gate_rule_active is False
 
 
 def test_no_rules_requested_installs_nothing():
