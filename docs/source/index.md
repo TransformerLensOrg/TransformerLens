@@ -51,6 +51,7 @@ content/model_structure
 :caption: Resources
 
 content/migrating_to_v3
+content/analysis_tools
 content/tutorials
 content/citation
 content/contributing
