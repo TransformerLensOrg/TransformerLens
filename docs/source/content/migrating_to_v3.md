@@ -1,5 +1,12 @@
 # Migrating to TransformerLens 3
 
+```{note}
+**As of 4.0, `HookedTransformer` and the other `Hooked*` classes are removed** —
+there is no longer a compatibility layer keeping the old classes running. Start
+with the [4.0 migration guide](migrating_to_v4.md) for the `HookedTransformer` → bridge
+mapping; the API recipes on this page still apply to `TransformerBridge`.
+```
+
 TransformerLens 3 introduces **TransformerBridge**, a new way of loading and instrumenting models that replaces `HookedTransformer.from_pretrained` as the recommended path for new code. Existing `HookedTransformer` code continues to run through a compatibility layer, but adopting the bridge unlocks broader architecture support and puts you on the supported path going forward.
 
 This page explains the differences and gives side-by-side migration recipes for the most common patterns.
@@ -264,9 +271,9 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 
 | `HookedTransformer` | `TransformerBridge` equivalent | Notes |
 |---|---|---|
-| `model.W_pos` | `bridge.pos_embed.W_pos` | Raw weight (also `bridge.pos_embed.weight`). `center_writing_weights` centers `W_pos` in default HT loads, so it matches HT's only under matching processing (`enable_compatibility_mode()`, or HT loaded with no processing). |
-| `model.W_E_pos` | `torch.cat([bridge.W_E, bridge.pos_embed.W_pos], dim=0)` | No single accessor — concatenate the token + positional matrices. Same weight-processing caveat as `W_pos` (both `W_E` and `W_pos` are centered writing-weights). |
-| `HookedTransformer.from_pretrained_no_processing(name)` | `TransformerBridge.boot_transformers(name, no_processing=True)` | Both load raw weights, so these match. |
+| `model.W_pos` | `bridge.W_pos` | Direct accessor (also `bridge.pos_embed.W_pos`). `center_writing_weights` centers `W_pos` in default HT loads, so it matches HT's only under matching processing (`enable_compatibility_mode()`). |
+| `model.W_E_pos` | `bridge.W_E_pos` | Direct accessor for the concatenated `[W_E; W_pos]`. Same weight-processing caveat as `W_pos`. |
+| `HookedTransformer.from_pretrained_no_processing(name)` | `TransformerBridge.boot_transformers(name)` | A plain boot loads raw weights (no processing); do not call `enable_compatibility_mode()`. |
 | `model.input_to_embed(...)`; `model(..., start_at_layer=k)` | `bridge.input_to_embed(...)`; `bridge(..., start_at_layer=k)` | The bridge accepts the residual entering block `k`. Embedding-stage hooks are excluded, but blocks `0..k-1` still execute on a discarded path before block `k` swaps in that residual. |
 | `model.get_caching_hooks(...)`; `model.add_caching_hooks(...)` | Same methods on `bridge` | Prefer these methods or `run_with_cache` over `cache_all` and `cache_some`, which now emit `DeprecationWarning`. |
 | `model.run_with_cache(..., pos_slice=..., incl_bwd=...)` | Same call on `bridge` | `pos_slice` limits cached positions. `incl_bwd=True` requires the gradients-capable transformers driver and a scalar output such as `return_type="loss"`. |
@@ -278,7 +285,7 @@ Weight-matrix rows return **raw** HuggingFace weights by default. `HookedTransfo
 | `cfg.init_weights` | `bridge.init_weights()` | `boot_native()` honors the config flag during construction; call `init_weights()` to reinitialize a TL-native bridge in place. |
 | `model.all_head_labels()` | `bridge.all_head_labels` | This is a property on the bridge, so omit the call parentheses. |
 | `model.set_tokenizer(tokenizer)` | `TransformerBridge.boot_transformers(name, tokenizer=tokenizer)` | A bridge's tokenizer is fixed when it boots. Reboot to change it; assigning `bridge.tokenizer` directly bypasses tokenizer/config wiring. |
-| `from transformer_lens.train import train, HookedTransformerTrainConfig` | `from transformer_lens.tools.training import train, TrainConfig` | The training loop moved to `tools.training` and `HookedTransformerTrainConfig` renamed to `TrainConfig`. The old imports still work but emit `DeprecationWarning`. |
+| `from transformer_lens.train import train, HookedTransformerTrainConfig` | `from transformer_lens.tools.training import train, TrainConfig` | The training loop moved to `tools.training` and `HookedTransformerTrainConfig` renamed to `TrainConfig`. The old `transformer_lens.train` module was removed in 4.0. |
 
 The following example demonstrates the `W_pos` and `W_E_pos` equivalents under matching weight processing:
 
