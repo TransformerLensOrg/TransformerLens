@@ -140,9 +140,9 @@ class NormalizationBridge(GeneralizedComponent):
         self._relevance_rule_active = False
 
     @property
-    def _relevance_rule_kind(self) -> str:
-        """ "normalization" only when this instance actually dispatches through the
-        native-autograd branch the LN-rule wraps (``_hf_autograd_forward_with_hooks``);
+    def _relevance_rule_kinds(self) -> Tuple[str, ...]:
+        """``("normalization",)`` only when this instance actually dispatches through
+        the native-autograd branch the LN-rule wraps (``_hf_autograd_forward_with_hooks``);
         empty otherwise, so ``use_relevance_rules`` reports an ln1/ln2 mount that
         uses the plain python-norm path (for example ``LayerNormPreBridge`` /
         ``RMSNormPreBridge``, or a config without ``layer_norm_folding``) as
@@ -150,16 +150,16 @@ class NormalizationBridge(GeneralizedComponent):
         claimed "installed" rule.
         """
         if self.use_native_layernorm_autograd:
-            return "normalization"
+            return ("normalization",)
         if bool(getattr(self.config, "layer_norm_folding", False)):
-            return "normalization"
-        return ""
+            return ("normalization",)
+        return ()
 
-    def _enable_relevance_rule(self) -> None:
+    def _enable_relevance_rule(self, kind: str) -> None:
         """Activate the LN-rule for this instance's native-forward branch only."""
         self._relevance_rule_active = True
 
-    def _disable_relevance_rule(self) -> None:
+    def _disable_relevance_rule(self, kind: str) -> None:
         """Deactivate the LN-rule, restoring today's native-forward behavior."""
         self._relevance_rule_active = False
 

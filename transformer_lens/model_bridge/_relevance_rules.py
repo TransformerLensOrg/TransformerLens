@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from typing import (
     Any,
     Callable,
+    Dict,
     Iterator,
     List,
     Mapping,
@@ -146,18 +147,23 @@ class RelevanceRuleCoverage:
 class _RelevanceRuleCapable(Protocol):
     """Structural contract a component must satisfy to accept a relevance rule.
 
-    ``_relevance_rule_kind`` names which ``RelevanceRules`` field the component answers
-    to; ``_enable_relevance_rule``/``_disable_relevance_rule`` toggle the rule without
-    touching model configuration, so the component's own state is the only thing that
-    changes and only for the scope's duration.
+    ``_relevance_rule_kinds`` names every ``RelevanceRules`` field the component
+    answers to at its current mount -- a gated-MLP node answers to both
+    "activation" (Identity-rule on its activation function) and
+    "multiplicative_gate" (Half-rule on its gate*up product) independently, since
+    either can be requested without the other. ``_enable_relevance_rule``/
+    ``_disable_relevance_rule`` take the specific kind being toggled and touch
+    only that kind's state, without touching model configuration, so the
+    component's own state is the only thing that changes and only for the
+    scope's duration.
     """
 
-    _relevance_rule_kind: str
+    _relevance_rule_kinds: Tuple[str, ...]
 
-    def _enable_relevance_rule(self) -> None:
+    def _enable_relevance_rule(self, kind: str) -> None:
         ...
 
-    def _disable_relevance_rule(self) -> None:
+    def _disable_relevance_rule(self, kind: str) -> None:
         ...
 
 
@@ -167,23 +173,34 @@ class _RelevanceRuleCapable(Protocol):
 # NormalizationBridge's class) is left untouched.
 _CANONICAL_MOUNTS: Mapping[str, Tuple[str, ...]] = {
     "normalization": ("ln1", "ln2"),
+    "activation": ("mlp",),
+    "multiplicative_gate": ("mlp",),
 }
 
 
-def _acquire_rule(module: _RelevanceRuleCapable) -> None:
-    """Enable ``module``'s rule only on the outermost scope that requests it."""
-    count = getattr(module, "_relevance_rule_refcount", 0)
+def _acquire_rule(module: _RelevanceRuleCapable, kind: str) -> None:
+    """Enable ``module``'s ``kind`` rule only on the outermost scope that requests it.
+
+    Refcounted per kind, not per module: a gated-MLP node can have its
+    "activation" rule and "multiplicative_gate" rule independently nested to
+    different depths, so one kind's inner exit must never disable the other.
+    """
+    counts: Dict[str, int] = getattr(module, "_relevance_rule_refcounts", None) or {}
+    count = counts.get(kind, 0)
     if count == 0:
-        module._enable_relevance_rule()
-    setattr(module, "_relevance_rule_refcount", count + 1)
+        module._enable_relevance_rule(kind)
+    counts[kind] = count + 1
+    setattr(module, "_relevance_rule_refcounts", counts)
 
 
-def _release_rule(module: _RelevanceRuleCapable) -> None:
-    """Disable ``module``'s rule only once the innermost scope that requested it exits."""
-    count = getattr(module, "_relevance_rule_refcount", 0) - 1
-    setattr(module, "_relevance_rule_refcount", max(count, 0))
+def _release_rule(module: _RelevanceRuleCapable, kind: str) -> None:
+    """Disable ``module``'s ``kind`` rule only once its innermost scope exits."""
+    counts: Dict[str, int] = getattr(module, "_relevance_rule_refcounts", None) or {}
+    count = counts.get(kind, 0) - 1
+    counts[kind] = max(count, 0)
+    setattr(module, "_relevance_rule_refcounts", counts)
     if count <= 0:
-        module._disable_relevance_rule()
+        module._disable_relevance_rule(kind)
 
 
 @contextmanager
@@ -203,25 +220,25 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
         field.name for field in dataclasses.fields(rules) if getattr(rules, field.name)
     ]
 
-    installed: List[Tuple[str, _RelevanceRuleCapable]] = []
+    installed: List[Tuple[str, _RelevanceRuleCapable, str]] = []
     skipped: List[str] = []
     for kind in requested_kinds:
         mount_names = _CANONICAL_MOUNTS.get(kind, ())
         for name, module in model.named_modules():
             if name.rsplit(".", 1)[-1] not in mount_names:
                 continue
-            if isinstance(module, _RelevanceRuleCapable) and module._relevance_rule_kind == kind:
-                installed.append((name, module))
+            if isinstance(module, _RelevanceRuleCapable) and kind in module._relevance_rule_kinds:
+                installed.append((name, module, kind))
             else:
                 skipped.append(name)
 
-    for _, module in installed:
-        _acquire_rule(module)
+    for _, module, kind in installed:
+        _acquire_rule(module, kind)
     try:
         yield RelevanceRuleCoverage(
-            installed=tuple(name for name, _ in installed),
+            installed=tuple(name for name, _, _ in installed),
             skipped=tuple(skipped),
         )
     finally:
-        for _, module in installed:
-            _release_rule(module)
+        for _, module, kind in installed:
+            _release_rule(module, kind)

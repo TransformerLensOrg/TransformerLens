@@ -12,12 +12,18 @@ from functools import partial
 
 import pytest
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from transformers.pytorch_utils import Conv1D
 
 from transformer_lens.model_bridge._relevance_rules import (
     half_rule,
     identity_rule,
     ln_rule,
+)
+from transformer_lens.model_bridge.generalized_components.mlp import (
+    normalize_mlp_weight,
+    weight_layout_in_out,
 )
 
 DTYPES = [torch.float32, torch.float64]
@@ -253,3 +259,89 @@ class TestHalfRule:
         grad_u, grad_v = torch.autograd.grad(y, (u, v), grad_outputs=grad_out)
         torch.testing.assert_close(grad_u, 0.5 * grad_out * v.detach())
         torch.testing.assert_close(grad_v, 0.5 * grad_out * u.detach())
+
+
+class _Proj:
+    """Minimal stand-in for a projection bridge: carries only what
+    ``weight_layout_in_out``/``normalize_mlp_weight`` read (``original_component``)."""
+
+    def __init__(self, original_component):
+        self.original_component = original_component
+
+
+class TestGatedMLPRecomputeOrientation:
+    """The gated-MLP recompute VJP reads ``W_gate``/``W_in`` through the same
+    ``weight_layout_in_out``/``normalize_mlp_weight`` helpers ``MLPBridge`` uses, so a
+    fresh orientation bug in the recompute path (as opposed to the already-tested
+    accessor) would silently transpose the gate/up product for one backing class.
+    Covers the two HF module classes the recompute allowlists: ``nn.Linear`` (weight
+    stored ``[out, in]``, transposed to TL orientation) and ``Conv1D`` (weight stored
+    ``[in, out]``, already TL-oriented).
+    """
+
+    @pytest.fixture(params=["nn.Linear", "Conv1D"])
+    def backing_class(self, request):
+        return request.param
+
+    def _make_gate_up_down(self, backing_class: str, d_model: int = 3, d_mlp: int = 5):
+        torch.manual_seed(0)
+        if backing_class == "nn.Linear":
+            gate_proj = nn.Linear(d_model, d_mlp)
+            up_proj = nn.Linear(d_model, d_mlp)
+            down_proj = nn.Linear(d_mlp, d_model)
+        else:
+            gate_proj = Conv1D(d_mlp, d_model)
+            up_proj = Conv1D(d_mlp, d_model)
+            down_proj = Conv1D(d_model, d_mlp)
+        return gate_proj, up_proj, down_proj
+
+    def _tl_weight(self, proj: torch.nn.Module, pattern: str) -> torch.Tensor:
+        wrapper = _Proj(proj)
+        layout = weight_layout_in_out(wrapper)
+        return normalize_mlp_weight(proj.weight, layout, wrapper, pattern=pattern)
+
+    def test_tl_oriented_matmul_reproduces_native_projection(self, backing_class):
+        gate_proj, up_proj, down_proj = self._make_gate_up_down(backing_class)
+        x = torch.randn(2, 3)
+
+        w_gate = self._tl_weight(gate_proj, pattern="in")
+        w_in = self._tl_weight(up_proj, pattern="in")
+        w_out = self._tl_weight(down_proj, pattern="out")
+
+        assert torch.allclose(x @ w_gate + gate_proj.bias, gate_proj(x), atol=1e-6)
+        assert torch.allclose(x @ w_in + up_proj.bias, up_proj(x), atol=1e-6)
+        hidden = torch.randn(2, 5)
+        assert torch.allclose(hidden @ w_out + down_proj.bias, down_proj(hidden), atol=1e-6)
+
+    def test_recompute_via_tl_weights_matches_native_forward_and_rule_vjp(self, backing_class):
+        gate_proj, up_proj, down_proj = self._make_gate_up_down(backing_class)
+        x = torch.randn(2, 3, requires_grad=True)
+
+        w_gate = self._tl_weight(gate_proj, pattern="in")
+        w_in = self._tl_weight(up_proj, pattern="in")
+        w_out = self._tl_weight(down_proj, pattern="out")
+
+        gate_output = x @ w_gate + gate_proj.bias
+        up_output = x @ w_in + up_proj.bias
+        activated = identity_rule(gate_output, F.silu)
+        gated = half_rule(activated, up_output)
+        down = gated @ w_out + down_proj.bias
+
+        native_down = down_proj(F.silu(gate_proj(x.detach())) * up_proj(x.detach()))
+        assert torch.allclose(down, native_down, atol=1e-6)
+
+        (grad_x,) = torch.autograd.grad(down.sum(), x)
+
+        # Oracle: the exact same composition, expressed with ordinary autodiff
+        # through the rule primitives but built from each class's own native call
+        # instead of the TL-oriented matmul above -- if the recompute transposed
+        # either weight incorrectly, this would disagree.
+        x_oracle = x.detach().clone().requires_grad_(True)
+        gate_output_oracle = gate_proj(x_oracle)
+        up_output_oracle = up_proj(x_oracle)
+        activated_oracle = identity_rule(gate_output_oracle, F.silu)
+        gated_oracle = half_rule(activated_oracle, up_output_oracle)
+        down_oracle = down_proj(gated_oracle)
+        (grad_x_oracle,) = torch.autograd.grad(down_oracle.sum(), x_oracle)
+
+        torch.testing.assert_close(grad_x, grad_x_oracle)

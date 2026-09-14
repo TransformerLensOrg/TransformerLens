@@ -29,7 +29,7 @@ from transformer_lens.model_bridge._relevance_rules import (
 class _FakeNormComponent(nn.Module):
     """A minimal ln1/ln2-style target: installs the real LN-rule primitive on request."""
 
-    _relevance_rule_kind = "normalization"
+    _relevance_rule_kinds = ("normalization",)
 
     def __init__(self, eps: float = 1e-2):
         super().__init__()
@@ -40,10 +40,10 @@ class _FakeNormComponent(nn.Module):
         self.eps = eps
         self._rule_active = False
 
-    def _enable_relevance_rule(self) -> None:
+    def _enable_relevance_rule(self, kind: str) -> None:
         self._rule_active = True
 
-    def _disable_relevance_rule(self) -> None:
+    def _disable_relevance_rule(self, kind: str) -> None:
         self._rule_active = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -87,6 +87,38 @@ def _tiny_block() -> _TinyBlock:
         block.mlp.weight.copy_(torch.eye(4) * 0.5)
         block.mlp.bias.zero_()
     return block
+
+
+class _FakeGatedMLPComponent(nn.Module):
+    """A minimal mlp-mount target that answers to two rule kinds independently.
+
+    A real gated-MLP node answers to both "activation" (Identity-rule on its
+    activation function) and "multiplicative_gate" (Half-rule on its gate*up
+    product) at the same mount, and either can be requested without the other,
+    so this fixture tracks the two kinds as separate booleans rather than one.
+    """
+
+    _relevance_rule_kinds = ("activation", "multiplicative_gate")
+
+    def __init__(self):
+        super().__init__()
+        self._activation_rule_active = False
+        self._gate_rule_active = False
+
+    def _enable_relevance_rule(self, kind: str) -> None:
+        if kind == "activation":
+            self._activation_rule_active = True
+        elif kind == "multiplicative_gate":
+            self._gate_rule_active = True
+
+    def _disable_relevance_rule(self, kind: str) -> None:
+        if kind == "activation":
+            self._activation_rule_active = False
+        elif kind == "multiplicative_gate":
+            self._gate_rule_active = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
 
 
 class _Boom(Exception):
@@ -224,3 +256,41 @@ def test_exception_during_nested_context_restores_outer_state():
 
     assert block.ln1._rule_active is False
     assert block.ln2._rule_active is False
+
+
+def test_one_kind_requested_on_a_two_kind_mount_leaves_the_other_kind_inactive():
+    block = _tiny_block()
+    block.mlp = _FakeGatedMLPComponent()
+    with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)) as coverage:
+        assert block.mlp._gate_rule_active is True
+        assert block.mlp._activation_rule_active is False
+        assert coverage.installed == ("mlp",)
+    assert block.mlp._gate_rule_active is False
+
+
+def test_both_kinds_requested_together_both_activate_on_the_same_mount():
+    block = _tiny_block()
+    block.mlp = _FakeGatedMLPComponent()
+    with use_relevance_rules(
+        block, RelevanceRules(activation=True, multiplicative_gate=True)
+    ) as coverage:
+        assert block.mlp._activation_rule_active is True
+        assert block.mlp._gate_rule_active is True
+        assert set(coverage.installed) == {"mlp"}
+    assert block.mlp._activation_rule_active is False
+    assert block.mlp._gate_rule_active is False
+
+
+def test_nested_scopes_over_different_kinds_on_one_mount_refcount_independently():
+    block = _tiny_block()
+    block.mlp = _FakeGatedMLPComponent()
+    with use_relevance_rules(block, RelevanceRules(activation=True)):
+        assert block.mlp._activation_rule_active is True
+        with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)):
+            assert block.mlp._activation_rule_active is True
+            assert block.mlp._gate_rule_active is True
+        # The inner (multiplicative_gate-only) scope's exit must not disable
+        # the outer scope's independently refcounted activation rule.
+        assert block.mlp._activation_rule_active is True
+        assert block.mlp._gate_rule_active is False
+    assert block.mlp._activation_rule_active is False

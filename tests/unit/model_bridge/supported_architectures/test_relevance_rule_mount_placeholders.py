@@ -110,7 +110,7 @@ class TestStableLmPlaceholders:
             component = block_submodules[key]
             assert isinstance(component, NormalizationBridge)
             assert isinstance(component, _RelevanceRuleCapable)
-            assert component._relevance_rule_kind == "normalization"
+            assert component._relevance_rule_kinds == ("normalization",)
 
     def test_per_head_norms_are_keyed_q_norm_k_norm_not_ln1_ln2(self):
         """The wrapped HF module is named q_layernorm/k_layernorm, but the mount

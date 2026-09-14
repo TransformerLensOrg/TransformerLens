@@ -2,14 +2,18 @@
 
 This module contains the bridge component for gated MLP layers (e.g., LLaMA, Gemma).
 """
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import torch
 
+from transformer_lens.model_bridge._relevance_rules import half_rule, identity_rule
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.mlp import (
+    MLPBridge,
+    weight_layout_in_out,
+)
 
 
 def resolve_activation_fn(config: Any) -> Callable:
@@ -44,6 +48,122 @@ def resolve_activation_fn(config: Any) -> Callable:
 
         return relu_squared
     return torch.nn.functional.silu
+
+
+class _GatedMLPRecomputeRule(torch.autograd.Function):
+    """Wrap a raw gated-MLP module's own forward call in the Identity-/Half-rule VJP.
+
+    Forward returns ``component(x, ...)`` unchanged, so the result is bit-identical
+    to the native forward by construction. The opaque call gives no access to its own
+    internal gate/up/down intermediates, so backward recomputes them from the
+    TL-oriented ``W_gate``/``W_in``/``W_out`` (checkpointing-style: the values are
+    rederived here rather than saved from forward) and reapplies the Identity-rule to
+    the activation and/or the Half-rule to the gate*up product, per whichever of the
+    two is active. Weight and bias gradients come out of the same recomputed graph,
+    via ``torch.autograd.grad``, so they keep their ordinary form -- the rules only
+    redefine how relevance reaches the input, not parameter training gradients.
+    """
+
+    @staticmethod
+    def forward(
+        ctx: Any,
+        x: torch.Tensor,
+        w_gate: torch.Tensor,
+        b_gate: Optional[torch.Tensor],
+        w_in: torch.Tensor,
+        b_in: Optional[torch.Tensor],
+        w_out: torch.Tensor,
+        b_out: Optional[torch.Tensor],
+        act_fn: Callable[[torch.Tensor], torch.Tensor],
+        activation_rule_active: bool,
+        gate_rule_active: bool,
+        component: torch.nn.Module,
+        extra_args: Tuple[Any, ...],
+        extra_kwargs: Dict[str, Any],
+    ) -> torch.Tensor:
+        ctx.save_for_backward(x, w_gate, w_in, w_out)
+        ctx.b_gate = b_gate
+        ctx.b_in = b_in
+        ctx.b_out = b_out
+        ctx.act_fn = act_fn
+        ctx.activation_rule_active = activation_rule_active
+        ctx.gate_rule_active = gate_rule_active
+        result: torch.Tensor = component(x, *extra_args, **extra_kwargs)
+        return result
+
+    @staticmethod
+    def backward(  # type: ignore[override]
+        ctx: Any, grad_output: torch.Tensor
+    ) -> Tuple[
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ]:
+        x, w_gate, w_in, w_out = ctx.saved_tensors
+        b_gate, b_in, b_out = ctx.b_gate, ctx.b_in, ctx.b_out
+        act_fn = ctx.act_fn
+
+        with torch.enable_grad():
+            x_ = x.detach().requires_grad_(True)
+            w_gate_ = w_gate.detach().requires_grad_(True)
+            w_in_ = w_in.detach().requires_grad_(True)
+            w_out_ = w_out.detach().requires_grad_(True)
+            b_gate_ = b_gate.detach().requires_grad_(True) if b_gate is not None else None
+            b_in_ = b_in.detach().requires_grad_(True) if b_in is not None else None
+            b_out_ = b_out.detach().requires_grad_(True) if b_out is not None else None
+
+            gate_output = x_ @ w_gate_
+            if b_gate_ is not None:
+                gate_output = gate_output + b_gate_
+            up_output = x_ @ w_in_
+            if b_in_ is not None:
+                up_output = up_output + b_in_
+
+            activated = (
+                identity_rule(gate_output, act_fn)
+                if ctx.activation_rule_active
+                else act_fn(gate_output)
+            )
+            gated = (
+                half_rule(activated, up_output) if ctx.gate_rule_active else activated * up_output
+            )
+
+            down = gated @ w_out_
+            if b_out_ is not None:
+                down = down + b_out_
+
+        leaves = [x_, w_gate_, b_gate_, w_in_, b_in_, w_out_, b_out_]
+        needed = [leaf for leaf in leaves if leaf is not None]
+        grads = torch.autograd.grad(down, needed, grad_outputs=grad_output, allow_unused=True)
+        grad_iter = iter(grads)
+        results = [next(grad_iter) if leaf is not None else None for leaf in leaves]
+        grad_x, grad_w_gate, grad_b_gate, grad_w_in, grad_b_in, grad_w_out, grad_b_out = results
+
+        return (
+            grad_x,
+            grad_w_gate,
+            grad_b_gate,
+            grad_w_in,
+            grad_b_in,
+            grad_w_out,
+            grad_b_out,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 class GatedMLPBridge(MLPBridge):
@@ -84,6 +204,43 @@ class GatedMLPBridge(MLPBridge):
             optional: If True, setup skips this bridge when absent (hybrid architectures).
         """
         super().__init__(name, config, submodules=submodules or {}, optional=optional)
+        self._relevance_rule_activation_active = False
+        self._relevance_rule_gate_active = False
+
+    @property
+    def _relevance_rule_kinds(self) -> Tuple[str, ...]:
+        """``("activation", "multiplicative_gate")`` only when the gate/up projections
+        are backed by an allowlisted HF module class (``nn.Linear`` or ``Conv1D``) in a
+        recognized orientation; empty otherwise, so an opaque or unrecognized backing
+        module is reported skipped rather than silently installing a rule the
+        weights-recompute cannot honor correctly.
+        """
+        if self.original_component is None:
+            return ()
+        gate_module = getattr(self, "gate", None)
+        in_module = getattr(self, "in", None)
+        out_module = getattr(self, "out", None)
+        if gate_module is None or in_module is None or out_module is None:
+            return ()
+        if weight_layout_in_out(gate_module) is None or weight_layout_in_out(in_module) is None:
+            return ()
+        if weight_layout_in_out(out_module) is None:
+            return ()
+        return ("activation", "multiplicative_gate")
+
+    def _enable_relevance_rule(self, kind: str) -> None:
+        """Activate the named rule for this instance's recompute path only."""
+        if kind == "activation":
+            self._relevance_rule_activation_active = True
+        elif kind == "multiplicative_gate":
+            self._relevance_rule_gate_active = True
+
+    def _disable_relevance_rule(self, kind: str) -> None:
+        """Deactivate the named rule, restoring today's native-forward behavior."""
+        if kind == "activation":
+            self._relevance_rule_activation_active = False
+        elif kind == "multiplicative_gate":
+            self._relevance_rule_gate_active = False
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         """Forward pass through the gated MLP bridge.
@@ -140,7 +297,25 @@ class GatedMLPBridge(MLPBridge):
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
-        output = self.original_component(*new_args, **kwargs)
+        if self._relevance_rule_activation_active or self._relevance_rule_gate_active:
+            act_fn = resolve_activation_fn(self.config)
+            output = _GatedMLPRecomputeRule.apply(
+                hidden_states,
+                self.W_gate,
+                getattr(self.gate, "bias", None),
+                self.W_in,
+                getattr(getattr(self, "in"), "bias", None),
+                self.W_out,
+                getattr(self.out, "bias", None),
+                act_fn,
+                self._relevance_rule_activation_active,
+                self._relevance_rule_gate_active,
+                self.original_component,
+                new_args[1:],
+                kwargs,
+            )
+        else:
+            output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
         return output
 

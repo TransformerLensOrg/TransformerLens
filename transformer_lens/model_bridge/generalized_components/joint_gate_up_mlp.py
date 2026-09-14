@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge._relevance_rules import half_rule, identity_rule
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -184,7 +185,16 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         up_output = getattr(self, "in")(hidden_states)
 
         act_fn = self._resolve_activation_fn()
-        gated = act_fn(gate_output) * up_output
+        activated = (
+            identity_rule(gate_output, act_fn)
+            if self._relevance_rule_activation_active
+            else act_fn(gate_output)
+        )
+        gated = (
+            half_rule(activated, up_output)
+            if self._relevance_rule_gate_active
+            else activated * up_output
+        )
 
         if hasattr(self, "out") and self.out is not None:
             output = self.out(gated)
