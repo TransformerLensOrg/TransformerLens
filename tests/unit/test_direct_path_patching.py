@@ -39,6 +39,8 @@ def tiny_model():
         normalization_type="LN",
         attn_only=False,
     )
+    # Seed locally: under xdist the global RNG state here depends on which tests ran earlier.
+    torch.manual_seed(0)
     model = HookedTransformer(cfg)
     model.process_weights_()
     model.eval()
@@ -275,17 +277,17 @@ class TestCorrectness:
     def test_correctness_against_actual_ln_forward(self, tiny_model, tokens_and_caches):
         """Logit-diff metric: linear-LN approximation should match actual LN within 1e-3.
 
-        process_weights_() folds LN into the weight matrices, so the linear
-        approximation is exact and the tolerance can be tight.  Using logit diff
-        (correct_tok - incorrect_tok) cancels the centering offset introduced by
-        process_weights_() and gives a numerically clean comparison.
+        Folding LN does not make the approximation exact: LayerNormPre still divides
+        by an input-dependent norm, while the approximation reuses the corrupted
+        run's scale.  The error depends on the weights, so the tolerance holds for
+        the seeded tiny_model but is not guaranteed for arbitrary initialisations.
+        Using logit diff (correct_tok - incorrect_tok) cancels the centering offset
+        introduced by process_weights_().
         """
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer, src_head = 0, 0
         dst_layer, dst_head = 2, 1
 
-        # Pick stable token indices for the logit-diff metric
-        torch.manual_seed(0)
         correct_tok = 17
         incorrect_tok = 42
 
@@ -339,7 +341,7 @@ class TestCorrectness:
 
         assert abs(our_metric - ref_metric) < 1e-3, (
             f"Linear-LN approx {our_metric:.6f} disagrees with actual-LN ref {ref_metric:.6f} "
-            f"(diff={abs(our_metric - ref_metric):.2e}). process_weights_() should make these exact."
+            f"(diff={abs(our_metric - ref_metric):.2e})."
         )
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):
