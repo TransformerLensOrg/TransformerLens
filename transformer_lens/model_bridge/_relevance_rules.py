@@ -24,6 +24,16 @@ import torch
 import torch.nn as nn
 
 
+def ln_rule_grad(grad_output: torch.Tensor, denom: torch.Tensor) -> torch.Tensor:
+    """Core LN-rule VJP: divide by ``denom`` without differentiating through it.
+
+    Shared by the ``ln_rule`` primitive below and by any integration (such as
+    ``NormalizationBridge``) that wraps a component's own native forward call
+    instead of reproducing the division itself.
+    """
+    return grad_output / denom
+
+
 class _LNRule(torch.autograd.Function):
     """LN-rule: forward is ``numerator / denom``; the VJP treats ``denom`` as constant."""
 
@@ -35,7 +45,7 @@ class _LNRule(torch.autograd.Function):
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> Tuple[torch.Tensor, None]:
         (denom,) = ctx.saved_tensors
-        return grad_output / denom, None
+        return ln_rule_grad(grad_output, denom), None
 
 
 def ln_rule(numerator: torch.Tensor, denom: torch.Tensor) -> torch.Tensor:
@@ -92,6 +102,15 @@ def half_rule(u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     """Apply the Half-rule: native product forward, evenly split backward."""
     result: torch.Tensor = _HalfRule.apply(u, v)
     return result
+
+
+class RelevanceRuleConflictError(RuntimeError):
+    """A hook would silently break a rule-active forward/backward invariant.
+
+    Raised instead of the ordinary warn-and-fall-back a component would use when
+    no rule is active, since falling back while a rule is active would compose the
+    rule with the hook edit and break the bit-identical-forward guarantee.
+    """
 
 
 @dataclasses.dataclass(frozen=True)
