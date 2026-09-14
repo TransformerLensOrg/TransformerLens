@@ -6,6 +6,12 @@ RMSNorm and logit-softcap coverage in the regular CI suite, while a slow
 Gemma-2-2b-it test checks the published artifact on the real architecture.
 """
 
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+from typing import Any
+
 import pytest
 import torch
 
@@ -129,7 +135,7 @@ def test_bridge_fit_merge_consistency_and_finiteness(gpt2_bridge):
     """Joint fitting equals merging per-prompt fits for a real Bridge."""
     from transformer_lens.tools.analysis import JacobianLens
 
-    fit_kwargs = dict(
+    fit_kwargs: dict[str, Any] = dict(
         source_layers=[0, 5, 10],
         dim_batch=96,
         max_seq_len=32,
@@ -518,6 +524,50 @@ def test_coordinate_patch_gpt2_preserves_anchored_frame(published_gpt2_lens, gpt
     assert torch.equal(no_op.patched, activation)
 
 
+def test_coordinate_patch_hooks_gpt2_no_op_and_leaves_other_positions_unchanged(
+    published_gpt2_lens, gpt2_bridge
+):
+    """coordinate_patch_hooks through a real run_with_hooks pass: alpha=0 is an exact no-op and
+    untouched positions are bit-identical -- algebraic invariants only, no token-flip claim (see
+    build-plan.md §9's policy against behavior-dependent assertions)."""
+    layer = 6
+    tokens = gpt2_bridge.to_tokens(PROMPT)
+    hook = f"blocks.{layer}.hook_out"
+    _, baseline_cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    baseline_activation = baseline_cache[hook][0, -1, :].float()
+    decomposition = published_gpt2_lens.decompose(
+        gpt2_bridge, baseline_activation, layer=layer, k=8
+    )
+    source_id = int(decomposition.support[0])
+    dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
+    units = dictionary / dictionary.norm(dim=1, keepdim=True)
+    pair_cosines = (units @ units[source_id]).abs()
+    pair_cosines[source_id] = torch.inf
+    target_id = int(pair_cosines.argmin().item())
+
+    with pytest.warns(UserWarning, match="coordinate_patch_hooks"):
+        no_op_hooks = published_gpt2_lens.coordinate_patch_hooks(
+            gpt2_bridge, source_id, target_id, layers=[layer], positions=[-1], alpha=0.0
+        )
+    with gpt2_bridge.hooks(fwd_hooks=no_op_hooks):
+        _, no_op_cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    torch.testing.assert_close(
+        no_op_cache[hook][0, -1, :].float(), baseline_activation, atol=1e-5, rtol=1e-5
+    )
+
+    with pytest.warns(UserWarning, match="coordinate_patch_hooks"):
+        edit_hooks = published_gpt2_lens.coordinate_patch_hooks(
+            gpt2_bridge, source_id, target_id, layers=[layer], positions=[-1], alpha=0.5
+        )
+    with gpt2_bridge.hooks(fwd_hooks=edit_hooks):
+        _, edited_cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
+    edited = edited_cache[hook].float()
+    baseline_full = baseline_cache[hook].float()
+    torch.testing.assert_close(edited[:, :-1, :], baseline_full[:, :-1, :], atol=1e-5, rtol=1e-5)
+    assert torch.isfinite(edited).all()
+    assert not torch.allclose(edited[0, -1, :], baseline_full[0, -1, :])
+
+
 def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_lens, gpt2_bridge):
     """occupancy on a real GPT-2 activation returns a positive integer within ``[1, max_atoms]``,
     with per-step real and control captured-variance curves of the right shape. We assert shape and
@@ -615,3 +665,262 @@ def test_decompose_gemma_activation_is_valid():
     assert torch.allclose(
         result.j_space_component + result.non_j_space_component, activation, atol=1e-2
     )
+
+
+# --------------------------------------------------------------------------- #
+# Ordinary-estimator fit regression fixture                                   #
+# --------------------------------------------------------------------------- #
+#
+# This pins the exact numerics of the current ``JacobianLens.fit`` drive loop
+# before the estimator-independent driver is extracted. The
+# refactor must reproduce these golden transport matrices, so a change to
+# cotangent batching, valid-position selection, source-position averaging,
+# prompt accumulation, or the graph root would surface here as a failure.
+#
+# The fixture avoids brittleness two ways: it builds a tiny GPT-2 locally (no
+# model download) and overwrites every parameter with an RNG-version-independent
+# arithmetic ramp, so the fitted matrices are byte-identical across machines and
+# torch versions. In-run determinism is asserted with ``torch.equal`` (a repeat
+# fit) and the golden comparison uses a tight tolerance that only absorbs
+# cross-BLAS float rounding on the 4-wide matmuls.
+
+REGRESSION_CORPUS = "jlens-drive-loop-regression-v1"
+REGRESSION_PROMPTS = [
+    "the quick brown fox jumps over the lazy dog again",
+    "colorless green ideas sleep furiously beneath the ancient stone bridge",
+]
+REGRESSION_FIT_KWARGS: dict[str, Any] = dict(
+    source_layers=[0, 1],
+    dim_batch=3,  # < d_model=4 so the ragged final chunk is exercised
+    max_seq_len=16,
+    skip_first_positions=1,
+    show_progress=False,
+)
+# Golden transport matrices captured from the pre-refactor JacobianLens.fit.
+REGRESSION_GOLDEN_JACOBIANS = {
+    0: [
+        [1.0194597244262695, -0.10382787883281708, 0.01114815566688776, 0.07321998476982117],
+        [0.017510414123535156, 0.7570222020149231, 0.17482545971870422, 0.05064191669225693],
+        [-0.06917503476142883, -0.09777483344078064, 1.198944091796875, -0.03199436515569687],
+        [0.05239897966384888, 0.06332147866487503, -0.1471048891544342, 1.0313844680786133],
+    ],
+    1: [
+        [1.022949457168579, -0.05948571860790253, -0.08073973655700684, 0.11727607250213623],
+        [-0.011972094886004925, 0.8772072792053223, 0.12830956280231476, 0.006455251481384039],
+        [-0.04260174185037613, 0.0968940407037735, 1.0271172523498535, -0.08140958845615387],
+        [0.01806488260626793, -0.12579867243766785, -0.007413430605083704, 1.1151472330093384],
+    ],
+}
+
+
+def _build_tiny_deterministic_gpt2():
+    """A 4-wide, 3-layer GPT-2 bridge with fixed arithmetic weights and a real tokenizer.
+
+    Weights are RNG-independent so the fit is reproducible across environments; the
+    GPT-2 tokenizer (small, cached) lets ``JacobianLens.fit`` take string prompts.
+    """
+    from transformers import AutoTokenizer, GPT2Config, GPT2LMHeadModel
+
+    from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    config = GPT2Config(
+        vocab_size=tokenizer.vocab_size,
+        n_positions=64,
+        n_embd=4,
+        n_layer=3,
+        n_head=2,
+        resid_pdrop=0.0,
+        embd_pdrop=0.0,
+        attn_pdrop=0.0,
+    )
+    hf_model = GPT2LMHeadModel(config).eval()
+    for salt, (_, param) in enumerate(sorted(hf_model.named_parameters())):
+        ramp = torch.arange(param.numel(), dtype=torch.float64)
+        vals = ((ramp * 0.6180339887498949 + (salt + 1) * 0.31830988618) % 1.0) - 0.5
+        param.data.copy_(vals.reshape(param.shape).to(param.dtype))
+    return build_bridge_from_module(
+        hf_model,
+        "GPT2LMHeadModel",
+        hf_config=config,
+        tokenizer=tokenizer,
+        dtype=torch.float32,
+        device="cpu",
+        model_name="tiny-deterministic-gpt2-jacobian-lens",
+    )
+
+
+def test_fit_ordinary_estimator_regression_fixture():
+    """JacobianLens.fit reproduces frozen golden matrices, guarding the driver-extraction refactor."""
+    from transformer_lens.tools.analysis import JacobianLens
+
+    model = _build_tiny_deterministic_gpt2()
+    lens = JacobianLens.fit(
+        model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
+    )
+
+    assert lens.n_prompts == len(REGRESSION_PROMPTS)
+    assert lens.d_model == 4
+    assert lens.source_layers == [0, 1]
+    assert lens.metadata["corpus"] == REGRESSION_CORPUS
+    assert lens.metadata["target_layer"] == 2
+
+    for layer, golden in REGRESSION_GOLDEN_JACOBIANS.items():
+        matrix = lens.jacobians[layer]
+        assert matrix.shape == (4, 4)
+        assert torch.isfinite(matrix).all()
+        torch.testing.assert_close(
+            matrix, torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
+        )
+
+    # The estimator is deterministic: a repeat fit is bit-identical in this environment.
+    repeat = JacobianLens.fit(
+        model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
+    )
+    for layer in lens.source_layers:
+        assert torch.equal(lens.jacobians[layer], repeat.jacobians[layer])
+
+    # Joint fitting equals merging per-prompt fits, exactly, on this fixture.
+    merged = JacobianLens.merge(
+        [
+            JacobianLens.fit(model, [prompt], corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+            for prompt in REGRESSION_PROMPTS
+        ]
+    )
+    for layer in lens.source_layers:
+        torch.testing.assert_close(
+            lens.jacobians[layer], merged.jacobians[layer], atol=1e-6, rtol=1e-5
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Backward-provider seam                                                      #
+# --------------------------------------------------------------------------- #
+#
+# The estimator-independent driver (``_fit_transport_matrices``) takes its
+# backward step through a ``backward_provider`` callable so a future estimator
+# can reuse the capture / cotangent-batching / averaging machinery
+# unchanged. This test proves the seam works before anything depends on it: an
+# alternate provider that scales the ordinary VJP by an exact power of two flows
+# linearly through the driver, so every transport matrix must come out scaled by
+# exactly that constant, while the public ``JacobianLens.fit`` path -- which
+# passes ``_ordinary_vjp`` -- stays pinned to the golden regression matrices.
+
+
+def test_fit_driver_honors_alternate_backward_provider():
+    """The driver routes its backward step through the provider seam without
+    disturbing the ordinary ``JacobianLens.fit`` numerics."""
+    from transformer_lens.tools.analysis import JacobianLens
+    from transformer_lens.tools.analysis.jacobian_lens import (
+        _fit_transport_matrices,
+        _ordinary_vjp,
+    )
+
+    model = _build_tiny_deterministic_gpt2()
+
+    # The ordinary provider through the driver reproduces the pinned golden
+    # matrices, anchoring the alternate-provider comparison to the fit fixture.
+    baseline, n_ordinary = _fit_transport_matrices(
+        model, REGRESSION_PROMPTS, backward_provider=_ordinary_vjp, **REGRESSION_FIT_KWARGS
+    )
+    assert n_ordinary == len(REGRESSION_PROMPTS)
+    for layer, golden in REGRESSION_GOLDEN_JACOBIANS.items():
+        torch.testing.assert_close(
+            baseline[layer], torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
+        )
+
+    # An alternate provider that scales the ordinary VJP by an exact power of two.
+    # Power-of-two scaling commutes bit-exactly with the driver's mean / sum /
+    # divide reductions, so the honored result is byte-identical to SCALE*baseline.
+    SCALE = 2.0
+    calls = 0
+
+    def scaled_provider(target, sources, cotangent, retain_graph):
+        nonlocal calls
+        calls += 1
+        grads = _ordinary_vjp(target, sources, cotangent, retain_graph)
+        return tuple(SCALE * grad for grad in grads)
+
+    # Count top-level bridge forwards independently of the backward seam. The
+    # driver replicates each prompt once and runs a single forward per prompt,
+    # batching every one-hot cotangent through that one captured graph; the
+    # backward-provider call count above cannot witness this because it rises
+    # with dim_batch chunking, not with forwards. A forward pre-hook on the
+    # bridge fires once per model(...) call, so it pins the invariant directly:
+    # exactly one bridge forward per contributing prompt.
+    forward_calls = 0
+
+    def _count_forward(_module, _args):
+        nonlocal forward_calls
+        forward_calls += 1
+
+    handle = model.register_forward_pre_hook(_count_forward)
+    try:
+        scaled, n_scaled = _fit_transport_matrices(
+            model, REGRESSION_PROMPTS, backward_provider=scaled_provider, **REGRESSION_FIT_KWARGS
+        )
+    finally:
+        handle.remove()
+    assert calls > 0  # the driver actually took its backward step through the seam
+    # One forward per prompt: no short prompt is skipped here, so every prompt contributes.
+    assert forward_calls == len(REGRESSION_PROMPTS)
+    assert n_scaled == n_ordinary
+    for layer in baseline:
+        assert torch.equal(scaled[layer], SCALE * baseline[layer])
+
+    # Exercising the seam leaves the public fit path untouched: it still routes
+    # through the ordinary VJP and reproduces the golden regression matrices.
+    lens = JacobianLens.fit(
+        model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
+    )
+    for layer, golden in REGRESSION_GOLDEN_JACOBIANS.items():
+        torch.testing.assert_close(
+            lens.jacobians[layer], torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
+        )
+
+
+def test_fit_attributes_short_prompt_warning_to_caller_frame():
+    """The short-prompt skip warning must point at the ``JacobianLens.fit`` call site, one
+    frame up from ``_fit_transport_matrices`` where the warning is actually raised.
+
+    This runs in a bare subprocess rather than in-process: this suite's pytest config wraps
+    every ``transformer_lens`` call for runtime type-checking (``--jaxtyping-packages`` in
+    pyproject.toml), and each wrapper layer adds its own interpreter frame, which would
+    otherwise swallow the one-frame difference this test exists to catch.
+    """
+    script = textwrap.dedent(
+        """
+        import warnings
+
+        from tests.integration.test_jacobian_lens import (
+            REGRESSION_CORPUS,
+            REGRESSION_FIT_KWARGS,
+            REGRESSION_PROMPTS,
+            _build_tiny_deterministic_gpt2,
+        )
+        from transformer_lens.tools.analysis import JacobianLens
+
+        model = _build_tiny_deterministic_gpt2()
+        prompts = ["hi", *REGRESSION_PROMPTS]  # "hi" tokenizes to 2 tokens, at the skip threshold
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            call_line = __import__("inspect").currentframe().f_lineno + 1
+            JacobianLens.fit(model, prompts, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS)
+
+        skip_warnings = [w for w in caught if "skipping prompt" in str(w.message)]
+        assert len(skip_warnings) == 1, caught
+        assert skip_warnings[0].filename == "<string>", skip_warnings[0].filename
+        assert skip_warnings[0].lineno == call_line, (skip_warnings[0].lineno, call_line)
+        print("PROBE_OK")
+        """
+    )
+    repo_root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "PROBE_OK" in result.stdout, result.stdout + result.stderr

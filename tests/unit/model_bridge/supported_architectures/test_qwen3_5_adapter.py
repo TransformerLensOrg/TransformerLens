@@ -339,6 +339,83 @@ class TestQwen3_5ConfigAttributes:
     not _QWEN3_5_AVAILABLE,
     reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
 )
+class TestQwen3_5GatedQProjWeightProcessing:
+    """Weight processing runs on a real tiny model and must leave the gated q_proj alone.
+
+    HF splits q_proj into [query|gate] per head and scales attn_output by sigmoid(gate);
+    the attention bridge reproduces that at forward time from the 2x-wide weight. Slicing
+    the query half out in weight space drops the gate and moves the logits.
+    """
+
+    FULL_ATTN_LAYER = 3
+
+    def _q_weight(self, bridge):
+        return bridge.blocks[self.FULL_ATTN_LAYER].attn.q.weight
+
+    def test_preprocess_weights_sees_tl_renamed_keys(self):
+        """process_weights passes the bridge's own state dict, so an HF-style
+        ``.self_attn.q_proj.weight`` matcher inside preprocess_weights would be dead."""
+        bridge, _ = _make_tiny_processable_bridge()
+        keys = set(bridge.state_dict())
+
+        assert f"blocks.{self.FULL_ATTN_LAYER}.attn.q.weight" in keys
+        assert [k for k in keys if k.endswith(".self_attn.q_proj.weight")] == []
+
+    def test_compatibility_mode_keeps_q_proj_gated_width(self):
+        import torch
+
+        bridge, _ = _make_tiny_processable_bridge()
+        gated_rows = 2 * bridge.cfg.n_heads * bridge.cfg.d_head
+        before = self._q_weight(bridge).detach().clone()
+        assert before.shape[0] == gated_rows
+
+        bridge.enable_compatibility_mode()
+
+        after = self._q_weight(bridge)
+        assert after.shape[0] == gated_rows, "gate half was sliced out of q_proj"
+        assert torch.equal(before, after)
+
+    def test_compatibility_mode_logits_match_hf(self):
+        """Processed weights must still reproduce HF — gating included."""
+        import torch
+
+        bridge, hf_model = _make_tiny_processable_bridge()
+        tokens = torch.randint(0, 512, (1, 6))
+        with torch.no_grad():
+            reference = torch.log_softmax(hf_model(tokens).logits.double(), dim=-1)
+
+        bridge.enable_compatibility_mode()
+        with torch.no_grad():
+            processed = torch.log_softmax(bridge(tokens).double(), dim=-1)
+
+        max_diff = (processed - reference).abs().max().item()
+        assert max_diff < 1e-4, f"processed bridge vs HF max log-prob diff {max_diff:.2e}"
+
+    def test_gate_hook_still_fires_after_processing(self):
+        import torch
+
+        bridge, _ = _make_tiny_processable_bridge()
+        bridge.enable_compatibility_mode()
+
+        hook_name = f"blocks.{self.FULL_ATTN_LAYER}.attn.hook_q_gate"
+        assert hook_name in bridge.hook_dict
+        captured = {}
+        with torch.no_grad():
+            bridge.run_with_hooks(
+                torch.randint(0, 512, (1, 6)),
+                fwd_hooks=[(hook_name, lambda t, hook: captured.setdefault(hook.name, t.detach()))],
+            )
+
+        gate = captured.get(hook_name)
+        assert gate is not None, "hook_q_gate did not fire on processed weights"
+        assert gate.shape[-1] == bridge.cfg.n_heads * bridge.cfg.d_head
+        assert gate.float().std() > 0
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
 class TestQwen3_5ComponentTypes:
     """Top-level bridge classes — guards against silent type substitution."""
 
@@ -356,7 +433,7 @@ class TestQwen3_5ComponentTypes:
     reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
 )
 class TestQwen3_5AttnSubmodules:
-    """Full-attention layers wire Qwen3-pattern submodules; gated q_proj half is pre-sliced."""
+    """Full-attention layers wire Qwen3-pattern submodules."""
 
     @pytest.fixture
     def attn(self):
@@ -397,7 +474,7 @@ class TestQwen3_5HybridSpecifics:
         return Qwen3_5ArchitectureAdapter(_make_bridge_cfg())
 
     def test_gated_q_proj_flag_set(self, adapter):
-        """Flag drives the query-only W_Q analysis view and gate hook path."""
+        """Flag tells the attention bridge to split [query|gate] out of q_proj at forward time."""
         assert getattr(adapter.cfg, "gated_q_proj", False) is True
 
 
@@ -487,6 +564,32 @@ def _make_tiny_bridge():
         d_vocab=512,
         n_key_value_heads=2,
         architecture="Qwen3_5ForCausalLM",
+    )
+    adapter = Qwen3_5ArchitectureAdapter(bridge_cfg)
+    return TransformerBridge(hf_model, adapter, tokenizer=MagicMock()), hf_model
+
+
+def _make_tiny_processable_bridge():
+    """Tiny bridge whose cfg is translated from the HF config, as boot_transformers does.
+
+    _make_tiny_bridge hand-writes its TransformerBridgeConfig; the gaps (act_fn, eps) only
+    bite once weight processing hands the forward to the bridge's own components, which
+    resolve the activation from cfg — relu for a silu model. Weight-processing numerics
+    need the translated config.
+    """
+    from unittest.mock import MagicMock
+
+    import torch
+
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
+    from transformer_lens.model_bridge.supported_architectures.qwen3_5 import (
+        Qwen3_5ArchitectureAdapter,
+    )
+
+    hf_model = _make_tiny_hf_model()
+    bridge_cfg = build_bridge_config_from_hf(
+        hf_model.config, "Qwen3_5ForCausalLM", "qwen3_5-tiny", torch.float32
     )
     adapter = Qwen3_5ArchitectureAdapter(bridge_cfg)
     return TransformerBridge(hf_model, adapter, tokenizer=MagicMock()), hf_model

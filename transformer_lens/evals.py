@@ -367,7 +367,8 @@ class IOIDataset(Dataset):
             nouns: Dict mapping placeholder names to lists of nouns. Defaults to built-in nouns.
             num_samples: Number of samples to generate.
             symmetric: If True, generate both orderings of each name pair.
-            prepend_bos: If True, prepend the BOS token to each prompt.
+            prepend_bos: If True, prepend one BOS token to each prompt. Tokenizer-added special
+                tokens are disabled, so False leaves the prompt without a BOS.
             seed: Optional random seed for reproducibility. If None, the current
                 random state is used (samples will vary across runs).
         """
@@ -391,14 +392,14 @@ class IOIDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
-        prompt = self.tokenizer.encode(sample["text"])
+        prompt = self.tokenizer.encode(sample["text"], add_special_tokens=False)
         if self.prepend_bos:
             prompt = [self.tokenizer.bos_token_id] + prompt
 
         return {
             "prompt": torch.LongTensor(prompt),
-            "IO": torch.LongTensor(self.tokenizer.encode(sample["IO"])),
-            "S": torch.LongTensor(self.tokenizer.encode(sample["S"])),
+            "IO": torch.LongTensor(self.tokenizer.encode(sample["IO"], add_special_tokens=False)),
+            "S": torch.LongTensor(self.tokenizer.encode(sample["S"], add_special_tokens=False)),
         }
 
     def get_sample(self, symmetric=False) -> List[Dict[str, str]]:

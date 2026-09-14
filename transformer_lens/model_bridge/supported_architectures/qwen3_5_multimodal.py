@@ -27,6 +27,8 @@ class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
     required_libraries_group: str = "multimodal"
 
     def __init__(self, cfg: Any) -> None:
+        # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
+        # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True, lm_prefix="model.language_model")
 

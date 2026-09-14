@@ -60,6 +60,29 @@ class TestGetBridgeParams:
         assert torch.allclose(params["embed.W_E"], torch.zeros(1000, 768))
         assert torch.allclose(params["pos_embed.W_pos"], torch.zeros(1024, 768))
 
+    def test_rotary_model_omits_pos_embed(self):
+        """Rotary models have no learned position table, so the key must be absent."""
+        mock_bridge = self._create_mock_bridge_with_missing_components()
+        mock_bridge.cfg.positional_embedding_type = "rotary"
+
+        params = get_bridge_params(mock_bridge)
+
+        # Absent, not a fabricated n_ctx x d_model zero block
+        assert "pos_embed.W_pos" not in params
+        # Everything else still extracted
+        assert "embed.W_E" in params
+        assert "unembed.W_U" in params
+        assert "blocks.0.attn.W_Q" in params
+
+    def test_rotary_model_keeps_real_pos_embed_if_present(self):
+        """A real position table is still reported, whatever the cfg claims."""
+        mock_bridge = self._create_mock_bridge()
+        mock_bridge.cfg.positional_embedding_type = "rotary"
+
+        params = get_bridge_params(mock_bridge)
+
+        torch.testing.assert_close(params["pos_embed.W_pos"], mock_bridge.pos_embed.weight)
+
     def test_get_bridge_params_attention_reshaping(self):
         """Test that attention weights are properly reshaped."""
         mock_bridge = self._create_mock_bridge()
@@ -129,6 +152,29 @@ class TestGetBridgeParams:
             assert isinstance(params[gate_key], torch.Tensor)
             assert isinstance(params[gate_bias_key], torch.Tensor)
 
+    def test_real_mlp_without_dense_weights_is_not_zero_filled(self):
+        """A structurally unsupported real MLP must not masquerade as dense weights."""
+        mock_bridge = self._create_mock_bridge()
+        mock_bridge.blocks[0].mlp = Mock(spec=[])
+
+        params = get_bridge_params(mock_bridge)
+
+        assert not any(key.startswith("blocks.0.mlp.") for key in params)
+        assert "blocks.1.mlp.W_in" in params
+        assert "blocks.1.mlp.W_out" in params
+
+    def test_missing_real_mlp_output_weight_is_not_zero_filled(self):
+        """A missing dense output projection must remain unavailable to consumers."""
+        mock_bridge = self._create_mock_bridge()
+        mock_bridge.blocks[0].mlp.W_out = None
+
+        params = get_bridge_params(mock_bridge)
+
+        assert "blocks.0.mlp.W_in" in params
+        assert "blocks.0.mlp.W_out" not in params
+        assert "blocks.0.mlp.b_in" in params
+        assert "blocks.0.mlp.b_out" in params
+
     def _create_mock_bridge(self):
         """Create a mock bridge with all standard components."""
         mock_bridge = Mock()
@@ -141,6 +187,7 @@ class TestGetBridgeParams:
         mock_bridge.cfg.n_ctx = 1024
         mock_bridge.cfg.d_mlp = 3072
         mock_bridge.cfg.device = torch.device("cpu")
+        mock_bridge.cfg.positional_embedding_type = "standard"
 
         # Mock embedding
         mock_bridge.embed = Mock()
@@ -174,6 +221,7 @@ class TestGetBridgeParams:
         mock_bridge.cfg.n_ctx = 1024
         mock_bridge.cfg.d_mlp = 3072
         mock_bridge.cfg.device = torch.device("cpu")
+        mock_bridge.cfg.positional_embedding_type = "standard"
 
         # Missing embed and pos_embed
         mock_bridge.embed = None
@@ -218,6 +266,7 @@ class TestGetBridgeParams:
         mock_bridge.cfg.n_ctx = 1024
         mock_bridge.cfg.d_mlp = 3072
         mock_bridge.cfg.device = torch.device("cpu")
+        mock_bridge.cfg.positional_embedding_type = "standard"
 
         # But only provide 1 block
         mock_bridge.blocks = [self._create_mock_block()]
@@ -274,6 +323,7 @@ class TestGQAExpansion:
         mock_bridge.cfg.n_ctx = 32
         mock_bridge.cfg.d_mlp = 128
         mock_bridge.cfg.device = torch.device("cpu")
+        mock_bridge.cfg.positional_embedding_type = "standard"
 
         mock_bridge.embed = Mock()
         mock_bridge.embed.weight = torch.randn(100, 64)

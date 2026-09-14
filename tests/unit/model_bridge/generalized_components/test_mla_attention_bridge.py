@@ -287,3 +287,66 @@ class TestMLAAttentionBridgeScaling:
 
         torch.testing.assert_close(out_via_softmax_scale, out_via_scaling)
         assert not torch.allclose(out_base, out_via_scaling, atol=1e-5, rtol=1e-4)
+
+
+class TestMLACompatibilityMaskSentinel:
+    """Compatibility mode must report masked scores as -inf, not HF's finfo.min."""
+
+    @staticmethod
+    def _captured_scores(tiny_config, tiny_model, compatibility_mode: bool) -> torch.Tensor:
+        import copy
+
+        from transformers.models.deepseek_v3.modeling_deepseek_v3 import (
+            DeepseekV3Attention,
+        )
+
+        # Private module: the module-scoped bridge fixture must stay in its default mode.
+        eager_config = copy.deepcopy(tiny_config)
+        eager_config._attn_implementation = "eager"
+        batch, seq = 2, 8
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hf_attn = DeepseekV3Attention(eager_config, layer_idx=0)
+            hidden_states = torch.randn(batch, seq, eager_config.hidden_size)
+        position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
+        position_embeddings = tiny_model.model.rotary_emb(hidden_states, position_ids)
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = torch.zeros(batch, 1, seq, seq).masked_fill(
+            ~causal, torch.finfo(torch.float32).min
+        )
+
+        bridge = MLAAttentionBridge(name="self_attn", config=eager_config, submodules={})
+        bridge.set_original_component(hf_attn)
+        bridge.compatibility_mode = compatibility_mode
+
+        captured: dict[str, torch.Tensor] = {}
+        handle = bridge.hook_attn_scores.register_forward_hook(
+            lambda m, i, o: captured.setdefault("scores", o.detach().clone())
+        )
+        try:
+            with torch.no_grad():
+                bridge(
+                    hidden_states,
+                    position_embeddings=position_embeddings,
+                    attention_mask=attention_mask,
+                )
+        finally:
+            handle.remove()
+        return captured["scores"]
+
+    def test_masked_scores_are_negative_infinity(self, tiny_config, tiny_model):
+        """`torch.isinf(cache[...hook_attn_scores])` is the documented way to find
+        masked positions; a finfo.min sentinel makes it silently return all-False."""
+        scores = self._captured_scores(tiny_config, tiny_model, compatibility_mode=True)
+        seq = scores.shape[-1]
+        masked = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1).expand_as(scores)
+        assert masked.any()
+        assert torch.isneginf(scores[masked]).all()
+        assert torch.isfinite(scores[~masked]).all()
+
+    def test_non_compatibility_mode_keeps_the_hf_sentinel(self, tiny_config, tiny_model):
+        """Outside compatibility mode the bridge must leave HF's finfo.min alone."""
+        scores = self._captured_scores(tiny_config, tiny_model, compatibility_mode=False)
+        seq = scores.shape[-1]
+        masked = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1).expand_as(scores)
+        assert torch.isfinite(scores[masked]).all()

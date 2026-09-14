@@ -271,18 +271,9 @@ class TestCausalStructure:
 
 
 class TestCorrectness:
-    def test_correctness_against_actual_ln_forward(self, tiny_model, tokens_and_caches):
-        """Logit-diff metric: linear-LN approximation should match actual LN within 1e-3.
-
-        The approximation is not exact even after process_weights_(): the
-        reference LN recomputes its scale from the patched residual while the
-        approximation freezes the corrupted-run scale — a first-order error in
-        ||delta_resid|| that varies with the weight draw (up to ~4e-3 observed
-        unseeded).  The fixture's seed=0 pins it at ~2e-4, so 1e-3 keeps margin
-        while still failing if the patch were dropped entirely (no-patch diff
-        ~2e-3).  Logit diff (correct_tok - incorrect_tok) cancels the centering
-        offset introduced by process_weights_().
-        """
+    @pytest.mark.parametrize("component", ["q", "k", "v"])
+    def test_matches_frozen_ln_scale_reference(self, tiny_model, tokens_and_caches, component):
+        """Matches a hand-written hook dividing delta_resid by the corrupted run's ln1 scale."""
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer, src_head = 0, 0
         dst_layer, dst_head = 2, 1
@@ -299,28 +290,22 @@ class TestCorrectness:
         corrupted_z = corrupted_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
         delta_resid = (clean_z @ W_O[src_head]) - (corrupted_z @ W_O[src_head])  # type: ignore[index]
 
-        # Independent reference: patch through actual LayerNorm forward
-        corrupted_resid = corrupted_cache[f"blocks.{dst_layer}.hook_resid_pre"]
-        patched_resid = corrupted_resid + delta_resid
+        # Not the true LN forward: its gap to the approximation is weight-dependent and, on
+        # tiny_model, about as large as the patch effect, so it can't catch scale bugs.
+        ln_scale = corrupted_cache[f"blocks.{dst_layer}.ln1.hook_scale"]
+        W_comp = getattr(tiny_model.blocks[dst_layer].attn, f"W_{component.upper()}")[dst_head]
+        ref_delta = (delta_resid / ln_scale) @ W_comp
 
-        with torch.no_grad():
-            ln1 = tiny_model.blocks[dst_layer].ln1  # type: ignore[index]
-            patched_normed = ln1(patched_resid)
-            corrupted_normed = ln1(corrupted_resid)
-
-        W_Q_dst = tiny_model.blocks[dst_layer].attn.W_Q[dst_head]  # type: ignore[index,union-attr]
-        true_delta_q = (patched_normed - corrupted_normed) @ W_Q_dst
-
-        def true_hook(value, hook):
+        def ref_hook(value, hook):
             if value.requires_grad:
                 value = value.clone()
-            value[:, :, dst_head, :] = value[:, :, dst_head, :] + true_delta_q
+            value[:, :, dst_head, :] = value[:, :, dst_head, :] + ref_delta
             return value
 
         with torch.no_grad():
             ref_logits = tiny_model.run_with_hooks(
                 corrupted_tokens,
-                fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_q", true_hook)],
+                fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_{component}", ref_hook)],
             )
         ref_metric = logit_diff(ref_logits).item()
 
@@ -333,14 +318,14 @@ class TestCorrectness:
                 patching_metric=logit_diff,
                 src_layer=src_layer,
                 src_head=src_head,
-                component="q",
+                component=component,
                 verbose=False,
             )
         our_metric = results[dst_layer, dst_head].item()
 
-        assert abs(our_metric - ref_metric) < 1e-3, (
-            f"Linear-LN approx {our_metric:.6f} disagrees with actual-LN ref {ref_metric:.6f} "
-            f"(diff={abs(our_metric - ref_metric):.2e})."
+        assert abs(our_metric - ref_metric) < 1e-5, (
+            f"Direct-path patch {our_metric:.6f} disagrees with frozen-scale reference "
+            f"{ref_metric:.6f} (diff={abs(our_metric - ref_metric):.2e})."
         )
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):

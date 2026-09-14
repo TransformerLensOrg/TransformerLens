@@ -225,12 +225,9 @@ class NormalizationBridge(GeneralizedComponent):
 
 
 class LayerNormPreBridge(NormalizationBridge):
-    """Bridge for param-free LayerNorm (LNPre) — exposes hook_scale/hook_normalized but no weights.
+    """Param-free LayerNorm (LNPre): hook_scale / hook_normalized, no weight or bias."""
 
-    Used by native models with normalization_type="LNPre" where the normalization has
-    no learnable parameters. The forward pass centers and normalizes without applying
-    any weight or bias.
-    """
+    property_aliases: Dict[str, str] = {}
 
     def __init__(
         self,
@@ -239,6 +236,7 @@ class LayerNormPreBridge(NormalizationBridge):
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         optional: bool = False,
     ):
+        """Initialize the param-free LayerNorm bridge."""
         super().__init__(
             name,
             config,
@@ -251,17 +249,14 @@ class LayerNormPreBridge(NormalizationBridge):
     def _apply_weight_and_bias(
         self, hidden_states: torch.Tensor, input_dtype: torch.dtype
     ) -> torch.Tensor:
-        """No-op for param-free norms — just cast back to input dtype."""
+        """No weight or bias to apply — only restore the input dtype."""
         return hidden_states.to(input_dtype)
 
 
 class RMSNormPreBridge(NormalizationBridge):
-    """Bridge for param-free RMSNorm (RMSPre) — exposes hook_scale/hook_normalized but no weights.
+    """Param-free RMSNorm (RMSPre): hook_scale / hook_normalized, no learnable scale."""
 
-    Used by native models with normalization_type="RMSPre" where the normalization has
-    no learnable parameters. The forward pass normalizes by RMS without applying
-    any learnable scale.
-    """
+    property_aliases: Dict[str, str] = {}
 
     def __init__(
         self,
@@ -270,6 +265,7 @@ class RMSNormPreBridge(NormalizationBridge):
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         optional: bool = False,
     ):
+        """Initialize the param-free RMSNorm bridge."""
         super().__init__(
             name,
             config,
@@ -282,5 +278,5 @@ class RMSNormPreBridge(NormalizationBridge):
     def _apply_weight_and_bias(
         self, hidden_states: torch.Tensor, input_dtype: torch.dtype
     ) -> torch.Tensor:
-        """No-op for param-free norms — just cast back to input dtype."""
+        """No learnable scale to apply — only restore the input dtype."""
         return hidden_states.to(input_dtype)

@@ -5,9 +5,11 @@ This module contains the bridge component for Mixture of Experts layers.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional, Tuple
+import logging
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import torch
+from torch import nn
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -18,6 +20,126 @@ from transformer_lens.model_bridge.generalized_components.mlp import (
     normalize_mlp_weight,
     weight_layout_in_out,
 )
+
+# transformers stores a whole expert stack in one 3-D Parameter under a fixed
+# vocabulary of names. The role has to come from the name: in the untransposed
+# layout down_proj is [n_experts, d_model, d_mlp], so its d_model axis is
+# indistinguishable by shape from an input projection's.
+_BATCHED_INPUT_PROJECTIONS = frozenset({"gate_up_proj", "gate_proj", "up_proj"})
+_BATCHED_OUTPUT_PROJECTIONS = frozenset({"down_proj"})
+_BATCHED_PROJECTIONS = _BATCHED_INPUT_PROJECTIONS | _BATCHED_OUTPUT_PROJECTIONS
+
+
+class UnfoldableMoEParameter(Exception):
+    """A parameter whose relationship to the MoE block's input cannot be established."""
+
+
+def unwrap_bridge(module: nn.Module) -> nn.Module:
+    """Descend through bridge wrappers to the module that owns the weights."""
+    while True:
+        original = getattr(module, "original_component", None)
+        if not isinstance(original, nn.Module):
+            return module
+        module = original
+
+
+def has_batched_experts(module: nn.Module) -> bool:
+    """Whether this MoE block stores its experts as batched 3-D Parameters.
+
+    Those parameters are not ``weight``/``bias`` leaves of a declared bridge
+    submodule, so ``TransformerBridge.state_dict()`` drops them and no state-dict
+    pass can reach them.
+    """
+    return any(
+        parameter.ndim == 3 and name.rpartition(".")[2] in _BATCHED_PROJECTIONS
+        for name, parameter in unwrap_bridge(module).named_parameters()
+    )
+
+
+def _input_axis(
+    owner: nn.Module, leaf: str, parameter: torch.Tensor, d_model: int
+) -> Optional[int]:
+    """Axis the block's input flows into, or None when the parameter never reads it.
+
+    Raises UnfoldableMoEParameter when the role cannot be established, so the caller
+    can decline rather than guess — a fold that misses one reader is silently wrong.
+    """
+    if leaf == "bias" or leaf.endswith("_bias"):
+        return None  # folding a norm's gain never touches a downstream bias
+    if parameter.ndim == 1:
+        raise UnfoldableMoEParameter(
+            f"{leaf}: 1-D weight inside the MoE block looks like a normalization gain, "
+            "which would re-normalize away the scale being folded"
+        )
+    if parameter.ndim == 2:
+        in_features = getattr(owner, "in_features", None)
+        if in_features is not None:
+            return -1 if in_features == d_model else None
+        # Routers hold a bare Parameter and consume it through F.linear, i.e. [out, in].
+        if parameter.shape[0] == d_model and parameter.shape[-1] != d_model:
+            raise UnfoldableMoEParameter(
+                f"{leaf}: 2-D {tuple(parameter.shape)} on {type(owner).__name__} has "
+                "d_model on the output axis, so its orientation is not F.linear's"
+            )
+        if parameter.shape[-1] != d_model:
+            return None
+        if parameter.shape[0] == d_model:
+            raise UnfoldableMoEParameter(f"{leaf}: square {tuple(parameter.shape)} is ambiguous")
+        return -1
+    if parameter.ndim == 3:
+        if leaf in _BATCHED_OUTPUT_PROJECTIONS:
+            return None  # reads the expert intermediate, not the block input
+        if leaf not in _BATCHED_INPUT_PROJECTIONS:
+            raise UnfoldableMoEParameter(f"{leaf}: unrecognized batched expert parameter")
+        transposed = getattr(owner, "is_transposed", None)
+        if transposed is not None:
+            axis = 1 if transposed else -1
+            if parameter.shape[axis] != d_model:
+                raise UnfoldableMoEParameter(
+                    f"{leaf}: {tuple(parameter.shape)} has no d_model on the axis "
+                    f"is_transposed={transposed} implies"
+                )
+            return axis
+        # A few experts classes (Llama4) predate the layout flag; fall back to shape.
+        candidates = [axis for axis in (1, -1) if parameter.shape[axis] == d_model]
+        if len(candidates) != 1:
+            raise UnfoldableMoEParameter(
+                f"{leaf}: {type(owner).__name__} declares no is_transposed and "
+                f"{tuple(parameter.shape)} does not pin d_model to one axis"
+            )
+        return candidates[0]
+    raise UnfoldableMoEParameter(f"{leaf}: unexpected {parameter.ndim}-D parameter")
+
+
+def fold_scale_into_moe_block(module: nn.Module, scale: torch.Tensor) -> bool:
+    """Scale every parameter of a MoE block that reads the block's input, in place.
+
+    Routed experts, shared experts and the router all read the preceding norm's
+    output; only the down-projections read the expert intermediate. Returns False
+    without touching anything when any parameter's role is unclear, because a fold
+    that reaches some readers and not others changes what the model computes.
+    """
+    block = unwrap_bridge(module)
+    d_model = int(scale.shape[0])
+    plan: List[Tuple[torch.Tensor, int]] = []
+    try:
+        for name, parameter in block.named_parameters():
+            prefix, _, leaf = name.rpartition(".")
+            owner = block.get_submodule(prefix) if prefix else block
+            axis = _input_axis(owner, leaf, parameter, d_model)
+            if axis is not None:
+                plan.append((parameter, axis))
+    except UnfoldableMoEParameter as reason:
+        logging.warning("Not folding the layer norm into %s: %s", type(block).__name__, reason)
+        return False
+    if not plan:
+        return False
+    with torch.no_grad():
+        for target, axis in plan:
+            shape = [1] * target.ndim
+            shape[axis] = d_model
+            target.mul_(scale.reshape(shape).to(dtype=target.dtype, device=target.device))
+    return True
 
 
 class MoEBridge(GeneralizedComponent):

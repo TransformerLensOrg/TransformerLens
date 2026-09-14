@@ -6,6 +6,7 @@ where the sparse block moved from layer.block_sparse_moe to layer.mlp —
 component setup fails outright if the mapping goes stale again.
 """
 
+import pytest
 import torch
 
 from tests.integration.model_bridge.helpers import make_tiny_pair
@@ -66,3 +67,21 @@ class TestMixtralBridge:
             bridge.run_with_hooks(ids, fwd_hooks=[(name, grab) for name in hooks])
         for name in hooks:
             assert captured.get(name) == (1, 8, 64), f"{name}: {captured.get(name)}"
+
+    def test_svd_interpreter_rejects_sparse_moe_mlp(self, monkeypatch) -> None:
+        """Sparse expert weights must not be replaced by plausible dense SVD results."""
+        from transformer_lens import SVDInterpreter
+
+        bridge, _ = _tiny_mixtral_pair()
+        params = bridge.tl_parameters()
+        assert "blocks.0.mlp.W_in" not in params
+        assert "blocks.0.mlp.W_out" not in params
+
+        def fail_if_called(*args, **kwargs):
+            pytest.fail("torch.linalg.svd must not run for a sparse-MoE MLP")
+
+        monkeypatch.setattr(torch.linalg, "svd", fail_if_called)
+        interpreter = SVDInterpreter(bridge)
+        for vector_type in ("w_in", "w_out"):
+            with pytest.raises(NotImplementedError, match="(?i)sparse MoE"):
+                interpreter.get_singular_vectors(vector_type, layer_index=0, num_vectors=4)

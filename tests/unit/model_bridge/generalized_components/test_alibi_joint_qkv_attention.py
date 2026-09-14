@@ -171,3 +171,51 @@ class TestHooksFireInForward:
         # Pattern rows should sum to 1 (softmax output)
         row_sums = captured["pattern"].sum(dim=-1)
         assert torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-5)
+
+
+class TestCompatibilityMaskSentinel:
+    """Compatibility mode must report masked scores as -inf, not HF's finfo.min."""
+
+    def test_masked_scores_are_negative_infinity(self):
+        """`torch.isinf(cache[...hook_attn_scores])` is the documented way to find
+        masked positions; a finfo.min sentinel makes it silently return all-False."""
+        bridge = _build_bridge(n_heads=4, d_model=32)
+        bridge.compatibility_mode = True
+        inputs = _random_inputs(bridge, batch=1, seq=4)
+        captured = {}
+
+        def hook_fn(tensor, hook):
+            captured["scores"] = tensor.clone()
+            return tensor
+
+        bridge.hook_attn_scores.add_hook(hook_fn)
+        with torch.no_grad():
+            bridge(
+                inputs["hidden_states"], **{k: v for k, v in inputs.items() if k != "hidden_states"}
+            )
+
+        scores = captured["scores"]
+        masked = torch.triu(torch.ones(4, 4, dtype=torch.bool), diagonal=1).expand_as(scores)
+        assert masked.any()
+        assert torch.isneginf(scores[masked]).all()
+        assert torch.isfinite(scores[~masked]).all()
+
+    def test_non_compatibility_mode_keeps_the_hf_sentinel(self):
+        """Outside compatibility mode the bridge must leave HF's finfo.min alone."""
+        bridge = _build_bridge(n_heads=4, d_model=32)
+        inputs = _random_inputs(bridge, batch=1, seq=4)
+        captured = {}
+
+        def hook_fn(tensor, hook):
+            captured["scores"] = tensor.clone()
+            return tensor
+
+        bridge.hook_attn_scores.add_hook(hook_fn)
+        with torch.no_grad():
+            bridge(
+                inputs["hidden_states"], **{k: v for k, v in inputs.items() if k != "hidden_states"}
+            )
+
+        scores = captured["scores"]
+        masked = torch.triu(torch.ones(4, 4, dtype=torch.bool), diagonal=1).expand_as(scores)
+        assert torch.isfinite(scores[masked]).all()

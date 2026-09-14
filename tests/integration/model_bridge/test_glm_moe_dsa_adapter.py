@@ -2,9 +2,11 @@
 
 import copy
 
+import pytest
 import torch
 from transformers import GlmMoeDsaConfig, GlmMoeDsaForCausalLM
 
+from transformer_lens import ActivationCache
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
@@ -114,3 +116,69 @@ class TestGlmMoeDsaBridge:
         dsa_mask = cache["blocks.0.attn.hook_dsa_mask"]
         assert torch.isneginf(dsa_mask).any()
         assert (dsa_mask == 0).any()
+
+
+LEFT_PADDED_TOKENS = torch.tensor([[1, 2, 3, 4, 5, 6], [0, 0, 0, 7, 8, 9]])
+LEFT_PADDED_MASK = torch.tensor([[1, 1, 1, 1, 1, 1], [0, 0, 0, 1, 1, 1]])
+SCORES = "blocks.0.attn.hook_attn_scores"
+PATTERN = "blocks.0.attn.hook_pattern"
+DSA_MASK = "blocks.0.attn.hook_dsa_mask"
+
+
+@pytest.fixture(scope="module")
+def tiny_glm_moe_dsa_bridge_compat() -> TransformerBridge:
+    """Compatibility-mode bridge, built separately so it shares no state with the native one."""
+    bridge, _ = tiny_glm_moe_dsa_bridge()
+    bridge.enable_compatibility_mode(no_processing=True, disable_warnings=True)
+    return bridge
+
+
+def _run_left_padded(bridge: TransformerBridge) -> ActivationCache:
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(
+            LEFT_PADDED_TOKENS,
+            attention_mask=LEFT_PADDED_MASK,
+            names_filter=[SCORES, PATTERN, DSA_MASK],
+        )
+    return cache
+
+
+class TestGlmMoeDsaLeftPaddingSentinel:
+    def test_compat_mode_reports_padded_keys_as_negative_infinity(
+        self, tiny_glm_moe_dsa_bridge_compat: TransformerBridge
+    ) -> None:
+        """HF pads with finfo.min; compatibility mode must hand the hooks -inf instead."""
+        cache = _run_left_padded(tiny_glm_moe_dsa_bridge_compat)
+        scores, pattern = cache[SCORES], cache[PATTERN]
+
+        pad_keys = ~LEFT_PADDED_MASK.bool()[:, None, None, :].expand_as(scores)
+        assert pad_keys.any()
+        assert torch.isneginf(scores[pad_keys]).all()
+
+        pad_queries = ~LEFT_PADDED_MASK.bool()[:, None, :, None].expand_as(pattern)
+        assert torch.isfinite(pattern).all()
+        # Fully masked rows: HookedTransformer zeroes them, so no head statistic
+        # computed over a left-padded batch picks up phantom uniform mass.
+        assert (pattern[pad_queries] == 0).all()
+        real_rows = pattern[1, :, 3:, :].sum(-1)
+        torch.testing.assert_close(real_rows, torch.ones_like(real_rows))
+
+    def test_compat_mode_keeps_the_dsa_routing_mask(
+        self, tiny_glm_moe_dsa_bridge_compat: TransformerBridge
+    ) -> None:
+        """The architecture's own top-k mask is unrelated to the padding sentinel."""
+        dsa_mask = _run_left_padded(tiny_glm_moe_dsa_bridge_compat)[DSA_MASK]
+
+        assert torch.isneginf(dsa_mask).any()
+        assert (dsa_mask == 0).any()
+
+    def test_native_mode_keeps_the_huggingface_sentinel(self) -> None:
+        """Only compatibility mode rewrites the sentinel; native mode stays HF-shaped."""
+        bridge, _ = tiny_glm_moe_dsa_bridge()
+        scores = _run_left_padded(bridge)[SCORES]
+
+        pad_keys = ~LEFT_PADDED_MASK.bool()[:, None, None, :].expand_as(scores)
+        routed_out = torch.isneginf(scores)
+        padded_only = pad_keys & ~routed_out
+        assert padded_only.any()
+        assert (scores[padded_only] == torch.finfo(scores.dtype).min).all()

@@ -1,4 +1,4 @@
-"""Unit tests for InternLM2ArchitectureAdapter: cfg, weight conversions, split_wqkv, preprocess, factory."""
+"""Unit tests for InternLM2ArchitectureAdapter: weight conversions, split_wqkv, component mapping."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -89,14 +89,6 @@ def _fill_interleaved(
         w[h, n_kv_groups, :, :] = k_val
         w[h, n_kv_groups + 1, :, :] = v_val
     wqkv_linear.weight = nn.Parameter(w.reshape((n_heads + 2 * n_kv_heads) * head_dim, d_model))
-
-
-class TestInternLM2AdapterConfig:
-    """Adapter sets all required config attributes."""
-
-    def test_supports_fold_ln_false(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # fold_ln silently skips attn when wqkv is fused in bridge state dict.
-        assert adapter.supports_fold_ln is False
 
 
 class TestInternLM2AdapterComponentMapping:
@@ -260,7 +252,7 @@ class TestInternLM2AdapterWeightConversions:
         assert conv.tensor_conversion.axes_lengths["n"] == adapter.cfg.n_heads
 
     def test_no_source_key_on_q(self, adapter: InternLM2ArchitectureAdapter) -> None:
-        # preprocess_weights writes split keys; no cross-key lookup needed at rearrange time.
+        # The attention bridge writes split keys; no cross-key lookup at rearrange time.
         assert adapter.weight_processing_conversions is not None
         conv = adapter.weight_processing_conversions["blocks.{i}.attn.q.weight"]
         assert isinstance(conv, ParamProcessingConversion)
@@ -363,175 +355,6 @@ class TestInternLM2SplitWqkv:
         assert torch.all(k.bias[head_dim:] == 5.0)
         assert torch.all(v.bias[:head_dim] == 3.0)
         assert torch.all(v.bias[head_dim:] == 6.0)
-
-
-class TestInternLM2PreprocessWeights:
-    """preprocess_weights splits fused wqkv and folds layer norms."""
-
-    def _make_state_dict_with_fused_qkv(
-        self,
-        adapter: InternLM2ArchitectureAdapter,
-        n_kv_heads: int,
-        head_dim: int,
-        d_model: int,
-        n_layers: int,
-        ln1_scale: float = 1.0,
-        qkv_val: float = 1.0,
-    ) -> dict[str, torch.Tensor]:
-        """Bridge-format state dict with fused qkv.weight for each layer."""
-        n_heads = adapter.cfg.n_heads
-        n_kv_groups = n_heads // n_kv_heads
-        gs = n_kv_groups + 2
-        state: dict[str, torch.Tensor] = {}
-        for i in range(n_layers):
-            total_rows = (n_heads + 2 * n_kv_heads) * head_dim
-            state[f"blocks.{i}.attn.qkv.weight"] = torch.full((total_rows, d_model), qkv_val)
-            state[f"blocks.{i}.ln1.weight"] = torch.full((d_model,), ln1_scale)
-            state[f"blocks.{i}.ln2.weight"] = torch.ones(d_model)
-            state[f"blocks.{i}.mlp.gate.weight"] = torch.ones(16, d_model)
-            state[f"blocks.{i}.mlp.in.weight"] = torch.ones(16, d_model)
-        state["ln_final.weight"] = torch.ones(d_model)
-        state["unembed.weight"] = torch.ones(100, d_model)
-        return state
-
-    def test_fused_key_removed_and_split_keys_written(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 2)
-
-        result = adapter.preprocess_weights(sd)
-
-        assert "blocks.0.attn.qkv.weight" not in result
-        assert "blocks.0.attn.q.weight" in result
-        assert "blocks.0.attn.k.weight" in result
-        assert "blocks.0.attn.v.weight" in result
-
-    def test_split_q_shape(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(
-            _make_cfg(n_heads=8, n_key_value_heads=2, d_model=64)
-        )
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 2)
-        result = adapter.preprocess_weights(sd)
-        assert result["blocks.0.attn.q.weight"].shape == (8 * 8, 64)
-        assert result["blocks.0.attn.k.weight"].shape == (2 * 8, 64)
-        assert result["blocks.0.attn.v.weight"].shape == (2 * 8, 64)
-
-    def test_ln1_fold_applied_to_q(self) -> None:
-        """ln1 scale=2.0 folded into qkv=1.0 → q/k/v weights become 2.0."""
-        adapter = InternLM2ArchitectureAdapter(
-            _make_cfg(n_heads=8, n_key_value_heads=2, d_model=64)
-        )
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(
-            adapter, n_kv_heads, head_dim, d_model, 2, ln1_scale=2.0, qkv_val=1.0
-        )
-        result = adapter.preprocess_weights(sd)
-        assert torch.all(result["blocks.0.attn.q.weight"] == 2.0)
-        assert torch.all(result["blocks.0.attn.k.weight"] == 2.0)
-        assert torch.all(result["blocks.0.attn.v.weight"] == 2.0)
-
-    def test_ln1_reset_to_ones(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(
-            adapter, n_kv_heads, head_dim, d_model, 2, ln1_scale=3.0
-        )
-        result = adapter.preprocess_weights(sd)
-        assert torch.all(result["blocks.0.ln1.weight"] == 1.0)
-
-    def test_ln2_fold_applied_to_mlp_gate(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 2)
-        sd["blocks.0.ln2.weight"] = torch.full((d_model,), 3.0)
-        result = adapter.preprocess_weights(sd)
-        assert torch.all(result["blocks.0.mlp.gate.weight"] == 3.0)
-        assert torch.all(result["blocks.0.mlp.in.weight"] == 3.0)
-
-    def test_ln2_reset_to_ones(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 2)
-        sd["blocks.0.ln2.weight"] = torch.full((d_model,), 5.0)
-        result = adapter.preprocess_weights(sd)
-        assert torch.all(result["blocks.0.ln2.weight"] == 1.0)
-
-    def test_ln_final_fold_applied_to_unembed(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 2)
-        sd["ln_final.weight"] = torch.full((d_model,), 2.0)
-        sd["unembed.weight"] = torch.ones(100, d_model)
-        result = adapter.preprocess_weights(sd)
-        assert torch.all(result["unembed.weight"] == 2.0)
-        assert torch.all(result["ln_final.weight"] == 1.0)
-
-    def test_no_fold_when_not_requested(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = False
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(
-            adapter, n_kv_heads, head_dim, d_model, 2, ln1_scale=5.0
-        )
-        result = adapter.preprocess_weights(sd)
-        assert "blocks.0.attn.qkv.weight" in result
-        assert "blocks.0.attn.q.weight" not in result
-
-    def test_dtype_preserved(self) -> None:
-        adapter = InternLM2ArchitectureAdapter(_make_cfg())
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 1)
-        sd = {k: v.to(torch.bfloat16) for k, v in sd.items()}
-        result = adapter.preprocess_weights(sd)
-        assert result["blocks.0.attn.q.weight"].dtype == torch.bfloat16
-
-    def test_bias_split_when_present(self) -> None:
-        """Fused bias must be split into q/k/v bias keys when config.bias=True."""
-        n_heads, n_kv_heads, d_model = 4, 2, 64
-        head_dim = d_model // n_heads
-        adapter = InternLM2ArchitectureAdapter(
-            _make_cfg(n_heads=n_heads, n_key_value_heads=n_kv_heads, d_model=d_model)
-        )
-        adapter._fold_ln_requested = True
-        total_rows = (n_heads + 2 * n_kv_heads) * head_dim
-        sd: dict[str, torch.Tensor] = {
-            "blocks.0.attn.qkv.weight": torch.ones(total_rows, d_model),
-            "blocks.0.attn.qkv.bias": torch.zeros(total_rows),
-            "blocks.0.ln1.weight": torch.ones(d_model),
-            "blocks.0.ln2.weight": torch.ones(d_model),
-            "blocks.0.mlp.gate.weight": torch.ones(16, d_model),
-            "blocks.0.mlp.in.weight": torch.ones(16, d_model),
-            "ln_final.weight": torch.ones(d_model),
-            "unembed.weight": torch.ones(100, d_model),
-        }
-        result = adapter.preprocess_weights(sd)
-        assert "blocks.0.attn.qkv.bias" not in result
-        assert "blocks.0.attn.q.bias" in result
-        assert "blocks.0.attn.k.bias" in result
-        assert "blocks.0.attn.v.bias" in result
-        assert result["blocks.0.attn.q.bias"].shape == (n_heads * head_dim,)
-        assert result["blocks.0.attn.k.bias"].shape == (n_kv_heads * head_dim,)
-        assert result["blocks.0.attn.v.bias"].shape == (n_kv_heads * head_dim,)
-
-    def test_all_layers_processed(self) -> None:
-        """All n_layers are processed, not just layer 0."""
-        adapter = InternLM2ArchitectureAdapter(_make_cfg(n_layers=3))
-        adapter._fold_ln_requested = True
-        n_kv_heads, head_dim, d_model = 2, 8, 64
-        sd = self._make_state_dict_with_fused_qkv(adapter, n_kv_heads, head_dim, d_model, 3)
-        result = adapter.preprocess_weights(sd)
-        for i in range(3):
-            assert f"blocks.{i}.attn.qkv.weight" not in result
-            assert f"blocks.{i}.attn.q.weight" in result
 
 
 class TestInternLM2ComponentMappingPresence:

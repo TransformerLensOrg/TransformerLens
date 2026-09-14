@@ -53,6 +53,7 @@ content/model_structure
 
 content/migrating_to_v4
 content/migrating_to_v3
+content/analysis_tools
 content/tutorials
 content/citation
 content/contributing

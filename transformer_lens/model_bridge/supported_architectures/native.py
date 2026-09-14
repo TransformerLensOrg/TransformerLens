@@ -1,7 +1,8 @@
 """Architecture adapter for TL-native models built via ``boot_native``.
 
 Component mapping adapts to cfg: gated MLP → ``GatedMLPBridge``, RMS norm →
-``RMSNormalizationBridge``, rotary drops ``pos_embed``, ``attn_only`` drops MLP.
+``RMSNormalizationBridge``, param-free pre-norm (LNPre / RMSPre) → the
+``*PreBridge`` pair, rotary drops ``pos_embed``, ``attn_only`` drops MLP.
 """
 
 from typing import Any
@@ -26,14 +27,16 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 
 
+def _norm_type(cfg: Any) -> str:
+    return (getattr(cfg, "normalization_type", None) or "LN").upper()
+
+
 def _uses_rms(cfg: Any) -> bool:
-    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
-    return norm_type in ("RMS", "RMSPRE")
+    return _norm_type(cfg) in ("RMS", "RMSPRE")
 
 
 def _uses_param_free_norm(cfg: Any) -> bool:
-    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
-    return norm_type in ("RMSPRE", "LNPRE")
+    return _norm_type(cfg) in ("RMSPRE", "LNPRE")
 
 
 def _uses_no_norm(cfg: Any) -> bool:
@@ -45,14 +48,13 @@ def _is_rotary(cfg: Any) -> bool:
 
 
 def _make_norm_bridge(name: str, cfg: Any, *, force_rms: bool = False):
-    norm_type = (getattr(cfg, "normalization_type", None) or "LN").upper()
-    is_param_free = _uses_param_free_norm(cfg)
-
-    if force_rms or norm_type in ("RMS", "RMSPRE"):
-        if is_param_free or norm_type == "RMSPRE":
+    param_free = _uses_param_free_norm(cfg)
+    if force_rms or _uses_rms(cfg):
+        # Mirrors _make_norm: final_rms must not reintroduce a scale.
+        if param_free:
             return RMSNormPreBridge(name=name, config=cfg)
         return RMSNormalizationBridge(name=name, config=cfg)
-    if norm_type == "LNPRE":
+    if _norm_type(cfg) == "LNPRE":
         return LayerNormPreBridge(name=name, config=cfg)
     if _uses_no_norm(cfg):
         from transformer_lens.model_bridge.generalized_components.base import (
@@ -115,13 +117,11 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        # Support fold_ln (LN weight folds into downstream layers) and
-        # center_writing_weights (residual-stream-writing weights are centered).
         self.supports_fold_ln = True
         self.supports_center_writing_weights = True
-        # Native Q/K/V/O stored as nn.Linear [out, in]; fold_ln formulas expect
-        # TL [head, d_model, d_head] format. Use the shared helper to wire up the
-        # necessary rearranges so fold_layer_norm sees the right shapes.
+        # Native Q/K/V/O are nn.Linear [out, in]; the fold_layer_norm formulas
+        # index [head, d_model, d_head]. Without these rearranges folding either
+        # raises inside einops or silently mis-places the scale.
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(include_biases=True),
         }

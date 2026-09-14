@@ -17,7 +17,8 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
 
     Inherits Qwen3 config/attention/MLP structure. Differences:
     - Attention + linear_attn are optional (per-layer type)
-    - Gated q_proj (2x wide); AttentionBridge exposes a query-only W_Q view
+    - Gated q_proj: [query|gate] is split at forward time, never in weight space;
+      AttentionBridge exposes a query-only W_Q analysis view
     """
 
     # Multimodal wrapper architecture this text-only adapter rejects; the MoE
@@ -25,6 +26,8 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
     _multimodal_arch_name: str = "Qwen3_5ForConditionalGeneration"
 
     def __init__(self, cfg: Any) -> None:
+        # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
+        # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
         super().__init__(cfg, hybrid=True)
 

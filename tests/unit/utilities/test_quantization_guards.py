@@ -189,8 +189,8 @@ class TestBitsandbytesParameterSubclassIsNamed:
 class TestProcessWeightsScansBatchedMoEParameters:
     """process_weights filtered on name.endswith('.weight'), which skips every
     batched-MoE expert Parameter (mlp.experts.gate_up_proj) — the very tensors
-    the converters were guarded for. The guard is the body's first statement,
-    so a stub carrying only original_model exercises it.
+    the converters were guarded for. The scan runs before any real processing,
+    so a stub carrying only the attributes it reads exercises it.
     """
 
     @staticmethod
@@ -205,6 +205,7 @@ class TestProcessWeightsScansBatchedMoEParameters:
 
         class _Stub:
             original_model = _Experts()
+            _weights_processed = False  # read by the re-entry guard ahead of the scan
 
         return _Stub()
 

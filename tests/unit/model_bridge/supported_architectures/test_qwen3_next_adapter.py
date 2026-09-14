@@ -174,7 +174,7 @@ class TestQwen3NextComponentTypes:
 
 
 class TestQwen3NextAttnSubmodules:
-    """Full-attention layers wire Qwen3-pattern submodules; gated q_proj half is pre-sliced."""
+    """Full-attention layers wire Qwen3-pattern submodules."""
 
     @pytest.fixture
     def attn(self):

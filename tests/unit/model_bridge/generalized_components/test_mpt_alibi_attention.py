@@ -300,3 +300,48 @@ class TestHooksFire:
     def test_hook_pattern_fires(self) -> None:
         captured = self._run_forward_with_hooks(["hook_pattern"])
         assert "hook_pattern" in captured
+
+
+# ---------------------------------------------------------------------------
+# Compatibility-mode mask sentinel
+# ---------------------------------------------------------------------------
+
+
+class TestCompatibilityMaskSentinel:
+    """Compatibility mode must report masked scores as -inf, not HF's finfo.min."""
+
+    def _captured_scores(self, compatibility_mode: bool) -> torch.Tensor:
+        d_model, n_heads, seq_len = 64, 2, 6
+        hf_attn = _make_tiny_mpt_attention(d_model=d_model, n_heads=n_heads)
+        hf_attn.eval()
+        bridge = _build_bridge(hf_attn)
+        bridge.compatibility_mode = compatibility_mode
+        inputs = _make_inputs(d_model=d_model, n_heads=n_heads, max_seq_len=32, seq_len=seq_len)
+
+        captured: dict[str, torch.Tensor] = {}
+        bridge.hook_attn_scores.add_hook(
+            lambda tensor, hook: captured.setdefault("scores", tensor.detach().clone())
+        )
+        with torch.no_grad():
+            bridge(
+                inputs["hidden"],
+                position_bias=inputs["position_bias"],
+                attention_mask=inputs["causal_mask"],
+            )
+        return captured["scores"]
+
+    def test_masked_scores_are_negative_infinity(self) -> None:
+        """`torch.isinf(cache[...hook_attn_scores])` is the documented way to find
+        masked positions; a finfo.min sentinel makes it silently return all-False."""
+        scores = self._captured_scores(compatibility_mode=True)
+        masked = torch.triu(torch.ones(6, 6, dtype=torch.bool), diagonal=1).expand_as(scores)
+        assert masked.any()
+        assert torch.isneginf(scores[masked]).all()
+        assert torch.isfinite(scores[~masked]).all()
+
+    def test_non_compatibility_mode_keeps_the_hf_sentinel(self) -> None:
+        """Outside compatibility mode the bridge must fill with HF's finfo.min."""
+        scores = self._captured_scores(compatibility_mode=False)
+        masked = torch.triu(torch.ones(6, 6, dtype=torch.bool), diagonal=1).expand_as(scores)
+        assert torch.isfinite(scores[masked]).all()
+        assert (scores[masked] == torch.finfo(scores.dtype).min).all()

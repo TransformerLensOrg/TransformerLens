@@ -21,9 +21,10 @@ is:
     delta_q     = (delta_resid / ln1_scale) @ W_Q[hb]  # [batch, pos, d_head]
     patched_q   = corrupted_q + delta_q
 
-This is exact under linear layer norm (no learned offset changes the scale
-in a way that matters for the perturbation), and matches the gradient-based
-approximation used in attribution patching.
+This is an approximation, not exact even with LayerNorm folded: it freezes the
+corrupted run's ln1 scale, whereas the true scale shifts with the patched
+residual.  The error grows with how much ``delta_resid`` changes the residual
+norm at the destination layer.
 
 Usage
 -----

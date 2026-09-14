@@ -1,7 +1,8 @@
 """TL-native transformer for TransformerBridge — minimal, no HF/HT dependency.
 
-Cfg-driven features: ``normalization_type`` (LN / RMS / RMSPre), ``final_rms``,
-``gated_mlp``, ``attn_only``, ``n_key_value_heads`` (GQA), ``attn_scores_soft_cap``,
+Cfg-driven features: ``normalization_type`` (LN / RMS / LNPre / RMSPre —
+the ``Pre`` variants are param-free), ``final_rms``, ``gated_mlp``,
+``attn_only``, ``n_key_value_heads`` (GQA), ``attn_scores_soft_cap``,
 ``output_logits_soft_cap``, ``positional_embedding_type`` (standard / rotary),
 ``rotary_dim`` / ``rotary_base`` / ``rope_scaling`` (linear PI, dynamic/NTK,
 llama3 by-parts).
@@ -86,11 +87,7 @@ class NativeRMSNormPre(nn.Module):
 
 
 class NativeLayerNormPre(nn.Module):
-    """Param-free LayerNorm — center + normalize only, no learnable scale/bias.
-
-    Computes in fp32 for numerical stability, matching NativeRMSNormPre and
-    HookedTransformer's LayerNormPre.
-    """
+    """Param-free LayerNorm — center + normalize only, no learnable scale/bias."""
 
     def __init__(self, eps: float = 1e-5):
         super().__init__()
@@ -104,23 +101,20 @@ class NativeLayerNormPre(nn.Module):
         return (x_fp32 / scale).to(input_dtype)
 
 
-def _is_param_free_norm(cfg: TransformerBridgeConfig) -> bool:
-    """Check if the config specifies a param-free normalization type."""
+def _uses_param_free_norm(cfg: TransformerBridgeConfig) -> bool:
     return _normalization_type(cfg) in ("RMSPRE", "LNPRE")
 
 
 def _make_norm(cfg: TransformerBridgeConfig, *, force_rms: bool = False) -> nn.Module:
-    norm_type = _normalization_type(cfg)
-    is_param_free = _is_param_free_norm(cfg)
-
-    if force_rms or norm_type in ("RMS", "RMSPRE"):
-        if is_param_free or norm_type == "RMSPRE":
+    param_free = _uses_param_free_norm(cfg)
+    if force_rms or _uses_rms_norm(cfg):
+        # final_rms swaps the norm family but must not reintroduce a scale the
+        # checkpoint doesn't carry.
+        if param_free:
             return NativeRMSNormPre(eps=cfg.eps)
         return NativeRMSNorm(cfg.d_model, eps=cfg.eps)
-
-    if norm_type == "LNPRE":
+    if _normalization_type(cfg) == "LNPRE":
         return NativeLayerNormPre(eps=cfg.eps)
-
     if _uses_no_norm(cfg):
         return nn.Identity()
 

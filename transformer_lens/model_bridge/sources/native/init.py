@@ -3,7 +3,8 @@
 Supported modes: ``"gpt2"`` (Normal(0, std) with 1/sqrt(2*n_layers) residual
 scaling on output projections), ``"xavier_uniform"`` / ``"xavier_normal"``,
 ``"kaiming_uniform"`` / ``"kaiming_normal"`` (relu nonlinearity). Norm weights
-go to 1, all biases to 0.
+go to 1, all biases to 0; param-free norms (LNPre / RMSPre) have nothing to
+initialize.
 
 Determinism uses a scoped ``torch.Generator``, not ``torch.manual_seed``, so
 seeded init does not perturb the caller's global RNG.
