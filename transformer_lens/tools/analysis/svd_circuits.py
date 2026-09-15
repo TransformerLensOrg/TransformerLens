@@ -425,11 +425,12 @@ def decompose_head(
 def _validate_bridge_compatibility(model) -> None:
     """Reject a ``TransformerBridge`` whose ``W_U`` would give a silently wrong projection.
 
-    ``HookedTransformer`` always has the final LayerNorm folded into ``W_U``, so this
-    only fires for ``TransformerBridge``. Mirrors the compatibility-mode check other
-    unembedding-touching analysis tools already run, without any hybrid-architecture
-    restriction: projecting a rank-1 OV direction through ``W_U`` does not depend on
-    the block-layout assumptions that check exists for elsewhere.
+    Projecting an OV direction through ``W_U`` requires the final LayerNorm folded
+    into ``W_U``; on a ``TransformerBridge`` that folding is only present in
+    compatibility mode, so this check requires it. Mirrors the compatibility-mode
+    check other unembedding-touching analysis tools already run, without any
+    hybrid-architecture restriction: projecting a rank-1 OV direction through ``W_U``
+    does not depend on the block-layout assumptions that check exists for elsewhere.
     """
     # Lazy import - keeps the module importable without the bridge as a hard dependency.
     from transformer_lens.model_bridge import TransformerBridge
@@ -449,8 +450,7 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
 
     Requires ``head_svd.which == "OV"``: QK produces no write direction to project
     (see the module docstring). On a ``TransformerBridge``, compatibility mode must
-    be enabled so ``W_U`` carries the folded final LayerNorm weights;
-    ``HookedTransformer`` always has this folding applied.
+    be enabled so ``W_U`` carries the folded final LayerNorm weights.
 
     Does not call ``head_svd.require_isolated``: a degenerate direction's vocab
     readout is still a well-defined projection, unlike a per-direction causal claim,
@@ -458,8 +458,8 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
     passing causal patch is enforced by :func:`patch_along_directions`.
 
     Args:
-        model: A ``TransformerBridge`` (with compatibility mode enabled) or a
-            ``HookedTransformer``; only its ``W_U`` is read.
+        model: A ``TransformerBridge`` with compatibility mode enabled; only its
+            ``W_U`` is read.
         head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
         k: Number of top singular directions to project.
 
@@ -508,8 +508,8 @@ def logit_signature(
     no forward pass and builds no cache.
 
     Args:
-        model: A ``TransformerBridge`` (with compatibility mode enabled) or a
-            ``HookedTransformer``; only its ``W_U`` is read.
+        model: A ``TransformerBridge`` with compatibility mode enabled; only its
+            ``W_U`` is read.
         head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
         direction: Column index of the singular direction to reconstruct.
         tokens: Token id(s) to read the logit effect for.
@@ -567,7 +567,7 @@ def project_activations(
     hooks or a cache built around its prior state.
 
     Args:
-        model: A ``TransformerBridge`` or ``HookedTransformer``.
+        model: A ``TransformerBridge``.
         head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
         prompt: A single prompt (not a batch): a string or a ``[1, pos]`` token tensor.
 
@@ -710,7 +710,7 @@ def patch_along_directions(
     setting afterward.
 
     Args:
-        model: A ``TransformerBridge`` or ``HookedTransformer``.
+        model: A ``TransformerBridge``.
         head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
         prompt: A single prompt: a string or a ``[1, pos]`` token tensor.
         metric: A function from the model's logits to a scalar.
