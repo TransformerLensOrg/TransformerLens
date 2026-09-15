@@ -71,6 +71,15 @@ _DEFAULT_EPS = 1e-2
 # Absolute floor so relative-gap and ratio computations never divide by ~0.
 _SIGMA_FLOOR = 1e-12
 
+# Default seed for the causal gate's random baseline, so a bare patch_along_directions
+# call is reproducible instead of drawing from the global RNG. Matches estimate_occupancy,
+# which seeds its random controls by default.
+_DEFAULT_BASELINE_SEED = 0
+
+# Number of random in-span control subspaces the gate averages its baseline delta over,
+# so one lucky or unlucky draw does not decide the gate.
+_DEFAULT_N_BASELINE = 8
+
 
 class DegenerateDirectionError(ValueError):
     """Raised when per-direction attribution is requested for a degenerate direction.
@@ -750,12 +759,21 @@ class PatchResult:
         original_metric: Metric value on the unmodified prompt.
         patched_metric: Metric value after the subspace reconstruction.
         delta_metric: ``patched_metric - original_metric``.
-        baseline_delta_metric: ``delta_metric`` from reconstructing onto a random
-            subspace of the same rank as ``retained``, instead of the requested one.
-        gated: True only if ``abs(delta_metric)`` exceeds ``abs(baseline_delta_metric)``
-            (or an explicit threshold, if one was passed): a subfunction is causally
-            load-bearing only if it beats an equally-sized random subspace, not merely
-            "moves the metric at all".
+        baseline_delta_metric: the mean ``delta_metric`` over several random control
+            subspaces of the same width as ``retained``, each drawn inside the head's
+            own OV span ``span(V)`` rather than from the full residual stream, so the
+            control is the effect of an arbitrary same-size subspace of this head's
+            output rather than of an unrelated residual-stream direction.
+        gated: whether the retained subspace passed the causal test for the mode it was
+            expressed in, against ``abs(baseline_delta_metric)`` (or an explicit
+            threshold, if one was passed). For ``ablate`` (retain the complement),
+            removing a load-bearing subspace should move the metric more than removing an
+            arbitrary same-size one, so ``gated`` is ``abs(delta_metric) > threshold``.
+            For ``keep`` (retain only the given subspace), a subspace that reconstructs
+            the head's behavior should move the metric less than keeping an arbitrary
+            same-size one, so ``gated`` is ``abs(delta_metric) < threshold``. A single
+            "moved more than baseline" test cannot answer both, since ``keep=S`` and
+            ``ablate=complement(S)`` resolve to the same retained set.
     """
 
     head_svd: HeadSVD
@@ -778,17 +796,26 @@ def patch_along_directions(
     ablate: Optional[Sequence[int]] = None,
     threshold: Optional[float] = None,
     rng: Optional[torch.Generator] = None,
+    n_baseline: int = _DEFAULT_N_BASELINE,
 ) -> PatchResult:
     """Causally validate a claimed OV subfunction by reconstructing the head's output onto it.
 
     Requires ``head_svd.which == "OV"``: this reconstructs the write/output basis
-    ``V``, and QK has no such vector (see the module docstring). Runs the prompt three
-    times with ``use_attn_result`` enabled: once unmodified, once with the head's
-    ``hook_result`` slice reconstructed onto ``span(head_svd.V[:, retained])``, and once
-    onto a random orthonormal subspace of the same width, so a moved metric can be
-    compared against the effect of an equally-sized but arbitrary subspace instead of
-    being read as significant on its own. Restores the model's prior ``use_attn_result``
-    setting afterward.
+    ``V``, and QK has no such vector (see the module docstring). Runs the prompt with
+    ``use_attn_result`` enabled once unmodified, once with the head's ``hook_result``
+    slice reconstructed onto ``span(head_svd.V[:, retained])``, and once per random
+    control subspace. Each control subspace is drawn *inside the head's own OV span*
+    ``span(V)`` (not from the full residual stream, where a width-``w`` random subspace
+    would keep only ``w/d_model`` of a head output that lives entirely in ``w/rank`` of
+    the stream), so a moved metric is compared against the effect of an arbitrary
+    subspace of this head's output of the same width. The control delta is averaged over
+    ``n_baseline`` draws so one lucky or unlucky draw does not decide the gate. Restores
+    the model's prior ``use_attn_result`` setting afterward.
+
+    The gate's success condition depends on the mode the caller expressed, because
+    ``keep=S`` and ``ablate=complement(S)`` resolve to the same retained set and a single
+    "moved more than the control" test would answer only the ``ablate`` question. See
+    :attr:`PatchResult.gated`.
 
     Args:
         model: A ``TransformerBridge``.
@@ -800,7 +827,11 @@ def patch_along_directions(
         ablate: Direction indices to zero; the rest are retained.
         threshold: Explicit gate threshold. Defaults to ``None``, which uses
             ``abs(baseline_delta_metric)`` instead.
-        rng: Optional generator for the random baseline subspace, for reproducibility.
+        rng: Optional generator for the random control subspaces, for reproducibility.
+            Defaults to a generator seeded with ``_DEFAULT_BASELINE_SEED`` so a bare
+            call is reproducible rather than drawing from the global RNG.
+        n_baseline: Number of random in-span control subspaces to average the baseline
+            delta over. Must be at least 1.
 
     Returns:
         A :class:`PatchResult` describing the patched, baseline, and original metrics.
@@ -808,9 +839,9 @@ def patch_along_directions(
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under a
             different compatibility-mode state than ``model`` now has, if ``keep``/``ablate``
-            are both given or both omitted, if any index is out of ``[0, rank)``, or if the
+            are both given or both omitted, if any index is out of ``[0, rank)``, if the
             retained set is empty (``keep=[]`` or ``ablate`` over the full rank) and no
-            explicit ``threshold`` is supplied.
+            explicit ``threshold`` is supplied, or if ``n_baseline < 1``.
         DegenerateDirectionError: If the retained directions split a degenerate block
             (see :func:`_validate_retained_blocks`).
     """
@@ -818,8 +849,13 @@ def patch_along_directions(
         raise ValueError(
             f"patch_along_directions requires an OV HeadSVD, got which={head_svd.which!r}"
         )
+    if n_baseline < 1:
+        raise ValueError(f"n_baseline must be at least 1, got {n_baseline}")
     _validate_decomposition_matches_model(model, head_svd)
     retained = _resolve_retained(head_svd, keep, ablate)
+    # _resolve_retained has confirmed exactly one of keep/ablate is set, so the mode the
+    # caller expressed is unambiguous and selects the gate's success condition (see below).
+    mode = "keep" if keep is not None else "ablate"
     if not retained and threshold is None:
         # An empty retained set reconstructs the head onto the zero subspace, so its delta and
         # the equal-width random baseline's delta are both the full-ablation effect: the gate
@@ -831,14 +867,13 @@ def patch_along_directions(
             "threshold to gate an empty retained set."
         )
 
-    V = head_svd.V
-    kept_projector = V[:, retained] @ V[:, retained].transpose(-2, -1)
+    if rng is None:
+        rng = torch.Generator().manual_seed(_DEFAULT_BASELINE_SEED)
 
-    d_model = V.shape[0]
+    V = head_svd.V
+    rank = V.shape[1]
     width = len(retained)
-    random_input = torch.randn(d_model, width, generator=rng, dtype=V.dtype)
-    random_basis, _ = torch.linalg.qr(random_input)
-    baseline_projector = random_basis @ random_basis.transpose(-2, -1)
+    kept_projector = V[:, retained] @ V[:, retained].transpose(-2, -1)
 
     hook_name = f"blocks.{head_svd.layer}.attn.hook_result"
     previous = getattr(model.cfg, "use_attn_result", False)
@@ -849,18 +884,36 @@ def patch_along_directions(
             prompt, fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, kept_projector))]
         )
         patched_metric = float(metric(patched_logits))
-        baseline_logits = model.run_with_hooks(
-            prompt,
-            fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, baseline_projector))],
-        )
-        baseline_metric = float(metric(baseline_logits))
+
+        baseline_deltas: List[float] = []
+        for _ in range(n_baseline):
+            # Draw a random width-of-rank subspace inside the head's own OV span. The QR
+            # is drawn on CPU (unimplemented on MPS, and a CUDA generator cannot feed a
+            # CPU randn); the columns are mapped into span(V) on V's device, and the hook
+            # moves the finished projector to the activation's device.
+            random_rank = torch.randn(rank, rank, generator=rng, dtype=V.dtype)
+            random_basis, _ = torch.linalg.qr(random_rank)
+            baseline_directions = V @ random_basis[:, :width].to(V.device)
+            baseline_projector = baseline_directions @ baseline_directions.transpose(-2, -1)
+            baseline_logits = model.run_with_hooks(
+                prompt,
+                fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, baseline_projector))],
+            )
+            baseline_deltas.append(float(metric(baseline_logits)) - original_metric)
     finally:
         model.set_use_attn_result(previous)
 
     delta_metric = patched_metric - original_metric
-    baseline_delta_metric = baseline_metric - original_metric
+    baseline_delta_metric = sum(baseline_deltas) / len(baseline_deltas)
     gate_threshold = abs(baseline_delta_metric) if threshold is None else threshold
-    gated = abs(delta_metric) > gate_threshold
+    # keep retains only the claimed subspace, so it passes when it reconstructs the head's
+    # behavior better than an arbitrary same-width one (moves the metric less); ablate
+    # removes it, so it passes when removing it matters more than removing an arbitrary
+    # same-width one (moves the metric more).
+    if mode == "keep":
+        gated = abs(delta_metric) < gate_threshold
+    else:
+        gated = abs(delta_metric) > gate_threshold
 
     return PatchResult(
         head_svd=head_svd,

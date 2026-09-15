@@ -905,8 +905,13 @@ def test_patch_ablate_reports_retained():
 
 
 def test_patch_along_directions_reports_delta_and_restores_use_attn_result():
-    """delta_metric is patched minus original metric, gated follows the documented
-    comparison against baseline_delta_metric, and use_attn_result is restored after."""
+    """delta_metric is patched minus original metric, the averaged baseline is finite, and
+    use_attn_result is restored to its prior value regardless of what it started as.
+
+    The gate's outcome is not recomputed from the same result's fields here (that would hold
+    for any self-consistent implementation); the mode-specific outcomes are pinned under a
+    fixed seed by the dedicated gate-semantics tests below.
+    """
     ov = _factored_head_svd(
         *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
     )
@@ -919,9 +924,134 @@ def test_patch_along_directions_reports_delta_and_restores_use_attn_result():
         )
         assert result.delta_metric == pytest.approx(result.patched_metric - result.original_metric)
         assert math.isfinite(result.baseline_delta_metric)
-        expected_gated = abs(result.delta_metric) > abs(result.baseline_delta_metric)
-        assert result.gated == expected_gated
+        assert isinstance(result.gated, bool)
         assert stub.cfg.use_attn_result == initial
+
+
+def _span_aligned_stub(ov, weights):
+    """A patch stub whose single head writes ``ov.V @ weights`` at every position and whose
+    readout is that same in-span vector.
+
+    Because the head output lies entirely in ``span(ov.V)`` and the readout equals it, removing
+    any in-span component can only reduce the metric, so the per-draw baseline deltas share a
+    sign and their average does not cancel toward zero. That makes the gate outcomes analytic:
+    the requested subspace's delta and the averaged random-subspace delta are both exact
+    functions of ``weights``, so a chosen weight vector fixes which side of the gate a mode
+    lands on with a wide margin rather than by numerical luck.
+    """
+    V = ov.V
+    head_out = V @ torch.tensor(weights, dtype=V.dtype)
+    stub = _PatchStubModel(d_model=V.shape[0], n_heads=1)
+    stub._result = torch.zeros_like(stub._result)
+    stub._result[:, :, 0, :] = head_out
+    stub._readout = head_out
+    return stub
+
+
+def test_patch_ablate_weak_direction_gates_false():
+    """Ablating the weakest isolated direction moves the metric less than removing an
+    equally-sized random in-span subspace does, so in ablate mode the gate is False."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    weak = ov.rank_report[-1].idx
+    assert not ov.is_degenerate(weak)
+    # Starve the weakest direction of energy while the strong ones carry it, so removing the
+    # weak one barely moves the metric relative to removing an arbitrary in-span direction.
+    weights = [1.0, 1.0, 1.0, 1.0]
+    weights[weak] = 1e-3
+    stub = _span_aligned_stub(ov, weights)
+    metric = lambda logits: float(logits.sum())
+    result = patch_along_directions(
+        stub, ov, "prompt", metric, ablate=[weak], rng=torch.Generator().manual_seed(0)
+    )
+    assert result.gated is False
+    assert abs(result.delta_metric) < abs(result.baseline_delta_metric)
+
+
+def test_patch_threshold_above_delta_gates_false():
+    """An explicit threshold above abs(delta_metric) overrides the averaged baseline and gates
+    False in ablate mode, even for a direction that gates True against the baseline alone."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    strong = ov.rank_report[0].idx
+    assert not ov.is_degenerate(strong)
+    # Concentrate the head output in the direction to be ablated so removing it beats the
+    # random in-span baseline; the gate is then True until an explicit threshold overrides it.
+    weights = [1e-3, 1e-3, 1e-3, 1e-3]
+    weights[strong] = 1.0
+    stub = _span_aligned_stub(ov, weights)
+    metric = lambda logits: float(logits.sum())
+    default = patch_along_directions(
+        stub, ov, "prompt", metric, ablate=[strong], rng=torch.Generator().manual_seed(0)
+    )
+    assert default.gated is True
+    raised = patch_along_directions(
+        stub,
+        ov,
+        "prompt",
+        metric,
+        ablate=[strong],
+        threshold=abs(default.delta_metric) + 1.0,
+        rng=torch.Generator().manual_seed(0),
+    )
+    assert raised.gated is False
+
+
+def test_patch_baseline_is_reproducible():
+    """The averaged baseline is drawn from the passed generator, so the same seed reproduces it
+    bit-for-bit and a different seed gives a different average."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _span_aligned_stub(ov, [1.0, 1.0, 1.0, 1.0])
+    metric = lambda logits: float(logits.sum())
+    first = patch_along_directions(
+        stub, ov, "prompt", metric, ablate=[0], rng=torch.Generator().manual_seed(0)
+    )
+    same_seed = patch_along_directions(
+        stub, ov, "prompt", metric, ablate=[0], rng=torch.Generator().manual_seed(0)
+    )
+    other_seed = patch_along_directions(
+        stub, ov, "prompt", metric, ablate=[0], rng=torch.Generator().manual_seed(1)
+    )
+    assert same_seed.baseline_delta_metric == first.baseline_delta_metric
+    assert other_seed.baseline_delta_metric != first.baseline_delta_metric
+
+
+def test_patch_keep_mode_gate_semantics():
+    """In keep mode the gate asks whether the retained subspace reconstructs the head: keeping
+    the single direction the head output lies along preserves the metric better than keeping an
+    equally-sized random in-span subspace, so it gates True, where the ablate-style single-sided
+    "moved more than baseline" test would have gated the same retained set False."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    strong = ov.rank_report[0].idx
+    assert not ov.is_degenerate(strong)
+    weights = [0.0, 0.0, 0.0, 0.0]
+    weights[strong] = 1.0
+    stub = _span_aligned_stub(ov, weights)
+    metric = lambda logits: float(logits.sum())
+    result = patch_along_directions(
+        stub, ov, "prompt", metric, keep=[strong], rng=torch.Generator().manual_seed(0)
+    )
+    assert result.gated is True
+    assert abs(result.delta_metric) < abs(result.baseline_delta_metric)
+    assert not abs(result.delta_metric) > abs(result.baseline_delta_metric)
+
+
+def test_patch_rejects_non_positive_n_baseline():
+    """The averaged baseline needs at least one draw, so n_baseline below 1 is refused before
+    any model access."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(ValueError, match="n_baseline"):
+        patch_along_directions(
+            SimpleNamespace(), ov, "prompt", lambda logits: 0.0, keep=[0], n_baseline=0
+        )
 
 
 @pytest.mark.skipif(
