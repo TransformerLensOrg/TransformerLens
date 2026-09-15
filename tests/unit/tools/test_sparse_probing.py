@@ -368,6 +368,7 @@ def test_sweep_reuses_one_split_and_has_nested_selected_supports():
 
     assert isinstance(sweep, SparseProbeSweep)
     assert sweep.ks == (1, 2, 4)
+    assert tuple(result.k for result in sweep.results) == sweep.ks
     for result in sweep.results:
         assert torch.equal(result.train_indices, sweep.results[0].train_indices)
         assert torch.equal(result.test_indices, sweep.results[0].test_indices)

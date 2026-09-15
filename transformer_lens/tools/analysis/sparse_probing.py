@@ -432,6 +432,7 @@ def _fit_result(
     test_indices: torch.Tensor,
     feature_scores: torch.Tensor,
     selected_features: torch.Tensor,
+    k: int,
 ) -> SparseProbeResult:
     train_features, test_features, mean, scale, constant = _selected_data(
         validated.features,
@@ -473,7 +474,7 @@ def _fit_result(
         l2_strength=validated.l2_strength,
         test_fraction=validated.test_fraction,
         seed=validated.seed,
-        k=validated.k,
+        k=k,
         max_iter=validated.max_iter,
         gradient_tolerance=validated.gradient_tolerance,
         objective=fit.objective,
@@ -606,6 +607,7 @@ def fit_sparse_probe(
         test_indices,
         feature_scores,
         selected_features,
+        validated.k,
     )
 
 
@@ -694,6 +696,7 @@ def sweep_sparse_probe(
             test_indices,
             feature_scores,
             ranked_features[:k],
+            k,
         )
         for k in k_values
     )
