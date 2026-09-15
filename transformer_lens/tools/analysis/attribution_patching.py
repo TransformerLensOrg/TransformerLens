@@ -204,8 +204,9 @@ class AttributionResult:
             patching that node from corrupt toward clean moves the metric in the
             positive direction (the denoising convention pinned in the module
             docstring). For an edge-granularity sweep this is instead each
-            writer's aggregate over its own outgoing edge scores, which omits
-            its direct skip-connection contribution to the metric (see
+            writer's aggregate over its own outgoing edge scores. Because the
+            graph has a terminal logits reader that every writer feeds, that
+            aggregate equals the writer's direct node score (see
             :func:`attribution_patch`).
         edge_scores: Per-edge effect estimate keyed by ``(source, destination)``.
             Populated for an edge-granularity sweep; empty for a node sweep.
@@ -768,29 +769,59 @@ def _edge_effects(
     uses. Unlike a node score, the delta and the gradient are read from two
     different hook points (the writer's and the reader's), since an edge
     measures how much of one component's output reaches another component's
-    input.
+    input. A ``logits`` reader takes its gradient at the final
+    ``hook_resid_post`` and contracts over ``d_model`` at its position, the same
+    shape path as an ``mlp_in`` reader.
+
+    Two structural facts keep this off a per-edge recompute: a writer hook's
+    clean-minus-corrupt delta is the same tensor for every edge that writer
+    feeds, and every edge into one reader shares that reader's gradient vector.
+    Each writer delta is therefore computed once, and each reader's incoming
+    edges are scored with a single batched matrix-vector product over the
+    stacked writer deltas -- reducing to the same per-edge scalars a
+    ``float((delta_vec * grad_vec).sum())`` per edge would, reader gradient
+    reused across all of that reader's edges.
     """
     scores: dict[tuple[Node, Node], float] = {}
+    writer_deltas: dict[str, torch.Tensor] = {}
+
+    def writer_delta_vec(writer: Node) -> torch.Tensor:
+        name = _writer_hook_name(writer)
+        delta = writer_deltas.get(name)
+        if delta is None:
+            delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+            writer_deltas[name] = delta
+        if writer.kind == "attn_head_out":
+            return delta[0, writer.position, writer.head]
+        return delta[0, writer.position]
+
+    writers_by_reader: dict[Node, list[Node]] = {}
+    reader_order: list[Node] = []
     for writer, reader in edges:
-        writer_name = _writer_hook_name(writer)
+        bucket = writers_by_reader.get(reader)
+        if bucket is None:
+            writers_by_reader[reader] = bucket = []
+            reader_order.append(reader)
+        bucket.append(writer)
+
+    for reader in reader_order:
         reader_name = reader.hook_name
         grad = corrupt_cache.gradients.get(reader_name)
+        writers = writers_by_reader[reader]
         if grad is None:
             raise ValueError(
-                f"edge {(writer, reader)} reads its gradient at {reader_name!r}, but "
+                f"edge {(writers[0], reader)} reads its gradient at {reader_name!r}, but "
                 "the corrupt cache holds none there; cache with a names_filter that "
                 "retains this hook point."
             )
-        delta = clean_cache.activations[writer_name] - corrupt_cache.activations[writer_name]
-        if writer.kind == "attn_head_out":
-            delta_vec = delta[0, writer.position, writer.head]
-        else:
-            delta_vec = delta[0, writer.position]
         if reader.kind in ("q_input", "k_input", "v_input"):
             grad_vec = grad[0, reader.position, reader.head]
         else:
             grad_vec = grad[0, reader.position]
-        scores[(writer, reader)] = float((delta_vec * grad_vec).sum())
+        delta_matrix = torch.stack([writer_delta_vec(writer) for writer in writers])
+        edge_values = delta_matrix @ grad_vec
+        for writer, value in zip(writers, edge_values.tolist()):
+            scores[(writer, reader)] = value
     return scores
 
 
@@ -800,15 +831,14 @@ def _aggregate_edge_scores_to_writer_nodes(
     """Sum each writer's outgoing edge scores into that writer's aggregate node score.
 
     A writer's aggregate is the sum of its effects along every edge it feeds.
-    This is not the same quantity a node-granularity sweep measures directly at
-    the writer's own hook point: enumerate_edges' reader kinds (the per-head
-    Q/K/V inputs and the MLP entry) do not include a final-readout reader, so a
-    writer's direct skip-connection contribution to the metric -- the part of
-    its residual-stream write that is never read by a later component, only
-    carried forward by addition -- is absent from the aggregate. A writer with
-    no outgoing edge at all (the final layer's MLP output, which nothing in
-    this graph reads) has no aggregate entry, even though its direct node score
-    is generally nonzero.
+    enumerate_edges gives every writer an edge to the terminal logits reader, so
+    the aggregate includes the writer's direct skip-connection contribution to
+    the metric -- the part of its residual-stream write that no intermediate
+    component reads, only the final readout does -- and therefore equals the
+    quantity a node-granularity sweep measures directly at the writer's own hook
+    point. Every writer has at least that one outgoing edge, including the final
+    layer's MLP output, whose only reader is the logits terminal, so no writer is
+    missing from the aggregate.
     """
     totals: dict[Node, float] = {}
     for (writer, _reader), score in edge_scores.items():
@@ -864,12 +894,12 @@ def attribution_patch(
     Returns:
         An :class:`AttributionResult` whose ``node_scores`` are averaged over the
         batch. For an edge-granularity sweep, ``edge_scores`` is populated too and
-        ``node_scores`` is the per-writer aggregate of those edge scores. This
-        aggregate is not the same quantity a node-granularity sweep on the same
-        model returns: it omits each writer's direct skip-connection contribution
-        to the metric, since no reader kind models a final readout (a writer with
-        no outgoing edge at all, such as the final layer's MLP output, has no
-        entry here even though its direct node score is generally nonzero).
+        ``node_scores`` is the per-writer aggregate of those edge scores. The
+        graph's terminal logits reader gives every writer an edge carrying its
+        direct skip-connection contribution to the metric, so this aggregate
+        equals the quantity a node-granularity sweep on the same model returns
+        (including for the final layer's MLP output, whose only outgoing edge is
+        the one to the logits reader).
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
@@ -900,24 +930,26 @@ def attribution_patch(
     n_layers = int(model.cfg.n_layers)
 
     if config.granularity == "edge":
-        _ensure_edge_hook_flags(model)
         hook_names = _edge_hook_names(n_layers)
         edge_totals: dict[tuple[Node, Node], float] = {}
 
-        for index in range(batch):
-            clean_cache = cache_activation_and_gradient(
-                model,
-                clean[index : index + 1],
-                metric_fn,
-                names_filter=hook_names,
-                compute_gradient=False,
-            )
-            corrupt_cache = cache_activation_and_gradient(
-                model, corrupt[index : index + 1], metric_fn, names_filter=hook_names
-            )
-            edges = enumerate_edges(model, corrupt_cache)
-            for edge, score in _edge_effects(clean_cache, corrupt_cache, edges).items():
-                edge_totals[edge] = edge_totals.get(edge, 0.0) + score
+        # Scope the per-head hook-flag mutation to the caching loop so the
+        # caller's flag state is restored on both the normal and the error path.
+        with _edge_hook_flags(model):
+            for index in range(batch):
+                clean_cache = cache_activation_and_gradient(
+                    model,
+                    clean[index : index + 1],
+                    metric_fn,
+                    names_filter=hook_names,
+                    compute_gradient=False,
+                )
+                corrupt_cache = cache_activation_and_gradient(
+                    model, corrupt[index : index + 1], metric_fn, names_filter=hook_names
+                )
+                edges = enumerate_edges(model, corrupt_cache)
+                for edge, score in _edge_effects(clean_cache, corrupt_cache, edges).items():
+                    edge_totals[edge] = edge_totals.get(edge, 0.0) + score
 
         edge_scores = {edge: total / batch for edge, total in edge_totals.items()}
         node_scores = _aggregate_edge_scores_to_writer_nodes(edge_scores)

@@ -1521,6 +1521,129 @@ def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() ->
         assert edge_result.node_scores[node] == pytest.approx(direct_score, abs=1e-5)
 
 
+def _naive_edge_effects(
+    clean_cache: GradientCache,
+    corrupt_cache: GradientCache,
+    edges: list[tuple[Node, Node]],
+) -> dict[tuple[Node, Node], float]:
+    """Per-edge reference score, recomputed the unbatched way for every edge.
+
+    One clean-minus-corrupt subtraction and one ``float((delta_vec *
+    grad_vec).sum())`` per edge, so any drift in the batched
+    :func:`_edge_effects` shows up as a mismatch against this.
+    """
+    scores: dict[tuple[Node, Node], float] = {}
+    for writer, reader in edges:
+        writer_name = _writer_hook_name(writer)
+        delta = clean_cache.activations[writer_name] - corrupt_cache.activations[writer_name]
+        if writer.kind == "attn_head_out":
+            delta_vec = delta[0, writer.position, writer.head]
+        else:
+            delta_vec = delta[0, writer.position]
+        grad = corrupt_cache.gradients[reader.hook_name]
+        assert grad is not None
+        if reader.kind in ("q_input", "k_input", "v_input"):
+            grad_vec = grad[0, reader.position, reader.head]
+        else:
+            grad_vec = grad[0, reader.position]
+        scores[(writer, reader)] = float((delta_vec * grad_vec).sum())
+    return scores
+
+
+def test_edge_effects_scores_logits_reader_edges_with_finite_signed_values() -> None:
+    """Every writer -> logits edge is scored, finite, and at least one is nonzero.
+
+    The logits reader takes its gradient at the final ``hook_resid_post`` and
+    contracts over ``d_model`` at the readout position, so a writer's direct
+    path to the output is a real edge with a genuine signed score rather than a
+    structural zero.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    scores = _edge_effects(clean_cache, corrupt_cache, edges)
+    reference = _naive_edge_effects(clean_cache, corrupt_cache, edges)
+
+    logits_edges = [(writer, reader) for writer, reader in edges if reader.kind == "logits"]
+    assert logits_edges  # the terminal reader closes the graph
+    for edge in logits_edges:
+        assert math.isfinite(scores[edge])
+        assert scores[edge] == pytest.approx(reference[edge], abs=1e-6)
+
+    # The readout position is the one _metric_fn reads, so the direct paths there
+    # carry a genuine, signed effect, not a structural zero.
+    readout = SEQ_LEN - 1
+    assert any(abs(scores[edge]) > 1e-6 for edge in logits_edges if edge[1].position == readout)
+
+
+def test_edge_effects_batched_scores_match_the_naive_per_edge_reference() -> None:
+    """The batched scorer reproduces the unbatched per-edge scores exactly.
+
+    _edge_effects caches each writer's delta once and scores each reader's
+    incoming edges with one batched product. Pinning it to the plain per-edge
+    reference guards against a future change to that batching silently shifting
+    any edge's score.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+
+    batched = _edge_effects(clean_cache, corrupt_cache, edges)
+    reference = _naive_edge_effects(clean_cache, corrupt_cache, edges)
+
+    assert set(batched) == set(reference)
+    for edge in reference:
+        assert batched[edge] == pytest.approx(reference[edge], abs=1e-6)
+
+
+def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
+    """An edge sweep leaves the caller's per-head hook flags as it found them.
+
+    attribution_patch enables use_attn_result / use_split_qkv_input /
+    use_hook_mlp_in only for the duration of its caching loop, so a caller whose
+    later forwards should not materialize the per-head tensors gets its flags
+    back once the sweep returns.
+    """
+    model = _EdgeScoringToyBridge()
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+    attribution_patch(
+        model,
+        torch.tensor([[1, 2, 3]]),
+        torch.tensor([[3, 2, 1]]),
+        _metric_fn(answer=1, wrong=2),
+        config=EdgeAttributionConfig(granularity="edge"),
+    )
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+
 # ---------------------------------------------------------------------------
 # Commit 4 - exact-patch parity and mutation-checked reconstruction
 # ---------------------------------------------------------------------------
