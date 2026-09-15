@@ -23,6 +23,7 @@ from transformer_lens.tools.analysis.svd_circuits import (
     RankReportRow,
     _degeneracy_blocks,
     _factored_head_svd,
+    _make_subspace_hook,
     _resolve_retained,
     decompose_head,
     logit_signature,
@@ -551,6 +552,33 @@ def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
     assert not torch.allclose(projected_via_U, -reference[:, 0, 0], atol=1e-2)
 
 
+def test_vocab_readout_matches_svd_interpreter_through_public_api():
+    """The public vocab_readout, not just a hand-rolled V @ W_U, reproduces SVDInterpreter's
+    OV readout up to sign.
+
+    The shape-only check elsewhere passes a U-for-V swap or an all-zeros return inside
+    vocab_readout; matching the shipped reference through the public function fails both.
+    Needs compatibility mode for the W_U-folding contract, so this builds its own bridge
+    rather than using the shared no-compat fixture.
+    """
+    from transformer_lens.SVDInterpreter import SVDInterpreter
+
+    model = _make_tiny_bridge()
+    model.enable_compatibility_mode()
+    layer, head = 0, 0
+    ov = decompose_head(model, layer, head, which=("OV",)).OV
+    top = next(row.idx for row in ov.rank_report if not row.is_degenerate)
+
+    readout = vocab_readout(model, ov, k=top + 1)
+    reference = SVDInterpreter(model).get_singular_vectors(
+        "OV", layer, head_index=head, num_vectors=top + 1
+    )[:, 0, top]
+
+    assert torch.allclose(readout[:, top], reference, atol=1e-4) or torch.allclose(
+        readout[:, top], -reference, atol=1e-4
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Compatibility-mode binding: a decomposition is tied to the state it was built under
 # --------------------------------------------------------------------------- #
@@ -723,9 +751,14 @@ def test_project_activations_which_guard():
         project_activations(SimpleNamespace(), qk, "hello world")
 
 
-def test_project_activations_reconstructs_head_output(tiny_bridge):
-    """Coefficients recovered against V reconstruct the actual cached hook_result slice."""
-    layer, head = 0, 0
+@pytest.mark.parametrize("head", [0, 1])
+def test_project_activations_reconstructs_head_output(tiny_bridge, head):
+    """Coefficients recovered against V reconstruct the actual cached hook_result slice.
+
+    Runs on both heads of the two-head bridge, so a hardcoded head-0 read cannot pass by
+    only ever being asked about head 0.
+    """
+    layer = 0
     decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
     # A raw token tensor, not a string: tiny_bridge's tokenizer is a MagicMock and cannot
     # tokenize text, but a token-id tensor bypasses that path entirely.
@@ -759,6 +792,36 @@ def test_project_activations_restores_use_attn_result(tiny_bridge):
             assert tiny_bridge.cfg.use_attn_result == initial
     finally:
         tiny_bridge.set_use_attn_result(original)
+
+
+@pytest.mark.parametrize("head", [0, 1])
+def test_subspace_hook_leaves_sibling_head_untouched(tiny_bridge, head):
+    """The patch hook rewrites only its own head's slice of the [batch, pos, head, d_model]
+    activation: the sibling head's block is bit-for-bit unchanged while the patched head's
+    block moves.
+
+    Pins _make_subspace_hook's per-head scope on the two-head bridge, which a hook that
+    wrote every head, or hardcoded head 0, would break. The clean hook_result comes from a
+    real forward pass; applying the hook directly makes the per-head write the sole variable.
+    """
+    ov = decompose_head(tiny_bridge, 0, head, which=("OV",)).OV
+    other = 1 - head
+    prompt = torch.tensor([[5, 63, 7, 9]])
+
+    previous = tiny_bridge.cfg.use_attn_result
+    tiny_bridge.set_use_attn_result(True)
+    try:
+        _, cache = tiny_bridge.run_with_cache(prompt)
+    finally:
+        tiny_bridge.set_use_attn_result(previous)
+    clean = cache[("result", 0, "attn")]
+
+    keep = [ov.rank_report[0].idx]
+    projector = ov.V[:, keep] @ ov.V[:, keep].transpose(-2, -1)
+    patched = _make_subspace_hook(head, projector)(clean, hook=SimpleNamespace(name="hook_result"))
+
+    assert torch.equal(patched[:, :, other, :], clean[:, :, other, :])
+    assert not torch.allclose(patched[:, :, head, :], clean[:, :, head, :])
 
 
 # --------------------------------------------------------------------------- #
@@ -1102,7 +1165,10 @@ def test_patch_along_directions_discriminates_causal_direction(tiny_bridge):
     assert isinstance(strong_result, PatchResult)
     assert math.isfinite(strong_result.baseline_delta_metric)
     assert math.isfinite(weak_result.baseline_delta_metric)
-    assert abs(strong_result.delta_metric) > abs(weak_result.delta_metric)
+    # A wide margin, not a bare ordering: swapping the projected basis inside the patch hook
+    # collapses the strong-vs-weak ratio toward 1 while still ordering the two, so a bare `>`
+    # would pass the swap this decomposition's OV convention exists to prevent.
+    assert abs(strong_result.delta_metric) > 5 * abs(weak_result.delta_metric)
 
 
 def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
