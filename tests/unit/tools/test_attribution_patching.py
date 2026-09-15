@@ -952,6 +952,7 @@ class _EdgeHookToyBridge(_LinearToyBridge):
         self.ln_final = nn.Identity()
         self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
         nn.init.normal_(self.unembed.weight, std=0.2)
+        self.eval()
 
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
@@ -1429,6 +1430,7 @@ class _EdgeScoringToyBridge(_LinearToyBridge):
         self.ln_final = nn.Identity()
         self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
         nn.init.normal_(self.unembed.weight, std=0.2)
+        self.eval()
 
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
