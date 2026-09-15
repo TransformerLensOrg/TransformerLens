@@ -361,6 +361,7 @@ def test_binary_metrics_zero_division_policy():
         ),
         (torch.ones(4, 2), torch.zeros(4, dtype=torch.int64), {}, "exactly two"),
         (torch.ones(6, 2), torch.tensor([0, 1, 2, 0, 1, 2]), {}, "exactly two"),
+        (torch.ones(4, 2), torch.tensor([0, 1, 1, 1]), {}, "at least two examples"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"positive_label": 2}, "positive_label"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"k": 0}, "k must be"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"k": 3}, "k must be"),
