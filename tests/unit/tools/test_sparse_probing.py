@@ -272,6 +272,25 @@ def test_forced_nonconvergence_raises():
         )
 
 
+def test_default_tolerance_accepts_large_scale_activations():
+    # Raw (unstandardized) activations with a per-coordinate std in the hundreds make the
+    # objective gradient large at the zero starting parameters. The acceptance bound is
+    # scale-relative, so a Newton-quality solve must still be accepted under the default
+    # gradient_tolerance instead of being rejected by a bare absolute threshold.
+    generator = torch.Generator().manual_seed(0)
+    n_examples, n_features = 1000, 768
+    labels = torch.arange(n_examples) % 2
+    features = 60.0 * torch.randn(n_examples, n_features, generator=generator)
+    features[:, 7] += 150.0 * (2 * labels - 1)
+    permutation = torch.randperm(n_examples, generator=generator)
+    features, labels = features[permutation], labels[permutation]
+
+    result = fit_sparse_probe(features, labels, k=4, seed=1)
+
+    assert isinstance(result, SparseProbeResult)
+    assert result.selected_features.numel() == 4
+
+
 def test_binary_metrics_zero_division_policy():
     metrics = _binary_metrics(torch.tensor([-2.0, -1.0]), torch.tensor([0, 1]))
 

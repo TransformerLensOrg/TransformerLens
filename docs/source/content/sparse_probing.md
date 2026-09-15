@@ -86,7 +86,8 @@ zero when its denominator is zero. F1 is the primary sparse-probing metric.
 Feature-score reductions use float64 for float64 inputs and float32 otherwise. Selected matrices
 move to CPU float64 for deterministic LBFGS fitting. All result tensors are detached CPU tensors.
 The fit raises when output is non-finite or the final objective-gradient infinity norm exceeds
-`gradient_tolerance`, which must lie in `(0, 1]`.
+`gradient_tolerance` times `max(1, initial gradient infinity norm)`, a scale-relative bound that
+tracks the gradient magnitude at the starting parameters. `gradient_tolerance` must lie in `(0, 1]`.
 Results retain the requested `k`, `max_iter`, and `gradient_tolerance` alongside the realized
 objective, gradient norm, iteration count, and convergence flag.
 

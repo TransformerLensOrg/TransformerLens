@@ -356,9 +356,13 @@ def _fit_logistic(
         [parameters],
         max_iter=max_iter,
         tolerance_grad=gradient_tolerance,
-        tolerance_change=max(torch.finfo(torch.float64).eps, gradient_tolerance**2),
+        tolerance_change=0.0,
         line_search_fn="strong_wolfe",
     )
+    initial_gradient = _objective_gradient(
+        features, labels, parameters.detach(), sample_weights, l2_strength
+    )
+    initial_gradient_inf_norm = float(initial_gradient.abs().max().item())
 
     def closure() -> torch.Tensor:
         optimizer.zero_grad()
@@ -378,10 +382,11 @@ def _fit_logistic(
     gradient_inf_norm = float(gradient.abs().max().item())
     if not math.isfinite(objective) or not math.isfinite(gradient_inf_norm):
         raise RuntimeError("sparse probe optimizer produced non-finite output")
-    if gradient_inf_norm > gradient_tolerance:
+    acceptance_threshold = gradient_tolerance * max(1.0, initial_gradient_inf_norm)
+    if gradient_inf_norm > acceptance_threshold:
         raise RuntimeError(
             "sparse probe optimizer did not converge: "
-            f"gradient infinity norm {gradient_inf_norm:.6g} exceeds {gradient_tolerance:.6g}"
+            f"gradient infinity norm {gradient_inf_norm:.6g} exceeds {acceptance_threshold:.6g}"
         )
     state = optimizer.state[parameters]
     return _FitOutcome(
