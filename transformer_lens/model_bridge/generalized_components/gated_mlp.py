@@ -2,18 +2,20 @@
 
 This module contains the bridge component for gated MLP layers (e.g., LLaMA, Gemma).
 """
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple, cast
 
 import torch
+import torch.nn as nn
 
-from transformer_lens.model_bridge._relevance_rules import half_rule, identity_rule
+from transformer_lens.model_bridge._relevance_rules import (
+    half_rule,
+    identity_rule,
+    scale_gradient,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
-from transformer_lens.model_bridge.generalized_components.mlp import (
-    MLPBridge,
-    weight_layout_in_out,
-)
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 
 
 def _resolve_activation_fn_name(config: Any) -> Optional[str]:
@@ -73,120 +75,23 @@ def resolve_activation_fn(config: Any) -> Callable:
     return torch.nn.functional.silu
 
 
-class _GatedMLPRecomputeRule(torch.autograd.Function):
-    """Wrap a raw gated-MLP module's own forward call in the Identity-/Half-rule VJP.
+class _IdentityRuleActivation(nn.Module):
+    """Route a wrapped activation through the Identity-rule for a scope's duration.
 
-    Forward returns ``component(x, ...)`` unchanged, so the result is bit-identical
-    to the native forward by construction. The opaque call gives no access to its own
-    internal gate/up/down intermediates, so backward recomputes them from the
-    TL-oriented ``W_gate``/``W_in``/``W_out`` (checkpointing-style: the values are
-    rederived here rather than saved from forward) and reapplies the Identity-rule to
-    the activation and/or the Half-rule to the gate*up product, per whichever of the
-    two is active. Weight and bias gradients come out of the same recomputed graph,
-    via ``torch.autograd.grad``, so they keep their ordinary form -- the rules only
-    redefine how relevance reaches the input, not parameter training gradients.
+    The opaque gated-MLP path keeps the HF module's own forward intact and installs
+    the Identity-rule by swapping the module's activation callable for this wrapper.
+    Its forward returns ``act_fn(x)`` unchanged, so the native forward value is
+    preserved, while the backward follows the Identity-rule VJP. Storing the wrapped
+    activation as an attribute registers it as a child module when it is itself an
+    ``nn.Module`` (the common ``ACT2FN`` case), so its parameters, if any, stay live.
     """
 
-    @staticmethod
-    def forward(
-        ctx: Any,
-        x: torch.Tensor,
-        w_gate: torch.Tensor,
-        b_gate: Optional[torch.Tensor],
-        w_in: torch.Tensor,
-        b_in: Optional[torch.Tensor],
-        w_out: torch.Tensor,
-        b_out: Optional[torch.Tensor],
-        act_fn: Callable[[torch.Tensor], torch.Tensor],
-        activation_rule_active: bool,
-        gate_rule_active: bool,
-        component: torch.nn.Module,
-        extra_args: Tuple[Any, ...],
-        extra_kwargs: Dict[str, Any],
-    ) -> torch.Tensor:
-        ctx.save_for_backward(x, w_gate, w_in, w_out)
-        ctx.b_gate = b_gate
-        ctx.b_in = b_in
-        ctx.b_out = b_out
-        ctx.act_fn = act_fn
-        ctx.activation_rule_active = activation_rule_active
-        ctx.gate_rule_active = gate_rule_active
-        result: torch.Tensor = component(x, *extra_args, **extra_kwargs)
-        return result
+    def __init__(self, wrapped: Callable[[torch.Tensor], torch.Tensor]):
+        super().__init__()
+        self._wrapped_activation = wrapped
 
-    @staticmethod
-    def backward(  # type: ignore[override]
-        ctx: Any, grad_output: torch.Tensor
-    ) -> Tuple[
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    ]:
-        x, w_gate, w_in, w_out = ctx.saved_tensors
-        b_gate, b_in, b_out = ctx.b_gate, ctx.b_in, ctx.b_out
-        act_fn = ctx.act_fn
-
-        with torch.enable_grad():
-            x_ = x.detach().requires_grad_(True)
-            w_gate_ = w_gate.detach().requires_grad_(True)
-            w_in_ = w_in.detach().requires_grad_(True)
-            w_out_ = w_out.detach().requires_grad_(True)
-            b_gate_ = b_gate.detach().requires_grad_(True) if b_gate is not None else None
-            b_in_ = b_in.detach().requires_grad_(True) if b_in is not None else None
-            b_out_ = b_out.detach().requires_grad_(True) if b_out is not None else None
-
-            gate_output = x_ @ w_gate_
-            if b_gate_ is not None:
-                gate_output = gate_output + b_gate_
-            up_output = x_ @ w_in_
-            if b_in_ is not None:
-                up_output = up_output + b_in_
-
-            activated = (
-                identity_rule(gate_output, act_fn)
-                if ctx.activation_rule_active
-                else act_fn(gate_output)
-            )
-            gated = (
-                half_rule(activated, up_output) if ctx.gate_rule_active else activated * up_output
-            )
-
-            down = gated @ w_out_
-            if b_out_ is not None:
-                down = down + b_out_
-
-        leaves = [x_, w_gate_, b_gate_, w_in_, b_in_, w_out_, b_out_]
-        needed = [leaf for leaf in leaves if leaf is not None]
-        grads = torch.autograd.grad(down, needed, grad_outputs=grad_output, allow_unused=True)
-        grad_iter = iter(grads)
-        results = [next(grad_iter) if leaf is not None else None for leaf in leaves]
-        grad_x, grad_w_gate, grad_b_gate, grad_w_in, grad_b_in, grad_w_out, grad_b_out = results
-
-        return (
-            grad_x,
-            grad_w_gate,
-            grad_b_gate,
-            grad_w_in,
-            grad_b_in,
-            grad_w_out,
-            grad_b_out,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return identity_rule(x, self._wrapped_activation)
 
 
 class GatedMLPBridge(MLPBridge):
@@ -229,15 +134,21 @@ class GatedMLPBridge(MLPBridge):
         super().__init__(name, config, submodules=submodules or {}, optional=optional)
         self._relevance_rule_activation_active = False
         self._relevance_rule_gate_active = False
+        # Opaque-path rule installers hold their teardown state here. The activation
+        # wrap records (attr_name, original_value, was_child_module) so the swapped
+        # activation callable can be restored exactly; the gate handle is the
+        # forward-pre-hook that scales the gradient entering the down projection.
+        self._relevance_activation_wrap: Optional[Tuple[str, Any, bool]] = None
+        self._relevance_gate_hook_handle: Optional[Any] = None
 
     def _is_gated_mlp_shaped(self) -> bool:
-        """Whether this instance has the gate/up/down submodules the recompute needs.
+        """Whether this instance has the gate/up/down submodules a gated MLP needs.
 
         A container missing one of these was never wired up as a gated-MLP node at
         all (a different architecture at this mount), which is benign
         non-applicability rather than an unsupported configuration of a gated-MLP
-        node -- unlike an unrecognized weight-backing class or activation form,
-        which occupy exactly this node's shape but cannot be honored correctly.
+        node -- unlike an activation form the Identity-rule cannot honor, which
+        occupies exactly this node's shape but cannot be honored correctly.
         """
         if self.original_component is None:
             return False
@@ -246,34 +157,52 @@ class GatedMLPBridge(MLPBridge):
         out_module = getattr(self, "out", None)
         return gate_module is not None and in_module is not None and out_module is not None
 
-    def _has_recognized_weight_backing(self) -> bool:
-        """Whether gate/up/down are all backed by an allowlisted HF module class."""
-        gate_module = getattr(self, "gate", None)
-        in_module = getattr(self, "in", None)
-        out_module = getattr(self, "out", None)
+    def _find_activation_attr(self) -> Optional[str]:
+        """The attribute name under which the HF module holds its activation callable.
+
+        The opaque path installs the Identity-rule by swapping this attribute, so the
+        activation must be reachable as a callable attribute the native forward calls
+        (the ``ACT2FN`` module the gated-MLP families store as ``act_fn``). Returns
+        ``None`` when no such attribute exists, in which case the Identity-rule cannot
+        be wrapped in and ``"activation"`` is reported unsupported rather than
+        installed as a silent no-op.
+        """
+        component = self.original_component
+        if component is None:
+            return None
+        for attr in ("act_fn", "activation_fn", "act", "activation"):
+            if callable(getattr(component, attr, None)):
+                return attr
+        return None
+
+    def _activation_rule_installable(self) -> bool:
+        """Whether the Identity-rule can be installed on this instance's activation.
+
+        Requires both a config activation form the ratio rule is valid for (the
+        relu family is excluded) and, on the opaque path, an activation callable the
+        bridge can wrap in place. Subclasses that reconstruct the forward themselves
+        override this, since they call the activation directly and never wrap it.
+        """
         return (
-            weight_layout_in_out(gate_module) is not None
-            and weight_layout_in_out(in_module) is not None
-            and weight_layout_in_out(out_module) is not None
+            identity_rule_supports_activation(self.config)
+            and self._find_activation_attr() is not None
         )
 
     @property
     def _relevance_rule_kinds(self) -> Tuple[str, ...]:
         """The relevance-rule kinds this instance can currently honor.
 
-        Empty when this is not a gated-MLP-shaped node, or when the gate/up/down
-        projections are not backed by an allowlisted HF module class (``nn.Linear``
-        or ``Conv1D``) in a recognized orientation, since the weights-recompute
-        cannot honor either rule correctly on an opaque backing module. Otherwise
-        always includes ``"multiplicative_gate"`` (the Half-rule does not depend on
-        the activation function) and includes ``"activation"`` only when the
-        configured activation form supports the Identity-rule, so a relu-family
-        activation is excluded independently of weight backing.
+        Empty when this is not a gated-MLP-shaped node. Otherwise always includes
+        ``"multiplicative_gate"`` (the Half-rule is a gradient scale at the gate*up
+        product and needs no weight or activation access) and includes
+        ``"activation"`` only when the Identity-rule can be installed on the
+        configured activation, so a relu-family activation, or one the bridge cannot
+        reach to wrap, is excluded.
         """
-        if not self._is_gated_mlp_shaped() or not self._has_recognized_weight_backing():
+        if not self._is_gated_mlp_shaped():
             return ()
         kinds: Tuple[str, ...] = ("multiplicative_gate",)
-        if identity_rule_supports_activation(self.config):
+        if self._activation_rule_installable():
             kinds = ("activation",) + kinds
         return kinds
 
@@ -283,31 +212,107 @@ class GatedMLPBridge(MLPBridge):
 
         Unlike a kind simply absent from ``_relevance_rule_kinds`` because this is
         not a gated-MLP-shaped node at all (benign non-applicability, reported
-        skipped), a gated-MLP node with an unrecognized weight-backing class or an
-        unsupported activation form is exactly the kind of component a caller
-        expects either rule to work on. Requesting one of these raises instead of
-        silently reporting the mount skipped.
+        skipped), a gated-MLP node whose activation form or activation callable the
+        Identity-rule cannot honor is exactly the kind of component a caller expects
+        the rule to work on. Requesting ``"activation"`` there raises instead of
+        silently reporting the mount skipped. The Half-rule applies to every
+        gated-MLP node, so ``"multiplicative_gate"`` is never reported unsupported.
         """
         if not self._is_gated_mlp_shaped():
             return ()
-        if not self._has_recognized_weight_backing():
-            return ("activation", "multiplicative_gate")
-        if not identity_rule_supports_activation(self.config):
+        if "activation" not in self._relevance_rule_kinds:
             return ("activation",)
         return ()
 
+    def _install_activation_rule(self) -> None:
+        """Swap the HF module's activation callable for the Identity-rule wrapper.
+
+        No-op when the activation callable cannot be located; requesting the
+        activation rule in that case is refused earlier through
+        ``_relevance_rule_unsupported_kinds``. The original value and whether it was
+        a registered child module are recorded so teardown restores it exactly.
+        """
+        component = self.original_component
+        attr = self._find_activation_attr()
+        if component is None or attr is None:
+            return
+        was_child_module = attr in component._modules
+        original = component._modules[attr] if was_child_module else getattr(component, attr, None)
+        # _find_activation_attr only returns an attribute whose value is callable.
+        wrapper = _IdentityRuleActivation(cast(Callable[[torch.Tensor], torch.Tensor], original))
+        if not was_child_module:
+            component.__dict__.pop(attr, None)
+        component._modules[attr] = wrapper
+        self._relevance_activation_wrap = (attr, original, was_child_module)
+
+    def _teardown_activation_rule(self) -> None:
+        """Restore the activation callable swapped in by ``_install_activation_rule``."""
+        if self._relevance_activation_wrap is None:
+            return
+        attr, original, was_child_module = self._relevance_activation_wrap
+        component = self.original_component
+        if component is not None:
+            component._modules.pop(attr, None)
+            if was_child_module:
+                component._modules[attr] = original
+            else:
+                component.__dict__[attr] = original
+        self._relevance_activation_wrap = None
+
+    def _install_gate_rule(self) -> None:
+        """Halve the gradient entering the down projection to reproduce the Half-rule.
+
+        The gate*up product is the down projection's input, so a forward-pre-hook
+        that routes that input through ``scale_gradient(..., 0.5)`` halves the single
+        gradient feeding the product before it splits, which matches halving both
+        product-rule terms. The native forward value is unchanged, and the down
+        projection's own weight gradient stays ordinary because it is taken against
+        the unscaled downstream gradient.
+        """
+        out_module = getattr(self, "out", None)
+        down_component = getattr(out_module, "original_component", None)
+        if down_component is None:
+            return
+
+        def _scale_product_gradient(
+            module: nn.Module, args: Tuple[Any, ...]
+        ) -> Optional[Tuple[Any, ...]]:
+            if not args:
+                return None
+            return (scale_gradient(args[0], 0.5),) + tuple(args[1:])
+
+        self._relevance_gate_hook_handle = down_component.register_forward_pre_hook(
+            _scale_product_gradient
+        )
+
+    def _teardown_gate_rule(self) -> None:
+        """Remove the down-projection gradient-scale hook."""
+        if self._relevance_gate_hook_handle is not None:
+            self._relevance_gate_hook_handle.remove()
+            self._relevance_gate_hook_handle = None
+
     def _enable_relevance_rule(self, kind: str) -> None:
-        """Activate the named rule for this instance's recompute path only."""
+        """Activate the named rule and install its opaque-path hook.
+
+        The boolean flag drives the reconstructed forward paths (compatibility mode
+        here, and the inline forward of subclasses that override it). The install
+        step additionally attaches the rule to the live HF submodules for the opaque
+        native forward, which a flag alone cannot alter.
+        """
         if kind == "activation":
             self._relevance_rule_activation_active = True
+            self._install_activation_rule()
         elif kind == "multiplicative_gate":
             self._relevance_rule_gate_active = True
+            self._install_gate_rule()
 
     def _disable_relevance_rule(self, kind: str) -> None:
-        """Deactivate the named rule, restoring today's native-forward behavior."""
+        """Deactivate the named rule and tear down its opaque-path hook."""
         if kind == "activation":
+            self._teardown_activation_rule()
             self._relevance_rule_activation_active = False
         elif kind == "multiplicative_gate":
+            self._teardown_gate_rule()
             self._relevance_rule_gate_active = False
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
@@ -345,8 +350,16 @@ class GatedMLPBridge(MLPBridge):
             if in_module is not None and hasattr(in_module, "hook_out"):
                 linear_output = in_module.hook_out(linear_output)  # type: ignore[misc]
             act_fn = resolve_activation_fn(self.config)
-            activated = act_fn(gate_output)
-            hidden = activated * linear_output
+            activated = (
+                identity_rule(gate_output, act_fn)
+                if self._relevance_rule_activation_active
+                else act_fn(gate_output)
+            )
+            hidden = (
+                half_rule(activated, linear_output)
+                if self._relevance_rule_gate_active
+                else activated * linear_output
+            )
             if hasattr(self, "out") and hasattr(self.out, "hook_in"):
                 hidden = self.out.hook_in(hidden)
             output = torch.nn.functional.linear(
@@ -365,25 +378,11 @@ class GatedMLPBridge(MLPBridge):
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
-        if self._relevance_rule_activation_active or self._relevance_rule_gate_active:
-            act_fn = resolve_activation_fn(self.config)
-            output = _GatedMLPRecomputeRule.apply(
-                hidden_states,
-                self.W_gate,
-                getattr(self.gate, "bias", None),
-                self.W_in,
-                getattr(getattr(self, "in"), "bias", None),
-                self.W_out,
-                getattr(self.out, "bias", None),
-                act_fn,
-                self._relevance_rule_activation_active,
-                self._relevance_rule_gate_active,
-                self.original_component,
-                new_args[1:],
-                kwargs,
-            )
-        else:
-            output = self.original_component(*new_args, **kwargs)
+        # The active relevance rules are attached to the live HF submodules (the
+        # activation callable and the down projection) by _enable_relevance_rule,
+        # so the native forward runs unchanged and its own internal hooks, gate
+        # multipliers, and activation sparsity all remain in the backward graph.
+        output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
         return output
 

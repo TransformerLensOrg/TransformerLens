@@ -1,10 +1,11 @@
 """Identity-/Half-rule integration on JointGateUpMLPBridge's reconstructed forward.
 
-Unlike the raw GatedMLPBridge path (recompute-from-weights, tested separately),
+Unlike the raw GatedMLPBridge path (opaque native forward, tested separately),
 JointGateUpMLPBridge already reconstructs its forward in Python as
 ``act_fn(gate_output) * up_output`` through separate gate/up LinearBridge
-submodules, so the rules attach directly at that multiplication -- no
-weights-recompute Function is needed here. This covers that the reconstructed
+submodules, so the rules attach directly at that multiplication inline, off the
+same boolean flags -- no live-submodule hook is installed here. This covers that
+the reconstructed
 forward is unaffected by an inactive rule, that both rules apply correctly
 together and independently, and that gradients match the oracle produced by the
 already-tested Identity-/Half-rule primitives directly.

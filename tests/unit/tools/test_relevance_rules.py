@@ -269,14 +269,13 @@ class _Proj:
         self.original_component = original_component
 
 
-class TestGatedMLPRecomputeOrientation:
-    """The gated-MLP recompute VJP reads ``W_gate``/``W_in`` through the same
-    ``weight_layout_in_out``/``normalize_mlp_weight`` helpers ``MLPBridge`` uses, so a
-    fresh orientation bug in the recompute path (as opposed to the already-tested
-    accessor) would silently transpose the gate/up product for one backing class.
-    Covers the two HF module classes the recompute allowlists: ``nn.Linear`` (weight
-    stored ``[out, in]``, transposed to TL orientation) and ``Conv1D`` (weight stored
-    ``[in, out]``, already TL-oriented).
+class TestGatedMLPWeightOrientation:
+    """``MLPBridge``'s ``W_gate``/``W_in``/``W_out`` read the underlying projection
+    through ``weight_layout_in_out``/``normalize_mlp_weight``, so an orientation bug in
+    those helpers would silently transpose a gate/up/down weight for one backing class.
+    Covers both HF module classes: ``nn.Linear`` (weight stored ``[out, in]``,
+    transposed to TL orientation) and ``Conv1D`` (weight stored ``[in, out]``, already
+    TL-oriented).
     """
 
     @pytest.fixture(params=["nn.Linear", "Conv1D"])
@@ -312,39 +311,6 @@ class TestGatedMLPRecomputeOrientation:
         assert torch.allclose(x @ w_in + up_proj.bias, up_proj(x), atol=1e-6)
         hidden = torch.randn(2, 5)
         assert torch.allclose(hidden @ w_out + down_proj.bias, down_proj(hidden), atol=1e-6)
-
-    def test_recompute_via_tl_weights_matches_native_forward_and_rule_vjp(self, backing_class):
-        gate_proj, up_proj, down_proj = self._make_gate_up_down(backing_class)
-        x = torch.randn(2, 3, requires_grad=True)
-
-        w_gate = self._tl_weight(gate_proj, pattern="in")
-        w_in = self._tl_weight(up_proj, pattern="in")
-        w_out = self._tl_weight(down_proj, pattern="out")
-
-        gate_output = x @ w_gate + gate_proj.bias
-        up_output = x @ w_in + up_proj.bias
-        activated = identity_rule(gate_output, F.silu)
-        gated = half_rule(activated, up_output)
-        down = gated @ w_out + down_proj.bias
-
-        native_down = down_proj(F.silu(gate_proj(x.detach())) * up_proj(x.detach()))
-        assert torch.allclose(down, native_down, atol=1e-6)
-
-        (grad_x,) = torch.autograd.grad(down.sum(), x)
-
-        # Oracle: the exact same composition, expressed with ordinary autodiff
-        # through the rule primitives but built from each class's own native call
-        # instead of the TL-oriented matmul above -- if the recompute transposed
-        # either weight incorrectly, this would disagree.
-        x_oracle = x.detach().clone().requires_grad_(True)
-        gate_output_oracle = gate_proj(x_oracle)
-        up_output_oracle = up_proj(x_oracle)
-        activated_oracle = identity_rule(gate_output_oracle, F.silu)
-        gated_oracle = half_rule(activated_oracle, up_output_oracle)
-        down_oracle = down_proj(gated_oracle)
-        (grad_x_oracle,) = torch.autograd.grad(down_oracle.sum(), x_oracle)
-
-        torch.testing.assert_close(grad_x, grad_x_oracle)
 
 
 class TestPinnedReferenceParity:

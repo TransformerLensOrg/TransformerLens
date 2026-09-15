@@ -6,7 +6,7 @@ single-block harness, which only ever registers a canonical mount name
 fully assembled ``TransformerBridge``, where the same component is *also*
 reachable through the raw HF module tree under its own HF attribute name
 (for example ``blocks.0._original_component.input_layernorm``). These tests
-build a tiny random Qwen2 (the opaque gated-MLP recompute path) and a tiny
+build a tiny random Qwen2 (the opaque gated-MLP native-forward path) and a tiny
 random Phi-3 (``JointGateUpMLPBridge``'s already-reconstructed forward)
 fully offline -- random weights from a programmatic HF config, no network
 access, no checkpoint download -- and exercise all three rules together on
@@ -81,10 +81,11 @@ def _build_phi3_bridge() -> TransformerBridge:
     return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_MockTokenizer())
 
 
-# Qwen2 exercises GatedMLPBridge's opaque recompute-from-weights path (the
-# primary path per real usage); Phi-3 exercises JointGateUpMLPBridge's
-# already-reconstructed forward, isolating rule bugs from Bridge-integration
-# bugs on the fused-projection family.
+# Qwen2 exercises GatedMLPBridge's opaque native-forward path (the primary path
+# per real usage), where the rules attach to the live HF activation and down
+# projection; Phi-3 exercises JointGateUpMLPBridge's already-reconstructed
+# forward, isolating rule bugs from Bridge-integration bugs on the
+# fused-projection family.
 FIXTURE_BUILDERS = {
     "qwen2": _build_qwen2_bridge,
     "phi3": _build_phi3_bridge,

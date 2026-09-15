@@ -105,6 +105,33 @@ def half_rule(u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return result
 
 
+class _ScaleGradient(torch.autograd.Function):
+    """Identity forward; the VJP scales the incoming gradient by a constant factor."""
+
+    @staticmethod
+    def forward(ctx: Any, x: torch.Tensor, factor: float) -> torch.Tensor:
+        ctx.factor = factor
+        return x
+
+    @staticmethod
+    def backward(ctx: Any, grad_output: torch.Tensor) -> Tuple[torch.Tensor, None]:
+        return ctx.factor * grad_output, None
+
+
+def scale_gradient(x: torch.Tensor, factor: float) -> torch.Tensor:
+    """Pass ``x`` through unchanged while scaling its gradient by ``factor``.
+
+    The Half-rule on a product ``u * v`` halves each ordinary product-rule term,
+    which is the same as halving the single gradient that enters the product before
+    it splits. When the product is computed inside an opaque module the bridge cannot
+    reach term by term (its native forward is called as one unit), scaling the
+    gradient entering the product by ``0.5`` reproduces the Half-rule at that point
+    without altering the native forward value.
+    """
+    result: torch.Tensor = _ScaleGradient.apply(x, factor)
+    return result
+
+
 class RelevanceRuleConflictError(RuntimeError):
     """A hook would silently break a rule-active forward/backward invariant.
 
