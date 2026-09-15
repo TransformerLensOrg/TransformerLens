@@ -27,6 +27,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _assert_edges_unique,
     _check_required_hooks,
     _edge_effects,
+    _edge_hook_flags,
     _edge_hook_names,
     _ensure_edge_hook_flags,
     _node_effects,
@@ -934,6 +935,7 @@ class _EdgeHookToyBridge(_LinearToyBridge):
             use_attn_result=False,
             use_split_qkv_input=False,
             use_hook_mlp_in=False,
+            use_attn_in=False,
         )
         self.compatibility_mode = False
         self._weights_processed = False
@@ -977,10 +979,17 @@ class _EdgeHookToyBridge(_LinearToyBridge):
         self.cfg.use_attn_result = use_attn_result
 
     def set_use_split_qkv_input(self, use_split_qkv_input: bool) -> None:
+        if use_split_qkv_input and self.cfg.use_attn_in:
+            raise ValueError("use_split_qkv_input and use_attn_in are mutually exclusive.")
         self.cfg.use_split_qkv_input = use_split_qkv_input
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
+    def set_use_attn_in(self, use_attn_in: bool) -> None:
+        if use_attn_in and self.cfg.use_split_qkv_input:
+            raise ValueError("use_attn_in and use_split_qkv_input are mutually exclusive.")
+        self.cfg.use_attn_in = use_attn_in
 
 
 def test_required_hook_names_edge_granularity_adds_per_head_families() -> None:
@@ -1006,6 +1015,71 @@ def test_ensure_edge_hook_flags_enables_required_bridge_flags() -> None:
     assert model.cfg.use_attn_result is True
     assert model.cfg.use_split_qkv_input is True
     assert model.cfg.use_hook_mlp_in is True
+
+
+def test_edge_hook_flags_enables_required_flags_inside_the_scope() -> None:
+    model = _EdgeHookToyBridge()
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+    with _edge_hook_flags(model):
+        assert model.cfg.use_attn_result is True
+        assert model.cfg.use_split_qkv_input is True
+        assert model.cfg.use_hook_mlp_in is True
+
+
+def test_edge_hook_flags_restore_prior_state_on_exit() -> None:
+    model = _EdgeHookToyBridge()
+
+    with _edge_hook_flags(model):
+        pass
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+
+def test_edge_hook_flags_leave_already_enabled_flags_enabled() -> None:
+    model = _EdgeHookToyBridge()
+    model.set_use_attn_result(True)
+    model.set_use_hook_mlp_in(True)
+
+    with _edge_hook_flags(model):
+        assert model.cfg.use_attn_result is True
+        assert model.cfg.use_hook_mlp_in is True
+
+    assert model.cfg.use_attn_result is True
+    assert model.cfg.use_hook_mlp_in is True
+    assert model.cfg.use_split_qkv_input is False
+
+
+def test_edge_hook_flags_restore_flags_when_the_body_raises() -> None:
+    model = _EdgeHookToyBridge()
+
+    with pytest.raises(RuntimeError, match="sweep exploded"):
+        with _edge_hook_flags(model):
+            raise RuntimeError("sweep exploded")
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+    assert model.cfg.use_attn_in is False
+
+
+def test_edge_hook_flags_tolerate_a_caller_with_use_attn_in_set() -> None:
+    model = _EdgeHookToyBridge()
+    model.set_use_attn_in(True)
+    assert model.cfg.use_attn_in is True
+
+    with _edge_hook_flags(model):
+        # use_attn_in is mutually exclusive with use_split_qkv_input, so the
+        # scope must clear it before enabling the split input.
+        assert model.cfg.use_attn_in is False
+        assert model.cfg.use_split_qkv_input is True
+
+    assert model.cfg.use_attn_in is True
+    assert model.cfg.use_split_qkv_input is False
 
 
 def test_edge_hook_flags_populate_the_per_head_cache() -> None:

@@ -31,8 +31,9 @@ against a stable surface now.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Literal, Optional, Sequence, Union
 
 import torch
 
@@ -272,6 +273,66 @@ def _ensure_edge_hook_flags(model: Any) -> None:
         model.set_use_split_qkv_input(True)
     if not model.cfg.use_hook_mlp_in:
         model.set_use_hook_mlp_in(True)
+
+
+@contextmanager
+def _edge_hook_flags(model: Any) -> Iterator[None]:
+    """Enable the Bridge flags an edge sweep needs, then restore the caller's state.
+
+    ``attn.hook_result``, the split ``attn.hook_q_input``/``hook_k_input``/
+    ``hook_v_input``, and ``hook_mlp_in`` all exist on the Bridge unconditionally
+    but only fire when their owning flag (``cfg.use_attn_result`` /
+    ``cfg.use_split_qkv_input`` / ``cfg.use_hook_mlp_in``) is on, so an edge sweep
+    must enable all three before caching or the writer- and reader-side hook
+    points it needs never populate.
+
+    ``use_split_qkv_input`` is mutually exclusive with ``use_attn_in``, so a
+    caller who arrives with ``use_attn_in`` on would otherwise trip the
+    exclusivity error. This turns ``use_attn_in`` off before enabling the split
+    input, and restores it after ``use_split_qkv_input`` has been turned back off.
+
+    Invariant: the caller's flag state (``use_attn_result``,
+    ``use_split_qkv_input``, ``use_hook_mlp_in``, ``use_attn_in``) is unchanged on
+    return, including when the body raises. Restoration runs in a ``finally``
+    block so a raise mid-sweep -- or in the caller's own later code -- cannot
+    leave the per-head tensors materialized on the model.
+
+    Memory caveat: enabling ``use_attn_result``/``use_split_qkv_input`` makes
+    every cached per-head tensor ``[batch, seq, n_heads, d_model]`` instead of
+    the summed ``[batch, seq, d_model]`` residual. That is fine on a model the
+    size of gpt2-small; it does not scale to models with many heads or layers.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg`` and
+            ``set_use_attn_result``/``set_use_split_qkv_input``/
+            ``set_use_hook_mlp_in``/``set_use_attn_in``.
+    """
+    cfg = model.cfg
+    saved_attn_result = cfg.use_attn_result
+    saved_split_qkv_input = cfg.use_split_qkv_input
+    saved_hook_mlp_in = cfg.use_hook_mlp_in
+    saved_attn_in = bool(getattr(cfg, "use_attn_in", False))
+    try:
+        # use_attn_in and use_split_qkv_input are mutually exclusive; clear
+        # use_attn_in first so enabling the split input cannot raise.
+        if saved_attn_in:
+            model.set_use_attn_in(False)
+        if not cfg.use_attn_result:
+            model.set_use_attn_result(True)
+        if not cfg.use_split_qkv_input:
+            model.set_use_split_qkv_input(True)
+        if not cfg.use_hook_mlp_in:
+            model.set_use_hook_mlp_in(True)
+        yield
+    finally:
+        model.set_use_attn_result(saved_attn_result)
+        model.set_use_split_qkv_input(saved_split_qkv_input)
+        model.set_use_hook_mlp_in(saved_hook_mlp_in)
+        # Re-enabling use_attn_in requires use_split_qkv_input already off; the
+        # line above restored it, and a caller with use_attn_in on cannot also
+        # have had use_split_qkv_input on, so this cannot trip the exclusivity.
+        if saved_attn_in:
+            model.set_use_attn_in(True)
 
 
 def _check_required_hooks(
