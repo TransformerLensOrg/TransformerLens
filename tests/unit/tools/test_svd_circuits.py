@@ -794,6 +794,44 @@ def test_project_activations_restores_use_attn_result(tiny_bridge):
         tiny_bridge.set_use_attn_result(original)
 
 
+def test_project_activations_caches_only_the_read_hook(tiny_bridge, monkeypatch):
+    """Only the one hook_result being read is cached, not every hook point of the forward.
+
+    run_with_cache retains every activation it is not told to filter, so reading one head's
+    output without a names_filter would keep the whole forward pass. Pin that a filter is
+    passed and that it selects exactly the read hook and nothing else.
+    """
+    layer, head = 0, 0
+    ov = decompose_head(tiny_bridge, layer, head, which=("OV",)).OV
+    captured = {}
+    original = tiny_bridge.run_with_cache
+
+    def spy(*args, **kwargs):
+        captured["names_filter"] = kwargs.get("names_filter")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tiny_bridge, "run_with_cache", spy)
+    project_activations(tiny_bridge, ov, torch.tensor([[5, 63, 7, 9]]))
+
+    names_filter = captured["names_filter"]
+    assert names_filter is not None
+    assert names_filter(f"blocks.{layer}.attn.hook_result")
+    assert not names_filter(f"blocks.{layer}.attn.hook_z")
+
+
+def test_project_activations_rejects_batched_tensor_before_forward(tiny_bridge):
+    """A batched token tensor is refused before the forward pass, not after caching it.
+
+    The ids are out of vocab range, so a check that ran only after the forward would surface
+    the embedding's IndexError instead of this refusal; catching the batch dimension first both
+    saves the forward and gives the caller the actionable message.
+    """
+    ov = decompose_head(tiny_bridge, 0, 0, which=("OV",)).OV
+    batched = torch.full((2, 4), 10**6, dtype=torch.long)
+    with pytest.raises(ValueError, match="single prompt"):
+        project_activations(tiny_bridge, ov, batched)
+
+
 @pytest.mark.parametrize("head", [0, 1])
 def test_subspace_hook_leaves_sibling_head_untouched(tiny_bridge, head):
     """The patch hook rewrites only its own head's slice of the [batch, pos, head, d_model]

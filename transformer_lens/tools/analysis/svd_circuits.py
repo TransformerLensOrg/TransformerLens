@@ -654,13 +654,26 @@ def project_activations(
             f"project_activations requires an OV HeadSVD, got which={head_svd.which!r}"
         )
     _validate_decomposition_matches_model(model, head_svd)
+    # A batched token tensor carries its batch dimension up front, so reject it before the
+    # forward instead of running the model on every row only to discard the result. A list of
+    # prompt strings only reveals its batch size once tokenized, so the post-cache check below
+    # still guards that path.
+    if isinstance(prompt, torch.Tensor) and (prompt.ndim != 2 or prompt.shape[0] != 1):
+        raise ValueError(
+            "project_activations requires a single prompt, got a token tensor of shape "
+            f"{tuple(prompt.shape)}; pass a [1, pos] tensor or a single string."
+        )
+    # Cache only the one hook this reads. run_with_cache otherwise retains every hook point of
+    # the forward pass (about 1 GB against 19 MB on a 512-token gpt2-small prompt) to read a
+    # single head's output.
+    hook_name = f"blocks.{head_svd.layer}.attn.hook_result"
     previous = getattr(model.cfg, "use_attn_result", False)
     model.set_use_attn_result(True)
     try:
-        _, cache = model.run_with_cache(prompt)
+        _, cache = model.run_with_cache(prompt, names_filter=lambda name: name == hook_name)
     finally:
         model.set_use_attn_result(previous)
-    result = cache[("result", head_svd.layer, "attn")][..., head_svd.head, :]
+    result = cache[hook_name][..., head_svd.head, :]
     if result.shape[0] != 1:
         raise ValueError(
             f"project_activations requires a single prompt, got batch={result.shape[0]}"
