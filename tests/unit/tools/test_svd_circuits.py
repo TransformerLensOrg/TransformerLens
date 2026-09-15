@@ -774,11 +774,11 @@ class _PatchStubModel:
     arithmetic can be tested without a real forward pass.
     """
 
-    def __init__(self, d_model, n_heads, pos=3, seed=0):
+    def __init__(self, d_model, n_heads, pos=3, seed=0, device="cpu"):
         g = torch.Generator().manual_seed(seed)
         self.cfg = SimpleNamespace(use_attn_result=False)
-        self._result = torch.randn(1, pos, n_heads, d_model, generator=g)
-        self._readout = torch.randn(d_model, generator=g)
+        self._result = torch.randn(1, pos, n_heads, d_model, generator=g).to(device)
+        self._readout = torch.randn(d_model, generator=g).to(device)
 
     def set_use_attn_result(self, value):
         self.cfg.use_attn_result = value
@@ -922,6 +922,28 @@ def test_patch_along_directions_reports_delta_and_restores_use_attn_result():
         expected_gated = abs(result.delta_metric) > abs(result.baseline_delta_metric)
         assert result.gated == expected_gated
         assert stub.cfg.use_attn_result == initial
+
+
+@pytest.mark.skipif(
+    not (torch.backends.mps.is_available() or torch.cuda.is_available()),
+    reason="needs an MPS or CUDA device to exercise cross-device projector placement",
+)
+def test_patch_completes_on_accelerator_device():
+    """The kept and baseline projectors are drawn on CPU, but the activation lives on the
+    model's device, so the hook must move the projector before the matmul. On an
+    accelerator the patch completes without a device-mismatch RuntimeError."""
+    device = "mps" if torch.backends.mps.is_available() else "cuda"
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1, device=device)
+    metric = lambda logits: float(logits.sum())
+    result = patch_along_directions(
+        stub, ov, "prompt", metric, keep=[0], rng=torch.Generator().manual_seed(0)
+    )
+    assert isinstance(result, PatchResult)
+    assert math.isfinite(result.delta_metric)
+    assert math.isfinite(result.baseline_delta_metric)
 
 
 def test_patch_along_directions_discriminates_causal_direction(tiny_bridge):

@@ -729,7 +729,11 @@ def _make_subspace_hook(head: int, projector: Float[torch.Tensor, "d_model d_mod
 
     def hook_fn(activation: torch.Tensor, hook) -> torch.Tensor:
         activation = activation.clone()
-        activation[:, :, head, :] = activation[:, :, head, :] @ projector.to(activation.dtype)
+        # The projector is drawn on CPU (QR is unimplemented on MPS and a CUDA generator
+        # cannot feed a CPU randn), so move it to the activation's device and dtype here.
+        activation[:, :, head, :] = activation[:, :, head, :] @ projector.to(
+            device=activation.device, dtype=activation.dtype
+        )
         return activation
 
     return hook_fn
