@@ -36,6 +36,8 @@ from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import torch
 
+from transformer_lens.tools.analysis._model_state import require_eval_mode
+
 MetricFn = Callable[[torch.Tensor], torch.Tensor]
 NamesFilter = Union[str, Sequence[str], Callable[[str], bool], None]
 
@@ -460,6 +462,10 @@ def attribution_patch(
     reconstruction identity holds) and per-node scores are averaged across the batch
     before ranking.
 
+    The model and every submodule must be in evaluation mode. Separate clean and
+    corrupt forwards cannot produce meaningful activation differences if stochastic
+    training layers such as dropout remain active.
+
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
             ``hook_dict``, and ``hooks()``.
@@ -476,8 +482,9 @@ def attribution_patch(
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
-            pairs, or a pair tokenizes to different lengths (activations must align
-            position-by-position).
+            pairs, a pair tokenizes to different lengths (activations must align
+            position-by-position), or the model or one of its submodules is in
+            training mode.
     """
     del config  # node granularity + ig_steps=1 only; enforced at construction.
 
@@ -497,6 +504,8 @@ def attribution_patch(
             f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
             "Attribution patching aligns activations position-by-position."
         )
+
+    require_eval_mode(model, operation="attribution_patch()")
 
     node_hook_names = _required_hook_names(int(model.cfg.n_layers))
     batch = int(clean.shape[0])

@@ -78,6 +78,7 @@ class _LinearToyBridge(TransformerBridge):
         )
         self.compatibility_mode = False
         self._weights_processed = False
+        self.forward_calls = 0
         self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
         nn.init.normal_(self.embed.weight, std=0.2)
         self.hook_embed = HookPoint()
@@ -88,6 +89,7 @@ class _LinearToyBridge(TransformerBridge):
         self.ln_final = nn.Identity()
         self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
         nn.init.normal_(self.unembed.weight, std=0.2)
+        self.eval()
 
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
@@ -118,6 +120,7 @@ class _LinearToyBridge(TransformerBridge):
     def forward(
         self, tokens: torch.Tensor, return_type: str | None = "logits"
     ) -> torch.Tensor | None:
+        self.forward_calls += 1
         residual = self.hook_embed(self.embed(tokens))
         for block in self.blocks:
             residual = block(residual)
@@ -364,6 +367,7 @@ class _AttnMlpBlock(nn.Module):
         self.w_z = nn.Linear(d_model, n_heads * d_head, bias=False, dtype=dtype)
         self.w_o = nn.Linear(n_heads * d_head, d_model, bias=False, dtype=dtype)
         self.w_mlp = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
+        self.dropout = nn.Dropout(p=0.5)
         for linear in (self.w_z, self.w_o, self.w_mlp):
             nn.init.normal_(linear.weight, std=0.2)
         self.hook_z = HookPoint()
@@ -374,7 +378,8 @@ class _AttnMlpBlock(nn.Module):
     def forward(self, residual: torch.Tensor) -> torch.Tensor:
         batch, seq, _ = residual.shape
         z = self.hook_z(self.w_z(residual).reshape(batch, seq, self.n_heads, self.d_head))
-        residual = residual + self.w_o(z.reshape(batch, seq, self.n_heads * self.d_head))
+        attn_out = self.w_o(z.reshape(batch, seq, self.n_heads * self.d_head))
+        residual = residual + self.dropout(attn_out)
         mlp_out = self.hook_mlp_out(self.w_mlp(residual))
         return residual + mlp_out
 
@@ -403,6 +408,7 @@ class _NodeGraphToyBridge(_LinearToyBridge):
         )
         self.compatibility_mode = False
         self._weights_processed = False
+        self.forward_calls = 0
         self.embed = nn.Embedding(D_VOCAB, D_MODEL, dtype=dtype)
         nn.init.normal_(self.embed.weight, std=0.2)
         self.hook_embed = HookPoint()
@@ -413,6 +419,7 @@ class _NodeGraphToyBridge(_LinearToyBridge):
         self.ln_final = nn.Identity()
         self.unembed = nn.Linear(D_MODEL, D_VOCAB, bias=False, dtype=dtype)
         nn.init.normal_(self.unembed.weight, std=0.2)
+        self.eval()
 
     @property
     def hook_dict(self) -> dict[str, HookPoint]:
@@ -425,6 +432,7 @@ class _NodeGraphToyBridge(_LinearToyBridge):
     def forward(
         self, tokens: torch.Tensor, return_type: str | None = "logits"
     ) -> torch.Tensor | None:
+        self.forward_calls += 1
         residual = self.hook_embed(self.embed(tokens))
         for block in self.blocks:
             residual = block(residual)
@@ -511,6 +519,57 @@ def test_attribution_patch_raises_on_batch_size_mismatch() -> None:
 
     with pytest.raises(ValueError, match="same number of prompt pairs"):
         attribution_patch(model, clean, corrupt, _metric_fn(answer=1, wrong=2))
+
+
+def test_attribution_patch_rejects_model_in_training_mode() -> None:
+    model = _NodeGraphToyBridge()
+    model.train()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)"):
+        attribution_patch(model, tokens, tokens, _metric_fn(answer=1, wrong=2))
+    assert model.training is True
+    assert model.forward_calls == 0
+
+
+def test_attribution_patch_rejects_nested_submodule_in_training_mode() -> None:
+    model = _NodeGraphToyBridge()
+    model.blocks[1].dropout.train()
+    tokens = torch.tensor([[1, 2, 3]])
+    assert model.training is False
+    assert model.blocks[1].training is False
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)"):
+        attribution_patch(model, tokens, tokens, _metric_fn(answer=1, wrong=2))
+    assert model.training is False
+    assert model.blocks[1].training is False
+    assert model.blocks[1].dropout.training is True
+    assert model.forward_calls == 0
+
+
+def test_attribution_patch_rejects_hidden_original_model_training_mode() -> None:
+    model = _NodeGraphToyBridge()
+    original_model = nn.Sequential(nn.Linear(D_MODEL, D_MODEL))
+    original_model.eval()
+    original_model[0].train()
+    model.__dict__["original_model"] = original_model
+    tokens = torch.tensor([[1, 2, 3]])
+
+    with pytest.raises(ValueError, match="original_model"):
+        attribution_patch(model, tokens, tokens, _metric_fn(answer=1, wrong=2))
+    assert original_model.training is False
+    assert original_model[0].training is True
+    assert model.forward_calls == 0
+
+
+def test_attribution_patch_identical_inputs_are_exactly_zero_in_eval_mode() -> None:
+    model = _NodeGraphToyBridge()
+    tokens = torch.tensor([[1, 2, 3]])
+
+    result = attribution_patch(model, tokens, tokens, _metric_fn(answer=1, wrong=2))
+
+    assert result.node_scores
+    assert all(score == 0.0 for score in result.node_scores.values())
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +729,7 @@ class _NonlinearNodeGraphToyBridge(_NodeGraphToyBridge):
                 for layer in range(N_LAYERS)
             ]
         )
+        self.eval()
 
 
 def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
