@@ -28,6 +28,7 @@ from transformer_lens.tools.analysis.projection_kernel import (
     SubspaceBasis,
     projection_kernel,
 )
+from transformer_lens.tools.analysis.sparse_probing import fit_sparse_probe
 
 # Skip the entire module on non-MPS runners (Linux CI, CPU-only Macs)
 pytestmark = pytest.mark.skipif(
@@ -307,3 +308,33 @@ def test_mps_loss_computation():
     assert loss.item() > 0, "Loss should be positive"
 
     _cleanup(model)
+
+
+# ---------------------------------------------------------------------------
+# 4. Tooling: sparse probing (no model load)
+# ---------------------------------------------------------------------------
+
+
+def test_mps_sparse_probe_selects_cpu_before_float64():
+    """fit_sparse_probe transfers selected [example, k] data to CPU before casting to float64.
+
+    float64 is unsupported on MPS, so the selection path must move tensors off the Metal
+    device before the cast; doing the cast first would raise instead of silently falling
+    back to float32.
+    """
+    generator = torch.Generator().manual_seed(0)
+    n_examples, n_features = 200, 8
+    labels = torch.arange(n_examples) % 2
+    features = torch.randn(n_examples, n_features, generator=generator)
+    features[:, 2] += 2.5 * (2 * labels - 1)
+    features = features.to(device="mps", dtype=torch.float32)
+
+    result = fit_sparse_probe(features, labels, k=2, seed=0)
+
+    assert result.coefficients.device.type == "cpu"
+    assert result.coefficients.dtype == torch.float64
+    assert result.feature_scores.device.type == "cpu"
+    assert result.feature_scores.dtype == torch.float64
+    assert not torch.isnan(result.coefficients).any()
+
+    _cleanup()
