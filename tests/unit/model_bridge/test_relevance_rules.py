@@ -90,6 +90,30 @@ def _tiny_block() -> _TinyBlock:
     return block
 
 
+class _SandwichBlock(nn.Module):
+    """Mimics a sandwich-norm block: pre-norms ln1/ln2 plus post-norms ln1_post/ln2_post.
+
+    Sandwich-norm architectures mount a second normalization after attention and after
+    the MLP at ``ln1_post``/``ln2_post``, so the LN-rule must reach those mounts as well
+    as the pre-norms rather than leaving them silently out of coverage.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.ln1: nn.Module = _FakeNormComponent()
+        self.ln1_post: nn.Module = _FakeNormComponent()
+        self.ln2: nn.Module = _FakeNormComponent()
+        self.ln2_post: nn.Module = _FakeNormComponent()
+        self.mlp = nn.Linear(4, 4)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.ln1(x)
+        x = self.ln1_post(x)
+        x = self.ln2(x)
+        x = self.ln2_post(x)
+        return self.mlp(x)
+
+
 class _FakeGatedMLPComponent(nn.Module):
     """A minimal mlp-mount target that answers to two rule kinds independently.
 
@@ -158,6 +182,39 @@ def test_positional_targeting_excludes_same_class_component_at_other_mount():
         assert set(coverage.installed) == {"ln1", "ln2"}
     assert block.ln1._rule_active is False
     assert block.ln2._rule_active is False
+
+
+def test_normalization_rule_installs_on_sandwich_post_norm_mounts():
+    block = _SandwichBlock()
+    with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
+        assert block.ln1._rule_active is True
+        assert block.ln1_post._rule_active is True
+        assert block.ln2._rule_active is True
+        assert block.ln2_post._rule_active is True
+        assert set(coverage.installed) == {"ln1", "ln1_post", "ln2", "ln2_post"}
+        assert coverage.skipped == ()
+    assert block.ln1_post._rule_active is False
+    assert block.ln2_post._rule_active is False
+
+
+def test_sandwich_post_norm_on_python_path_is_reported_skipped_never_absent():
+    block = _SandwichBlock()
+    # A post-norm mount whose occupant takes the python-norm path (no rule protocol)
+    # must surface as skipped, never vanish from coverage as it did before the mount
+    # names were recognized.
+    block.ln2_post = _PlainMount()
+    with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
+        assert set(coverage.installed) == {"ln1", "ln1_post", "ln2"}
+        assert set(coverage.skipped) == {"ln2_post"}
+
+
+def test_requesting_a_kind_with_no_canonical_mount_raises():
+    block = _tiny_block()
+    # "attention" is a valid RelevanceRules field but has no canonical mount, so the
+    # request must raise rather than install nothing and return empty coverage.
+    with pytest.raises(ValueError, match="attention"):
+        with use_relevance_rules(block, RelevanceRules(attention=True)):
+            pass
 
 
 def test_unsupported_component_at_targeted_mount_is_skipped():

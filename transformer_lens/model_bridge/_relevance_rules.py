@@ -218,9 +218,12 @@ class _RelevanceRuleCapable(Protocol):
 # Canonical mount name per rule kind. Targeting is positional: a component is only
 # considered for a kind when it sits at that kind's mount name, never by isinstance,
 # so a same-class component mounted elsewhere (for example a q_norm sharing
-# NormalizationBridge's class) is left untouched.
+# NormalizationBridge's class) is left untouched. The normalization kind lists both
+# the pre-norm mounts (ln1, ln2) and the sandwich post-norm mounts (ln1_post,
+# ln2_post) so the LN-rule reaches the post-attention/post-MLP norms that
+# sandwich-norm architectures mount there, matching the pinned RelP reference.
 _CANONICAL_MOUNTS: Mapping[str, Tuple[str, ...]] = {
-    "normalization": ("ln1", "ln2"),
+    "normalization": ("ln1", "ln2", "ln1_post", "ln2_post"),
     "activation": ("mlp",),
     "multiplicative_gate": ("mlp",),
 }
@@ -294,7 +297,11 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
     ``_relevance_rule_unsupported_kinds`` raises ``RelevanceRuleUnsupportedError``
     instead: that names a kind the component is expected to honor at this mount but
     cannot given its current configuration, so silently skipping it would let
-    analysis proceed as if the caller had never asked. Scopes over the same model
+    analysis proceed as if the caller had never asked. Requesting a kind that has no
+    canonical mount at all (for example "attention", a valid ``RelevanceRules`` field
+    with no mount defined) raises ``ValueError`` before the install loop, since there
+    is no mount to target and the scope would otherwise return empty coverage as
+    though the request had succeeded. Scopes over the same model
     are reference-counted, so an inner scope's exit never disables a rule an outer
     scope still needs. No model configuration is mutated; the only state that
     changes lives on the participating components, and only for the scope's
@@ -303,6 +310,15 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
     requested_kinds = [
         field.name for field in dataclasses.fields(rules) if getattr(rules, field.name)
     ]
+
+    unmapped_kinds = [kind for kind in requested_kinds if kind not in _CANONICAL_MOUNTS]
+    if unmapped_kinds:
+        joined = ", ".join(repr(kind) for kind in unmapped_kinds)
+        raise ValueError(
+            f"No canonical mount is defined for relevance-rule kind(s) {joined}. "
+            "Such a kind has no mount to target, so it would install nothing and "
+            "silently return an empty coverage report instead of applying the rule."
+        )
 
     installed: List[Tuple[str, _RelevanceRuleCapable, str]] = []
     skipped: List[str] = []
