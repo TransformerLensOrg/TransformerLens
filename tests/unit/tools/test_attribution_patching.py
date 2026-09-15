@@ -1745,7 +1745,12 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
     _assert_edges_unique(edges)
     baseline_scores = _edge_effects(clean_cache, corrupt_cache, edges)
 
-    writer = Node(kind="attn_head_out", layer=0, head=0, position=1)
+    # The perturbed writer sits at the readout position (the one _metric_fn reads).
+    # This toy is position-wise, so a writer at any other position feeds only
+    # zero reader gradients and its edge scores stay zero under any perturbation;
+    # placing the writer at the readout position makes the mutation actually move
+    # the scores, so the test cannot pass on an all-zeros _edge_effects.
+    writer = Node(kind="attn_head_out", layer=0, head=0, position=SEQ_LEN - 1)
     assert any(edge_writer == writer for edge_writer, _reader in edges)
 
     perturbation = torch.full((D_MODEL,), 0.37, dtype=clean_cache.activations["hook_embed"].dtype)
@@ -1762,6 +1767,7 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
     mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
 
     changed = 0
+    moved = 0
     for edge in edges:
         edge_writer, reader = edge
         if edge_writer == writer:
@@ -1771,13 +1777,18 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
                 grad_vec = grad[0, reader.position, reader.head]
             else:
                 grad_vec = grad[0, reader.position]
-            expected = baseline_scores[edge] + float((perturbation * grad_vec).sum())
+            shift = float((perturbation * grad_vec).sum())
+            expected = baseline_scores[edge] + shift
             assert mutated_scores[edge] == pytest.approx(expected)
             changed += 1
+            if abs(shift) > 1e-6:
+                assert mutated_scores[edge] != pytest.approx(baseline_scores[edge])
+                moved += 1
         else:
             assert mutated_scores[edge] == baseline_scores[edge]
 
     assert changed > 0
+    assert moved > 0  # the perturbation genuinely shifts scores at the readout position
 
 
 # ---------------------------------------------------------------------------
@@ -1826,6 +1837,12 @@ def test_exact_edge_patch_matches_edge_effects_sign_and_magnitude() -> None:
     On this fully linear toy Bridge the first-order estimate is exact, so both
     sign and magnitude match; a nonlinear model would only be expected to
     match in sign.
+
+    The scored reader sits at the readout position (the one _metric_fn reads).
+    This toy is position-wise and the clean/corrupt tokens agree at the interior
+    positions, so an edge scored anywhere else would compare zero against zero
+    and pass even on an all-zeros _edge_effects; at the readout position the
+    tokens differ and the reader gradient is nonzero, so the scores are genuine.
     """
     model = _EdgeScoringToyBridge()
     _ensure_edge_hook_flags(model)
@@ -1843,13 +1860,14 @@ def test_exact_edge_patch_matches_edge_effects_sign_and_magnitude() -> None:
     edges = enumerate_edges(model, corrupt_cache)
     edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
 
-    reader = Node(kind="mlp_in", layer=1, position=1)
+    reader = Node(kind="mlp_in", layer=1, position=SEQ_LEN - 1)
     writers = [writer for writer, edge_reader in edges if edge_reader == reader]
     assert {writer.kind for writer in writers} == {"embed", "attn_head_out", "mlp_out"}
 
     with torch.no_grad():
         m_corrupt = float(metric(model(corrupt)))
 
+    nonzero = 0
     for writer in writers:
         writer_delta = _edge_writer_delta_vector(clean_cache, corrupt_cache, writer)
         patched_metric = _patch_edge_toward_clean(model, corrupt, reader, writer_delta, metric)
@@ -1859,3 +1877,84 @@ def test_exact_edge_patch_matches_edge_effects_sign_and_magnitude() -> None:
         assert exact_delta_m == pytest.approx(score, abs=1e-5)
         if abs(score) > 1e-6:
             assert (exact_delta_m > 0) == (score > 0)
+            nonzero += 1
+
+    assert nonzero > 0  # the readout position mixes tokens, so the edges are not zeros
+
+
+# ---------------------------------------------------------------------------
+# Multi-pair edge averaging and the head -> logits ranking
+# ---------------------------------------------------------------------------
+#
+# The edge branch slices, accumulates, and divides per-pair edge scores by the
+# batch exactly as the node branch does. A two-pair sweep whose pairs score
+# differently guards that arithmetic: scoring only the first pair, or dropping
+# the / batch divide, no longer averages to the right value. The terminal logits
+# reader also makes a head's direct-to-output path a rankable edge, which
+# top_edges could never return before the reader existed.
+
+
+def test_attribution_patch_edge_granularity_averages_scores_across_the_batch() -> None:
+    """Edge scores are the per-pair mean, mirroring the node-granularity averaging.
+
+    The two pairs score differently, so the batched result equals neither pair
+    alone; a loop that scored only the first pair, or skipped the / batch divide,
+    would fail both the mean check and the not-equal-to-either check.
+    """
+    model = _EdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3], [0, 4, 5]])
+    corrupt = torch.tensor([[3, 2, 1], [5, 4, 0]])
+    metric = _metric_fn(answer=1, wrong=2)
+    config = EdgeAttributionConfig(granularity="edge")
+
+    batched = attribution_patch(model, clean, corrupt, metric, config=config)
+    per_example = [
+        attribution_patch(model, clean[i : i + 1], corrupt[i : i + 1], metric, config=config)
+        for i in range(2)
+    ]
+
+    assert set(batched.edge_scores) == set(per_example[0].edge_scores)
+
+    differs = 0
+    for edge in batched.edge_scores:
+        first = per_example[0].edge_scores[edge]
+        second = per_example[1].edge_scores[edge]
+        assert batched.edge_scores[edge] == pytest.approx((first + second) / 2)
+        if first != pytest.approx(second):
+            differs += 1
+    assert differs > 0  # the pairs genuinely differ, so the / batch divide is exercised
+
+    # The batched result matches neither single pair: exact float equality would
+    # hold only if the loop scored one pair or skipped the divide.
+    assert batched.edge_scores != per_example[0].edge_scores
+    assert batched.edge_scores != per_example[1].edge_scores
+
+
+def test_top_edges_can_surface_a_head_to_logits_edge() -> None:
+    """top_edges can now return a head -> logits edge, previously impossible.
+
+    Before the terminal logits reader existed, no writer had an edge to the
+    output, so a head's direct-to-output path was never an edge and top_edges
+    could never rank it. With the reader in the graph every head gains a
+    ->logits edge that competes for the ranking like any other, with a genuine
+    signed score at the readout position rather than a structural zero.
+    """
+    model = _EdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+
+    ranked = result.top_edges(k=len(result.edge_scores))
+    head_to_logits = [
+        (writer, reader, score)
+        for writer, reader, score in ranked
+        if writer.kind == "attn_head_out" and reader.kind == "logits"
+    ]
+    assert head_to_logits  # the terminal reader gives every head a ->logits edge
+
+    # At least one carries a real signed effect, so the ranking is not over zeros.
+    assert any(abs(score) > 1e-6 for _writer, _reader, score in head_to_logits)
