@@ -89,7 +89,8 @@ The fit raises when output is non-finite or the final objective-gradient infinit
 `gradient_tolerance` times `max(1, initial gradient infinity norm)`, a scale-relative bound that
 tracks the gradient magnitude at the starting parameters. `gradient_tolerance` must lie in `(0, 1]`.
 Results retain the requested `k`, `max_iter`, and `gradient_tolerance` alongside the realized
-objective, gradient norm, iteration count, and convergence flag.
+objective, gradient norm, iteration count, and function-evaluation count. There is no
+convergence flag: a fit that misses the acceptance threshold raises instead of returning.
 
 ## Sweep and controls
 
@@ -140,7 +141,10 @@ result = fit_sparse_probe(features, labels, k=8)
 
 The example selects the final sequence position, which is not appropriate for every dataset.
 Choose the hook and position policy before interpreting selected coordinates. The API cannot detect
-leakage already introduced into caller-provided `features`.
+leakage already introduced into caller-provided `features`. When several rows come from one source
+prompt, for example multiple positions of the same sequence, keep all of those rows on one side of
+the split; the row-level split is label-independent and can otherwise place rows of one prompt on
+both sides, inflating held-out accuracy on grouped data.
 
 ## Reference
 
