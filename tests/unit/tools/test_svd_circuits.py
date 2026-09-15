@@ -23,6 +23,7 @@ from transformer_lens.tools.analysis.svd_circuits import (
     RankReportRow,
     _degeneracy_blocks,
     _factored_head_svd,
+    _resolve_retained,
     decompose_head,
     logit_signature,
     patch_along_directions,
@@ -646,6 +647,19 @@ def test_logit_signature_raises_on_degenerate_direction():
         logit_signature(model, ov, direction=1, tokens=torch.tensor([0]))
 
 
+def test_logit_signature_rejects_out_of_range_direction():
+    """A direction outside [0, rank) is a clear ValueError, not a wrap-around (direction=-1
+    reading the last column) or a bare IndexError (direction=rank)."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, 8))
+    rank = ov.V.shape[1]
+    for bad in (rank, -1):
+        with pytest.raises(ValueError, match="out of range"):
+            logit_signature(model, ov, direction=bad, tokens=torch.tensor([0]))
+
+
 def _ov_headsvd_in_dtype(dtype):
     """A minimal, well-separated OV HeadSVD with U/S/V cast to ``dtype``.
 
@@ -819,6 +833,75 @@ def test_patch_along_directions_rejects_partial_degenerate_block():
     )
     assert isinstance(result, PatchResult)
     assert result.retained == [0, 1, 2]
+
+
+def test_resolve_retained_rejects_out_of_range():
+    """keep/ablate indices outside [0, rank) raise ValueError, not a silent wrap-around for a
+    negative index or a silent no-op for an out-of-range ablate."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    for bad in ([999], [-1]):
+        with pytest.raises(ValueError, match="out of range"):
+            _resolve_retained(ov, keep=bad, ablate=None)
+        with pytest.raises(ValueError, match="out of range"):
+            _resolve_retained(ov, keep=None, ablate=bad)
+
+
+def test_patch_rejects_empty_retained_without_threshold():
+    """An empty retained set (keep=[] or ablate over the full rank) reconstructs onto the zero
+    subspace and ties the baseline by construction, so it is refused unless the caller passes
+    an explicit threshold, and accepted when one is."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    rank = ov.V.shape[1]
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    metric = lambda logits: float(logits.sum())
+    for empty in (dict(keep=[]), dict(ablate=list(range(rank)))):
+        with pytest.raises(ValueError, match="threshold"):
+            patch_along_directions(stub, ov, "prompt", metric, **empty)
+        result = patch_along_directions(
+            stub,
+            ov,
+            "prompt",
+            metric,
+            threshold=0.0,
+            rng=torch.Generator().manual_seed(0),
+            **empty,
+        )
+        assert isinstance(result, PatchResult)
+        assert result.retained == []
+
+
+def test_patch_ablate_rejects_partial_degenerate_block():
+    """ablate must take a degenerate block whole: ablating one member of block [1, 2] leaves
+    the other in the retained complement, splitting the block, and is refused before any model
+    access the same way the keep path is."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([5.0, 3.0, 3.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    with pytest.raises(DegenerateDirectionError):
+        patch_along_directions(SimpleNamespace(), ov, "prompt", lambda logits: 0.0, ablate=[1])
+
+
+def test_patch_ablate_reports_retained():
+    """An ablate call retains the complement of the ablated set and reports it, so an ablate
+    path is asserted end to end rather than only the keep path."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    result = patch_along_directions(
+        stub,
+        ov,
+        "prompt",
+        lambda logits: float(logits.sum()),
+        ablate=[1, 3],
+        rng=torch.Generator().manual_seed(0),
+    )
+    assert isinstance(result, PatchResult)
+    assert result.retained == [0, 2]
 
 
 def test_patch_along_directions_reports_delta_and_restores_use_attn_result():

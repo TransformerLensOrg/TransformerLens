@@ -566,15 +566,23 @@ def logit_signature(
         A :class:`LogitSignature` with one value per requested token.
 
     Raises:
-        ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
-            a different compatibility-mode state than ``model`` now has, or if ``model``
-            is a ``TransformerBridge`` without compatibility mode enabled.
+        ValueError: If ``head_svd.which != "OV"``, if ``direction`` is not in
+            ``[0, rank)``, if ``head_svd`` was decomposed under a different
+            compatibility-mode state than ``model`` now has, or if ``model`` is a
+            ``TransformerBridge`` without compatibility mode enabled.
         DegenerateDirectionError: If ``direction`` is not attributable alone (see
             :meth:`HeadSVD.require_isolated`).
     """
     if head_svd.which != "OV":
         raise ValueError(f"logit_signature requires an OV HeadSVD, got which={head_svd.which!r}")
     _validate_decomposition_matches_model(model, head_svd)
+    # Bounds-check before indexing: a negative direction would wrap into V/rank_report and a
+    # too-large one would raise a bare IndexError, both hiding a caller mistake as a wrong or
+    # cryptic result rather than a clear refusal.
+    rank = head_svd.V.shape[1]
+    direction = int(direction)
+    if not 0 <= direction < rank:
+        raise ValueError(f"direction index {direction} out of range [0, {rank})")
     head_svd.require_isolated(direction)
     _validate_bridge_compatibility(model)
     token_ids = torch.as_tensor(tokens, dtype=torch.long).reshape(-1)
@@ -681,17 +689,31 @@ def _resolve_retained(
     """Resolve ``keep``/``ablate`` to the sorted list of retained direction indices.
 
     Exactly one of ``keep``/``ablate`` must be given; ``ablate``'s complement over the
-    map's full rank becomes the retained set. Raises :class:`DegenerateDirectionError`
-    if the result would split a degenerate block (see :func:`_validate_retained_blocks`).
+    map's full rank becomes the retained set. Every supplied index is coerced to ``int``
+    and bounds-checked against ``[0, rank)`` before use, so a negative index raises rather
+    than wrapping into ``V[:, ...]`` and an out-of-range ``ablate`` raises rather than
+    silently subtracting nothing from the complement. Raises
+    :class:`DegenerateDirectionError` if the result would split a degenerate block (see
+    :func:`_validate_retained_blocks`).
     """
     if (keep is None) == (ablate is None):
         raise ValueError("patch_along_directions requires exactly one of keep or ablate")
     rank = head_svd.V.shape[1]
+
+    def _checked(indices: Sequence[int], name: str) -> List[int]:
+        resolved: List[int] = []
+        for raw in indices:
+            index = int(raw)
+            if not 0 <= index < rank:
+                raise ValueError(f"{name} index {index} out of range [0, {rank})")
+            resolved.append(index)
+        return resolved
+
     if keep is not None:
-        retained = sorted(set(keep))
+        retained = sorted(set(_checked(keep, "keep")))
     else:
         assert ablate is not None
-        ablate_set = set(ablate)
+        ablate_set = set(_checked(ablate, "ablate"))
         retained = [i for i in range(rank) if i not in ablate_set]
     _validate_retained_blocks(head_svd, retained)
     return retained
@@ -781,8 +803,10 @@ def patch_along_directions(
 
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under a
-            different compatibility-mode state than ``model`` now has, or if
-            ``keep``/``ablate`` are both given or both omitted.
+            different compatibility-mode state than ``model`` now has, if ``keep``/``ablate``
+            are both given or both omitted, if any index is out of ``[0, rank)``, or if the
+            retained set is empty (``keep=[]`` or ``ablate`` over the full rank) and no
+            explicit ``threshold`` is supplied.
         DegenerateDirectionError: If the retained directions split a degenerate block
             (see :func:`_validate_retained_blocks`).
     """
@@ -792,6 +816,16 @@ def patch_along_directions(
         )
     _validate_decomposition_matches_model(model, head_svd)
     retained = _resolve_retained(head_svd, keep, ablate)
+    if not retained and threshold is None:
+        # An empty retained set reconstructs the head onto the zero subspace, so its delta and
+        # the equal-width random baseline's delta are both the full-ablation effect: the gate
+        # compares a quantity against itself and is meaningless. Require an explicit threshold
+        # to gate an empty set on purpose.
+        raise ValueError(
+            "keep/ablate retain no directions, so the reconstruction is the zero subspace "
+            "and its delta ties the random baseline by construction; pass an explicit "
+            "threshold to gate an empty retained set."
+        )
 
     V = head_svd.V
     kept_projector = V[:, retained] @ V[:, retained].transpose(-2, -1)
