@@ -646,6 +646,57 @@ def test_logit_signature_raises_on_degenerate_direction():
         logit_signature(model, ov, direction=1, tokens=torch.tensor([0]))
 
 
+def _ov_headsvd_in_dtype(dtype):
+    """A minimal, well-separated OV HeadSVD with U/S/V cast to ``dtype``.
+
+    Built by casting a float32 decomposition rather than decomposing in ``dtype`` directly,
+    since torch.linalg.svd does not run in half precision on CPU; the readout paths under
+    test only read U/S/V and W_U, so the cast stands in for a genuine reduced-precision model.
+    """
+    base = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    return HeadSVD(
+        which="OV",
+        layer=base.layer,
+        head=base.head,
+        U=base.U.to(dtype),
+        S=base.S.to(dtype),
+        V=base.V.to(dtype),
+        rank_report=base.rank_report,
+        eps=base.eps,
+        null_rtol=base.null_rtol,
+        compatibility_mode=False,
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_vocab_readout_dtype_parametrised(dtype):
+    """vocab_readout promotes V to W_U's dtype, so the projection matmul runs on every model
+    precision instead of raising a dtype mismatch on bf16, fp16, or fp64."""
+    ov = _ov_headsvd_in_dtype(dtype)
+    vocab_size = 20
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, vocab_size, dtype=dtype))
+    result = vocab_readout(model, ov, k=3)
+    assert result.shape == (vocab_size, 3)
+    assert result.dtype == dtype
+    assert torch.isfinite(result.float()).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_logit_signature_dtype_parametrised(dtype):
+    """logit_signature casts its rank-1 reconstruction to W_U's dtype, so it returns one
+    finite value per token on every model precision instead of raising a dtype mismatch."""
+    ov = _ov_headsvd_in_dtype(dtype)
+    vocab_size = 16
+    model = SimpleNamespace(W_U=torch.randn(D_MODEL, vocab_size, dtype=dtype))
+    token_ids = torch.tensor([1, 5, 9])
+    result = logit_signature(model, ov, direction=0, tokens=token_ids)
+    assert result.values.shape == (token_ids.numel(),)
+    assert result.values.dtype == dtype
+    assert torch.isfinite(result.values.float()).all()
+
+
 # --------------------------------------------------------------------------- #
 # project_activations (per-position firing coefficients in the OV output basis)
 # --------------------------------------------------------------------------- #

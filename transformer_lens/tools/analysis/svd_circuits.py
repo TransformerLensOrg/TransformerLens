@@ -523,7 +523,10 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
     if not 0 < k <= rank:
         raise ValueError(f"k must be in (0, {rank}], got {k!r}")
     _validate_bridge_compatibility(model)
-    return model.W_U.T @ head_svd.V[:, :k].float()
+    # Promote V to W_U's dtype rather than forcing float32: matmul does not promote its
+    # operands, so a bare .float() raises a dtype mismatch on any bf16, fp16, or fp64 model.
+    W_U = model.W_U
+    return W_U.T @ head_svd.V[:, :k].to(W_U.dtype)
 
 
 @dataclass
@@ -575,8 +578,11 @@ def logit_signature(
     head_svd.require_isolated(direction)
     _validate_bridge_compatibility(model)
     token_ids = torch.as_tensor(tokens, dtype=torch.long).reshape(-1)
-    reconstruction = (head_svd.S[direction] * head_svd.V[:, direction]).float()
-    values = reconstruction @ model.W_U[:, token_ids]
+    # Match the rank-1 reconstruction to W_U's dtype for the projection: matmul does not
+    # promote its operands, so a float32 reconstruction breaks on bf16, fp16, or fp64 models.
+    W_U = model.W_U
+    reconstruction = (head_svd.S[direction] * head_svd.V[:, direction]).to(W_U.dtype)
+    values = reconstruction @ W_U[:, token_ids]
     return LogitSignature(direction=direction, values=values)
 
 
