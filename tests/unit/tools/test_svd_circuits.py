@@ -486,9 +486,8 @@ def test_decompose_head_rejects_bare_string_which():
 # --------------------------------------------------------------------------- #
 # OV output-direction convention (cross-check against SVDInterpreter)
 # --------------------------------------------------------------------------- #
-@pytest.fixture(scope="module")
-def tiny_bridge():
-    """Tiny GPT-2 bridge: MHA (n_heads == n_kv_heads), CPU-only, no Hub access."""
+def _make_tiny_bridge():
+    """Build a tiny GPT-2 bridge: MHA (n_heads == n_kv_heads), CPU-only, no Hub access."""
     from transformers import GPT2Config, GPT2LMHeadModel
 
     from transformer_lens.config.transformer_bridge_config import (
@@ -519,6 +518,14 @@ def tiny_bridge():
     return TransformerBridge(hf_model, GPT2ArchitectureAdapter(cfg), tokenizer=tokenizer)
 
 
+@pytest.fixture(scope="module")
+def tiny_bridge():
+    """Module-scoped tiny bridge. Compatibility mode folds weights in place and has no
+    inverse, so tests that enable it must build their own bridge via ``_make_tiny_bridge``
+    rather than mutate this shared instance."""
+    return _make_tiny_bridge()
+
+
 def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
     """OV's write/vocab-readout direction is ``.V``, not ``.U`` - checked against the
     already-shipped ``SVDInterpreter``, not just internal self-consistency, so the
@@ -541,6 +548,46 @@ def test_ov_output_direction_matches_svd_interpreter(tiny_bridge):
     projected_via_U = ov.U[:, 0] @ W_U
     assert not torch.allclose(projected_via_U, reference[:, 0, 0], atol=1e-2)
     assert not torch.allclose(projected_via_U, -reference[:, 0, 0], atol=1e-2)
+
+
+# --------------------------------------------------------------------------- #
+# Compatibility-mode binding: a decomposition is tied to the state it was built under
+# --------------------------------------------------------------------------- #
+def test_decompose_head_records_compatibility_mode():
+    """Each HeadSVD records the model's compatibility-mode state at decomposition time,
+    for both maps and both toggle values."""
+    off = decompose_head(_make_tiny_bridge(), 0, 0, which=("QK", "OV"))
+    assert off.OV.compatibility_mode is False
+    assert off.QK.compatibility_mode is False
+
+    on_model = _make_tiny_bridge()
+    on_model.enable_compatibility_mode()
+    on = decompose_head(on_model, 0, 0, which=("QK", "OV"))
+    assert on.OV.compatibility_mode is True
+    assert on.QK.compatibility_mode is True
+
+
+@pytest.mark.parametrize(
+    "call_consumer",
+    [
+        lambda model, ov: vocab_readout(model, ov),
+        lambda model, ov: logit_signature(model, ov, direction=0, tokens=torch.tensor([0])),
+        lambda model, ov: project_activations(model, ov, torch.tensor([[5, 63, 7, 9]])),
+        lambda model, ov: patch_along_directions(
+            model, ov, torch.tensor([[5, 63, 7, 9]]), lambda logits: float(logits.sum()), keep=[0]
+        ),
+    ],
+    ids=["vocab_readout", "logit_signature", "project_activations", "patch_along_directions"],
+)
+def test_consumers_reject_stale_compatibility_state(call_consumer):
+    """A HeadSVD decomposed before enable_compatibility_mode() describes the pre-folding OV
+    map, so every consumer refuses it once the model's state has changed and points the
+    caller back at decompose_head. The refusal fires before any forward pass runs."""
+    bridge = _make_tiny_bridge()
+    stale = decompose_head(bridge, 0, 0, which=("OV",)).OV
+    bridge.enable_compatibility_mode()
+    with pytest.raises(ValueError, match="decompose_head"):
+        call_consumer(bridge, stale)
 
 
 # --------------------------------------------------------------------------- #

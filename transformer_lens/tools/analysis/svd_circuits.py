@@ -128,6 +128,11 @@ class HeadSVD:
             boundary sits at a gap of at least ``eps``.
         null_rtol: Relative-to-top-singular-value tolerance below which a direction
             is numerically null.
+        compatibility_mode: The model's compatibility-mode state at the time this was
+            decomposed. ``enable_compatibility_mode`` folds ``ln1`` into ``W_V`` and
+            centres ``W_O``/``W_U``, so a decomposition describes the OV map only under
+            the state it was built in; the readout and patch consumers refuse a
+            decomposition whose state no longer matches the model.
     """
 
     which: Which
@@ -139,6 +144,7 @@ class HeadSVD:
     rank_report: List[RankReportRow]
     eps: float
     null_rtol: float
+    compatibility_mode: bool
 
     def is_degenerate(self, i: int) -> bool:
         """Whether direction ``i`` is refused: rotation-ambiguous inside a block, or null."""
@@ -320,6 +326,7 @@ def _factored_head_svd(
     head: int,
     eps: float,
     null_rtol: Optional[float] = None,
+    compatibility_mode: bool = False,
 ) -> HeadSVD:
     """Decompose the factored map ``A @ B`` for one head into a :class:`HeadSVD`.
 
@@ -332,6 +339,9 @@ def _factored_head_svd(
     the same relative tolerance :func:`torch.linalg.matrix_rank` uses by default
     for a square ``d_model x d_model`` map, so the null cutoff tracks the
     decomposition's own numerical rank rather than a hand-tuned constant.
+
+    ``compatibility_mode`` is the model's compatibility-mode state, recorded on the
+    result so the consumers can refuse a decomposition taken under a different state.
     """
     U, S, V = FactoredMatrix(A, B).svd()
     d_model = U.shape[0]
@@ -348,6 +358,7 @@ def _factored_head_svd(
         rank_report=rank_report,
         eps=eps,
         null_rtol=resolved_null_rtol,
+        compatibility_mode=compatibility_mode,
     )
 
 
@@ -364,7 +375,9 @@ def decompose_head(
 
     Weight-space only: this reads the head's per-block weights via the bridge's
     ``model.blocks[layer].attn`` accessors and needs no forward pass and no
-    compatibility mode. The returned factors are detached from the model.
+    compatibility mode. The returned factors are detached from the model. The model's
+    compatibility-mode state is recorded on each returned :class:`HeadSVD` so the readout
+    and patch consumers can refuse a decomposition taken under a different state.
 
     Args:
         model: A ``TransformerBridge``.
@@ -403,6 +416,7 @@ def decompose_head(
         raise ValueError(f"which entries must be in {_VALID_WHICH}, got {invalid!r}")
 
     W_Q_h, W_K_h, W_V_h, W_O_h = _head_weights(model, layer, head)
+    compatibility_mode = getattr(model, "compatibility_mode", False)
     qk = None
     ov = None
     if "QK" in requested:
@@ -414,10 +428,18 @@ def decompose_head(
             head=head,
             eps=eps,
             null_rtol=null_rtol,
+            compatibility_mode=compatibility_mode,
         )
     if "OV" in requested:
         ov = _factored_head_svd(
-            W_V_h, W_O_h, which="OV", layer=layer, head=head, eps=eps, null_rtol=null_rtol
+            W_V_h,
+            W_O_h,
+            which="OV",
+            layer=layer,
+            head=head,
+            eps=eps,
+            null_rtol=null_rtol,
+            compatibility_mode=compatibility_mode,
         )
     return HeadDecomposition(layer=layer, head=head, QK=qk, OV=ov)
 
@@ -445,6 +467,27 @@ def _validate_bridge_compatibility(model) -> None:
         )
 
 
+def _validate_decomposition_matches_model(model, head_svd: HeadSVD) -> None:
+    """Refuse a decomposition built under a different compatibility-mode state than the model.
+
+    ``enable_compatibility_mode`` folds ``ln1`` into ``W_V`` and centres ``W_O``/``W_U``,
+    so a :class:`HeadSVD` decomposed before the call describes a different OV map than the
+    model now computes: the cached ``U``/``S``/``V`` are stale, and the returned readout or
+    patch would be silently wrong rather than raise a shape error. This guard is orthogonal
+    to :func:`_validate_bridge_compatibility` (which only checks that ``W_U`` carries the
+    folded LayerNorm): here the model may be in either state, only mismatched from the
+    decomposition's.
+    """
+    current = getattr(model, "compatibility_mode", False)
+    if current != head_svd.compatibility_mode:
+        raise ValueError(
+            f"This HeadSVD was decomposed with compatibility_mode="
+            f"{head_svd.compatibility_mode} but the model now has compatibility_mode="
+            f"{current}; the cached singular vectors describe a different OV map. "
+            f"Re-run decompose_head under the current state, then retry."
+        )
+
+
 def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tensor, "d_vocab k"]:
     """Project the top-k OV output directions through the unembedding.
 
@@ -469,11 +512,13 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
 
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``k`` is not in
-            ``(0, rank]``, or if ``model`` is a ``TransformerBridge`` without
-            compatibility mode enabled.
+            ``(0, rank]``, if ``head_svd`` was decomposed under a different
+            compatibility-mode state than ``model`` now has, or if ``model`` is a
+            ``TransformerBridge`` without compatibility mode enabled.
     """
     if head_svd.which != "OV":
         raise ValueError(f"vocab_readout requires an OV HeadSVD, got which={head_svd.which!r}")
+    _validate_decomposition_matches_model(model, head_svd)
     rank = head_svd.V.shape[1]
     if not 0 < k <= rank:
         raise ValueError(f"k must be in (0, {rank}], got {k!r}")
@@ -518,13 +563,15 @@ def logit_signature(
         A :class:`LogitSignature` with one value per requested token.
 
     Raises:
-        ValueError: If ``head_svd.which != "OV"``, or if ``model`` is a
-            ``TransformerBridge`` without compatibility mode enabled.
+        ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
+            a different compatibility-mode state than ``model`` now has, or if ``model``
+            is a ``TransformerBridge`` without compatibility mode enabled.
         DegenerateDirectionError: If ``direction`` is not attributable alone (see
             :meth:`HeadSVD.require_isolated`).
     """
     if head_svd.which != "OV":
         raise ValueError(f"logit_signature requires an OV HeadSVD, got which={head_svd.which!r}")
+    _validate_decomposition_matches_model(model, head_svd)
     head_svd.require_isolated(direction)
     _validate_bridge_compatibility(model)
     token_ids = torch.as_tensor(tokens, dtype=torch.long).reshape(-1)
@@ -575,13 +622,15 @@ def project_activations(
         An :class:`ActivationProjection` with the per-position coefficients.
 
     Raises:
-        ValueError: If ``head_svd.which != "OV"``, or if ``prompt`` is not a single
-            (batch-size-1) prompt.
+        ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
+            a different compatibility-mode state than ``model`` now has, or if ``prompt``
+            is not a single (batch-size-1) prompt.
     """
     if head_svd.which != "OV":
         raise ValueError(
             f"project_activations requires an OV HeadSVD, got which={head_svd.which!r}"
         )
+    _validate_decomposition_matches_model(model, head_svd)
     previous = getattr(model.cfg, "use_attn_result", False)
     model.set_use_attn_result(True)
     try:
@@ -725,8 +774,9 @@ def patch_along_directions(
         A :class:`PatchResult` describing the patched, baseline, and original metrics.
 
     Raises:
-        ValueError: If ``head_svd.which != "OV"``, or if ``keep``/``ablate`` are both
-            given or both omitted.
+        ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under a
+            different compatibility-mode state than ``model`` now has, or if
+            ``keep``/``ablate`` are both given or both omitted.
         DegenerateDirectionError: If the retained directions split a degenerate block
             (see :func:`_validate_retained_blocks`).
     """
@@ -734,6 +784,7 @@ def patch_along_directions(
         raise ValueError(
             f"patch_along_directions requires an OV HeadSVD, got which={head_svd.which!r}"
         )
+    _validate_decomposition_matches_model(model, head_svd)
     retained = _resolve_retained(head_svd, keep, ablate)
 
     V = head_svd.V
