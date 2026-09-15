@@ -1162,6 +1162,7 @@ def _synthetic_edge_cache(
                 1, seq_len, n_heads, d_model
             )
         cache.activations[f"blocks.{layer}.hook_mlp_in"] = torch.zeros(1, seq_len, d_model)
+    cache.activations[f"blocks.{n_layers - 1}.hook_resid_post"] = torch.zeros(1, seq_len, d_model)
     cache.gradients = {name: None for name in cache.activations}
     return cache
 
@@ -1191,7 +1192,8 @@ def _expected_edge_count(n_layers: int, n_heads: int, seq_len: int) -> int:
     At each position, a reader connects to every writer enumerated so far: the
     three per-head QKV readers at a layer see everything upstream of that
     layer's attention, and the MLP reader additionally sees that layer's own
-    attention writes.
+    attention writes. After the layers, the terminal logits reader connects to
+    every writer available at that position.
     """
     total_per_position = 0
     available = 1  # embed
@@ -1200,6 +1202,7 @@ def _expected_edge_count(n_layers: int, n_heads: int, seq_len: int) -> int:
         available += n_heads  # this layer's attn_head_out writers
         total_per_position += available  # mlp_in reader
         available += 1  # this layer's mlp_out writer
+    total_per_position += available  # logits reader sees every writer
     return seq_len * total_per_position
 
 
@@ -1217,9 +1220,30 @@ def test_enumerate_edges_returns_expected_writer_reader_pairs() -> None:
     for reader in readers_at_0:
         assert (Node(kind="embed", position=0), reader) in edges
 
-    # the final layer's MLP output has no downstream reader in this graph.
+    # the final layer's MLP output reaches the terminal logits reader, so it is
+    # a writer in this graph even though no per-layer reader sees it.
     terminal_writer = Node(kind="mlp_out", layer=N_LAYERS - 1, position=0)
-    assert all(writer != terminal_writer for writer, _ in edges)
+    logits_reader = Node(kind="logits", layer=N_LAYERS - 1, position=0)
+    assert (terminal_writer, logits_reader) in edges
+
+
+def test_enumerate_edges_connects_every_final_writer_to_the_logits_reader() -> None:
+    cache = _synthetic_edge_cache()
+    edges = enumerate_edges(_cfg_stub(), cache)
+
+    for position in range(SEQ_LEN):
+        logits_reader = Node(kind="logits", layer=N_LAYERS - 1, position=position)
+        writers_to_logits = {writer for writer, reader in edges if reader == logits_reader}
+
+        expected = {Node(kind="embed", position=position)}
+        for layer in range(N_LAYERS):
+            for head in range(N_HEADS):
+                expected.add(Node(kind="attn_head_out", layer=layer, head=head, position=position))
+            expected.add(Node(kind="mlp_out", layer=layer, position=position))
+
+        assert writers_to_logits == expected
+        # the logits reader is a reader only; it never appears as a writer.
+        assert all(writer != logits_reader for writer, _ in edges)
 
 
 def test_enumerate_edges_raises_on_missing_reader_hook() -> None:
@@ -1236,6 +1260,37 @@ def test_assert_edges_unique_raises_on_duplicate() -> None:
 
     with pytest.raises(ValueError, match="more than once"):
         _assert_edges_unique([(writer, reader), (writer, reader)])
+
+
+def test_enumerate_edges_drops_same_layer_heads_from_mlp_reader_on_parallel_attn_mlp() -> None:
+    cache = _synthetic_edge_cache()
+    parallel_stub = SimpleNamespace(cfg=SimpleNamespace(n_layers=N_LAYERS, parallel_attn_mlp=True))
+
+    edges = enumerate_edges(parallel_stub, cache)
+    _assert_edges_unique(edges)
+
+    for position in range(SEQ_LEN):
+        # A layer's own heads do not feed that layer's MLP: it reads the layer
+        # input, not the post-attention residual.
+        for layer in range(N_LAYERS):
+            mlp_reader = Node(kind="mlp_in", layer=layer, position=position)
+            for head in range(N_HEADS):
+                same_layer_head = Node(
+                    kind="attn_head_out", layer=layer, head=head, position=position
+                )
+                assert (same_layer_head, mlp_reader) not in edges
+
+        # Cross-layer head -> mlp_in and terminal ->logits edges are unaffected.
+        upstream_head = Node(kind="attn_head_out", layer=0, head=0, position=position)
+        assert (upstream_head, Node(kind="mlp_in", layer=1, position=position)) in edges
+        logits_reader = Node(kind="logits", layer=N_LAYERS - 1, position=position)
+        assert (upstream_head, logits_reader) in edges
+
+    # The sequential graph does keep the same-layer head -> mlp_in edge dropped here.
+    sequential_edges = enumerate_edges(_cfg_stub(), cache)
+    head0 = Node(kind="attn_head_out", layer=0, head=0, position=0)
+    assert (head0, Node(kind="mlp_in", layer=0, position=0)) in sequential_edges
+    assert (head0, Node(kind="mlp_in", layer=0, position=0)) not in edges
 
 
 # ---------------------------------------------------------------------------
@@ -1297,6 +1352,8 @@ class _EdgeScoringBlock(nn.Module):
         self.hook_v_input.name = f"blocks.{layer}.attn.hook_v_input"
         self.hook_mlp_in = HookPoint()
         self.hook_mlp_in.name = f"blocks.{layer}.hook_mlp_in"
+        self.hook_resid_post = HookPoint()
+        self.hook_resid_post.name = f"blocks.{layer}.hook_resid_post"
 
     def forward(self, residual: torch.Tensor) -> torch.Tensor:
         batch, seq, d_model = residual.shape
@@ -1327,7 +1384,7 @@ class _EdgeScoringBlock(nn.Module):
 
         mlp_in = self.hook_mlp_in(residual) if self.cfg.use_hook_mlp_in else residual
         mlp_out = self.hook_mlp_out(self.w_mlp(mlp_in))
-        return residual + mlp_out
+        return self.hook_resid_post(residual + mlp_out)
 
 
 class _EdgeScoringToyBridge(_LinearToyBridge):
@@ -1384,6 +1441,7 @@ class _EdgeScoringToyBridge(_LinearToyBridge):
             hooks[f"blocks.{layer}.attn.hook_k_input"] = block.hook_k_input
             hooks[f"blocks.{layer}.attn.hook_v_input"] = block.hook_v_input
             hooks[f"blocks.{layer}.hook_mlp_in"] = block.hook_mlp_in
+            hooks[f"blocks.{layer}.hook_resid_post"] = block.hook_resid_post
         return hooks
 
     def forward(
@@ -1431,21 +1489,15 @@ def test_attribution_patch_edge_granularity_scores_every_edge_with_finite_values
 
 
 def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() -> None:
-    """Edge aggregation plus the residual stream's escape term equals the direct node score.
+    """A writer's edge-score aggregate equals its direct node score, exactly.
 
-    A writer reaches the metric two ways: through every edge enumerate_edges gives
-    it (what the aggregation sums), and by surviving unread in the residual stream
-    all the way to the final MLP write -- the direct skip-connection carry-through,
-    which none of enumerate_edges' four reader kinds model (there is no "final
-    readout" reader in this graph). That escape term is the same shared vector for
-    every writer at a given position: the corrupt-run gradient at the last layer's
-    hook_mlp_out equals d(metric)/d(the final residual) exactly, since hook_mlp_out
-    feeds the final residual by pure addition and nothing else reads it. Dotting a
-    writer's own delta (measured at its _writer_hook_name, matching _edge_effects)
-    against that shared vector and adding it to the writer's edge-score sum
-    reconstructs its direct node score exactly, including for the final layer's MLP
-    output itself, which has no outgoing edge and so is reconstructed by the escape
-    term alone.
+    A writer reaches the metric through every edge enumerate_edges gives it,
+    including the edge to the terminal logits reader. That final edge carries the
+    writer's direct skip-connection contribution -- the part of its residual write
+    that no per-layer reader consumes, only the final readout does -- so the
+    aggregate over a writer's outgoing edges is its whole first-order effect and
+    equals the direct node score. This holds for every writer, including the final
+    layer's MLP output, whose only outgoing edge is the one to the logits reader.
     """
     model = _EdgeScoringToyBridge()
     clean = torch.tensor([[1, 2, 3]])
@@ -1459,29 +1511,14 @@ def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() ->
         model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="node")
     )
 
-    edge_hook_names = _required_hook_names(N_LAYERS, granularity="edge")
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    escape_grad = corrupt_cache.gradients[f"blocks.{N_LAYERS - 1}.hook_mlp_out"]
-
+    # The final layer's MLP output now has an outgoing edge (to the logits
+    # reader), so it appears in the edge aggregate rather than being absent.
     terminal_writer = Node(kind="mlp_out", layer=N_LAYERS - 1, position=0)
-    assert terminal_writer not in edge_result.node_scores
+    assert terminal_writer in edge_result.node_scores
 
+    assert set(edge_result.node_scores) == set(node_result.node_scores)
     for node, direct_score in node_result.node_scores.items():
-        name = _writer_hook_name(node)
-        delta = clean_cache.activations[name] - corrupt_cache.activations[name]
-        if node.kind == "attn_head_out":
-            delta_vec = delta[0, node.position, node.head]
-        else:
-            delta_vec = delta[0, node.position]
-        escape_term = float((delta_vec * escape_grad[0, node.position]).sum())
-
-        edge_sum = edge_result.node_scores.get(node, 0.0)
-        assert direct_score == pytest.approx(edge_sum + escape_term, abs=1e-5)
+        assert edge_result.node_scores[node] == pytest.approx(direct_score, abs=1e-5)
 
 
 # ---------------------------------------------------------------------------

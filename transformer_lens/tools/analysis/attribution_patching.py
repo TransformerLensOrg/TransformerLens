@@ -42,7 +42,9 @@ from transformer_lens.tools.analysis._model_state import require_eval_mode
 MetricFn = Callable[[torch.Tensor], torch.Tensor]
 NamesFilter = Union[str, Sequence[str], Callable[[str], bool], None]
 
-NodeKind = Literal["embed", "attn_head_out", "mlp_out", "q_input", "k_input", "v_input", "mlp_in"]
+NodeKind = Literal[
+    "embed", "attn_head_out", "mlp_out", "q_input", "k_input", "v_input", "mlp_in", "logits"
+]
 Granularity = Literal["node", "edge"]
 
 
@@ -74,12 +76,16 @@ class Node:
     - ``"attn_head_out"``: one attention head's output. ``layer`` and ``head`` set.
     - ``"mlp_out"``: one layer's MLP output. ``layer`` set, ``head`` is ``None``.
 
-    Four kinds are *readers* -- they consume the residual stream as an edge's
+    Five kinds are *readers* -- they consume the residual stream as an edge's
     destination (see :func:`enumerate_edges`):
 
     - ``"q_input"`` / ``"k_input"`` / ``"v_input"``: one attention head's split
       Q/K/V input. ``layer`` and ``head`` set.
     - ``"mlp_in"``: one layer's MLP entry. ``layer`` set, ``head`` is ``None``.
+    - ``"logits"``: the terminal readout of the final residual, read at
+      ``blocks.{n_layers-1}.hook_resid_post``. ``layer`` is that final layer and
+      ``head`` is ``None``. Every writer feeds this reader, so a writer's
+      aggregate over its outgoing edges equals its direct node score.
 
     ``position`` is the sequence index the node is read at. The invariants above
     are enforced in ``__post_init__`` so a malformed key raises rather than
@@ -111,6 +117,11 @@ class Node:
                 raise ValueError("mlp_in nodes need a layer")
             if self.head is not None:
                 raise ValueError("mlp_in nodes take no head")
+        elif self.kind == "logits":
+            if self.layer is None:
+                raise ValueError("logits nodes need a layer")
+            if self.head is not None:
+                raise ValueError("logits nodes take no head")
         else:
             raise ValueError(f"unknown node kind {self.kind!r}")
 
@@ -121,9 +132,9 @@ class Node:
         Uses the standard ``TransformerBridge`` alias names (``hook_embed``,
         ``blocks.{l}.attn.hook_z``, ``blocks.{l}.hook_mlp_out``,
         ``blocks.{l}.attn.hook_q_input``/``hook_k_input``/``hook_v_input``,
-        ``blocks.{l}.hook_mlp_in``); the per-head nodes (``attn_head_out``,
-        ``q_input``, ``k_input``, ``v_input``) slice head ``self.head`` out of
-        the shared per-head tensor.
+        ``blocks.{l}.hook_mlp_in``, ``blocks.{l}.hook_resid_post``); the per-head
+        nodes (``attn_head_out``, ``q_input``, ``k_input``, ``v_input``) slice
+        head ``self.head`` out of the shared per-head tensor.
         """
         if self.kind == "embed":
             return "hook_embed"
@@ -133,6 +144,8 @@ class Node:
             return f"blocks.{self.layer}.hook_mlp_out"
         if self.kind in ("q_input", "k_input", "v_input"):
             return f"blocks.{self.layer}.attn.hook_{self.kind}"
+        if self.kind == "logits":
+            return f"blocks.{self.layer}.hook_resid_post"
         return f"blocks.{self.layer}.hook_mlp_in"
 
 
@@ -410,22 +423,29 @@ def _assert_edges_unique(edges: Sequence[tuple[Node, Node]]) -> None:
 
 
 def _required_edge_reader_hook_names(n_layers: int) -> list[str]:
-    """The MLP-entry hook point edge enumeration additionally requires per layer.
+    """The reader hook points edge enumeration additionally requires.
 
     ``_required_hook_names(..., granularity="edge")`` covers the per-head
-    attention hooks a writer/reader pair into or out of a head needs. Edges
-    into the MLP also read the MLP entry point, ``attn.hook_mlp_in``'s
-    layer-level sibling ``hook_mlp_in``, gated on ``cfg.use_hook_mlp_in`` the
-    same way the per-head hooks are gated on their own flags.
+    attention hooks a writer/reader pair into or out of a head needs. Edge
+    enumeration reads two reader points those miss:
+
+    - each layer's MLP entry, ``attn.hook_mlp_in``'s layer-level sibling
+      ``hook_mlp_in``, gated on ``cfg.use_hook_mlp_in`` the same way the per-head
+      hooks are gated on their own flags, and
+    - the terminal ``blocks.{n_layers-1}.hook_resid_post``, where the logits
+      reader takes its gradient. This final residual hook fires unconditionally,
+      so no Bridge flag gates it.
     """
-    return [f"blocks.{layer}.hook_mlp_in" for layer in range(n_layers)]
+    names = [f"blocks.{layer}.hook_mlp_in" for layer in range(n_layers)]
+    names.append(f"blocks.{n_layers - 1}.hook_resid_post")
+    return names
 
 
 def _edge_hook_names(n_layers: int) -> list[str]:
     """Every hook point an edge-granularity sweep must cache.
 
     The per-head attention hooks from ``_required_hook_names(..., granularity="edge")``
-    plus each layer's MLP-entry reader hook.
+    plus each layer's MLP-entry reader hook and the terminal logits reader hook.
     """
     return _required_hook_names(n_layers, granularity="edge") + _required_edge_reader_hook_names(
         n_layers
@@ -436,17 +456,30 @@ def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]
     """Enumerate every writer -> reader edge in the residual-stream graph.
 
     At a fixed sequence position, the residual stream is a running sum: a
-    reader (a head's split Q/K/V input, or a layer's MLP entry) is fed by
-    every writer (the embed write, every attention head's output, every
-    layer's MLP output) that precedes it. Building the graph position-by-position
-    tracks which writers are "available" so far and connects each new reader to
-    all of them, then adds that layer's writers to the available set before
-    moving on -- so a writer never edges to a reader upstream of it, and a
-    writer feeding both a direct edge and a through-MLP edge produces two
-    distinct ``(u, v)`` pairs rather than one summed together.
+    reader (a head's split Q/K/V input, a layer's MLP entry, or the terminal
+    logits readout) is fed by every writer (the embed write, every attention
+    head's output, every layer's MLP output) that precedes it. Building the
+    graph position-by-position tracks which writers are "available" so far and
+    connects each new reader to all of them, then adds that layer's writers to
+    the available set before moving on -- so a writer never edges to a reader
+    upstream of it, and a writer feeding both a direct edge and a through-MLP
+    edge produces two distinct ``(u, v)`` pairs rather than one summed together.
+
+    A terminal ``logits`` reader (read at the final ``hook_resid_post``) closes
+    the graph: after the per-layer loop every remaining writer -- including the
+    final layer's MLP output, which no per-layer reader sees -- edges to it. That
+    edge carries the writer's direct skip-connection contribution to the metric,
+    so a writer's aggregate over its outgoing edges equals its direct node score.
+
+    On ``cfg.parallel_attn_mlp`` models (Pythia, GPT-J, Falcon, Phi) the MLP
+    reads the layer input, not the post-attention residual, so a layer's own
+    heads are not writers into that layer's MLP; those same-layer head->mlp_in
+    edges are dropped while the heads still feed later readers and the logits
+    reader.
 
     Args:
-        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``.
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``
+            and, optionally, ``cfg.parallel_attn_mlp``.
         cache: A :class:`GradientCache` holding at least the required hook points
             for edge granularity.
 
@@ -465,9 +498,11 @@ def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]
         "Cache with a names_filter that keeps the edge-granularity hook set: "
         "hook_embed, blocks.*.attn.hook_z, blocks.*.hook_mlp_out, "
         "blocks.*.attn.hook_result, blocks.*.attn.hook_q_input, "
-        "blocks.*.attn.hook_k_input, blocks.*.attn.hook_v_input, and "
-        "blocks.*.hook_mlp_in.",
+        "blocks.*.attn.hook_k_input, blocks.*.attn.hook_v_input, "
+        "blocks.*.hook_mlp_in, and blocks.{n_layers-1}.hook_resid_post.",
     )
+
+    parallel_attn_mlp = bool(getattr(model.cfg, "parallel_attn_mlp", False))
 
     seq_len = cache.activations["hook_embed"].shape[1]
     edges: list[tuple[Node, Node]] = []
@@ -490,15 +525,26 @@ def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]
             for reader in attn_readers:
                 edges.extend((writer, reader) for writer in available)
 
-            available = available + [
+            layer_heads = [
                 Node(kind="attn_head_out", layer=layer, head=head, position=position)
                 for head in range(n_heads)
             ]
 
             mlp_reader = Node(kind="mlp_in", layer=layer, position=position)
-            edges.extend((writer, mlp_reader) for writer in available)
+            if parallel_attn_mlp:
+                # The MLP reads the layer input, not the post-attention residual,
+                # so this layer's heads are not writers into its MLP. They still
+                # become available to later readers and the logits reader.
+                edges.extend((writer, mlp_reader) for writer in available)
+                available = available + layer_heads
+            else:
+                available = available + layer_heads
+                edges.extend((writer, mlp_reader) for writer in available)
 
             available = available + [Node(kind="mlp_out", layer=layer, position=position)]
+
+        logits_reader = Node(kind="logits", layer=n_layers - 1, position=position)
+        edges.extend((writer, logits_reader) for writer in available)
 
     _assert_edges_unique(edges)
     return edges
