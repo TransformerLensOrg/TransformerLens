@@ -50,7 +50,8 @@ class _NativeLNRuleForward(torch.autograd.Function):
     through the centering op ordinarily but treats ``denom`` as a constant (the
     LN-rule), while ``weight`` and ``bias`` receive their ordinary gradient since
     the rule only redefines how relevance reaches the input, not parameter
-    training gradients.
+    training gradients. A parameter-free norm (``weight`` is ``None``, e.g.
+    OLMo's ``OlmoLayerNorm``) is treated as a unit scale in both directions.
     """
 
     @staticmethod
@@ -58,7 +59,7 @@ class _NativeLNRuleForward(torch.autograd.Function):
         ctx: Any,
         x_centered: torch.Tensor,
         denom: torch.Tensor,
-        weight: torch.Tensor,
+        weight: Optional[torch.Tensor],
         bias: Optional[torch.Tensor],
         x: torch.Tensor,
         component: torch.nn.Module,
@@ -88,12 +89,15 @@ class _NativeLNRuleForward(torch.autograd.Function):
         None,
     ]:
         x_centered, denom, weight = ctx.saved_tensors
-        w_eff = (1.0 + weight) if ctx.offset else weight
+        if weight is None:
+            w_eff: torch.Tensor | float = 1.0
+        else:
+            w_eff = (1.0 + weight) if ctx.offset else weight
         reduce_dims = tuple(range(grad_output.dim() - 1))
         grad_x_centered = ln_rule_grad(grad_output * w_eff, denom)
         grad_weight = (
             (grad_output * (x_centered / denom)).sum(dim=reduce_dims)
-            if weight.requires_grad
+            if weight is not None and weight.requires_grad
             else None
         )
         grad_bias = (
@@ -367,7 +371,12 @@ class NormalizationBridge(GeneralizedComponent):
             if isinstance(eps_value, torch.Tensor)
             else (variance + float(eps_value)).sqrt()
         )
-        weight = cast(torch.Tensor, self.weight)
+        # A parameter-free norm (OLMo's OlmoLayerNorm) exposes no usable weight;
+        # pass None so the rule treats the scale as 1 in both forward and backward.
+        try:
+            weight: Optional[torch.Tensor] = cast(torch.Tensor, self.weight)
+        except AttributeError:
+            weight = None
         bias = getattr(component, "bias", None) if not self.uses_rms_norm else None
         offset = bool(getattr(self.config, "rmsnorm_uses_offset", False))
         result: torch.Tensor = _NativeLNRuleForward.apply(

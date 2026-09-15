@@ -14,6 +14,7 @@ active.
 import pytest
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRuleConflictError,
@@ -66,6 +67,18 @@ class _TinyGemmaRMSNorm(nn.Module):
         variance = x.pow(2).mean(-1, keepdim=True)
         x_normed = x * torch.rsqrt(variance + self.variance_epsilon)
         return x_normed * (1.0 + self.weight)
+
+
+class _TinyOlmoLayerNorm(nn.Module):
+    """Param-free centered LayerNorm mirroring OLMo's OlmoLayerNorm: no weight, no bias."""
+
+    def __init__(self, d: int, eps: float = 1e-5):
+        super().__init__()
+        self.normalized_shape = (d,)
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.layer_norm(x, self.normalized_shape, None, None, self.eps)
 
 
 def _layernorm(d: int) -> nn.LayerNorm:
@@ -292,6 +305,54 @@ class TestRuleInactiveRegression:
             assert coverage.skipped == ("ln1",)
             active = bridge(x)
         assert torch.equal(active, baseline)
+
+
+class TestMissingWeightTreatedAsIdentity:
+    """A native-autograd bridge over a parameter-free norm (OLMo's OlmoLayerNorm has
+    no ``weight``) reports the LN-rule installed, so its rule-active forward and
+    backward must treat the missing weight as a unit scale instead of dereferencing
+    ``self.weight`` and raising AttributeError."""
+
+    def _make_param_free_bridge(self, d: int = 16) -> NormalizationBridge:
+        bridge = NormalizationBridge(
+            name="ln1",
+            config=_Cfg(uses_rms_norm=False),
+            use_native_layernorm_autograd=True,
+        )
+        bridge.set_original_component(_TinyOlmoLayerNorm(d))
+        return bridge
+
+    def test_active_forward_matches_native_forward(self):
+        bridge = self._make_param_free_bridge()
+        block = _Block(bridge)
+        x = torch.randn(2, 5, 16)
+        baseline = bridge.original_component(x)
+        with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
+            assert coverage.installed == ("ln1",)
+            active = bridge(x)
+        assert torch.equal(active, baseline)
+
+    def test_vjp_matches_detached_denom_oracle_with_unit_weight(self):
+        bridge = self._make_param_free_bridge()
+        block = _Block(bridge)
+        d = 16
+        x = torch.randn(2, 5, d, requires_grad=True)
+        with use_relevance_rules(block, RelevanceRules(normalization=True)):
+            y = bridge(x)
+            y.sum().backward()
+        grad_rule = x.grad.clone()
+
+        x_oracle = x.detach().clone().requires_grad_(True)
+        y_oracle = _denom_detached_oracle(
+            x_oracle,
+            torch.ones(d),
+            None,
+            uses_rms=False,
+            offset=False,
+            eps=1e-5,
+        )
+        y_oracle.sum().backward()
+        torch.testing.assert_close(grad_rule, x_oracle.grad)
 
 
 class TestFailClosedHookPrecedence:
