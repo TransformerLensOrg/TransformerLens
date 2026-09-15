@@ -17,6 +17,11 @@ from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeResult,
     SparseProbeSweep,
     _binary_metrics,
+    _feature_scores,
+    _fit_logistic,
+    _selected_data,
+    _stratified_split,
+    _validate_inputs,
     fit_sparse_probe,
     sweep_sparse_probe,
 )
@@ -193,6 +198,47 @@ def test_lbfgs_matches_independent_newton_solution_and_gradient():
     assert result.intercept.item() == pytest.approx(expected[-1].item(), abs=2e-6)
     assert float(gradient.abs().max()) == pytest.approx(result.gradient_inf_norm, abs=1e-12)
     assert result.gradient_inf_norm <= 1e-7
+
+
+def test_metrics_match_an_independent_heldout_recompute_at_the_logit_zero_threshold():
+    generator = torch.Generator().manual_seed(41)
+    n_examples, n_features = 300, 8
+    labels = torch.arange(n_examples) % 2
+    features = torch.randn(n_examples, n_features, generator=generator)
+    # Moderate separation so the held-out confusion matrix contains both false positives and
+    # false negatives in unequal counts. That makes precision and recall differ, so an
+    # independent recompute can catch a precision/recall swap.
+    features[:, 2] += 1.1 * (2 * labels - 1)
+    permutation = torch.randperm(n_examples, generator=generator)
+    features, labels = features[permutation], labels[permutation]
+
+    result = fit_sparse_probe(features, labels, k=3, seed=7)
+
+    test_features = features[result.test_indices][:, result.selected_features].double()
+    logits = test_features @ result.coefficients + result.intercept
+    predictions = logits >= 0
+    positive = labels[result.test_indices].bool()
+    true_positives = int((predictions & positive).sum())
+    true_negatives = int((~predictions & ~positive).sum())
+    false_positives = int((predictions & ~positive).sum())
+    false_negatives = int((~predictions & positive).sum())
+    count = positive.numel()
+
+    metrics = result.metrics
+    assert (
+        metrics.true_positives,
+        metrics.true_negatives,
+        metrics.false_positives,
+        metrics.false_negatives,
+    ) == (true_positives, true_negatives, false_positives, false_negatives)
+    assert metrics.accuracy == (true_positives + true_negatives) / count
+    assert metrics.precision == true_positives / (true_positives + false_positives)
+    assert metrics.recall == true_positives / (true_positives + false_negatives)
+    assert metrics.f1 == 2 * true_positives / (
+        2 * true_positives + false_positives + false_negatives
+    )
+    assert false_positives != false_negatives
+    assert metrics.precision != metrics.recall
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
@@ -471,6 +517,68 @@ def test_larger_k_improves_distributed_decodability_without_assigning_a_represen
 
     assert sweep.results[1].metrics.f1 > sweep.results[0].metrics.f1 + 0.08
     assert not hasattr(sweep, "representation_label")
+
+
+def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
+    features, labels = _planted_data(n_examples=160, n_features=10)
+    seed = 31
+
+    sweep = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=0, n_label_shuffles=1, seed=seed
+    )
+
+    # Replay the sweep's RNG stream to recover the exact shuffled training labels and the
+    # support the single control fit used. Shuffling permutes only the training labels, so
+    # the fit must still be scored against the untouched held-out labels; rescoring the same
+    # fit against labels[test_indices] must reproduce the reported control metrics.
+    validated = _validate_inputs(
+        features,
+        labels,
+        k=2,
+        test_fraction=0.3,
+        positive_label=1,
+        preprocess="none",
+        class_weight="balanced",
+        l2_strength=1e-2,
+        seed=seed,
+        max_iter=200,
+        gradient_tolerance=1e-7,
+    )
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    train_indices, test_indices = _stratified_split(
+        validated.canonical_labels, validated.test_fraction, generator
+    )
+    train_labels = validated.canonical_labels[train_indices]
+    permutation = torch.randperm(train_labels.numel(), generator=generator)
+    shuffled_labels = train_labels[permutation]
+    shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
+    support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:2]
+
+    control = sweep.label_shuffle_controls[0]
+    assert torch.equal(support, control.supports[0])
+
+    train_features, test_features, *_ = _selected_data(
+        validated.features, support, train_indices, test_indices, validated.preprocess
+    )
+    fit = _fit_logistic(
+        train_features,
+        shuffled_labels,
+        class_weight=validated.class_weight,
+        l2_strength=validated.l2_strength,
+        max_iter=validated.max_iter,
+        gradient_tolerance=validated.gradient_tolerance,
+    )
+    true_test_labels = validated.canonical_labels[test_indices]
+    logits = test_features @ fit.coefficients + fit.intercept
+    rescored = _binary_metrics(logits, true_test_labels)
+
+    assert float(control.accuracy[0]) == rescored.accuracy
+    assert float(control.precision[0]) == rescored.precision
+    assert float(control.recall[0]) == rescored.recall
+    assert float(control.f1[0]) == rescored.f1
+    # Scoring the same fit against a different held-out label alignment would move the
+    # metrics, so the exact match above pins the scoring labels to the true held-out labels.
+    assert _binary_metrics(logits, ~true_test_labels).accuracy != rescored.accuracy
 
 
 @pytest.mark.parametrize(
