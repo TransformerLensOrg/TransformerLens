@@ -6,11 +6,13 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from transformer_lens.model_bridge._relevance_rules import half_rule, identity_rule
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
 from transformer_lens.model_bridge.generalized_components.gated_mlp import (
     GatedMLPBridge,
+    identity_rule_supports_activation,
     resolve_activation_fn,
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
@@ -166,6 +168,29 @@ class JointGateUpMLPBridge(GatedMLPBridge):
             return self._activation_fn
         return resolve_activation_fn(self.config)
 
+    def _activation_rule_installable(self) -> bool:
+        """The reconstructed forward calls the activation itself, so only the config
+        activation form gates the Identity-rule; the opaque-path requirement of a
+        wrappable activation callable does not apply here."""
+        return identity_rule_supports_activation(self.config)
+
+    # The reconstructed forward applies both rules inline off the boolean flags set
+    # by the base ``_enable_relevance_rule``/``_disable_relevance_rule``. The
+    # opaque-path installers must stay disabled: the gate hook lives on the shared
+    # down projection this forward also calls, so leaving it active would halve the
+    # gate*up gradient a second time on top of the inline ``half_rule``.
+    def _install_activation_rule(self) -> None:
+        return None
+
+    def _teardown_activation_rule(self) -> None:
+        return None
+
+    def _install_gate_rule(self) -> None:
+        return None
+
+    def _teardown_gate_rule(self) -> None:
+        return None
+
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Reconstructed gated MLP forward with individual hook access."""
         # Delegate to GatedMLPBridge's processed-weights path only when ALL
@@ -184,7 +209,16 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         up_output = getattr(self, "in")(hidden_states)
 
         act_fn = self._resolve_activation_fn()
-        gated = act_fn(gate_output) * up_output
+        activated = (
+            identity_rule(gate_output, act_fn)
+            if self._relevance_rule_activation_active
+            else act_fn(gate_output)
+        )
+        gated = (
+            half_rule(activated, up_output)
+            if self._relevance_rule_gate_active
+            else activated * up_output
+        )
 
         if hasattr(self, "out") and self.out is not None:
             output = self.out(gated)
