@@ -140,8 +140,8 @@ def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     if kind == "audio":
         return {1, 8}, {1, 8}
     if kind == "vision":
-        # Vision encoders have no tokenizer and no text tower: Phases 2/3 need
-        # HookedTransformer, Phase 4 needs text generation, and Phase 7 covers
+        # Vision encoders have no tokenizer and no text tower: Phases 2/3 compare
+        # text logits/loss, Phase 4 needs text generation, and Phase 7 covers
         # vision+text multimodal models, not these. Phase 1 (HF parity) plus
         # Phase 9 (pixel forward/cache/stability) are the whole story.
         return {1, 9}, {1, 9}

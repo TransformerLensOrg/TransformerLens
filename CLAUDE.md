@@ -22,7 +22,7 @@
 ## Pointers
 
 - [AGENTS.md §10](AGENTS.md#10-hard-rules) — hard rules; load-bearing.
-- [AGENTS.md §2](AGENTS.md#2-two-systems-live-in-this-repo) — HT → Bridge mirroring; most common PR-review pushback.
+- [AGENTS.md §2](AGENTS.md#2-two-systems-live-in-this-repo) — the single model system (the `Hooked*` model classes were removed in 4.0).
 - [tests/QUARANTINES.md](tests/QUARANTINES.md) — check before debugging any failing test. The macOS-arm64 KV-cache skip is the most common time-sink.
 - [debugging_numerical_divergence.md](docs/source/content/debugging_numerical_divergence.md) — Bridge-vs-HF logit drift bisection.
 - [compatibility_mode.md](docs/source/content/compatibility_mode.md) — `bridge.enable_compatibility_mode()` contract; read before adding tests that use it.

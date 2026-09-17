@@ -4,7 +4,7 @@ title: Model Tables
 # Model Tables
 
 ```{warning}
-`HookedTransformer` was removed in TransformerLens 4.0. New code should use [`TransformerBridge`](migrating_to_v3.md), which reproduces HookedTransformer numerics via `enable_compatibility_mode()`. The HookedTransformer model table below is a frozen snapshot kept for users still on the 2.x / 3.x branches. See the [migration guide](migrating_to_v3.md) for conversion recipes.
+`HookedTransformer` was removed in TransformerLens 4.0. New code should use [`TransformerBridge`](migrating_to_v4.md), which reproduces HookedTransformer numerics via `enable_compatibility_mode()`. The HookedTransformer model table below is a frozen snapshot kept for users still on the 2.x / 3.x branches. See the [migration guide](migrating_to_v3.md) for conversion recipes.
 ```
 
 TransformerLens documents two model tables:

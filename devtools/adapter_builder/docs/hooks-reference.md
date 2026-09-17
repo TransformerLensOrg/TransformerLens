@@ -9,7 +9,6 @@ Every hook includes a `RUNTIME CONTEXT:` header reminding the reader that the sc
 | Hook | Event | Matcher | Can block? |
 |------|-------|---------|------------|
 | [timeline-capture.sh](../agents/hooks/timeline-capture.sh) | `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop`, `PreToolUse`, `PostToolUse` | (all) | No — logging only |
-| [guard-hooked-transformer.sh](../agents/hooks/guard-hooked-transformer.sh) | `PreToolUse` | `Edit\|Write\|MultiEdit\|NotebookEdit` | Yes |
 | [guard-review-rounds.sh](../agents/hooks/guard-review-rounds.sh) | `PreToolUse` | `Edit\|Write\|MultiEdit\|NotebookEdit` | Yes |
 | [guard-git.sh](../agents/hooks/guard-git.sh) | `PreToolUse` | `Bash` | Yes |
 | [guard-verify-models.sh](../agents/hooks/guard-verify-models.sh) | `PreToolUse` | `Bash` | Yes |
@@ -24,19 +23,6 @@ Multiple hooks may register on the same matcher; they run in order and any one b
 Appends a structured JSON line to `.adapter-workspace/timeline.jsonl` on every tool call, subagent spawn, and session event. Captures timestamp, event name, agent id/type, tool name, and `tool_input` (including bash commands). The `logs` and `status` subcommands format this file via [`scripts/format-timeline.py`](../scripts/format-timeline.py).
 
 Never blocks — always emits `{"continue": true}`. If `jq` or the timeline file isn't available, the append silently fails and the tool call still proceeds.
-
-## guard-hooked-transformer.sh
-
-Blocks edits to deprecated HookedTransformer files. Agents may read them for reference but must not modify them — their work must only touch the TransformerBridge system.
-
-**Blocks writes** whose `tool_input.file_path` contains any of:
-
-- `transformer_lens/HookedTransformer.py`
-- `transformer_lens/loading_from_pretrained.py`
-- `transformer_lens/components/`
-- `transformer_lens/pretrained/weight_conversions/`
-
-On block, emits `{"continue": false, "decision": "block", "reason": …}` with a message explaining the adapter should only touch `transformer_lens/model_bridge/` and the factory.
 
 ## guard-review-rounds.sh
 

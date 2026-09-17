@@ -28,7 +28,6 @@ agents/                        Agent definitions and orchestration
   overlord-request.sh          flock-based memory lock for heavy operations
   hooks/                       Claude Code hooks for auto-enforcement
     timeline-capture.sh          All events — structured JSONL logging
-    guard-hooked-transformer.sh  PreToolUse — blocks edits to deprecated files
     guard-git.sh                 PreToolUse — blocks `git commit`, `git push`, `gh pr create`
     guard-review-rounds.sh       PreToolUse — blocks review files past round 3
     guard-verify-models.sh       PreToolUse — blocks verify_models on >7B or unregistered models
@@ -89,7 +88,6 @@ Uses Claude Code experimental agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
 **Auto-enforced by Claude Code hooks** (in `.claude/settings.json` per worktree):
 
 - Timeline capture: every tool call + session event → `.adapter-workspace/timeline.jsonl`
-- HookedTransformer guardrail: edits to deprecated files are blocked at the framework level
 - Lint gate: session can't end until `mypy` + `make check-format` pass
 - Completion notifier: Slack fires automatically on `verification_passed: true`
 

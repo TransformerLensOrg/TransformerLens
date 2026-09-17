@@ -247,7 +247,6 @@ mkdir -p "$WORKTREE_DIR/.claude"
 _hook_cmd() { echo "'$SCRIPT_DIR/hooks/$1'"; }
 
 TIMELINE_HOOK=$(_hook_cmd timeline-capture.sh)
-GUARD_HT_HOOK=$(_hook_cmd guard-hooked-transformer.sh)
 GUARD_GIT_HOOK=$(_hook_cmd guard-git.sh)
 GUARD_REVIEW_ROUNDS_HOOK=$(_hook_cmd guard-review-rounds.sh)
 GUARD_VERIFY_MODELS_HOOK=$(_hook_cmd guard-verify-models.sh)
@@ -259,7 +258,7 @@ _h() { jq -n --arg cmd "$1" '{"type":"command","command":$cmd}'; }
 jq -n \
   --argjson session_start  "[{\"hooks\":[  $(_h "$TIMELINE_HOOK")  ]}]" \
   --argjson session_end    "[{\"hooks\":[  $(_h "$TIMELINE_HOOK"), $(_h "$NOTIFY_HOOK")  ]}]" \
-  --argjson pre_edit       "{\"matcher\":\"Edit|Write|MultiEdit|NotebookEdit\",\"hooks\":[ $(_h "$GUARD_HT_HOOK"), $(_h "$GUARD_REVIEW_ROUNDS_HOOK") ]}" \
+  --argjson pre_edit       "{\"matcher\":\"Edit|Write|MultiEdit|NotebookEdit\",\"hooks\":[ $(_h "$GUARD_REVIEW_ROUNDS_HOOK") ]}" \
   --argjson pre_bash       "{\"matcher\":\"Bash\",\"hooks\":[ $(_h "$GUARD_GIT_HOOK"), $(_h "$GUARD_VERIFY_MODELS_HOOK") ]}" \
   --argjson pre_all        "{\"matcher\":\"\",\"hooks\":[ $(_h "$TIMELINE_HOOK") ]}" \
   --argjson post_all       "[{\"matcher\":\"\",\"hooks\":[ $(_h "$TIMELINE_HOOK") ]}]" \

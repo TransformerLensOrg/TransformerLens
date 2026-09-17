@@ -75,7 +75,6 @@ Critical rules are enforced by Claude Code hooks, not by asking agents to rememb
 
 | Hook | Enforces |
 | ---- | -------- |
-| **guard-hooked-transformer** | Blocks writes to deprecated `HookedTransformer.py`, `loading_from_pretrained.py`, `components/`, `pretrained/weight_conversions/` |
 | **guard-git** | Blocks `git commit`, `git push`, `gh pr create`, `gh release create` — agents cannot publish changes |
 | **guard-review-rounds** | Blocks review files past round 3 per checkpoint, forcing escalation to the user when loops stall |
 | **guard-verify-models** | Blocks `verify_models --model …` invocations targeting unregistered models, anything above `MAX_VERIFY_PARAMS` (default 7.5B), or `--no-hf-reference` (structural-only runs are not verification) |
@@ -123,7 +122,6 @@ Use `--retry` to explicitly resume a crashed session. It's safe for planning and
 │   ├── overlord-request.sh       # flock-based memory lock
 │   └── hooks/                    # Runtime-enforcement hooks (see docs/hooks-reference.md)
 │       ├── timeline-capture.sh
-│       ├── guard-hooked-transformer.sh
 │       ├── guard-git.sh
 │       ├── guard-review-rounds.sh
 │       ├── guard-verify-models.sh

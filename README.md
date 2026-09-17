@@ -188,8 +188,8 @@ Verification lives in the integration tests at
 `verify_models` benchmark suite now covers the SSM and hybrid families. Mamba-1,
 Mamba-2, gated-delta-net (Qwen3.5 / Qwen3-Next), NemotronH, and GraniteMoeHybrid
 all declare `applicable_phases = [1, 2, 3, 4]`, so their forward parity (P1, vs raw
-HF), hook/cache coverage (P2/P3, which skip the HookedTransformer comparison SSMs
-lack), and generation quality (P4) are benchmarked like any transformer.
+HF), hook/cache self-checks and HF equivalence (P2/P3), and generation quality (P4)
+are benchmarked like any transformer.
 
 ## Credits
 

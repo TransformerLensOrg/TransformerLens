@@ -382,7 +382,6 @@ mkdir -p "$WORKTREE_DIR/.claude"
 _hook_cmd() { echo "'$SCRIPT_DIR/hooks/$1'"; }
 
 TIMELINE_HOOK=$(_hook_cmd timeline-capture.sh)
-GUARD_HT_HOOK=$(_hook_cmd guard-hooked-transformer.sh)
 GUARD_GIT_HOOK=$(_hook_cmd guard-git.sh)
 GUARD_REVIEW_ROUNDS_HOOK=$(_hook_cmd guard-review-rounds.sh)
 GUARD_VERIFY_MODELS_HOOK=$(_hook_cmd guard-verify-models.sh)
@@ -400,7 +399,7 @@ jq -n \
   --argjson session_end    "[{\"hooks\":[  $(_h "$TIMELINE_HOOK"), $(_h "$NOTIFY_HOOK")  ]}]" \
   --argjson subagent_start "[{\"hooks\":[  $(_h "$TIMELINE_HOOK")  ]}]" \
   --argjson subagent_stop  "[{\"hooks\":[  $(_h "$TIMELINE_HOOK"), $(_h "$GATE_REVIEWER_WRITES_HOOK")  ]}]" \
-  --argjson pre_edit       "{\"matcher\":\"Edit|Write|MultiEdit|NotebookEdit\",\"hooks\":[ $(_h "$GUARD_HT_HOOK"), $(_h "$GUARD_REVIEW_ROUNDS_HOOK") ]}" \
+  --argjson pre_edit       "{\"matcher\":\"Edit|Write|MultiEdit|NotebookEdit\",\"hooks\":[ $(_h "$GUARD_REVIEW_ROUNDS_HOOK") ]}" \
   --argjson pre_bash       "{\"matcher\":\"Bash\",\"hooks\":[ $(_h "$GUARD_GIT_HOOK"), $(_h "$GUARD_VERIFY_MODELS_HOOK") ]}" \
   --argjson pre_all        "{\"matcher\":\"\",\"hooks\":[ $(_h "$TIMELINE_HOOK") ]}" \
   --argjson post_all       "[{\"matcher\":\"\",\"hooks\":[ $(_h "$TIMELINE_HOOK") ]}]" \
@@ -414,7 +413,7 @@ jq -n \
     PostToolUse: $post_all,
     Stop: $stop
   }}' > "$SETTINGS_FILE"
-ok "Hooks installed: timeline, HookedTransformer guardrail, git guardrail, review-rounds limit, verify-models gate, reviewer-writes-file gate, lint gate, completion notifier"
+ok "Hooks installed: timeline, git guardrail, review-rounds limit, verify-models gate, reviewer-writes-file gate, lint gate, completion notifier"
 
 # Pre-seed workspace trust for the worktree. Without this, a first launch in
 # a fresh worktree hangs at Claude Code's "Do you trust this folder?" prompt

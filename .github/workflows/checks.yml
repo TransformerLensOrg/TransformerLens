@@ -191,7 +191,7 @@ jobs:
           --ignore=tests/unit/model_bridge/test_component_inspection.py
           --ignore=tests/unit/model_bridge/test_benchmark_gated_hooks_fire.py
           --ignore=tests/unit/model_bridge/test_bridge_generate_kv_cache.py
-          --ignore=tests/unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py
+          --ignore=tests/unit/model_bridge/test_bridge_cross_run_qkv_patching.py
           --ignore=tests/unit/model_bridge/compatibility/
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

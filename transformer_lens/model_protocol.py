@@ -1,14 +1,12 @@
-"""Structural type shared by :class:`HookedTransformer` and :class:`TransformerBridge`.
+"""Structural model types for the model-agnostic interpretability utilities.
 
 The interpretability utilities (``patching``, ``head_detector``, ``ActivationCache``)
-are model-agnostic at runtime — they only need ``cfg`` plus the ``run_with_*`` /
-tokenization surface and a few weight-processing helpers. Historically their
-signatures said ``HookedTransformer``, which made a ``TransformerBridge`` fail to
-type-check even though it works. Typing the model parameter as this Protocol accepts
-either (and any future structural match, e.g. ``RemoteBridge``).
+only need ``cfg`` plus the ``run_with_*`` / tokenization surface and a few
+weight-processing helpers. Typing their model parameter as this Protocol accepts
+``TransformerBridge`` and any other structural match (e.g. ``RemoteBridge``).
 
-Members are typed loosely on purpose: this is a compatibility shim over two concrete
-classes whose method signatures differ in detail but agree in use.
+Members are typed loosely on purpose: implementations differ in signature detail
+but agree in use.
 """
 from __future__ import annotations
 
@@ -19,14 +17,14 @@ if TYPE_CHECKING:
 
 
 # runtime_checkable so the interp utilities' beartype-decorated signatures can
-# isinstance-check the parameter at runtime (presence-only; both models qualify).
+# isinstance-check the parameter at runtime (presence-only).
 @runtime_checkable
 class TransformerLensModel(Protocol):
-    """Minimal structural interface common to HookedTransformer and TransformerBridge."""
+    """Minimal structural interface the interpretability utilities rely on."""
 
     # Read-only property (not a bare attribute) so it is covariant: a concrete model
-    # whose cfg is a TransformerLensConfig *subclass* (HookedTransformerConfig /
-    # TransformerBridgeConfig) still conforms. A mutable attribute would be invariant.
+    # whose cfg is a TransformerLensConfig *subclass* (e.g. TransformerBridgeConfig)
+    # still conforms. A mutable attribute would be invariant.
     @property
     def cfg(self) -> "TransformerLensConfig":
         ...
@@ -69,8 +67,8 @@ class TrainableTransformerLensModel(Protocol):
 @runtime_checkable
 class TransformerLensModelWithWeights(TransformerLensModel, Protocol):
     """Adds the weight-processing surface that ``ActivationCache``'s advanced helpers
-    (LayerNorm folding, residual-direction projection) reach for. Both concrete models
-    expose these; the bridge builds them from its adapter."""
+    (LayerNorm folding, residual-direction projection) reach for. The bridge builds
+    them from its adapter."""
 
     @property
     def blocks(self) -> Any:

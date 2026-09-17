@@ -34,8 +34,7 @@ content/gallery
 :caption: News
 
 content/news/release-4.0
-content/news/release-3.0
-content/news/release-2.0
+content/news/past_releases
 ```
 
 ```{toctree}

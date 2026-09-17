@@ -1636,7 +1636,7 @@ class ProcessWeights:
         """Apply all weight processing transformations in the correct order.
 
         This is a convenience function that applies all the weight processing steps
-        in the same order as HookedTransformer.load_and_process_state_dict().
+        in the same order as the legacy HookedTransformer load path.
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of the model.

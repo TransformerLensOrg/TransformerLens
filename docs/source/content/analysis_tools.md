@@ -7,7 +7,7 @@ even when they highlight the same attention head or token.
 This guide covers the high-level tools in `transformer_lens.tools.analysis`. For
 capturing activations or installing your own interventions, start with the
 [hook system](hook_system.md). New experiments should use `TransformerBridge`; see
-the [migration guide](migrating_to_v3.md) for existing `HookedTransformer` code.
+the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` code.
 
 ## Choose by research question
 

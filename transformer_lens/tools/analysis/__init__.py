@@ -6,10 +6,10 @@ new analyses may target the ``TransformerBridge`` API exclusively.
 
 Tools:
     - attribution_patching: Attribution patching (gradient-linearized activation
-      patching) over residual-stream nodes — typed computational graph, a
-      names-filtered manual-backward gradient cache, and signed node scores. Edge
-      scoring (EAP), integrated gradients (EAP-IG), and faithfulness land in
-      follow-on PRs.
+      patching) over residual-stream nodes and edges: typed computational graph,
+      a names-filtered manual-backward gradient cache, and signed node and edge
+      scores (EAP). Integrated gradients (EAP-IG) and ablate-outside faithfulness
+      are not implemented yet.
     - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
       space with explicit raw-gradient sign semantics.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,

@@ -26,7 +26,6 @@ accessible for inspection.
 - `docs/memory-lock.md` — lock protocol (read before Step 3)
 
 ## Constraints (hook-enforced)
-- HookedTransformer is read-only (hook blocks edits)
 - No `git commit`/`push`/`gh pr` (hook blocks)
 - `verify_models` blocked on >7.5B or unregistered models (hook blocks)
 - All output → files in `.adapter-workspace/`, not terminal
