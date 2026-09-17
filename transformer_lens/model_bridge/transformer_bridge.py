@@ -234,10 +234,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def original_model(self) -> nn.Module:
         """The wrapped ``nn.Module``. Raises :class:`AttributeError` for
         non-torch drivers (vLLM, Inspect) that don't expose a local module."""
-        underlying = getattr(self._driver, "underlying_model", None)
+        driver = getattr(self, "_driver", None)
+        if driver is None:
+            # Bridges assembled without __init__ (object.__new__ scaffolds) keep the
+            # module in the __dict__ mirror the setter maintains.
+            model = self.__dict__.get("original_model")
+            if model is None:
+                raise AttributeError(f"'{type(self).__name__}' has no driver and no original_model")
+            return model
+        underlying = getattr(driver, "underlying_model", None)
         if underlying is None:
             raise AttributeError(
-                f"{type(self._driver).__name__} does not expose an nn.Module — "
+                f"{type(driver).__name__} does not expose an nn.Module — "
                 "non-torch drivers (vLLM, Inspect) operate without a local module."
             )
         return underlying
@@ -247,7 +255,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """Used by weight-processing paths that move the model across devices."""
         self.__dict__["original_model"] = value
         # Sync via the driver's public API; non-torch drivers don't implement it.
-        setter = getattr(self._driver, "set_underlying_model", None)
+        setter = getattr(getattr(self, "_driver", None), "set_underlying_model", None)
         if callable(setter):
             setter(value)
 
