@@ -3,6 +3,7 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+
 import inspect
 import logging
 import re
@@ -451,6 +452,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             int: Parameter count of the uninstrumented wrapped model.
         """
         return self._n_params_total
+
+    def _has_registered_blocks(self) -> bool:
+        """Whether a ``blocks`` stack is registered as a submodule on this bridge.
+
+        Checks ``_modules`` directly rather than ``hasattr``: ``__getattr__`` falls
+        through to the wrapped HF model, so ``hasattr(self, "blocks")`` can be True
+        for a model that merely exposes its own ``.blocks`` attribute.
+        """
+        modules = self.__dict__.get("_modules") or {}
+        return "blocks" in modules
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -2128,25 +2139,20 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
 
+        # change this to have an allowlist
+
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None:
-            if (
-                hasattr(self, "L_blocks")
-                or hasattr(self, "H_blocks")
-                or hasattr(self, "encoder_blocks")
-                or hasattr(self, "decoder_blocks")
-            ):
+            if not self._has_registered_blocks():
                 raise NotImplementedError(
-                    "stop_at_layer is not supported on non-standard block list "
-                    "names (L_blocks, H_blocks, encoder_blocks, decoder_blocks). "
-                    "The bridge only supports stop_at_layer on 'blocks'."
+                    "stop_at_layer requires a 'blocks' stack; this architecture "
+                    "does not register one."
                 )
-            if hasattr(self, "blocks"):
-                effective_stop_at_layer = (
-                    len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
-                )
-                for block in self.blocks:
-                    block._stop_at_layer_idx = effective_stop_at_layer
+            effective_stop_at_layer = (
+                len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
+            )
+            for block in self.blocks:
+                block._stop_at_layer_idx = effective_stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -2441,8 +2447,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "start_at_layer is only supported on the standard 'blocks' stack, "
                     f"not {alt!r}."
                 )
-        if not hasattr(self, "blocks"):
+
+        # guard for the block stack
+        if not self._has_registered_blocks():
             raise NotImplementedError("start_at_layer requires a 'blocks' stack.")
+
         if not (isinstance(input, torch.Tensor) and input.is_floating_point()):
             raise ValueError(
                 "start_at_layer requires a residual-stream tensor [batch, pos, d_model]; "
