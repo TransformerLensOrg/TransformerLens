@@ -24,7 +24,6 @@ research even if they produce correct outputs.
 
 ## Constraints (hook-enforced)
 
-- HookedTransformer changes → flag as CRITICAL
 - No git commits/pushes
 - Review file must exist on disk before returning decision (hook voids file-less results)
 

@@ -120,7 +120,7 @@ Never edit manually.
 
 SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2 runs bridge self-checks (hooks, cache, gradients); P3 checks processed-weight equivalence against the Phase-1 HF reference when available.
 
-**Non-text modalities.** `classify_architecture` routes audio architectures to `{1, 8}` and vision architectures (ViT/DeiT) to `{1, 9}` — vision has no tokenizer for P4, and neither modality has a HookedTransformer counterpart for P2/P3. Phases 1/8/9 build their input with `build_modality_input()` ([`benchmarks/utils.py`](../../benchmarks/utils.py)), which shapes it from the HF config: `[batch, max_length, num_mel_bins]` for spectrogram encoders, `[batch, samples]` for waveform encoders, `[batch, channels, image_size, image_size]` for vision. Add a new non-text architecture there rather than hardcoding a shape at the call site.
+**Non-text modalities.** `classify_architecture` routes audio architectures to `{1, 8}` and vision architectures (ViT/DeiT) to `{1, 9}` — vision has no tokenizer for P4, and neither modality produces the text logits/loss that P2/P3 compare. Phases 1/8/9 build their input with `build_modality_input()` ([`benchmarks/utils.py`](../../benchmarks/utils.py)), which shapes it from the HF config: `[batch, max_length, num_mel_bins]` for spectrogram encoders, `[batch, samples]` for waveform encoders, `[batch, channels, image_size, image_size]` for vision. Add a new non-text architecture there rather than hardcoding a shape at the call site.
 
 ### Phase-score thresholds
 

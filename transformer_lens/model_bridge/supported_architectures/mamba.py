@@ -23,8 +23,8 @@ class MambaArchitectureAdapter(ArchitectureAdapter):
     ``_HF_PASSTHROUGH_ATTRS`` in sources/_bridge_builder.py.
     """
 
-    # White-box forward: P1 is exact vs raw HF (mixer delegates to HF); P2/P3 skip
-    # without a HookedTransformer; P4 is generation.
+    # White-box forward: P1 is exact vs raw HF (mixer delegates to HF); P2/P3 run
+    # hook/cache self-checks and HF equivalence; P4 is generation.
     applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:

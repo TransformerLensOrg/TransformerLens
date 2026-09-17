@@ -25,7 +25,6 @@ research even if they produce correct outputs.
 - `docs/artifact-templates.md` — templates for review files and completion report
 
 ## Constraints (hook-enforced)
-- HookedTransformer changes → flag as CRITICAL
 - No git commits/pushes
 - Review files past round 3 are blocked (a hook enforces the iteration limit)
 

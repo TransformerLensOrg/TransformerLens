@@ -83,14 +83,14 @@ An adapter author for a new post-norm or MLA-style architecture must handle thes
 
 ## The four-quadrant test matrix
 
-The integration conftest at [`tests/integration/model_bridge/conftest.py`](../../../tests/integration/model_bridge/conftest.py) provides four bridge variants for every test model:
+The shared conftest at [`tests/conftest.py`](../../../tests/conftest.py) provides three bridge variants plus frozen reference goldens:
 
 | Variant | `compatibility_mode` | `no_processing` | Tests… |
 |---|---|---|---|
 | `gpt2_bridge` | off | n/a | HF-faithful numerics |
 | `gpt2_bridge_compat` | on | `False` | HT-equivalent numerics |
 | `gpt2_bridge_compat_no_processing` | on | `True` | Hook aliases without weight processing — used to bisect numerical bugs |
-| (HT side) `gpt2_hooked_processed`, `gpt2_hooked_unprocessed` | n/a | n/a | Reference HookedTransformer with/without weight processing |
+| (reference) `gpt2_goldens_processed`, `gpt2_goldens_unprocessed` | n/a | n/a | Frozen HookedTransformer outputs with/without weight processing |
 
 New integration tests should use the variant that matches the property they're testing. Tests of HF parity → `gpt2_bridge`. Tests of HT-API behaviour → `gpt2_bridge_compat`. Tests of hook semantics regardless of weights → `gpt2_bridge_compat_no_processing`.
 

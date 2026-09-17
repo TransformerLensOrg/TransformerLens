@@ -1,6 +1,6 @@
 """Vision encoders must route to the {1, 9} verification set.
 
-Vision architectures have no tokenizer and no HookedTransformer counterpart, so the
+Vision architectures have no tokenizer or text tower, so the
 default text phase set ({1,2,3,4}) cannot run against them. They previously opted out
 of verification entirely via ``applicable_phases = []``, which made them unverifiable
 rather than verified — Phase 1 (HF parity on pixel input) and Phase 9 (pixel

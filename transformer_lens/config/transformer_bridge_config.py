@@ -272,7 +272,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
             raise ValueError(f"architecture must be a string, got {type(self.architecture)}")
 
         # Resolve the initializer_range sentinel (-1.0 means "not set by the user").
-        # Mirrors HookedTransformerConfig.__post_init__ (hooked_transformer_config.py).
+        # Same rule the legacy HookedTransformerConfig applied.
         # Guarded with getattr: this method also runs once from the dataclass
         # parent's __init__, before self.initializer_range is assigned below.
         if getattr(self, "initializer_range", None) is not None:

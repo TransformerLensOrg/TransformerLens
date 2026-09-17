@@ -765,7 +765,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             adapter._fold_ln_requested = fold_ln  # type: ignore[union-attr]
             state_dict = adapter.preprocess_weights(state_dict)
 
-        # Use unified ProcessWeights.process_weights() like HookedTransformer does.
+        # Use the unified ProcessWeights.process_weights() pipeline.
         # Float32 upcasting for precision is handled centrally in process_weights().
         if verbose:
             print("  Processing weights (fold_ln, center_writing_weights, etc.)...")
@@ -4269,8 +4269,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
         """Toggle the ``hook_mlp_in`` HookPoint (the MLP-branch entry: pre-ln2, or
         the MLP input on post-norm blocks), matching legacy semantics.
-
-        See :py:meth:`HookedTransformer.set_use_hook_mlp_in`.
         """
         self.cfg._set_bridge_managed_hook_flag("use_hook_mlp_in", use_hook_mlp_in)
         if not hasattr(self, "blocks"):

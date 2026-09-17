@@ -179,12 +179,12 @@ The benchmarks use a tiered approach for comparison:
    - Direct comparison with original HF implementation
    - Ensures bridge maintains model fidelity
 
-2. **Second Priority**: Compare TransformerBridge → the raw HuggingFace model
-   - If HT version exists, compare processed outputs
-   - Ensures compatibility with TransformerLens ecosystem
+2. **Second Priority**: HF-anchored equivalence in both weight modes
+   - Phases 2 and 3 compare unprocessed and compatibility-mode outputs against the saved Phase 1 HF reference
+   - Ensures weight processing preserves model behavior
 
 3. **Third Priority**: TransformerBridge-only validation
-   - If model unavailable in HT, validate bridge independently
+   - Reference-free structural self-checks for hooks, cache, and gradients
    - Ensures basic functionality and structural correctness
 
 ## Benchmark Results

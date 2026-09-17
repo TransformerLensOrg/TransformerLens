@@ -3,8 +3,8 @@
 This module provides the main benchmark suite that compares TransformerBridge
 against reference implementations in an optimized multi-phase approach:
 Phase 1: HF + Bridge (unprocessed) - Compare against raw HuggingFace model
-Phase 2: Bridge (unprocessed) + HT (unprocessed) - Compare unprocessed models
-Phase 3: Bridge (processed) + HT (processed) - Full compatibility mode testing
+Phase 2: Bridge (unprocessed) - Runtime self-checks + HF logits/loss equivalence
+Phase 3: Bridge (processed) - Compatibility mode + HF logits/loss equivalence
 Phase 4: Text Quality - profile prompts scored by a pinned judge's perplexity ratio
 Phase 5: Granular Weight Processing Tests (optional, individual flags)
 Phase 6: Granular Weight Processing Tests (optional, combined flags)
@@ -1102,8 +1102,7 @@ def run_benchmark_suite(
     # ========================================================================
     current_phase[0] = 2
 
-    # OPTIMIZATION: Run generation benchmarks first (only bridge in memory)
-    # Then cleanup bridge before loading HT to reduce peak memory
+    # OPTIMIZATION: Run generation benchmarks first (only bridge in memory).
     if should_run_phase(2) and bridge_unprocessed:
         if verbose:
             print(f"\n{'='*80}")
@@ -1613,8 +1612,8 @@ def run_benchmark_suite(
             if verbose:
                 print("Running Phase 3 benchmarks...\n")
 
-            # Phase 3 runs in the requested dtype end-to-end.  Both bridge and HT
-            # operate in the same precision — no dtype restoration needed.
+            # Phase 3 runs in the requested dtype end-to-end, so no dtype
+            # restoration is needed.
             phase3_results = run_comparison_benchmarks(
                 bridge_model=bridge_processed,
                 test_text=test_text,

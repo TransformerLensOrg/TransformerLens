@@ -154,7 +154,7 @@ now bound solely by the surviving
 |---|---|---|
 | [`unit/factored_matrix/test_constructor.py`:54](unit/factored_matrix/test_constructor.py) | `skip` | FactoredMatrix constructor edge case |
 | [`unit/model_bridge/test_architecture_adapter.py`:453](unit/model_bridge/test_architecture_adapter.py) | `skip` | SoLU-style weight-processing paths (adapter under test is Gemma3, which has no `mlp.ln`) |
-| [`unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py`:138,142](unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py) | `skipif`/`xfail` | Bridge↔HT patching parity |
+| [`unit/model_bridge/test_bridge_cross_run_qkv_patching.py`:138,142](unit/model_bridge/test_bridge_cross_run_qkv_patching.py) | `skipif`/`xfail` | Bridge↔HT patching parity |
 | [`unit/model_bridge/test_hook_alias_resolution.py`:90](unit/model_bridge/test_hook_alias_resolution.py) | `xfail(strict=True)` per-arch | Hook-alias gaps |
 | [`unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py`:448,464,494,514,605,700,805,947,1133](unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py) | `skipif` ×9 | Qwen3_5 classes absent from installed transformers |
 | [`unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py`:397](unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py) | `skipif` | Qwen3NextForCausalLM absent from installed transformers |

@@ -48,8 +48,7 @@ logits, cache = model.run_with_cache(
 ```
 
 Pass `incl_bwd=True` to also cache gradients. This runs `backward()` on the output, so the
-run must return a scalar (`return_type="loss"`); gradients land under a `_grad` suffix.
-Works on both `HookedTransformer` and `TransformerBridge`:
+run must return a scalar (`return_type="loss"`); gradients land under a `_grad` suffix:
 
 ```python
 loss, cache = model.run_with_cache(

@@ -82,7 +82,7 @@ class JambaArchitectureAdapter(ArchitectureAdapter):
     ablated independently.
     """
 
-    # P1: exact passthrough vs raw HF; P2/P3 skip HT comparison; P4 generation.
+    # P1: exact passthrough vs raw HF; P2/P3 self-checks + HF equivalence; P4 generation.
     applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:

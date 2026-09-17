@@ -39,7 +39,7 @@ class TransformerLensKeyValueCache:
     ):
         # Determine device for each layer
         if hasattr(cfg, "n_devices"):
-            # HookedTransformer case: use our multi-GPU logic
+            # Configs that track n_devices (TransformerBridgeConfig): per-block placement
             device_for_layer = lambda i: get_device_for_block_index(i, cfg, device)
         else:
             # Fallback when no model is provided - use single device

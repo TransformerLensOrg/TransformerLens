@@ -102,8 +102,8 @@ def initialize_native_model(
         std = cfg.initializer_range if cfg.initializer_range > 0 else 0.8 / math.sqrt(cfg.d_model)
 
         # NOTE: this residual output scaling (1/sqrt(2*n_layers), applied only
-        # to output projections below) is NOT present in HookedTransformer's
-        # _init_weights_gpt2 (see transformer_lens/HookedTransformer.py).
+        # to output projections below) was NOT present in the legacy
+        # HookedTransformer._init_weights_gpt2 (removed in 4.0).
         # Intentional delta for NativeModel: kept because it follows the
         # original GPT-2 paper's residual-scaling convention and improves
         # training stability at init for deeper models. Flagged in issue #1568

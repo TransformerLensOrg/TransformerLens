@@ -137,14 +137,14 @@ Use `uv` rather than `pip` or `poetry` — commands run via `uv run <cmd>` or th
 
 ## Two systems live in this repo
 
-The library is mid-transition between two parallel paths:
+TransformerLens 4.0 has a single model system:
 
 | System | Status | Lives in | Numerics | Registry |
 |---|---|---|---|---|
-| `TransformerBridge` | v3 — default for new work | `transformer_lens/model_bridge/` | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent — see [Compatibility Mode](compatibility_mode.md) | `transformer_lens/tools/model_registry/data/supported_models.json` |
-| `HookedTransformer` | Legacy, maintenance mode, deprecated in 3.0 | `transformer_lens/HookedTransformer.py` + `transformer_lens/components/` | Folds LayerNorm + centres weights → does NOT match HF | `transformer_lens/supported_models.py` (**HT-only**) |
+| `TransformerBridge` | The only model system in 4.0 | `transformer_lens/model_bridge/` | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HookedTransformer-equivalent numerics — see [Compatibility Mode](compatibility_mode.md) | `transformer_lens/tools/model_registry/data/supported_models.json` |
+| `HookedTransformer` | Removed in 4.0 — see the [4.0 migration guide](migrating_to_v4.md) | *(deleted)* | — | — |
 
-Because the two systems are parallel implementations of the same surface, behavioural changes on one side usually need a matching change on the other. If you change a feature in `HookedTransformer` that has a counterpart in `TransformerBridge` (or vice versa), update both in the same PR — drift between them has historically been a steady source of bugs. The registries are *not* parallel, though: `supported_models.py` is HookedTransformer-only, while Bridge-only models live in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
+`HookedRootModule` and `HookPoint` remain the supported way to hook an arbitrary `nn.Module`. `transformer_lens/supported_models.py` is kept as the frozen legacy name/alias ledger; new models go in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
 
 ## PR conventions
 
@@ -225,13 +225,13 @@ You can reference other parts of the codebase using
 ```reStructuredText
 :mod:transformer_lens # Function or module
 
-:const:`transformer_lens.loading_from_pretrained.OFFICIAL_MODEL_NAMES`
+:const:`transformer_lens.supported_models.OFFICIAL_MODEL_NAMES`
 
-:class:`transformer_lens.HookedTransformer`
+:class:`transformer_lens.model_bridge.TransformerBridge`
 
-:meth:`transformer_lens.HookedTransformer.from_pretrained`
+:meth:`transformer_lens.model_bridge.TransformerBridge.boot_transformers`
 
-:attr:`transformer_lens.HookedTransformer.cfg`
+:attr:`transformer_lens.model_bridge.TransformerBridge.cfg`
 ```
 
 ##### Maths

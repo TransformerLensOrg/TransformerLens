@@ -102,7 +102,6 @@ class ActivationCache:
     Warning:
 
     :class:`ActivationCache` is designed to be used with
-    :class:`transformer_lens.HookedTransformer` or
     :class:`transformer_lens.model_bridge.TransformerBridge`. Advanced helpers expect the model to
     expose the TransformerLens weight-processing interface and generally expect a complete cache;
     some internal methods may break with other models or partial caches.
@@ -147,7 +146,7 @@ class ActivationCache:
     ):
         self.cache_dict = cache_dict
         # Advanced helpers (LN folding, residual-direction projection) need the
-        # weight-processing surface; both HookedTransformer and TransformerBridge expose it.
+        # weight-processing surface, which TransformerBridge exposes.
         self.model = cast("TransformerLensModelWithWeights", model)
         self.has_batch_dim = has_batch_dim
         self.has_embed = "hook_embed" in self.cache_dict
@@ -748,8 +747,8 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
 
-        Works for both HookedTransformer and TransformerBridge — bridge exposes
-        ``blocks[i].attn.W_O`` via its component-mapping compatibility shim.
+        TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
+        compatibility shim.
         """
         # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
         first_key = "blocks.0.attn.hook_result"

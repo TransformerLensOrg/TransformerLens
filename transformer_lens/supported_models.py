@@ -258,8 +258,8 @@ OFFICIAL_MODEL_NAMES: list[str] = [
 
 # Model Aliases:
 # Canonical data lives in the bridge model registry
-# (tools/model_registry/data/model_aliases.json); this re-export serves the
-# legacy HookedTransformer loaders until their removal at 4.0.
+# (tools/model_registry/data/model_aliases.json); re-exported here for the
+# frozen legacy ledger and get_official_model_name.
 MODEL_ALIASES: dict[str, list[str]] = load_model_aliases()
 """Model aliases for models on HuggingFace."""
 

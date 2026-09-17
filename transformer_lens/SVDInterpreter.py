@@ -25,12 +25,12 @@ class SVDInterpreter:
     def __init__(self, model: TransformerLensModel):
         self.model = model
         self.cfg = model.cfg
-        # Use tl_parameters() for TransformerBridge (returns TL-style dict)
-        # Fall back to named_parameters() for HookedTransformer
+        # Use tl_parameters() for TransformerBridge (returns TL-style dict); other
+        # nn.Module models with TL-style parameter names use named_parameters().
         if hasattr(model, "tl_parameters"):
             self.params = model.tl_parameters()
         else:
-            assert isinstance(model, torch.nn.Module)  # legacy fallback path
+            assert isinstance(model, torch.nn.Module)  # named_parameters() fallback
             self.params = {name: param for name, param in model.named_parameters()}
 
     def get_singular_vectors(

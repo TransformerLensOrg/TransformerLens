@@ -38,8 +38,8 @@ Two coordination modes exist: **agent-teams** (an orchestrator session;
 requires Claude Code Max) and **solo** (two independent sessions coordinated
 by a signal-routing daemon; works on any tier).
 
-Critical rules — no git writes, no edits to deprecated `HookedTransformer`
-paths, no oversized or structural-only verification runs, mandatory
+Critical rules — no git writes, no oversized or structural-only
+verification runs, mandatory
 mypy/format gates — are enforced by Claude Code hooks at the framework
 level, not just by prompt instructions.
 
