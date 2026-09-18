@@ -62,6 +62,31 @@ class TestLoaderResolution:
         assert not goldens.goldens_available()
         goldens.resolve_goldens_dir.cache_clear()
 
+    def test_hub_fetch_is_scoped(self, tmp_path, monkeypatch):
+        """The dataset holds every model at 36 GB total, so an unscoped fetch exceeds a
+        runner's disk to satisfy one ~800 MB cell: loads take their own cell, and
+        availability checks take only manifests."""
+        import huggingface_hub
+
+        cell = tmp_path / "org__tiny" / "no_processing"
+        cell.mkdir(parents=True)
+        (cell / "provenance.json").write_text("{}")
+        requested: list[list[str] | None] = []
+
+        def fake_snapshot_download(**kwargs):
+            requested.append(kwargs.get("allow_patterns"))
+            return str(tmp_path)
+
+        monkeypatch.delenv("TL_GOLDENS_DIR", raising=False)
+        monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot_download)
+        goldens.resolve_goldens_dir.cache_clear()
+
+        assert goldens.goldens_available("org/tiny", "no_processing")
+        goldens.golden_path("org/tiny", "no_processing")
+        goldens.resolve_goldens_dir.cache_clear()
+
+        assert requested == [["*/*/provenance.json"], ["org__tiny/no_processing/*"]]
+
 
 class TestCaptureHelpers:
     def test_checksum_is_deterministic_and_value_sensitive(self):

@@ -39,13 +39,24 @@ def _model_dir_name(model_name: str) -> str:
     return model_name.replace("/", "__")
 
 
-@functools.lru_cache(maxsize=1)
-def resolve_goldens_dir() -> Path | None:
-    """Locate the goldens root, or None if unavailable."""
+# Every cell's provenance manifest — kilobytes in total, and all the availability
+# checks read. Keeps "is this cell present?" from pulling any tensor.
+_MANIFEST_PATTERN = "*/*/provenance.json"
+
+
+@functools.lru_cache(maxsize=None)
+def resolve_goldens_dir(model: str | None = None, config: str | None = None) -> Path | None:
+    """Locate the goldens root, or None if unavailable.
+
+    ``model``/``config`` scope the Hub fetch to that one cell. The dataset is 36 GB
+    across every model and config, so an unscoped fetch exceeds a CI runner's disk
+    to satisfy a single ~800 MB cell; unscoped calls take manifests only.
+    """
     local = os.environ.get(_ENV_VAR)
     if local:
         path = Path(local)
         return path if path.is_dir() else None
+    patterns = [f"{_model_dir_name(model)}/{config}/*"] if model and config else [_MANIFEST_PATTERN]
     try:
         from huggingface_hub import snapshot_download
 
@@ -54,6 +65,7 @@ def resolve_goldens_dir() -> Path | None:
                 repo_id=GOLDENS_REPO_ID,
                 repo_type="dataset",
                 revision=GOLDENS_REVISION,
+                allow_patterns=patterns,
             )
         )
     except Exception:
@@ -73,7 +85,7 @@ def goldens_available(model: str | None = None, config: str | None = None) -> bo
 
 def golden_path(model: str, config: str) -> Path:
     """Directory of one (model, processing-config) golden cell. Raises if absent."""
-    root = resolve_goldens_dir()
+    root = resolve_goldens_dir(model, config)
     if root is None:
         raise FileNotFoundError(
             f"Goldens unavailable: set {_ENV_VAR} to a local capture directory or "

@@ -135,6 +135,8 @@ jobs:
   mps-checks:
     name: MPS Checks
     runs-on: macos-latest
+    # Bounded so a stall costs 90 minutes of macOS runner time, not the 6-hour default.
+    timeout-minutes: 90
     # Only run on PRs merging to main or pushes directly to main
     if: >
       (github.event_name == 'pull_request' && github.base_ref == 'main') ||
