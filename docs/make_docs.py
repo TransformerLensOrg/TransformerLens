@@ -759,7 +759,8 @@ def copy_demos(_app: Optional[Any] = None):
     if copy_to_dir.exists():
         shutil.rmtree(copy_to_dir)
 
-    copy_to_dir.mkdir()
+    # GENERATED_DIR is gitignored, so it is absent on a clean checkout: create the parent too.
+    copy_to_dir.mkdir(parents=True, exist_ok=True)
     for filename in notebooks_to_copy:
         shutil.copy(DEMOS_DIR / filename, copy_to_dir)
 
