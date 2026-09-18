@@ -27,6 +27,9 @@ class ModernBertDecoderArchitectureAdapter(ArchitectureAdapter):
     # reader is mean-invariant (layer 0's attention reads the residual raw).
     supports_fold_ln = False
     supports_center_writing_weights = False
+    # Delegated attention computes rotary inside HF; nothing to wire.
+    _testing_eager = None
+    _testing_wire_rotary = False
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the ModernBERT Decoder architecture adapter."""
@@ -88,6 +91,3 @@ class ModernBertDecoderArchitectureAdapter(ArchitectureAdapter):
             "prediction_head": GeneralizedComponent(name="lm_head"),
             "unembed": UnembeddingBridge(name="decoder"),
         }
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Delegated attention computes rotary inside HF; nothing to wire."""

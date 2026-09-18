@@ -92,10 +92,10 @@ def get_tokens_from_model(
     truncate: bool = True,
     max_length: Optional[int] = None,
 ) -> Tuple[List[str], torch.Tensor]:
-    """Get tokens and token IDs from a HookedTransformer model.
+    """Get tokens and token IDs from a TransformerLens model.
 
     Args:
-        model: HookedTransformer model with tokenizer.
+        model: TransformerLens model with tokenizer.
         text: Input text to tokenize.
         prepend_bos: Whether to prepend the BOS token.
         truncate: Whether to truncate to max_length.
@@ -238,7 +238,7 @@ def compute_token_gradients(
     importance scores for each token.
 
     Args:
-        model: HookedTransformer model.
+        model: TransformerLens model.
         text: Input text.
         target_idx: Target token index for gradient computation.
                    If None, uses the last token.
@@ -425,7 +425,7 @@ def get_model_info(model: Any) -> Dict[str, Any]:
     """Extract relevant model information for LIT display.
 
     Args:
-        model: HookedTransformer model.
+        model: TransformerLens model.
 
     Returns:
         Dictionary with model metadata.

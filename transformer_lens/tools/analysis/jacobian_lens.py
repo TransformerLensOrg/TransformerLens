@@ -81,6 +81,7 @@ from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
@@ -1701,7 +1702,7 @@ class JacobianLens:
                 or layer indices, or if no prompt was long enough to fit on.
         """
         _require_raw_bridge(model)
-        _require_eval_mode_for_fit(model)
+        require_eval_mode(model, operation="JacobianLens.fit()")
         if not isinstance(corpus, str) or not corpus.strip():
             raise ValueError("corpus must be a non-empty provenance identifier")
         n_layers = model.cfg.n_layers
@@ -1867,32 +1868,6 @@ def _require_raw_bridge(model: Any) -> None:
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
         )
-
-
-def _require_eval_mode_for_fit(model: Any) -> None:
-    """Reject stochastic training state without mutating the caller's model."""
-    training_modules: Dict[int, str] = {}
-    roots = (("", model), ("original_model", getattr(model, "original_model", None)))
-    for prefix, root in roots:
-        if not isinstance(root, torch.nn.Module):
-            continue
-        for name, module in root.named_modules():
-            if not module.training:
-                continue
-            qualified_name = ".".join(part for part in (prefix, name) if part)
-            training_modules.setdefault(id(module), qualified_name or "<root>")
-    if not training_modules:
-        return
-
-    names = list(training_modules.values())
-    preview = ", ".join(names[:3])
-    if len(names) > 3:
-        preview += f", and {len(names) - 3} more"
-    raise ValueError(
-        "JacobianLens.fit() requires the model and all submodules to be in "
-        f"evaluation mode; found training mode at {preview}. Call model.eval() "
-        "before fitting."
-    )
 
 
 def _validate_metadata(metadata: Dict[str, Any]) -> None:

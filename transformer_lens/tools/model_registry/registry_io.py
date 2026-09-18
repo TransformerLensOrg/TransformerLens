@@ -8,13 +8,9 @@ VerificationRecord/VerificationHistory dataclasses.
 import json
 import logging
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Optional
-
-from transformer_lens.benchmarks.text_quality_profiles import (
-    P4_SCORING_VERSION,
-    is_default_profile,
-)
 
 from .verification import VerificationHistory, VerificationRecord
 
@@ -23,6 +19,7 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = Path(__file__).parent / "data"
 _SUPPORTED_MODELS_PATH = _DATA_DIR / "supported_models.json"
 _VERIFICATION_HISTORY_PATH = _DATA_DIR / "verification_history.json"
+_MODEL_ALIASES_PATH = _DATA_DIR / "model_aliases.json"
 
 # Status codes
 STATUS_UNVERIFIED = 0
@@ -33,6 +30,22 @@ STATUS_FAILED = 3
 # so the forward was never numerically compared to HuggingFace. Recorded as a
 # real result but deliberately NOT counted as verified.
 STATUS_PROVISIONAL = 4
+
+# Human-readable labels for docs display. STATUS_SKIPPED deliberately renders as
+# "Unverified": a skip (memory/tooling) is not a verification outcome.
+STATUS_LABELS: dict[int, str] = {
+    STATUS_UNVERIFIED: "Unverified",
+    STATUS_VERIFIED: "Verified",
+    STATUS_SKIPPED: "Unverified",
+    STATUS_FAILED: "Failed",
+    STATUS_PROVISIONAL: "Provisional",
+}
+
+# Registry phase-score columns: text 1-4, multimodal 7, audio 8, vision 9.
+# PHASES is derived so the full column set can never drift from the two groups.
+TEXT_PHASES: tuple[int, ...] = (1, 2, 3, 4)
+MODALITY_PHASES: tuple[int, ...] = (7, 8, 9)
+PHASES: tuple[int, ...] = TEXT_PHASES + MODALITY_PHASES
 
 # HF-loadable quantization formats. Admitted to the registry; verification gates
 # on `required_quant_library_for_model()` at run time.
@@ -145,6 +158,21 @@ def is_quantized_model(model_id: str) -> bool:
     return is_incompatible_quantized(model_id)
 
 
+@lru_cache(maxsize=1)
+def load_model_aliases() -> dict[str, list[str]]:
+    """Load the canonical alias table: official HF model name -> deprecated short aliases."""
+    with open(_MODEL_ALIASES_PATH) as f:
+        return json.load(f)["aliases"]
+
+
+def resolve_model_alias(model_name: str) -> Optional[str]:
+    """Return the official HF name if ``model_name`` is a deprecated alias, else None."""
+    for official_name, aliases in load_model_aliases().items():
+        if model_name in aliases:
+            return official_name
+    return None
+
+
 def load_supported_models_raw() -> dict:
     """Load supported_models.json as a raw dict."""
     with open(_SUPPORTED_MODELS_PATH) as f:
@@ -191,6 +219,63 @@ def _get_tl_version() -> Optional[str]:
         return None
 
 
+def pass_status(use_hf_reference: bool) -> int:
+    """Status for a passing run: VERIFIED with an HF reference, else PROVISIONAL
+    (a --no-hf-reference structural-only pass is recorded but not counted verified)."""
+    return STATUS_VERIFIED if use_hf_reference else STATUS_PROVISIONAL
+
+
+def extract_phase_scores(results: list) -> dict[int, Optional[float]]:
+    """Extract phase scores from benchmark results.
+
+    Shared home for both registry-writing paths (verify_models and
+    main_benchmark.update_model_registry) so they cannot drift.
+
+    Args:
+        results: List of BenchmarkResult objects
+
+    Returns:
+        Dict mapping phase number to score (0-100) or None
+    """
+    from transformer_lens.benchmarks.utils import BenchmarkSeverity
+
+    phase_results: dict[int, list[bool]] = {phase: [] for phase in PHASES}
+    for result in results:
+        if result.phase in phase_results and result.severity != BenchmarkSeverity.SKIPPED:
+            phase_results[result.phase].append(result.passed)
+
+    scores: dict[int, Optional[float]] = {}
+    for phase, passed_list in phase_results.items():
+        if passed_list:
+            scores[phase] = round(sum(passed_list) / len(passed_list) * 100, 1)
+        # Omit phases with no results — they weren't run, so their
+        # existing registry scores should be preserved.
+
+    # Phase 4 (text quality): store the actual 0-100 quality score from the
+    # benchmark details instead of a binary pass/fail percentage.
+    if 4 in scores:
+        for result in results:
+            if result.phase == 4 and result.details and "score" in result.details:
+                scores[4] = round(result.details["score"], 1)
+                break
+
+    return scores
+
+
+def recompute_registry_totals(models: list[dict]) -> dict:
+    """Header totals for supported_models.json, recomputed from the models list.
+
+    Shared by both writers (``update_model_status`` here and hf_scraper's report
+    builder) so the counting rules cannot drift.
+    """
+    return {
+        "total_architectures": len({m["architecture_id"] for m in models}),
+        "total_models": len(models),
+        "total_verified": sum(1 for m in models if m.get("status", 0) == STATUS_VERIFIED),
+        "total_provisional": sum(1 for m in models if m.get("status", 0) == STATUS_PROVISIONAL),
+    }
+
+
 def update_model_status(
     model_id: str,
     arch_id: str,
@@ -223,6 +308,14 @@ def update_model_status(
     Returns:
         True if entry was found/created and updated
     """
+    # Deferred: benchmarks imports model_bridge, and this module loads during
+    # `import transformer_lens` (via supported_models) — importing it at module
+    # scope closes an import cycle back through the bridge's HF source.
+    from transformer_lens.benchmarks.text_quality_profiles import (
+        P4_SCORING_VERSION,
+        is_default_profile,
+    )
+
     if phase_scores is None:
         phase_scores = {}
 
@@ -246,7 +339,7 @@ def update_model_status(
             elif phase_scores and "exceeds" in (entry.get("note") or "").lower():
                 # Writing real scores clears a stale memory-skip note
                 entry["note"] = None
-            for phase_num in (1, 2, 3, 4, 7, 8, 9):
+            for phase_num in PHASES:
                 key = f"phase{phase_num}_score"
                 if phase_num in phase_scores:
                     entry[key] = phase_scores[phase_num]
@@ -268,13 +361,7 @@ def update_model_status(
                 "note",
                 "prompt_profile",
                 "p4_scoring_version",
-                "phase1_score",
-                "phase2_score",
-                "phase3_score",
-                "phase4_score",
-                "phase7_score",
-                "phase8_score",
-                "phase9_score",
+                *[f"phase{p}_score" for p in PHASES],
             ]
             reordered = {k: entry[k] for k in _KEY_ORDER if k in entry}
             for k in entry:
@@ -297,13 +384,7 @@ def update_model_status(
                 "verified_date": date.today().isoformat(),
                 "metadata": None,
                 "note": note,
-                "phase1_score": phase_scores.get(1),
-                "phase2_score": phase_scores.get(2),
-                "phase3_score": phase_scores.get(3),
-                "phase4_score": phase_scores.get(4),
-                "phase7_score": phase_scores.get(7),
-                "phase8_score": phase_scores.get(8),
-                "phase9_score": phase_scores.get(9),
+                **{f"phase{p}_score": phase_scores.get(p) for p in PHASES},
             }
         )
         new_entry = data["models"][-1]
@@ -323,13 +404,7 @@ def update_model_status(
         updated = True
 
     if updated:
-        models = data.get("models", [])
-        data["total_verified"] = sum(1 for m in models if m.get("status", 0) == STATUS_VERIFIED)
-        data["total_provisional"] = sum(
-            1 for m in models if m.get("status", 0) == STATUS_PROVISIONAL
-        )
-        data["total_models"] = len(models)
-        data["total_architectures"] = len(set(m["architecture_id"] for m in models))
+        data.update(recompute_registry_totals(data.get("models", [])))
         save_supported_models_raw(data)
 
     return updated

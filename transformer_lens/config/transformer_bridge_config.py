@@ -54,7 +54,6 @@ class TransformerBridgeConfig(TransformerLensConfig):
         use_attn_in: bool = False,
         use_qk_norm: bool = False,
         use_local_attn: bool = False,
-        ungroup_grouped_query_attention: bool = False,
         original_architecture: Optional[str] = None,
         from_checkpoint: bool = False,
         checkpoint_index: Optional[int] = None,
@@ -155,7 +154,6 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.use_attn_in = use_attn_in
         self.use_qk_norm = use_qk_norm
         self.use_local_attn = use_local_attn
-        self.ungroup_grouped_query_attention = ungroup_grouped_query_attention
         self.original_architecture = original_architecture
         self.from_checkpoint = from_checkpoint
         self.checkpoint_index = checkpoint_index
@@ -274,7 +272,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
             raise ValueError(f"architecture must be a string, got {type(self.architecture)}")
 
         # Resolve the initializer_range sentinel (-1.0 means "not set by the user").
-        # Mirrors HookedTransformerConfig.__post_init__ (hooked_transformer_config.py).
+        # Same rule the legacy HookedTransformerConfig applied.
         # Guarded with getattr: this method also runs once from the dataclass
         # parent's __init__, before self.initializer_range is assigned below.
         if getattr(self, "initializer_range", None) is not None:

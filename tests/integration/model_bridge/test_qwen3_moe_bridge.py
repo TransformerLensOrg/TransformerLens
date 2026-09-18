@@ -10,7 +10,6 @@ import pytest
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
 
-from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     MoEBridge,
@@ -18,8 +17,8 @@ from transformer_lens.model_bridge.generalized_components import (
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
 )
-from transformer_lens.model_bridge.sources.transformers import (
-    map_default_transformer_lens_config,
+from transformer_lens.model_bridge.sources._bridge_builder import (
+    build_bridge_config_from_hf,
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
     Qwen3MoeArchitectureAdapter,
@@ -35,7 +34,7 @@ class _MockTokenizer:
 @pytest.fixture(scope="module")
 def tiny_qwen3moe_config():
     """Small Qwen3MoeConfig: 2 layers, 4 heads, 4 experts."""
-    return AutoConfig.for_model(
+    cfg = AutoConfig.for_model(
         "qwen3_moe",
         hidden_size=64,
         num_hidden_layers=2,
@@ -50,6 +49,8 @@ def tiny_qwen3moe_config():
         decoder_sparse_step=1,
         mlp_only_layers=[],
     )
+    cfg.architectures = ["Qwen3MoeForCausalLM"]
+    return cfg
 
 
 @pytest.fixture(scope="module")
@@ -62,20 +63,14 @@ def tiny_qwen3moe_model_meta(tiny_qwen3moe_config):
 
 @pytest.fixture(scope="module")
 def tiny_qwen3moe_bridge(tiny_qwen3moe_config, tiny_qwen3moe_model_meta):
-    """TransformerBridge wrapping the tiny meta-device Qwen3MoE model."""
-    tl_config = map_default_transformer_lens_config(tiny_qwen3moe_config)
+    """TransformerBridge wrapping the tiny meta-device Qwen3MoE model.
 
-    bridge_config = TransformerBridgeConfig(
-        d_model=tl_config.d_model,
-        d_head=tl_config.d_head,
-        n_layers=tl_config.n_layers,
-        n_ctx=tl_config.n_ctx,
-        n_heads=tl_config.n_heads,
-        n_key_value_heads=tl_config.n_key_value_heads,
-        d_vocab=tl_config.d_vocab,
-        architecture="Qwen3MoeForCausalLM",
+    Config comes from the production HF→bridge translation
+    (build_bridge_config_from_hf), so translation regressions are caught here.
+    """
+    bridge_config = build_bridge_config_from_hf(
+        tiny_qwen3moe_config, "Qwen3MoeForCausalLM", "qwen3moe-tiny", torch.float32
     )
-
     adapter = Qwen3MoeArchitectureAdapter(bridge_config)
 
     return TransformerBridge(

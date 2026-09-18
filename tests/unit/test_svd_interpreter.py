@@ -1,8 +1,16 @@
+"""SVDInterpreter on TransformerBridge.
+
+The expected tensors below are frozen from a HookedTransformer/bridge
+cross-check on distilgpt2 (verified equal at ~1e-7 before freezing) — they are
+inline goldens for the legacy numerics.
+"""
+
 import jaxtyping
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer, SVDInterpreter
+from transformer_lens import SVDInterpreter
+from transformer_lens.model_bridge import TransformerBridge
 
 # Get TypeCheckError from jaxtyping module (it may be re-exported from typeguard)
 TypeCheckError = getattr(jaxtyping, "TypeCheckError", None)
@@ -10,40 +18,48 @@ if TypeCheckError is None:
     # Fallback to typeguard
     from typeguard import TypeCheckError
 
-MODEL = "solu-2l"
+MODEL = "distilgpt2"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
 ATOL = 2e-4  # Absolute tolerance for float comparisons
+
+pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
 def model():
-    return HookedTransformer.from_pretrained(MODEL)
+    bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
+    bridge.enable_compatibility_mode()
+    return bridge
 
 
 @pytest.fixture(scope="module")
 def unfolded_model():
-    return HookedTransformer.from_pretrained(MODEL, fold_ln=False)
+    bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
+    bridge.enable_compatibility_mode(fold_ln=False)
+    return bridge
 
 
 @pytest.fixture(scope="module")
 def second_model():
-    return HookedTransformer.from_pretrained("solu-3l")
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    bridge.enable_compatibility_mode()
+    return bridge
 
 
 expected_OV_match = torch.Tensor(
-    [[[0.6597, 0.8689, 0.6344, 0.7345]], [[0.5244, 0.6705, 0.5940, 0.7240]]]
+    [[[0.8836, 0.7932, 0.9862, 0.7931]], [[0.8590, 0.7715, 0.8447, 0.7476]]]
 )
 
 expected_w_in_match = torch.Tensor(
-    [[[0.7714, 0.6608, 0.6452, 0.6933]], [[0.7647, 0.6466, 0.6406, 0.6458]]]
+    [[[0.7469, 0.9686, 0.9909, 0.9245]], [[0.7416, 0.9593, 0.9858, 0.9175]]]
 )
 
 expected_w_in_unfolded_match = torch.Tensor(
-    [[[0.3639, 0.3164, 0.3095, 0.3430]], [[0.3614, 0.3050, 0.3041, 0.3140]]]
+    [[[0.8242, 0.9659, 0.8883, 0.7610]], [[0.7901, 0.9006, 0.8422, 0.7588]]]
 )
 
 expected_w_out_match = torch.Tensor(
-    [[[0.5097, 0.5389, 0.7906, 0.7178]], [[0.5076, 0.5350, 0.7674, 0.7106]]]
+    [[[0.3489, 0.3684, 0.1473, 0.3475]], [[0.3428, 0.3474, 0.1360, 0.3038]]]
 )
 
 # Successes
@@ -152,13 +168,13 @@ def test_svd_interpreter_fails_on_invalid_layer_index(model):
     svd_interpreter = SVDInterpreter(model)
     for vector in VECTOR_TYPES:
         with pytest.raises(AssertionError) as e:
-            svd_interpreter.get_singular_vectors(vector, layer_index=2, num_vectors=4, head_index=0)
-        assert str(e.value) == "Layer index must be between 0 and 1 but got 2"
+            svd_interpreter.get_singular_vectors(vector, layer_index=6, num_vectors=4, head_index=0)
+        assert str(e.value) == "Layer index must be between 0 and 5 but got 6"
 
 
 def test_svd_interpreter_fails_on_invalid_head_index(model):
     # Only OV uses head index.
     svd_interpreter = SVDInterpreter(model)
     with pytest.raises(AssertionError) as e:
-        svd_interpreter.get_singular_vectors("OV", layer_index=0, num_vectors=4, head_index=8)
-    assert str(e.value) == "Head index must be between 0 and 7 but got 8"
+        svd_interpreter.get_singular_vectors("OV", layer_index=0, num_vectors=4, head_index=12)
+    assert str(e.value) == "Head index must be between 0 and 11 but got 12"

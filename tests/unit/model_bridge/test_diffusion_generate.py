@@ -7,8 +7,6 @@ routing, the per-architecture budget translation, and the error paths.
 
 import importlib
 
-import pytest
-
 
 def _adapter_cls(module_name: str, class_name: str):
     module = importlib.import_module(
@@ -17,21 +15,7 @@ def _adapter_cls(module_name: str, class_name: str):
     return getattr(module, class_name)
 
 
-DIFFUSION_ADAPTERS = [
-    ("dream", "DreamArchitectureAdapter", "diffusion_generate"),
-    ("llada2_moe", "LLaDA2MoeArchitectureAdapter", "generate"),
-    ("gidd", "GiddArchitectureAdapter", "generate"),
-]
-
-
 class TestNativeSamplerDeclarations:
-    @pytest.mark.parametrize("module_name,class_name,sampler", DIFFUSION_ADAPTERS)
-    def test_declares_native_sampler(self, module_name, class_name, sampler) -> None:
-        adapter_cls = _adapter_cls(module_name, class_name)
-        assert adapter_cls.native_sampler == sampler
-        # Autoregressive generate() stays off: it is the wrong algorithm, not a gap.
-        assert adapter_cls.supports_generation is False
-
     def test_autoregressive_adapters_declare_no_sampler(self) -> None:
         """The attribute must not leak onto ordinary decoders."""
         from transformer_lens.model_bridge.architecture_adapter import (
@@ -39,6 +23,81 @@ class TestNativeSamplerDeclarations:
         )
 
         assert ArchitectureAdapter.native_sampler is None
+
+
+def _diffusion_adapter_classes() -> dict[str, type]:
+    """Every registered adapter class that declares a native sampler, by module name."""
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    return {
+        cls.__module__.rsplit(".", 1)[-1]: cls
+        for cls in set(SUPPORTED_ARCHITECTURES.values())
+        if getattr(cls, "native_sampler", None) is not None
+    }
+
+
+def _uncovered_diffusion_adapters() -> list[str]:
+    """Sampler-declaring adapters whose test file lacks a bound contract subclass.
+
+    A missing or unimportable test module counts as uncovered — that is the
+    state a brand-new adapter starts in.
+    """
+    from tests.unit.model_bridge.supported_architectures.helpers import (
+        DiffusionContractTests,
+    )
+
+    missing = []
+    for module_name, adapter_cls in sorted(_diffusion_adapter_classes().items()):
+        try:
+            test_module = importlib.import_module(
+                f"tests.unit.model_bridge.supported_architectures.test_{module_name}_adapter"
+            )
+        except ModuleNotFoundError:
+            missing.append(f"{adapter_cls.__name__} (no test_{module_name}_adapter.py)")
+            continue
+        covered = any(
+            isinstance(obj, type)
+            and issubclass(obj, DiffusionContractTests)
+            and obj is not DiffusionContractTests
+            and getattr(obj, "adapter_cls", None) is adapter_cls
+            for obj in vars(test_module).values()
+        )
+        if not covered:
+            missing.append(f"{adapter_cls.__name__} (test_{module_name}_adapter.py)")
+    return missing
+
+
+class TestContractCompleteness:
+    """Per-adapter contract tests live in each adapter's own test file
+    (subclassing helpers.DiffusionContractTests); this derives the required set
+    from the factory so a new diffusion adapter cannot ship without them."""
+
+    def test_every_diffusion_adapter_has_contract_coverage(self) -> None:
+        missing = _uncovered_diffusion_adapters()
+        assert not missing, (
+            "Diffusion adapters without contract coverage: "
+            f"{missing}. Add a DiffusionContractTests subclass (see "
+            "helpers.DiffusionContractTests) to each adapter's test file."
+        )
+
+    def test_checker_flags_uncovered_adapter(self, monkeypatch) -> None:
+        """The completeness check must bite, not vacuously pass."""
+        from transformer_lens.factories import architecture_adapter_factory
+
+        fake = type(
+            "FakeDiffusionAdapter",
+            (),
+            {
+                "native_sampler": "generate",
+                "__module__": "transformer_lens.model_bridge.supported_architectures._fake_diffusion",
+            },
+        )
+        patched = dict(architecture_adapter_factory.SUPPORTED_ARCHITECTURES)
+        patched["FakeDiffusionLM"] = fake
+        monkeypatch.setattr(architecture_adapter_factory, "SUPPORTED_ARCHITECTURES", patched)
+        assert any("FakeDiffusionAdapter" in m for m in _uncovered_diffusion_adapters())
 
 
 class TestSamplerBudgetTranslation:

@@ -6,17 +6,13 @@ must apply the norms (stablelm-2-12b family) — without it the bridge
 silently diverged by ~1.0 on tiny models.
 """
 
-import copy
-
 import torch
+
+from tests.integration.model_bridge.helpers import make_tiny_pair
 
 
 def _tiny_stablelm_pair(qk_layernorm: bool):
-    from transformers import AutoModelForCausalLM, StableLmConfig
-
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
-    )
+    from transformers import StableLmConfig
 
     cfg = StableLmConfig(
         vocab_size=128,
@@ -31,16 +27,7 @@ def _tiny_stablelm_pair(qk_layernorm: bool):
         bos_token_id=1,
         eos_token_id=2,
     )
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = AutoModelForCausalLM.from_config(cfg).eval()
-    hf = AutoModelForCausalLM.from_config(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "StableLmForCausalLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(cfg, "StableLmForCausalLM")
 
 
 class TestStableLmBridge:

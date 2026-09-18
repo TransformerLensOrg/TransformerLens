@@ -57,6 +57,10 @@ def _make_norm_bridge(name: str, cfg: Any, *, force_rms: bool = False):
     if _norm_type(cfg) == "LNPRE":
         return LayerNormPreBridge(name=name, config=cfg)
     if _uses_no_norm(cfg):
+        from transformer_lens.model_bridge.generalized_components.base import (
+            GeneralizedComponent,
+        )
+
         return GeneralizedComponent(name=name, config=cfg)
     return NormalizationBridge(name=name, config=cfg)
 
@@ -72,12 +76,17 @@ def _make_mlp_bridge(cfg: Any):
                 "out": LinearBridge(name="out"),
             },
         )
+    submodules: dict[str, GeneralizedComponent] = {
+        "in": LinearBridge(name="fc_in"),
+        "out": LinearBridge(name="fc_out"),
+    }
+    if (cfg.act_fn or "").lower() == "solu_ln":
+        # SoLU-LN checkpoints carry a mid-MLP LayerNorm (NativeMLP.ln); expose
+        # it so its params load under blocks.{i}.mlp.ln.* and its hooks fire.
+        submodules["ln"] = NormalizationBridge(name="ln", config=cfg)
     return MLPBridge(
         name="mlp",
-        submodules={
-            "in": LinearBridge(name="fc_in"),
-            "out": LinearBridge(name="fc_out"),
-        },
+        submodules=submodules,
     )
 
 

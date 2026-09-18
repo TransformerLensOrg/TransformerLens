@@ -1,24 +1,44 @@
 """Regression coverage for `TransformerBridge.run_with_cache(pos_slice=...)`.
 
-`HookedRootModule.run_with_cache` slices the position axis of every cached tensor; the
+`HookedRootModule.run_with_cache` trims the position axis of every cached tensor; the
 bridge used to drop the kwarg into the HuggingFace forward, which discards it, so callers
-got full-length activations back. The position axis sits two from the end for head-split
-tensors ([batch, pos, head, d_head]) and one from the end for everything else — including
-the bridge-native `attn.q.hook_out` family, which is head-split even outside compat mode.
+got full-length activations back. The position axis is dim 1 for everything the bridge
+caches — including the head-split `attn.hook_z` / `attn.q.hook_out` family, which is
+[batch, pos, head, d_head] even outside compatibility mode — except attention maps
+([batch, head, dest, src]), where the query position sits at -2.
 """
 
 import pytest
 import torch
 
 PROMPT = "The capital of France is Paris."
-HT_NAMES = ["blocks.0.attn.hook_pattern", "blocks.1.attn.hook_z", "blocks.2.hook_resid_post"]
-NATIVE_NAMES = ["blocks.1.attn.q.hook_out", "blocks.1.mlp.hook_out"]
+
+# HookedTransformer alias names and bridge-native names, both resolvable on the
+# non-compat bridge. Mixes 3-D and head-split 4-D tensors plus an attention map.
+NAMES = [
+    "blocks.0.attn.hook_pattern",
+    "blocks.1.attn.hook_z",
+    "blocks.2.hook_resid_post",
+    "blocks.1.attn.q.hook_out",
+    "blocks.1.mlp.hook_out",
+    "blocks.1.hook_out",
+]
 
 
 @pytest.fixture()
 def bridge(distilgpt2_bridge):
     """Alias the session fixture for concise test signatures."""
     return distilgpt2_bridge
+
+
+def _pos_dim(name: str) -> int:
+    """Axis `pos_slice` trims for `name`: the query position for attention maps, else dim 1."""
+    return -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
+
+
+def _index_select(tensor: torch.Tensor, name: str, positions: list[int]) -> torch.Tensor:
+    dim = _pos_dim(name)
+    return tensor.index_select(dim, torch.tensor(positions))
 
 
 @pytest.mark.parametrize(
@@ -31,90 +51,75 @@ def test_pos_slice_trims_the_position_axis(bridge, pos_slice, positions):
     resulting shape, so an off-by-one or a slice of a same-length neighbouring axis fails.
     """
     tokens = bridge.to_tokens(PROMPT)
-    _, full = bridge.run_with_cache(
-        tokens, return_type="loss", names_filter=HT_NAMES + NATIVE_NAMES
-    )
+    _, full = bridge.run_with_cache(tokens, return_type="loss", names_filter=NAMES)
     _, sliced = bridge.run_with_cache(
-        tokens, return_type="loss", names_filter=HT_NAMES + NATIVE_NAMES, pos_slice=pos_slice
+        tokens, return_type="loss", names_filter=NAMES, pos_slice=pos_slice
     )
 
-    # [batch, pos, head, d_head] for head-split tensors, [batch, head, dest, src] for patterns.
-    expected_axis = {
-        "blocks.0.attn.hook_pattern": -2,
-        "blocks.1.attn.hook_z": -3,
-        "blocks.2.hook_resid_post": -2,
-        "blocks.1.attn.q.hook_out": -3,
-        "blocks.1.mlp.hook_out": -2,
-    }
-    index = torch.tensor(positions)
-    for name, axis in expected_axis.items():
-        expected = full[name].index_select(axis, index)
+    for name in NAMES:
+        expected = _index_select(full[name], name, positions)
         assert sliced[name].shape == expected.shape, f"{name} sliced on the wrong axis"
         torch.testing.assert_close(sliced[name], expected)
 
 
-def test_pos_slice_matches_hooked_transformer(
-    distilgpt2_bridge_compat, distilgpt2_hooked_processed
-):
-    """Slicing agrees with HookedRootModule's — activations and gradients, values included.
+def test_int_slice_matches_full_cache_for_every_activation(bridge):
+    """Sweep the whole cache, not a curated name list, so no activation is left unsliced.
 
-    HookedRootModule is the reference implementation for both `pos_slice` and `incl_bwd`, so
-    comparing values here is what pins the cache to the *right* tensor: shape and finiteness
-    checks would still pass if a hook cached a neighbouring layer's activation, or grad_input
-    where grad_output was meant.
+    An int slice keeps the position axis at size 1. Entries whose candidate axis is not the
+    sequence length have no position axis to trim and are out of scope.
     """
-    tokens = distilgpt2_hooked_processed.to_tokens(PROMPT)
+    tokens = bridge.to_tokens(PROMPT)
+    n_pos = tokens.shape[1]
+    _, full = bridge.run_with_cache(tokens)
 
-    _, bridge_cache = distilgpt2_bridge_compat.run_with_cache(
-        tokens, return_type="loss", names_filter=HT_NAMES, pos_slice=(1, 4), incl_bwd=True
-    )
-    _, hooked_cache = distilgpt2_hooked_processed.run_with_cache(
-        tokens, return_type="loss", names_filter=HT_NAMES, pos_slice=(1, 4), incl_bwd=True
-    )
+    for i in (0, n_pos // 2, n_pos - 1, -1):
+        _, sliced = bridge.run_with_cache(tokens, pos_slice=i)
+        for name, tensor in full.items():
+            if not isinstance(tensor, torch.Tensor) or tensor.dim() < 2:
+                continue
+            dim = _pos_dim(name)
+            abs_dim = dim if dim >= 0 else tensor.dim() + dim
+            if tensor.shape[abs_dim] != n_pos:
+                continue
+            expected = _index_select(tensor, name, [i % n_pos])
+            assert sliced[name].shape == expected.shape, name
+            torch.testing.assert_close(sliced[name], expected, rtol=1e-4, atol=1e-5)
 
-    for name in HT_NAMES + [f"{n}_grad" for n in HT_NAMES]:
-        assert bridge_cache[name].shape == hooked_cache[name].shape, name
-        torch.testing.assert_close(bridge_cache[name], hooked_cache[name], rtol=1e-3, atol=1e-5)
+
+def test_per_head_and_pattern_shapes(bridge):
+    """Pin the absolute rank and axis order an int slice leaves behind."""
+    tokens = bridge.to_tokens(PROMPT)
+    n_pos = tokens.shape[1]
+    _, sliced = bridge.run_with_cache(tokens, pos_slice=2)
+    n_heads, d_head = bridge.cfg.n_heads, bridge.cfg.d_head
+
+    # per-head projection: [batch, pos, head, d_head] -> pos trimmed to 1
+    assert sliced["blocks.0.attn.q.hook_out"].shape == (1, 1, n_heads, d_head)
+    # attention pattern: [batch, head, dest, src] -> dest trimmed to 1, src untouched
+    assert sliced["blocks.0.attn.hook_pattern"].shape == (1, n_heads, 1, n_pos)
 
 
-def test_pos_slice_applies_to_gradients(distilgpt2_bridge_compat, distilgpt2_hooked_processed):
-    """Sliced `_grad` entries hold the gradient of the tensor they are named after.
+def test_pos_slice_trims_gradients_on_the_same_axis(bridge):
+    """`incl_bwd` gradients are sliced like the activations they are named after.
 
-    Covers the bridge-native head-split keys, which have no HookedTransformer counterpart;
-    their gradients are checked against the HookedTransformer names that alias them. Runs on
-    the compat-mode bridge, whose numerics match the processed HookedTransformer.
+    The ground truth is the unsliced backward run: shape-only checks would still pass if a
+    `_grad` entry held a neighbouring layer's gradient, or grad_input where grad_output was
+    meant. `pos_slice` trims at cache time, so the two backward passes are the same graph.
     """
-    tokens = distilgpt2_bridge_compat.to_tokens(PROMPT)
-    _, cache = distilgpt2_bridge_compat.run_with_cache(
-        tokens,
-        return_type="loss",
-        names_filter=HT_NAMES + NATIVE_NAMES,
-        pos_slice=(1, 4),
-        incl_bwd=True,
-    )
-    _, hooked_cache = distilgpt2_hooked_processed.run_with_cache(
-        tokens,
-        return_type="loss",
-        names_filter=["blocks.1.attn.hook_q", "blocks.1.hook_mlp_out"],
-        pos_slice=(1, 4),
-        incl_bwd=True,
+    tokens = bridge.to_tokens(PROMPT)
+    positions = [1, 2, 3]
+    _, full = bridge.run_with_cache(tokens, return_type="loss", names_filter=NAMES, incl_bwd=True)
+    _, sliced = bridge.run_with_cache(
+        tokens, return_type="loss", names_filter=NAMES, pos_slice=(1, 4), incl_bwd=True
     )
 
-    for name in HT_NAMES + NATIVE_NAMES:
-        assert cache[f"{name}_grad"].shape == cache[name].shape, name
-
-    # blocks.1.attn.q.hook_out is HookedTransformer's blocks.1.attn.hook_q; mlp.hook_out is
-    # its blocks.1.hook_mlp_out.
-    for native_name, hooked_name in (
-        ("blocks.1.attn.q.hook_out", "blocks.1.attn.hook_q"),
-        ("blocks.1.mlp.hook_out", "blocks.1.hook_mlp_out"),
-    ):
-        torch.testing.assert_close(
-            cache[f"{native_name}_grad"],
-            hooked_cache[f"{hooked_name}_grad"],
-            rtol=1e-3,
-            atol=1e-5,
-        )
+    for name in NAMES:
+        grad_name = f"{name}_grad"
+        assert grad_name in sliced, f"missing {grad_name}; cached: {sorted(sliced.keys())}"
+        assert sliced[grad_name].shape == sliced[name].shape, grad_name
+        expected = _index_select(full[grad_name], name, positions)
+        assert sliced[grad_name].shape == expected.shape, f"{grad_name} sliced on the wrong axis"
+        torch.testing.assert_close(sliced[grad_name], expected, rtol=1e-3, atol=1e-5)
 
 
 def test_pos_slice_on_two_dimensional_activations_keeps_batch(bridge):
@@ -129,3 +134,16 @@ def test_pos_slice_on_two_dimensional_activations_keeps_batch(bridge):
     assert full["embed.hook_in"].shape == tokens.shape
     assert sliced["embed.hook_in"].shape == (tokens.shape[0], 3)
     torch.testing.assert_close(sliced["embed.hook_in"], tokens[:, 1:4])
+
+
+def test_none_pos_slice_is_unchanged(bridge):
+    """`pos_slice=None` is the default path — nothing is trimmed."""
+    tokens = bridge.to_tokens(PROMPT)
+    _, full = bridge.run_with_cache(tokens, return_type="loss", names_filter=NAMES)
+    _, no_slice = bridge.run_with_cache(
+        tokens, return_type="loss", names_filter=NAMES, pos_slice=None
+    )
+
+    for name in NAMES:
+        assert no_slice[name].shape == full[name].shape, name
+        torch.testing.assert_close(no_slice[name], full[name])

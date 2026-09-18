@@ -326,9 +326,7 @@ class TestStableLMBlockSubmodulesParallelResidual:
     def test_parallel_block_submodule_keys(
         self, parallel_adapter: StableLmArchitectureAdapter
     ) -> None:
-        """Container is ParallelBlockBridge so the no-ln2 layout is the supported shape.
-        BlockBridge rejects `attn + mlp` without `ln2`; ParallelBlockBridge is the
-        supported no-ln2 shape. Regression #1386 was filed for this."""
+        """Container is ParallelBlockBridge so the no-ln2 layout (attn + mlp without ln2) is the supported shape that BlockBridge would otherwise reject."""
         block = _mapping(parallel_adapter)["blocks"]
         assert isinstance(block, ParallelBlockBridge)
         assert set(block.submodules.keys()) == {"ln1", "attn", "mlp"}

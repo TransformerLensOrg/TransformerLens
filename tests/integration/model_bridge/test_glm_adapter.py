@@ -12,37 +12,37 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
-def glm_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
 @pytest.fixture(scope="module")
-def sample_tokens(glm_bridge):
-    return glm_bridge.tokenizer("The capital of France is", return_tensors="pt").input_ids
+def sample_tokens(bridge):
+    return bridge.tokenizer("The capital of France is", return_tensors="pt").input_ids
 
 
 class TestGlmBridgeCreation:
-    def test_adapter_selected(self, glm_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.glm import (
             GlmArchitectureAdapter,
         )
 
-        assert isinstance(glm_bridge.adapter, GlmArchitectureAdapter)
+        assert isinstance(bridge.adapter, GlmArchitectureAdapter)
 
 
 class TestGlmForwardEquivalence:
-    def test_forward_matches_hf(self, glm_bridge, sample_tokens):
-        hf_model = glm_bridge.original_model
+    def test_forward_matches_hf(self, bridge, sample_tokens):
+        hf_model = bridge.original_model
         with torch.no_grad():
-            bridge_out = glm_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = hf_model(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs HF max diff = {max_diff}"
 
 
 class TestGlmHooks:
-    def test_hooks_fire(self, glm_bridge, sample_tokens):
-        d_model = glm_bridge.cfg.d_model
+    def test_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         captured = {}
 
         def grab(tensor, hook):
@@ -50,15 +50,15 @@ class TestGlmHooks:
 
         hooks = ["blocks.0.attn.hook_out", "blocks.0.mlp.hook_out"]
         with torch.no_grad():
-            glm_bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
         seq = sample_tokens.shape[1]
         for name in hooks:
             assert captured.get(name) == (1, seq, d_model), f"{name}: {captured.get(name)}"
 
 
 class TestGlmGeneration:
-    def test_greedy_generation_is_coherent(self, glm_bridge):
-        out = glm_bridge.generate(
+    def test_greedy_generation_is_coherent(self, bridge):
+        out = bridge.generate(
             "The capital of France is", max_new_tokens=5, do_sample=False, verbose=False
         )
         assert "Paris" in out

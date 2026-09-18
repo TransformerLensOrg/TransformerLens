@@ -27,7 +27,7 @@ Key adapter decisions:
   declared ``optional=True`` so setup skips them gracefully on non-Mamba layers.
 - MLP layers use ``relu2`` activation (not SwiGLU); ``gated_mlp = False``.
 - ``applicable_phases = [1, 2, 3, 4]``: P1 is exact vs raw HF (passthrough mixers);
-  P2/P3 skip without a HookedTransformer; P4 is generation.
+  P2/P3 run hook/cache self-checks and HF equivalence; P4 is generation.
 """
 
 from typing import Any
@@ -68,8 +68,8 @@ class NemotronHArchitectureAdapter(ArchitectureAdapter):
     is determined by ``config.layers_block_type[layer_idx]``.
     """
 
-    # White-box forward: P1 is exact vs raw HF (passthrough mixers); P2/P3 skip
-    # without a HookedTransformer; P4 is generation.
+    # White-box forward: P1 is exact vs raw HF (passthrough mixers); P2/P3 run
+    # hook/cache self-checks and HF equivalence; P4 is generation.
     applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:

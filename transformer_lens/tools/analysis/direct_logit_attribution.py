@@ -18,15 +18,15 @@ that wraps the lower-level ``ActivationCache`` primitives
 :meth:`~transformer_lens.ActivationCache.ActivationCache.accumulated_resid`,
 :meth:`~transformer_lens.ActivationCache.ActivationCache.stack_head_results`
 and :meth:`~transformer_lens.ActivationCache.ActivationCache.logit_attrs`) into
-one call. It works unchanged with both ``HookedTransformer`` and
-``TransformerBridge`` because they share the cache API.
+one call. It works with any TransformerLens model that shares the cache API.
 
 Example::
 
-    from transformer_lens import HookedTransformer
+    from transformer_lens import TransformerBridge
     from transformer_lens.tools.analysis import direct_logit_attribution
 
-    model = HookedTransformer.from_pretrained("gpt2", device="cpu")
+    model = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    model.enable_compatibility_mode()
     result = direct_logit_attribution(
         model,
         "The Eiffel Tower is in the city of",
@@ -132,8 +132,7 @@ def _residual_stack_and_labels(
 def _validate_bridge_compatibility(model) -> None:
     """Reject Bridge inputs that DLA can't produce correct numbers for.
 
-    HookedTransformer always has LN folded into W_U, so these checks only fire
-    for TransformerBridge. The compatibility-mode check catches a silent-
+    The compatibility-mode check catches a silent-
     correctness footgun: without folded LN, the projection direction in
     ``logit_attrs`` is wrong on a Bridge. The hybrid-arch check catches Mamba/
     SSM blocks early with a clear error rather than letting ``decompose_resid``
@@ -180,7 +179,6 @@ def direct_logit_attribution(
     usually what you want for circuit analysis).
 
     The model is run once with caching unless a precomputed ``cache`` is passed.
-    Works with both ``HookedTransformer`` and ``TransformerBridge``.
 
     Note that DLA attributes only the part of a logit that comes from the
     residual stream through the unembedding direction; the unembedding bias
@@ -197,8 +195,8 @@ def direct_logit_attribution(
 
     Args:
         model:
-            A ``HookedTransformer`` or ``TransformerBridge`` (the latter with
-            ``enable_compatibility_mode()`` already called).
+            A ``TransformerBridge`` with ``enable_compatibility_mode()``
+            already called.
         input:
             Prompt to run — a string, list of strings, or token tensor. Optional
             only when a precomputed ``cache`` is supplied.

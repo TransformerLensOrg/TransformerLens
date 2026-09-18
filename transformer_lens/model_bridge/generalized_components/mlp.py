@@ -60,6 +60,11 @@ class MLPBridge(GeneralizedComponent):
     """
 
     hook_aliases = {"hook_pre": "in.hook_out", "hook_post": "out.hook_in"}
+    # Containerless (name=None) instances refuse forward, so hook_in/hook_out
+    # must be mirrored from the in/out subcomponents at setup.
+    mirror_placeholder_hooks = True
+    # W_* are real properties below (layout-aware); only the 1-D biases are
+    # orientation-free enough for raw passthrough aliases.
     property_aliases = {
         "b_gate": "gate.bias",
         "b_in": "in.bias",

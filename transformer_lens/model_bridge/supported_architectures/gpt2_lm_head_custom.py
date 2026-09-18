@@ -62,7 +62,7 @@ class Gpt2LmHeadCustomArchitectureAdapter(ArchitectureAdapter):
                 ),
                 source_key="transformer.h.{i}.attn.c_proj.weight",
             ),
-            # "unembed.b_U": "lm_head.bias", # gpt2 has no unembed bias
+            # no unembed.b_U mapping: gpt2 has no unembed bias
         }
 
         # Set up component mapping

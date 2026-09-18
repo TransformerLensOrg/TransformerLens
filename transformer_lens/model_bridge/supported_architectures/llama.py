@@ -6,8 +6,6 @@ from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapt
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    LinearBridge,
-    PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -38,8 +36,6 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
 
     _testing_eager: Optional[str] = None
 
-    _attention_bridge_cls = PositionEmbeddingsAttentionBridge
-
     def __init__(self, cfg: Any) -> None:
         """Initialize the Llama architecture adapter."""
         super().__init__(cfg)
@@ -65,18 +61,3 @@ class LlamaArchitectureAdapter(ArchitectureAdapter):
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
-
-    def _build_attention_bridge(self):
-        """Attention bridge seam; subclasses swap the class or the construction."""
-        return self._attention_bridge_cls(
-            name="self_attn",
-            config=self.cfg,
-            submodules={
-                "q": LinearBridge(name="q_proj"),
-                "k": LinearBridge(name="k_proj"),
-                "v": LinearBridge(name="v_proj"),
-                "o": LinearBridge(name="o_proj"),
-            },
-            requires_attention_mask=True,
-            requires_position_embeddings=True,
-        )

@@ -5,7 +5,7 @@ from transformers import AutoTokenizer
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.bridge_core import BridgeCore
 
 
 class MockAdapter(ArchitectureAdapter):
@@ -16,25 +16,17 @@ class MockAdapter(ArchitectureAdapter):
         self.component_mapping = {"embed": None}
 
 
-def _bare_bridge(adapter, tokenizer):
-    """Bridge stand-in replaying __init__'s tokenizer sequence without a model.
+class MockDriver:
+    """Minimal driver for testing."""
 
-    Full construction needs a wrapped model; the wiring under test only reads
-    adapter/cfg, so build a bare instance the way
-    test_generation_benchmark_mechanics does.
-    """
-    import torch.nn as nn
+    pass
 
-    bridge = object.__new__(TransformerBridge)
-    nn.Module.__init__(bridge)
-    bridge.adapter = adapter
-    bridge.cfg = adapter.cfg
-    bridge._tokenizer = None
-    if tokenizer is not None:
-        bridge.tokenizer = tokenizer
-    if bridge.cfg.d_vocab_out == -1:
-        bridge.cfg.d_vocab_out = bridge.cfg.d_vocab
-    return bridge
+
+class ConcreteBridgeCore(BridgeCore):
+    """Concrete implementation of BridgeCore for testing."""
+
+    def _scan_existing_hooks(self, module, prefix: str = "") -> None:
+        pass
 
 
 class TestTokenizerReassignment:
@@ -66,7 +58,7 @@ class TestTokenizerReassignment:
     def test_initial_tokenizer_sets_d_vocab(self, base_cfg, gpt2_tokenizer):
         """Test that initial tokenizer assignment sets d_vocab."""
         adapter = MockAdapter(base_cfg)
-        bridge = _bare_bridge(adapter, gpt2_tokenizer)
+        bridge = ConcreteBridgeCore(adapter, gpt2_tokenizer, MockDriver())
 
         # GPT-2 vocab size is 50257
         assert bridge.cfg.d_vocab == 50257
@@ -75,7 +67,7 @@ class TestTokenizerReassignment:
     def test_reassignment_updates_d_vocab(self, base_cfg, gpt2_tokenizer, llama_style_tokenizer):
         """Test that reassigning tokenizer updates d_vocab."""
         adapter = MockAdapter(base_cfg)
-        bridge = _bare_bridge(adapter, gpt2_tokenizer)
+        bridge = ConcreteBridgeCore(adapter, gpt2_tokenizer, MockDriver())
 
         old_d_vocab = bridge.cfg.d_vocab
 
@@ -88,7 +80,7 @@ class TestTokenizerReassignment:
     def test_reassignment_updates_bos_flag(self, base_cfg, gpt2_tokenizer, llama_style_tokenizer):
         """Test that reassigning tokenizer updates tokenizer_prepends_bos."""
         adapter = MockAdapter(base_cfg)
-        bridge = _bare_bridge(adapter, gpt2_tokenizer)
+        bridge = ConcreteBridgeCore(adapter, gpt2_tokenizer, MockDriver())
 
         gpt2_bos = bridge.cfg.tokenizer_prepends_bos
 
@@ -101,7 +93,7 @@ class TestTokenizerReassignment:
     def test_reassignment_to_none_preserves_config(self, base_cfg, gpt2_tokenizer):
         """Test that setting tokenizer to None doesn't crash."""
         adapter = MockAdapter(base_cfg)
-        bridge = _bare_bridge(adapter, gpt2_tokenizer)
+        bridge = ConcreteBridgeCore(adapter, gpt2_tokenizer, MockDriver())
 
         old_d_vocab = bridge.cfg.d_vocab
 
@@ -113,7 +105,7 @@ class TestTokenizerReassignment:
     def test_tokenizer_property_returns_tokenizer(self, base_cfg, gpt2_tokenizer):
         """Test that the tokenizer property returns the stored tokenizer."""
         adapter = MockAdapter(base_cfg)
-        bridge = _bare_bridge(adapter, gpt2_tokenizer)
+        bridge = ConcreteBridgeCore(adapter, gpt2_tokenizer, MockDriver())
 
         assert bridge.tokenizer is not None
         assert hasattr(bridge.tokenizer, "encode")
@@ -122,7 +114,7 @@ class TestTokenizerReassignment:
         """Test that bridge can be created without tokenizer."""
         base_cfg.d_vocab = 50257  # Set explicitly since no tokenizer
         adapter = MockAdapter(base_cfg)
-        bridge = _bare_bridge(adapter, None)
+        bridge = ConcreteBridgeCore(adapter, None, MockDriver())
 
         assert bridge.tokenizer is None
         assert bridge.cfg.d_vocab == 50257

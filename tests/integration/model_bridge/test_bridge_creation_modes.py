@@ -9,50 +9,41 @@ from transformer_lens.model_bridge.bridge import TransformerBridge
 class TestBridgeCreationModes:
     """Test different modes of creating and configuring TransformerBridge."""
 
-    @pytest.fixture
-    def test_text(self):
-        """Test text for evaluation."""
-        return "Hello world"
-
     def test_bridge_no_processing(
-        self, distilgpt2_bridge_compat_no_processing, distilgpt2_hooked_processed, test_text
+        self, distilgpt2_bridge_compat_no_processing, distilgpt2_goldens_unprocessed
     ):
-        """Test bridge with no weight processing."""
+        """Test bridge with no weight processing against the unprocessed golden loss."""
         bridge = distilgpt2_bridge_compat_no_processing
+        golden = distilgpt2_goldens_unprocessed
 
-        ref_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
-        bridge_loss = bridge(test_text, return_type="loss")
+        text = golden.scalars["ablation"]["text"]
+        ref_loss = golden.scalars["long_text_ce_loss"]
+        bridge_loss = bridge(text, return_type="loss")
 
-        # With no processing, losses should be close but not identical
-        assert (
-            abs(ref_loss - bridge_loss) < 1.0
-        ), f"Losses should be reasonably close: {ref_loss} vs {bridge_loss}"
+        diff = abs(ref_loss - bridge_loss.item())
+        assert diff < 0.01, f"Unprocessed bridge should match the golden loss: {diff}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
     def test_bridge_full_compatibility(
-        self, distilgpt2_bridge_compat, distilgpt2_hooked_processed, test_text
+        self, distilgpt2_bridge_compat, distilgpt2_goldens_processed
     ):
-        """Test bridge with full compatibility mode processing."""
+        """Test bridge with full compatibility mode against the processed golden loss."""
         bridge = distilgpt2_bridge_compat
+        golden = distilgpt2_goldens_processed
 
-        ref_loss = distilgpt2_hooked_processed(test_text, return_type="loss")
-        bridge_loss = bridge(test_text, return_type="loss")
+        text = golden.scalars["ablation"]["text"]
+        ref_loss = golden.scalars["long_text_ce_loss"]
+        bridge_loss = bridge(text, return_type="loss")
 
-        # With full processing, losses should be very close
-        diff = abs(ref_loss - bridge_loss)
-        assert diff < 0.01, f"Processed bridge should match reference closely: {diff}"
+        diff = abs(ref_loss - bridge_loss.item())
+        assert diff < 0.01, f"Processed bridge should match the golden loss: {diff}"
         assert 3.0 < bridge_loss < 8.0, f"Bridge loss should be reasonable: {bridge_loss}"
 
-    def test_bridge_tokenizer_compatibility(self, distilgpt2_bridge, distilgpt2_hooked_processed):
-        """Test that bridge tokenizer works like reference."""
-        test_text = "Hello world test"
-
-        # Tokenize with both
-        ref_tokens = distilgpt2_hooked_processed.to_tokens(test_text)
-        bridge_tokens = distilgpt2_bridge.to_tokens(test_text)
-
-        # Should produce identical tokens
-        assert torch.equal(ref_tokens, bridge_tokens), "Tokenizers should produce identical results"
+    def test_bridge_tokenizer_compatibility(self, distilgpt2_bridge):
+        """Bridge to_tokens must reproduce the frozen legacy tokenization (BOS + GPT-2 BPE)."""
+        bridge_tokens = distilgpt2_bridge.to_tokens("Hello world test")
+        expected = torch.tensor([[50256, 15496, 995, 1332]])
+        assert torch.equal(bridge_tokens, expected), "Tokenization drifted from the frozen ids"
 
     def test_bridge_configuration_persistence(self):
         # Fresh boot: tests the boot → enable_compat transition.
@@ -67,6 +58,17 @@ class TestBridgeCreationModes:
         # Configuration should still be accessible
         assert hasattr(bridge, "cfg"), "Configuration should persist after compatibility mode"
         assert bridge.cfg is not None, "Configuration should not be None"
+
+    def test_audio_model_compat_mode_rejected(self):
+        """Audio encoders must get a clean NotImplementedError from compat mode.
+
+        The legacy weight processing assumes a text embed/unembed; without the
+        guard it dies later with an opaque KeyError ('embed.weight').
+        """
+        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+        bridge.cfg.is_audio_model = True
+        with pytest.raises(NotImplementedError, match="audio encoder"):
+            bridge.enable_compatibility_mode()
 
     def test_bridge_device_handling(self, gpt2_bridge):
         """Test that bridge handles device specification correctly."""
@@ -102,7 +104,7 @@ class TestBridgeOfflineWithHfModel:
         """Bridge boot succeeds when AutoConfig.from_pretrained would fail."""
         from unittest.mock import patch
 
-        import transformer_lens.model_bridge.sources.transformers as bridge_source
+        import transformer_lens.model_bridge.sources.transformers.source as bridge_source
 
         with patch.object(bridge_source, "AutoConfig") as mock_autoconfig:
             mock_autoconfig.from_pretrained.side_effect = OSError("Simulated Hub failure")
@@ -110,6 +112,7 @@ class TestBridgeOfflineWithHfModel:
             bridge = TransformerBridge.boot_transformers(
                 self.OFFLINE_MODEL, hf_model=hf_model, tokenizer=tokenizer
             )
+            assert not mock_autoconfig.from_pretrained.called
 
             test_input = tokenizer("Hello", return_tensors="pt")["input_ids"]
             with torch.no_grad():
@@ -142,15 +145,40 @@ class TestBridgeOfflineWithHfModel:
             ), f"Bridge mutated hf_model.config.{attr}"
 
     def test_autoconfig_not_called_when_hf_model_provided(self, hf_model, tokenizer):
-        """Patches AutoConfig in the bridge module only — transitive calls from AutoTokenizer
-        (which uses ``transformers.AutoConfig`` directly) aren't intercepted.
+        """boot() must not call AutoConfig.from_pretrained when hf_model is supplied.
+
+        Patches the binding in the consuming module (sources.transformers.source),
+        which imports AutoConfig at module load; AutoTokenizer's internal use of
+        ``transformers.AutoConfig`` is deliberately not intercepted.
         """
         from unittest.mock import patch
 
-        import transformer_lens.model_bridge.sources.transformers as bridge_source
+        import transformer_lens.model_bridge.sources.transformers.source as bridge_source
 
         with patch.object(bridge_source, "AutoConfig") as mock_autoconfig:
             TransformerBridge.boot_transformers(
                 self.OFFLINE_MODEL, hf_model=hf_model, tokenizer=tokenizer
             )
             assert not mock_autoconfig.from_pretrained.called
+
+    def test_attention_hooks_fire_with_preloaded_hf_model(self):
+        """hook_pattern must fire on a pre-loaded model left on transformers' default sdpa.
+
+        Under sdpa, HF attention returns attn_weights=None, so boot must force eager.
+        Uses OPT because its AttentionBridge reads the pattern off the HF return tuple
+        (Mistral computes its own pattern and would mask the regression).
+        """
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model_name = "hf-internal-testing/tiny-random-OPTForCausalLM"
+        hf_model = AutoModelForCausalLM.from_pretrained(model_name).eval()
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+        bridge = TransformerBridge.boot_transformers(
+            model_name, hf_model=hf_model, tokenizer=tokenizer
+        )
+
+        pattern_name = "blocks.0.attn.hook_pattern"
+        _, cache = bridge.run_with_cache("Hello", names_filter=pattern_name)
+        assert pattern_name in cache, "attention pattern hook never fired"
+        assert torch.isfinite(cache[pattern_name]).all()

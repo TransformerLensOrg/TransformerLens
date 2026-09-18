@@ -39,37 +39,26 @@ def _make_tiny_hf_model():
         _attn_implementation="eager",
     )
     cfg.tie_word_embeddings = False
+    cfg.architectures = ["HrmTextForCausalLM"]
     model = HrmTextForCausalLM(cfg)
     model.eval()
     return model
 
 
 def _make_bridge(hf_model):
+    """Bridge via the production HF→bridge config translation (no hand-rolled config)."""
     from unittest.mock import MagicMock
 
-    from transformer_lens.config.transformer_bridge_config import (
-        TransformerBridgeConfig,
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_config_from_hf,
     )
     from transformer_lens.model_bridge.supported_architectures.hrm_text import (
         HrmTextArchitectureAdapter,
     )
 
-    bridge_cfg = TransformerBridgeConfig(
-        d_model=64,
-        d_head=16,
-        n_heads=4,
-        n_layers=2,
-        n_ctx=64,
-        d_vocab=128,
-        d_mlp=128,
-        architecture="HrmTextForCausalLM",
+    bridge_cfg = build_bridge_config_from_hf(
+        hf_model.config, "HrmTextForCausalLM", "hrm-text-tiny", torch.float32
     )
-    # HRM-Text passthrough attrs must be propagated to bridge_cfg so the adapter
-    # can read them. In production this happens via _HF_PASSTHROUGH_ATTRS in
-    # _bridge_builder.py / transformers.py, but in this test we construct the
-    # config manually.
-    for attr in ("H_cycles", "L_cycles", "L_bp_cycles", "embedding_scale", "prefix_lm"):
-        setattr(bridge_cfg, attr, getattr(hf_model.config, attr))
     adapter = HrmTextArchitectureAdapter(bridge_cfg)
     return TransformerBridge(hf_model, adapter, tokenizer=MagicMock())
 

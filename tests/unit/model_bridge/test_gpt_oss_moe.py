@@ -198,3 +198,61 @@ def test_gpt_oss_run_with_cache_with_random_weights():
     # GPT-OSS has 32 experts with top-4 routing, so router_scores is (seq_len, 4)
     router_scores_0 = cache["blocks.0.mlp.hook_router_scores"]
     assert router_scores_0.shape == (5, 4)  # seq_len=5, num_experts_per_tok=4
+
+
+def test_gpt_oss_routing_hooks_match_hooked_transformer_construction():
+    """GPT-OSS softmaxes after top-k, so the scattered weights are tensor-identical
+    to HookedTransformer's gpt_oss_moe routing_weights, and the hooks are observe-only."""
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+    from transformer_lens.config import TransformerBridgeConfig
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.sources._hf_format import (
+        map_default_transformer_lens_config,
+    )
+    from transformer_lens.model_bridge.supported_architectures.gpt_oss import (
+        GPTOSSArchitectureAdapter,
+    )
+
+    torch.manual_seed(0)
+    config = AutoConfig.from_pretrained("openai/gpt-oss-20b", trust_remote_code=True)
+    config.num_hidden_layers = 2
+    config.hidden_size = 128
+    config.intermediate_size = 256
+    config.num_attention_heads = 8
+    config.num_key_value_heads = 2
+    model = AutoModelForCausalLM.from_config(config, trust_remote_code=True)
+
+    tl_config = map_default_transformer_lens_config(config)
+    bridge = TransformerBridge(
+        model=model,
+        adapter=GPTOSSArchitectureAdapter(
+            TransformerBridgeConfig(
+                d_model=tl_config.d_model,
+                d_head=tl_config.d_head,
+                n_layers=tl_config.n_layers,
+                n_ctx=tl_config.n_ctx,
+                architecture="GptOssForCausalLM",
+            )
+        ),
+        tokenizer=AutoTokenizer.from_pretrained("openai/gpt-oss-20b", trust_remote_code=True),
+    )
+    bridge.enable_compatibility_mode(no_processing=True)
+
+    tokens = torch.randint(0, 1000, (1, 5))
+    baseline = bridge(tokens)
+    cached_logits, cache = bridge.run_with_cache(tokens)
+
+    weights = cache["blocks.0.mlp.router.hook_expert_weights"]
+    indices = cache["blocks.0.mlp.router.hook_expert_indices"]
+    scores = cache["blocks.0.mlp.hook_router_scores"]
+
+    assert weights.shape == (5, config.num_local_experts)
+    assert indices.shape == (5, config.num_experts_per_tok)
+    assert torch.equal(baseline, cached_logits), "routing hooks must be observe-only"
+
+    # HookedTransformer's gpt_oss_moe.py builds the same tensor by scattering the
+    # post-top-k softmax back over expert ids.
+    hooked_construction = torch.zeros_like(weights)
+    hooked_construction.scatter_(-1, indices.long(), scores)
+    assert torch.equal(weights, hooked_construction)

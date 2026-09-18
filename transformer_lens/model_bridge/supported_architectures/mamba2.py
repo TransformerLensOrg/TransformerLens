@@ -6,7 +6,6 @@ import torch
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components import (
     DepthwiseConv1DBridge,
     EmbeddingBridge,
@@ -17,6 +16,7 @@ from transformer_lens.model_bridge.generalized_components import (
     SSMBlockBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
 
 class Mamba2ArchitectureAdapter(ArchitectureAdapter):
@@ -29,8 +29,8 @@ class Mamba2ArchitectureAdapter(ArchitectureAdapter):
     loop with Mamba-1.
     """
 
-    # White-box forward: P1 is exact vs raw HF (mixer delegates to HF); P2/P3 skip
-    # without a HookedTransformer; P4 is generation.
+    # White-box forward: P1 is exact vs raw HF (mixer delegates to HF); P2/P3 run
+    # hook/cache self-checks and HF equivalence; P4 is generation.
     applicable_phases: list[int] = [1, 2, 3, 4]
 
     def __init__(self, cfg: Any) -> None:

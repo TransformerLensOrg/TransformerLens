@@ -1,8 +1,9 @@
 """Vision benchmark (Phase 9) gating and wiring, download-free.
 
 The real pixel forward/cache runs happen in per-model verification; here we pin
-the skip/gate logic and the shared encoder-benchmark wiring (result names, HF
-reference kwarg, critical-hook selection) without loading a model.
+the classification plumbing, the phase gating in run_benchmark_suite, and the
+shared encoder-benchmark wiring (result names, HF reference kwarg,
+critical-hook selection) without loading a model.
 """
 
 from types import SimpleNamespace
@@ -13,6 +14,11 @@ pytest.importorskip("torch")
 
 import torch  # noqa: E402
 
+from transformer_lens.benchmarks import main_benchmark  # noqa: E402
+from transformer_lens.benchmarks.main_benchmark import (  # noqa: E402
+    _adapter_applicable_phases,
+    _phase_enabled,
+)
 from transformer_lens.benchmarks.utils import BenchmarkSeverity  # noqa: E402
 from transformer_lens.benchmarks.vision import (  # noqa: E402
     benchmark_vision_cache,
@@ -21,6 +27,93 @@ from transformer_lens.benchmarks.vision import (  # noqa: E402
     benchmark_vision_representation_stability,
 )
 from transformer_lens.model_bridge.bridge import TransformerBridge  # noqa: E402
+from transformer_lens.utilities.architectures import (  # noqa: E402
+    classify_architecture,
+    classify_model_config,
+)
+
+
+class TestVisionClassification:
+    def test_vision_architectures_classify_as_vision(self):
+        for arch in (
+            "ViTModel",
+            "ViTForImageClassification",
+            "DeiTModel",
+            "DeiTForImageClassification",
+        ):
+            assert classify_architecture(arch) == "vision"
+
+    def test_classify_model_config_vision(self):
+        cfg = SimpleNamespace(architectures=["ViTForImageClassification"])
+        assert classify_model_config(cfg) == "vision"
+
+    def test_audio_text_still_classifies_causal(self):
+        # Audio-text models classify as causal LMs (bridge semantics).
+        assert classify_architecture("Qwen2AudioForConditionalGeneration") == "causal_lm"
+
+
+class TestPhaseGating:
+    """should_run_phase = _phase_enabled(phase, phases filter, applicable_phases)."""
+
+    @pytest.mark.parametrize(
+        "phase,phases,applicable,expected",
+        [
+            # Text phases absent from applicable_phases are skipped.
+            (1, None, [], False),
+            (4, None, [], False),
+            (3, None, [1, 2, 4], False),
+            (2, None, [1, 2, 4], True),
+            (1, None, [1, 2, 3, 4], True),
+            # Modality phases (7/8/9) are never applicable_phases-gated.
+            (7, None, [], True),
+            (8, None, [], True),
+            (9, None, [], True),
+            # The explicit phases filter still applies to every phase.
+            (1, [2], [1, 2, 3, 4], False),
+            (9, [1], [1, 2, 3, 4], False),
+            (9, [9], [], True),
+        ],
+    )
+    def test_phase_enabled(self, phase, phases, applicable, expected):
+        assert _phase_enabled(phase, phases, applicable) is expected
+
+    def _stub_auto_config(self, monkeypatch, architectures):
+        fake_cfg = SimpleNamespace(architectures=architectures)
+        monkeypatch.setattr(
+            main_benchmark,
+            "AutoConfig",
+            SimpleNamespace(from_pretrained=lambda *a, **k: fake_cfg),
+        )
+
+    @pytest.mark.parametrize("applicable", [[1, 4], [1, 2, 3, 4], []])
+    def test_adapter_applicable_phases_resolves_fake_adapter(self, monkeypatch, applicable):
+        from transformer_lens.factories.architecture_adapter_factory import (
+            SUPPORTED_ARCHITECTURES,
+        )
+
+        class _FakeAdapter:
+            applicable_phases = applicable
+
+        monkeypatch.setitem(SUPPORTED_ARCHITECTURES, "FakePhaseArch", _FakeAdapter)
+        self._stub_auto_config(monkeypatch, ["FakePhaseArch"])
+        assert _adapter_applicable_phases("fake/model") == applicable
+
+    def test_adapter_applicable_phases_vision_is_p1_only(self, monkeypatch):
+        # Vision encoders run P1 (HF parity on pixels); P9 is gated by
+        # is_visual_model, not applicable_phases.
+        self._stub_auto_config(monkeypatch, ["ViTModel"])
+        assert _adapter_applicable_phases("fake/vit") == [1]
+
+    def test_adapter_applicable_phases_unknown_arch_defaults(self, monkeypatch):
+        self._stub_auto_config(monkeypatch, ["NotARealArchitecture"])
+        assert _adapter_applicable_phases("fake/unknown") == [1, 2, 3, 4]
+
+    def test_adapter_applicable_phases_config_error_defaults(self, monkeypatch):
+        def _raise(*a, **k):
+            raise OSError("offline")
+
+        monkeypatch.setattr(main_benchmark, "AutoConfig", SimpleNamespace(from_pretrained=_raise))
+        assert _adapter_applicable_phases("fake/offline") == [1, 2, 3, 4]
 
 
 class _FakeBridge(TransformerBridge):

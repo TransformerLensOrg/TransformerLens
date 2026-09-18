@@ -1,29 +1,36 @@
 """SVD Interpreter.
 
 Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
-:class:`transformer_lens.HookedTransformer`.
+:class:`transformer_lens.model_bridge.TransformerBridge` (or any model exposing
+the TransformerLens weight surface).
 """
 
-from typing import Any, NoReturn, Optional, Union
+from typing import NoReturn, Optional, Union
 
 import torch
 from typing_extensions import Literal
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.model_protocol import TransformerLensModel
 
 OUTPUT_EMBEDDING = "unembed.W_U"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
 
 
 class SVDInterpreter:
-    def __init__(self, model: Any):
+    # Base protocol at runtime: beartype validates via getattr_static, which
+    # cannot see nn.Module instance submodules, so the WithWeights surface
+    # would spuriously reject legacy models. Everything touched here (cfg,
+    # tl_parameters/named_parameters fallback) is on the base surface.
+    def __init__(self, model: TransformerLensModel):
         self.model = model
         self.cfg = model.cfg
-        # Use tl_parameters() for TransformerBridge (returns TL-style dict)
-        # Fall back to named_parameters() for HookedTransformer
+        # Use tl_parameters() for TransformerBridge (returns TL-style dict); other
+        # nn.Module models with TL-style parameter names use named_parameters().
         if hasattr(model, "tl_parameters"):
             self.params = model.tl_parameters()
         else:
+            assert isinstance(model, torch.nn.Module)  # named_parameters() fallback
             self.params = {name: param for name, param in model.named_parameters()}
 
     def get_singular_vectors(
@@ -37,7 +44,7 @@ class SVDInterpreter:
 
         This tensor can then be plotted using Neel's PySvelte, as demonstrated in the demo for this
         feature. The demo also points out some "gotchas" in this feature - numerical instability
-        means inconsistency across devices, and the default HookedTransformer parameters don't
+        means inconsistency across devices, and default weight processing doesn't
         replicate the original SVD post very well. So I'd recommend checking out the demo if you
         want to use this!
 
@@ -45,9 +52,10 @@ class SVDInterpreter:
 
         .. code-block:: python
 
-            from transformer_lens import HookedTransformer, SVDInterpreter
+            from transformer_lens import SVDInterpreter
+            from transformer_lens.model_bridge import TransformerBridge
 
-            model = HookedTransformer.from_pretrained('gpt2-medium')
+            model = TransformerBridge.boot_transformers('gpt2-medium')
             svd_interpreter = SVDInterpreter(model)
 
             ov = svd_interpreter.get_singular_vectors('OV', layer_index=22, head_index=10)

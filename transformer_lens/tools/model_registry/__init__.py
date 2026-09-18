@@ -121,6 +121,9 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "GPTNeoXForCausalLM",
     "HubertForCTC",
     "HubertModel",
+    "Wav2Vec2ForCTC",
+    "Wav2Vec2ForPreTraining",
+    "Wav2Vec2Model",
     "HrmTextForCausalLM",
     "HunYuanDenseV1ForCausalLM",
     "Idefics3ForConditionalGeneration",
@@ -193,6 +196,14 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "DeiTModel",
     "DeiTForImageClassification",
     "Zamba2ForCausalLM",
+}
+
+# Hub checkpoint configs can disagree with the transformers class name on casing
+# (jetmoe/jetmoe-8b reports "JetMoEForCausalLM"; registry rows are keyed by the
+# transformers class "JetMoeForCausalLM"). Row-scanning lookups normalize through
+# this map before matching.
+ARCHITECTURE_ALIASES: dict[str, str] = {
+    "JetMoEForCausalLM": "JetMoeForCausalLM",
 }
 
 # Foundation-trained orgs per architecture. Source of truth for the scraper's
@@ -272,6 +283,9 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "GraniteMoeHybridForCausalLM": ["ibm-granite"],
     "HubertForCTC": ["facebook"],
     "HubertModel": ["facebook"],
+    "Wav2Vec2ForCTC": ["facebook"],
+    "Wav2Vec2ForPreTraining": ["facebook"],
+    "Wav2Vec2Model": ["facebook"],
     "HrmTextForCausalLM": ["sapientinc"],
     "HunYuanDenseV1ForCausalLM": ["tencent"],
     "Idefics3ForConditionalGeneration": ["HuggingFaceM4", "ibm-granite"],
@@ -331,8 +345,8 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "QwenForCausalLM": ["Qwen"],
     "RavenForCausalLM": ["tomg-group-umd"],
     "RecurrentGemmaForCausalLM": ["google"],
-    "SeedOssForCausalLM": ["ByteDance-Seed"],
     "RWKV7ForCausalLM": ["fla-hub"],
+    "SeedOssForCausalLM": ["ByteDance-Seed"],
     "SmolLM3ForCausalLM": ["HuggingFaceTB"],
     "StableLmForCausalLM": ["stabilityai"],
     "Starcoder2ForCausalLM": ["bigcode"],
@@ -341,17 +355,44 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "T5GemmaForConditionalGeneration": ["google"],
     "T5Gemma2ForConditionalGeneration": ["google"],
     "XGLMForCausalLM": ["facebook"],
-    "ViTModel": ["google"],
-    "ViTForImageClassification": ["google"],
+    "ViTModel": ["google", "facebook"],
+    "ViTForImageClassification": ["google", "facebook"],
     "DeiTModel": ["facebook"],
     "DeiTForImageClassification": ["facebook"],
     "Zamba2ForCausalLM": ["Zyphra"],
 }
 
+# Model-name prefixes that require trust_remote_code=True to load (custom
+# modeling code on the HF Hub).
+REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
+    "apple/DiffuCoder",  # DreamModel (DiffuCoder) — same remote code family
+    "apple/OpenELM",
+    "baichuan-inc/",  # BaichuanForCausalLM — ships own modeling_baichuan.py
+    "ByteDance/Ouro-",  # OuroForCausalLM — ships own modeling_ouro.py
+    "bigcode/santacoder",
+    "Dream-org/",  # DreamModel — ships own modeling_dream.py
+    "dvruette/",  # GiddForDiffusionLM — ships own modeling_gidd.py
+    "inclusionAI/",  # LLaDA2MoeModelLM — ships own modeling_llada2_moe.py
+    "kuleshov-group/",  # BD3LM — ships own custom modeling_d_dit.py
+    "LGAI-EXAONE/",  # ExaoneForCausalLM (EXAONE-3.x) — ships own modeling_exaone.py
+    "LongSafari/",  # HyenaDNAForCausalLM — ships own modeling_hyena.py
+    "microsoft/phi-2",
+    "microsoft/phi-4",
+    "openai/gpt-oss-",
+    "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
+    "Qwen/Qwen-",
+    "Qwen/Qwen3-",
+    "swiss-ai/Apertus-",
+    "internlm/",  # InternLM2ForCausalLM — ships own modeling_internlm2.py
+    "GSAI-ML/LLaDA",  # LLaDAModelLM — ships configuration_llada.py/modeling_llada.py
+)
+
 __all__ = [
     # Constants
     "HF_SUPPORTED_ARCHITECTURES",
+    "ARCHITECTURE_ALIASES",
     "CANONICAL_AUTHORS_BY_ARCH",
+    "REMOTE_CODE_MODEL_PREFIXES",
     # Exceptions
     "ModelRegistryError",
     "ModelNotFoundError",

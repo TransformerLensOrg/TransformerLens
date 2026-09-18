@@ -22,24 +22,29 @@ Memory note: gradients are retained only for hook points passing ``names_filter`
 Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.
 
-Scope: this build ships node granularity with plain attribution (``ig_steps=1``).
-Edge scoring (EAP), the integrated-gradient path (EAP-IG, ``ig_steps>1``), and
-ablate-outside faithfulness are not implemented yet; their API is declared here —
-``granularity="edge"`` and ``ig_steps>1`` raise :class:`NotImplementedError` — so
-downstream code can pin against a stable surface now.
+Scope: this build ships node and edge granularity with plain attribution
+(``ig_steps=1``). The integrated-gradient path (EAP-IG, ``ig_steps>1``) and
+ablate-outside faithfulness are not implemented yet; their API is declared here,
+and ``ig_steps>1`` raises :class:`NotImplementedError`, so downstream code can pin
+against a stable surface now.
 """
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Literal, Optional, Sequence, Union
 
 import torch
+
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 
 MetricFn = Callable[[torch.Tensor], torch.Tensor]
 NamesFilter = Union[str, Sequence[str], Callable[[str], bool], None]
 
-NodeKind = Literal["embed", "attn_head_out", "mlp_out"]
+NodeKind = Literal[
+    "embed", "attn_head_out", "mlp_out", "q_input", "k_input", "v_input", "mlp_in", "logits"
+]
 Granularity = Literal["node", "edge"]
 
 
@@ -60,15 +65,27 @@ class GradientCache:
 
 @dataclass(frozen=True)
 class Node:
-    """A node in the residual-stream computational graph at node granularity.
+    """A node in the residual-stream computational graph.
 
     Nodes are the typed, hashable keys the attribution sweep scores. Each node
     is identified by ``(kind, layer, position, head)``; ``kind`` selects the node
-    family and constrains which of ``layer``/``head`` apply:
+    family and constrains which of ``layer``/``head`` apply. Three kinds are
+    *writers* -- they contribute a value into the residual stream:
 
     - ``"embed"``: the token embedding write. ``layer`` and ``head`` are ``None``.
     - ``"attn_head_out"``: one attention head's output. ``layer`` and ``head`` set.
     - ``"mlp_out"``: one layer's MLP output. ``layer`` set, ``head`` is ``None``.
+
+    Five kinds are *readers* -- they consume the residual stream as an edge's
+    destination (see :func:`enumerate_edges`):
+
+    - ``"q_input"`` / ``"k_input"`` / ``"v_input"``: one attention head's split
+      Q/K/V input. ``layer`` and ``head`` set.
+    - ``"mlp_in"``: one layer's MLP entry. ``layer`` set, ``head`` is ``None``.
+    - ``"logits"``: the terminal readout of the final residual, read at
+      ``blocks.{n_layers-1}.hook_resid_post``. ``layer`` is that final layer and
+      ``head`` is ``None``. Every writer feeds this reader, so a writer's
+      aggregate over its outgoing edges equals its direct node score.
 
     ``position`` is the sequence index the node is read at. The invariants above
     are enforced in ``__post_init__`` so a malformed key raises rather than
@@ -92,6 +109,19 @@ class Node:
                 raise ValueError("mlp_out nodes need a layer")
             if self.head is not None:
                 raise ValueError("mlp_out nodes take no head")
+        elif self.kind in ("q_input", "k_input", "v_input"):
+            if self.layer is None or self.head is None:
+                raise ValueError(f"{self.kind} nodes need both layer and head")
+        elif self.kind == "mlp_in":
+            if self.layer is None:
+                raise ValueError("mlp_in nodes need a layer")
+            if self.head is not None:
+                raise ValueError("mlp_in nodes take no head")
+        elif self.kind == "logits":
+            if self.layer is None:
+                raise ValueError("logits nodes need a layer")
+            if self.head is not None:
+                raise ValueError("logits nodes take no head")
         else:
             raise ValueError(f"unknown node kind {self.kind!r}")
 
@@ -100,15 +130,23 @@ class Node:
         """The cache hook point this node reads from.
 
         Uses the standard ``TransformerBridge`` alias names (``hook_embed``,
-        ``blocks.{l}.attn.hook_z``, ``blocks.{l}.hook_mlp_out``); the per-head
-        ``attn_head_out`` node slices head ``self.head`` out of the shared
-        ``hook_z`` tensor.
+        ``blocks.{l}.attn.hook_z``, ``blocks.{l}.hook_mlp_out``,
+        ``blocks.{l}.attn.hook_q_input``/``hook_k_input``/``hook_v_input``,
+        ``blocks.{l}.hook_mlp_in``, ``blocks.{l}.hook_resid_post``); the per-head
+        nodes (``attn_head_out``, ``q_input``, ``k_input``, ``v_input``) slice
+        head ``self.head`` out of the shared per-head tensor.
         """
         if self.kind == "embed":
             return "hook_embed"
         if self.kind == "attn_head_out":
             return f"blocks.{self.layer}.attn.hook_z"
-        return f"blocks.{self.layer}.hook_mlp_out"
+        if self.kind == "mlp_out":
+            return f"blocks.{self.layer}.hook_mlp_out"
+        if self.kind in ("q_input", "k_input", "v_input"):
+            return f"blocks.{self.layer}.attn.hook_{self.kind}"
+        if self.kind == "logits":
+            return f"blocks.{self.layer}.hook_resid_post"
+        return f"blocks.{self.layer}.hook_mlp_in"
 
 
 @dataclass(frozen=True)
@@ -131,13 +169,12 @@ class EdgeAttributionConfig:
     ``ig_steps`` exceeds 1. Collapsing them removes the invalid states (e.g.
     ``method="attribution", ig_steps=5``).
 
-    This build implements node granularity with plain attribution only.
-    ``granularity="edge"`` and ``ig_steps>1`` are accepted by the type but raise
-    :class:`NotImplementedError` at construction, so downstream code can import and
-    reference this API now while edge scoring and the integrated-gradient path are
-    not implemented yet. Once EAP-IG lands, the default flips to ``ig_steps=5``
-    (EAP-IG is the faithful default); until then the default is the only executable
-    value, ``ig_steps=1``.
+    This build implements node and edge granularity with plain attribution.
+    ``ig_steps>1`` is accepted by the type but raises :class:`NotImplementedError`
+    at construction, so downstream code can import and reference this API now
+    while the integrated-gradient path is not implemented yet. Once EAP-IG lands,
+    the default flips to ``ig_steps=5`` (EAP-IG is the faithful default); until
+    then the default is the only executable value, ``ig_steps=1``.
 
     Attributes:
         granularity: ``"node"`` or ``"edge"``. Defaults to ``"node"``.
@@ -150,11 +187,6 @@ class EdgeAttributionConfig:
     def __post_init__(self) -> None:
         if self.ig_steps < 1:
             raise ValueError(f"ig_steps must be >= 1, got {self.ig_steps}")
-        if self.granularity == "edge":
-            raise NotImplementedError(
-                "granularity='edge' (EAP edge scoring) is not implemented yet; this "
-                "build supports granularity='node' only."
-            )
         if self.ig_steps > 1:
             raise NotImplementedError(
                 "ig_steps>1 (EAP-IG integrated gradients) is not implemented yet; this "
@@ -171,10 +203,13 @@ class AttributionResult:
             ``(a_clean - a_corrupt) . d(metric)/d(a)``. A positive score means
             patching that node from corrupt toward clean moves the metric in the
             positive direction (the denoising convention pinned in the module
-            docstring).
+            docstring). For an edge-granularity sweep this is instead each
+            writer's aggregate over its own outgoing edge scores. Because the
+            graph has a terminal logits reader that every writer feeds, that
+            aggregate equals the writer's direct node score (see
+            :func:`attribution_patch`).
         edge_scores: Per-edge effect estimate keyed by ``(source, destination)``.
-            Declared here so the result API is stable across the PR series; it is
-            populated only once edge scoring lands and is empty for a node sweep.
+            Populated for an edge-granularity sweep; empty for a node sweep.
     """
 
     node_scores: dict[Node, float]
@@ -192,20 +227,145 @@ class AttributionResult:
         return ranked[:k]
 
     def top_edges(self, k: int = 10) -> list[tuple[Node, Node, float]]:
-        """The ``k`` highest-magnitude edges — populated once edge scoring lands."""
-        raise NotImplementedError(
-            "edge scoring is not implemented yet; run a node-granularity sweep and "
-            "use top_nodes()."
-        )
+        """The ``k`` edges with the largest effect magnitude, strongest first.
+
+        Ranking is by absolute score, matching ``top_nodes``: a large negative
+        edge effect is as causally important as a large positive one. Ties keep
+        enumeration order (stable sort). Requesting more than the available
+        edges returns all of them.
+        """
+        ranked = sorted(self.edge_scores.items(), key=lambda item: abs(item[1]), reverse=True)
+        return [(writer, reader, score) for (writer, reader), score in ranked[:k]]
 
 
-def _required_hook_names(n_layers: int) -> list[str]:
-    """Hook points the node graph reads: embed plus per-layer attn-z and mlp-out."""
+def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> list[str]:
+    """Hook points a sweep at ``granularity`` reads.
+
+    Node granularity needs the embed write plus each layer's attn-z and
+    mlp-out. Edge granularity additionally needs the per-head hook points on
+    both sides of an edge into or out of an attention head: ``attn.hook_result``
+    (writer -- a head's own contribution before the sum into the residual
+    stream) and the split ``attn.hook_q_input``/``hook_k_input``/``hook_v_input``
+    (reader -- the residual each head's Q/K/V projection reads separately).
+    """
     names = ["hook_embed"]
     for layer in range(n_layers):
         names.append(f"blocks.{layer}.attn.hook_z")
         names.append(f"blocks.{layer}.hook_mlp_out")
+        if granularity == "edge":
+            names.append(f"blocks.{layer}.attn.hook_result")
+            names.append(f"blocks.{layer}.attn.hook_q_input")
+            names.append(f"blocks.{layer}.attn.hook_k_input")
+            names.append(f"blocks.{layer}.attn.hook_v_input")
     return names
+
+
+def _ensure_edge_hook_flags(model: Any) -> None:
+    """Turn on the Bridge flags edge granularity's hook points require.
+
+    ``attn.hook_result``, the split ``attn.hook_q_input``/``hook_k_input``/
+    ``hook_v_input``, and ``hook_mlp_in`` all exist on the Bridge
+    unconditionally but only fire when their owning flag
+    (``cfg.use_attn_result`` / ``cfg.use_split_qkv_input`` /
+    ``cfg.use_hook_mlp_in``) is on, so an edge sweep must enable all three
+    before caching or the writer- and reader-side hook points it needs never
+    populate.
+
+    Memory caveat: enabling ``use_attn_result``/``use_split_qkv_input`` makes
+    every cached per-head tensor ``[batch, seq, n_heads, d_model]`` instead of
+    the summed ``[batch, seq, d_model]`` residual. That is fine on a model the
+    size of gpt2-small; it does not scale to models with many heads or layers.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg`` and
+            ``set_use_attn_result``/``set_use_split_qkv_input``/
+            ``set_use_hook_mlp_in``.
+    """
+    if not model.cfg.use_attn_result:
+        model.set_use_attn_result(True)
+    if not model.cfg.use_split_qkv_input:
+        model.set_use_split_qkv_input(True)
+    if not model.cfg.use_hook_mlp_in:
+        model.set_use_hook_mlp_in(True)
+
+
+@contextmanager
+def _edge_hook_flags(model: Any) -> Iterator[None]:
+    """Enable the Bridge flags an edge sweep needs, then restore the caller's state.
+
+    ``attn.hook_result``, the split ``attn.hook_q_input``/``hook_k_input``/
+    ``hook_v_input``, and ``hook_mlp_in`` all exist on the Bridge unconditionally
+    but only fire when their owning flag (``cfg.use_attn_result`` /
+    ``cfg.use_split_qkv_input`` / ``cfg.use_hook_mlp_in``) is on, so an edge sweep
+    must enable all three before caching or the writer- and reader-side hook
+    points it needs never populate.
+
+    ``use_split_qkv_input`` is mutually exclusive with ``use_attn_in``, so a
+    caller who arrives with ``use_attn_in`` on would otherwise trip the
+    exclusivity error. This turns ``use_attn_in`` off before enabling the split
+    input, and restores it after ``use_split_qkv_input`` has been turned back off.
+
+    Invariant: the caller's flag state (``use_attn_result``,
+    ``use_split_qkv_input``, ``use_hook_mlp_in``, ``use_attn_in``) is unchanged on
+    return, including when the body raises. Restoration runs in a ``finally``
+    block so a raise mid-sweep -- or in the caller's own later code -- cannot
+    leave the per-head tensors materialized on the model.
+
+    Memory caveat: enabling ``use_attn_result``/``use_split_qkv_input`` makes
+    every cached per-head tensor ``[batch, seq, n_heads, d_model]`` instead of
+    the summed ``[batch, seq, d_model]`` residual. That is fine on a model the
+    size of gpt2-small; it does not scale to models with many heads or layers.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg`` and
+            ``set_use_attn_result``/``set_use_split_qkv_input``/
+            ``set_use_hook_mlp_in``/``set_use_attn_in``.
+    """
+    cfg = model.cfg
+    saved_attn_result = cfg.use_attn_result
+    saved_split_qkv_input = cfg.use_split_qkv_input
+    saved_hook_mlp_in = cfg.use_hook_mlp_in
+    saved_attn_in = bool(getattr(cfg, "use_attn_in", False))
+    try:
+        # use_attn_in and use_split_qkv_input are mutually exclusive; clear
+        # use_attn_in first so enabling the split input cannot raise.
+        if saved_attn_in:
+            model.set_use_attn_in(False)
+        if not cfg.use_attn_result:
+            model.set_use_attn_result(True)
+        if not cfg.use_split_qkv_input:
+            model.set_use_split_qkv_input(True)
+        if not cfg.use_hook_mlp_in:
+            model.set_use_hook_mlp_in(True)
+        yield
+    finally:
+        model.set_use_attn_result(saved_attn_result)
+        model.set_use_split_qkv_input(saved_split_qkv_input)
+        model.set_use_hook_mlp_in(saved_hook_mlp_in)
+        # Re-enabling use_attn_in requires use_split_qkv_input already off; the
+        # line above restored it, and a caller with use_attn_in on cannot also
+        # have had use_split_qkv_input on, so this cannot trip the exclusivity.
+        if saved_attn_in:
+            model.set_use_attn_in(True)
+
+
+def _check_required_hooks(
+    cache: GradientCache, required_names: Sequence[str], graph: str, hint: str
+) -> None:
+    """Raise if any of ``required_names`` is absent from ``cache.activations``.
+
+    Shared by every granularity's graph-construction step, so a cache built
+    with too narrow a ``names_filter`` -- or one produced while a required
+    Bridge flag was off -- fails loudly instead of silently producing a
+    truncated graph.
+    """
+    missing = [name for name in required_names if name not in cache.activations]
+    if missing:
+        raise ValueError(
+            f"{graph} requires hook points missing from the cache: "
+            + ", ".join(missing)
+            + f". {hint}"
+        )
 
 
 def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
@@ -228,14 +388,13 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
             graph is never silently truncated.
     """
     n_layers = int(model.cfg.n_layers)
-    missing = [name for name in _required_hook_names(n_layers) if name not in cache.activations]
-    if missing:
-        raise ValueError(
-            "node graph requires hook points missing from the cache: "
-            + ", ".join(missing)
-            + ". Cache with a names_filter that keeps hook_embed, "
-            "blocks.*.attn.hook_z, and blocks.*.hook_mlp_out."
-        )
+    _check_required_hooks(
+        cache,
+        _required_hook_names(n_layers),
+        "node graph",
+        "Cache with a names_filter that keeps hook_embed, blocks.*.attn.hook_z, "
+        "and blocks.*.hook_mlp_out.",
+    )
 
     seq_len = cache.activations["hook_embed"].shape[1]
 
@@ -247,6 +406,149 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
                 nodes.append(Node(kind="attn_head_out", layer=layer, head=head, position=position))
             nodes.append(Node(kind="mlp_out", layer=layer, position=position))
     return nodes
+
+
+def _assert_edges_unique(edges: Sequence[tuple[Node, Node]]) -> None:
+    """Raise if any writer -> reader pair appears more than once in ``edges``.
+
+    A writer feeding two distinct readers (a head's output feeding both the
+    next layer's attention input and this layer's MLP input, say) is two
+    edges; this guards the enumeration against a construction bug that
+    collapses or duplicates a single ``(writer, reader)`` pair instead.
+    """
+    seen: set[tuple[Node, Node]] = set()
+    for edge in edges:
+        if edge in seen:
+            raise ValueError(f"edge {edge} enumerated more than once")
+        seen.add(edge)
+
+
+def _required_edge_reader_hook_names(n_layers: int) -> list[str]:
+    """The reader hook points edge enumeration additionally requires.
+
+    ``_required_hook_names(..., granularity="edge")`` covers the per-head
+    attention hooks a writer/reader pair into or out of a head needs. Edge
+    enumeration reads two reader points those miss:
+
+    - each layer's MLP entry, ``attn.hook_mlp_in``'s layer-level sibling
+      ``hook_mlp_in``, gated on ``cfg.use_hook_mlp_in`` the same way the per-head
+      hooks are gated on their own flags, and
+    - the terminal ``blocks.{n_layers-1}.hook_resid_post``, where the logits
+      reader takes its gradient. This final residual hook fires unconditionally,
+      so no Bridge flag gates it.
+    """
+    names = [f"blocks.{layer}.hook_mlp_in" for layer in range(n_layers)]
+    names.append(f"blocks.{n_layers - 1}.hook_resid_post")
+    return names
+
+
+def _edge_hook_names(n_layers: int) -> list[str]:
+    """Every hook point an edge-granularity sweep must cache.
+
+    The per-head attention hooks from ``_required_hook_names(..., granularity="edge")``
+    plus each layer's MLP-entry reader hook and the terminal logits reader hook.
+    """
+    return _required_hook_names(n_layers, granularity="edge") + _required_edge_reader_hook_names(
+        n_layers
+    )
+
+
+def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]:
+    """Enumerate every writer -> reader edge in the residual-stream graph.
+
+    At a fixed sequence position, the residual stream is a running sum: a
+    reader (a head's split Q/K/V input, a layer's MLP entry, or the terminal
+    logits readout) is fed by every writer (the embed write, every attention
+    head's output, every layer's MLP output) that precedes it. Building the
+    graph position-by-position tracks which writers are "available" so far and
+    connects each new reader to all of them, then adds that layer's writers to
+    the available set before moving on -- so a writer never edges to a reader
+    upstream of it, and a writer feeding both a direct edge and a through-MLP
+    edge produces two distinct ``(u, v)`` pairs rather than one summed together.
+
+    A terminal ``logits`` reader (read at the final ``hook_resid_post``) closes
+    the graph: after the per-layer loop every remaining writer -- including the
+    final layer's MLP output, which no per-layer reader sees -- edges to it. That
+    edge carries the writer's direct skip-connection contribution to the metric,
+    so a writer's aggregate over its outgoing edges equals its direct node score.
+
+    On ``cfg.parallel_attn_mlp`` models (Pythia, GPT-J, Falcon, Phi) the MLP
+    reads the layer input, not the post-attention residual, so a layer's own
+    heads are not writers into that layer's MLP; those same-layer head->mlp_in
+    edges are dropped while the heads still feed later readers and the logits
+    reader.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``
+            and, optionally, ``cfg.parallel_attn_mlp``.
+        cache: A :class:`GradientCache` holding at least the required hook points
+            for edge granularity.
+
+    Returns:
+        The edge list as ``(writer, reader)`` node pairs; no pair repeats.
+
+    Raises:
+        ValueError: if any required hook point is absent from ``cache`` -- the
+            graph is never silently truncated.
+    """
+    n_layers = int(model.cfg.n_layers)
+    _check_required_hooks(
+        cache,
+        _edge_hook_names(n_layers),
+        "edge graph",
+        "Cache with a names_filter that keeps the edge-granularity hook set: "
+        "hook_embed, blocks.*.attn.hook_z, blocks.*.hook_mlp_out, "
+        "blocks.*.attn.hook_result, blocks.*.attn.hook_q_input, "
+        "blocks.*.attn.hook_k_input, blocks.*.attn.hook_v_input, "
+        "blocks.*.hook_mlp_in, and blocks.{n_layers-1}.hook_resid_post.",
+    )
+
+    parallel_attn_mlp = bool(getattr(model.cfg, "parallel_attn_mlp", False))
+
+    seq_len = cache.activations["hook_embed"].shape[1]
+    edges: list[tuple[Node, Node]] = []
+
+    for position in range(seq_len):
+        available: list[Node] = [Node(kind="embed", position=position)]
+        for layer in range(n_layers):
+            n_heads = cache.activations[f"blocks.{layer}.attn.hook_z"].shape[2]
+
+            attn_reader_kinds: tuple[NodeKind, NodeKind, NodeKind] = (
+                "q_input",
+                "k_input",
+                "v_input",
+            )
+            attn_readers = [
+                Node(kind=kind, layer=layer, head=head, position=position)
+                for kind in attn_reader_kinds
+                for head in range(n_heads)
+            ]
+            for reader in attn_readers:
+                edges.extend((writer, reader) for writer in available)
+
+            layer_heads = [
+                Node(kind="attn_head_out", layer=layer, head=head, position=position)
+                for head in range(n_heads)
+            ]
+
+            mlp_reader = Node(kind="mlp_in", layer=layer, position=position)
+            if parallel_attn_mlp:
+                # The MLP reads the layer input, not the post-attention residual,
+                # so this layer's heads are not writers into its MLP. They still
+                # become available to later readers and the logits reader.
+                edges.extend((writer, mlp_reader) for writer in available)
+                available = available + layer_heads
+            else:
+                available = available + layer_heads
+                edges.extend((writer, mlp_reader) for writer in available)
+
+            available = available + [Node(kind="mlp_out", layer=layer, position=position)]
+
+        logits_reader = Node(kind="logits", layer=n_layers - 1, position=position)
+        edges.extend((writer, logits_reader) for writer in available)
+
+    _assert_edges_unique(edges)
+    return edges
 
 
 def _as_predicate(names_filter: NamesFilter) -> Callable[[str], bool]:
@@ -435,6 +737,115 @@ def _node_effects(
     return scores
 
 
+def _writer_hook_name(node: Node) -> str:
+    """The residual-stream hook point holding a writer node's own contribution.
+
+    Distinct from ``Node.hook_name``: an ``attn_head_out`` node's ``hook_name``
+    resolves to ``attn.hook_z``, the pre-``hook_result`` value node granularity
+    scores. An edge's writer contribution must instead be measured in the same
+    ``d_model`` space a reader's gradient lives in, which is ``attn.hook_result``
+    -- the per-head decomposition of the head's contribution after it is
+    projected into the residual stream.
+    """
+    if node.kind == "embed":
+        return "hook_embed"
+    if node.kind == "attn_head_out":
+        return f"blocks.{node.layer}.attn.hook_result"
+    if node.kind == "mlp_out":
+        return f"blocks.{node.layer}.hook_mlp_out"
+    raise ValueError(f"{node.kind} is a reader kind and has no writer contribution")
+
+
+def _edge_effects(
+    clean_cache: GradientCache,
+    corrupt_cache: GradientCache,
+    edges: Sequence[tuple[Node, Node]],
+) -> dict[tuple[Node, Node], float]:
+    """Score every edge with ``(a_clean[u] - a_corrupt[u]) . d(metric)/d(input of v)``.
+
+    Mirrors ``_node_effects``: the delta is the writer's own residual
+    contribution (clean minus corrupt cache), dotted with the reader's
+    corrupt-run gradient -- the same denoising convention ``_node_effects``
+    uses. Unlike a node score, the delta and the gradient are read from two
+    different hook points (the writer's and the reader's), since an edge
+    measures how much of one component's output reaches another component's
+    input. A ``logits`` reader takes its gradient at the final
+    ``hook_resid_post`` and contracts over ``d_model`` at its position, the same
+    shape path as an ``mlp_in`` reader.
+
+    Two structural facts keep this off a per-edge recompute: a writer hook's
+    clean-minus-corrupt delta is the same tensor for every edge that writer
+    feeds, and every edge into one reader shares that reader's gradient vector.
+    Each writer delta is therefore computed once, and each reader's incoming
+    edges are scored with a single batched matrix-vector product over the
+    stacked writer deltas -- reducing to the same per-edge scalars a
+    ``float((delta_vec * grad_vec).sum())`` per edge would, reader gradient
+    reused across all of that reader's edges.
+    """
+    scores: dict[tuple[Node, Node], float] = {}
+    writer_deltas: dict[str, torch.Tensor] = {}
+
+    def writer_delta_vec(writer: Node) -> torch.Tensor:
+        name = _writer_hook_name(writer)
+        delta = writer_deltas.get(name)
+        if delta is None:
+            delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+            writer_deltas[name] = delta
+        if writer.kind == "attn_head_out":
+            return delta[0, writer.position, writer.head]
+        return delta[0, writer.position]
+
+    writers_by_reader: dict[Node, list[Node]] = {}
+    reader_order: list[Node] = []
+    for writer, reader in edges:
+        bucket = writers_by_reader.get(reader)
+        if bucket is None:
+            writers_by_reader[reader] = bucket = []
+            reader_order.append(reader)
+        bucket.append(writer)
+
+    for reader in reader_order:
+        reader_name = reader.hook_name
+        grad = corrupt_cache.gradients.get(reader_name)
+        writers = writers_by_reader[reader]
+        if grad is None:
+            raise ValueError(
+                f"edge {(writers[0], reader)} reads its gradient at {reader_name!r}, but "
+                "the corrupt cache holds none there; cache with a names_filter that "
+                "retains this hook point."
+            )
+        if reader.kind in ("q_input", "k_input", "v_input"):
+            grad_vec = grad[0, reader.position, reader.head]
+        else:
+            grad_vec = grad[0, reader.position]
+        delta_matrix = torch.stack([writer_delta_vec(writer) for writer in writers])
+        edge_values = delta_matrix @ grad_vec
+        for writer, value in zip(writers, edge_values.tolist()):
+            scores[(writer, reader)] = value
+    return scores
+
+
+def _aggregate_edge_scores_to_writer_nodes(
+    edge_scores: dict[tuple[Node, Node], float],
+) -> dict[Node, float]:
+    """Sum each writer's outgoing edge scores into that writer's aggregate node score.
+
+    A writer's aggregate is the sum of its effects along every edge it feeds.
+    enumerate_edges gives every writer an edge to the terminal logits reader, so
+    the aggregate includes the writer's direct skip-connection contribution to
+    the metric -- the part of its residual-stream write that no intermediate
+    component reads, only the final readout does -- and therefore equals the
+    quantity a node-granularity sweep measures directly at the writer's own hook
+    point. Every writer has at least that one outgoing edge, including the final
+    layer's MLP output, whose only reader is the logits terminal, so no writer is
+    missing from the aggregate.
+    """
+    totals: dict[Node, float] = {}
+    for (writer, _reader), score in edge_scores.items():
+        totals[writer] = totals.get(writer, 0.0) + score
+    return totals
+
+
 def attribution_patch(
     model: Any,
     clean: torch.Tensor,
@@ -442,12 +853,17 @@ def attribution_patch(
     metric_fn: MetricFn,
     config: EdgeAttributionConfig = EdgeAttributionConfig(),
 ) -> AttributionResult:
-    """Estimate every node's causal effect on ``metric_fn`` in two forwards + one backward.
+    """Estimate every component's causal effect on ``metric_fn`` in two forwards + one backward.
 
     For each clean/corrupt pair this runs a clean forward (for ``a_clean``) and a
     corrupt forward whose backward hooks capture ``g = d(metric)/d(a)`` (for
-    ``a_corrupt`` and its gradient), then scores each node with the
-    first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``.
+    ``a_corrupt`` and its gradient). At node granularity (``config.granularity ==
+    "node"``) each node is scored with the first-order Taylor estimate
+    ``effect(node) = (a_clean - a_corrupt) . g``. At edge granularity
+    (``config.granularity == "edge"``) each writer -> reader edge is scored with
+    ``effect(edge) = (a_clean[writer] - a_corrupt[writer]) . d(metric)/d(input of
+    reader)``, and ``node_scores`` holds each writer's aggregate effect (the sum
+    of its outgoing edge scores).
 
     Sign/direction convention (denoising form): gradients are taken on the *corrupt*
     run and the estimate points *toward* the clean activation, so a positive score
@@ -457,8 +873,12 @@ def attribution_patch(
 
     Dataset averaging: ``clean``/``corrupt`` may hold a batch of prompt pairs. Each
     pair is scored independently (per-example forward/backward, so its own
-    reconstruction identity holds) and per-node scores are averaged across the batch
-    before ranking.
+    reconstruction identity holds) and per-node (or per-edge) scores are averaged
+    across the batch before ranking.
+
+    The model and every submodule must be in evaluation mode. Separate clean and
+    corrupt forwards cannot produce meaningful activation differences if stochastic
+    training layers such as dropout remain active.
 
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
@@ -467,20 +887,26 @@ def attribution_patch(
         corrupt: Corrupt token ids, shape ``[batch, seq]``, paired row-by-row with
             ``clean``.
         metric_fn: Maps single-example logits to a scalar to differentiate.
-        config: Sweep configuration. This PR supports node granularity with plain
-            attribution (``ig_steps=1``) only; other values raise at construction.
+        config: Sweep configuration. Node and edge granularity are both
+            supported with plain attribution (``ig_steps=1``); ``ig_steps>1``
+            raises at construction.
 
     Returns:
         An :class:`AttributionResult` whose ``node_scores`` are averaged over the
-        batch. ``edge_scores`` stays empty until edge scoring lands.
+        batch. For an edge-granularity sweep, ``edge_scores`` is populated too and
+        ``node_scores`` is the per-writer aggregate of those edge scores. The
+        graph's terminal logits reader gives every writer an edge carrying its
+        direct skip-connection contribution to the metric, so this aggregate
+        equals the quantity a node-granularity sweep on the same model returns
+        (including for the final layer's MLP output, whose only outgoing edge is
+        the one to the logits reader).
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
-            pairs, or a pair tokenizes to different lengths (activations must align
-            position-by-position).
+            pairs, a pair tokenizes to different lengths (activations must align
+            position-by-position), or the model or one of its submodules is in
+            training mode.
     """
-    del config  # node granularity + ig_steps=1 only; enforced at construction.
-
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
             "attribution_patch expects 2D [batch, seq] token tensors, got clean "
@@ -498,8 +924,38 @@ def attribution_patch(
             "Attribution patching aligns activations position-by-position."
         )
 
-    node_hook_names = _required_hook_names(int(model.cfg.n_layers))
+    require_eval_mode(model, operation="attribution_patch()")
+
     batch = int(clean.shape[0])
+    n_layers = int(model.cfg.n_layers)
+
+    if config.granularity == "edge":
+        hook_names = _edge_hook_names(n_layers)
+        edge_totals: dict[tuple[Node, Node], float] = {}
+
+        # Scope the per-head hook-flag mutation to the caching loop so the
+        # caller's flag state is restored on both the normal and the error path.
+        with _edge_hook_flags(model):
+            for index in range(batch):
+                clean_cache = cache_activation_and_gradient(
+                    model,
+                    clean[index : index + 1],
+                    metric_fn,
+                    names_filter=hook_names,
+                    compute_gradient=False,
+                )
+                corrupt_cache = cache_activation_and_gradient(
+                    model, corrupt[index : index + 1], metric_fn, names_filter=hook_names
+                )
+                edges = enumerate_edges(model, corrupt_cache)
+                for edge, score in _edge_effects(clean_cache, corrupt_cache, edges).items():
+                    edge_totals[edge] = edge_totals.get(edge, 0.0) + score
+
+        edge_scores = {edge: total / batch for edge, total in edge_totals.items()}
+        node_scores = _aggregate_edge_scores_to_writer_nodes(edge_scores)
+        return AttributionResult(node_scores=node_scores, edge_scores=edge_scores)
+
+    node_hook_names = _required_hook_names(n_layers)
     totals: dict[Node, float] = {}
 
     for index in range(batch):
