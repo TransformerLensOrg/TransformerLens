@@ -2106,7 +2106,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
-            stop_at_layer: Layer to stop forward pass at
+            stop_at_layer: Layer to stop forward pass at. Only supported on the
+                standard ``blocks`` stack; architectures that register no ``blocks``
+                (e.g. Raven's ``prelude``/``core_block``/``coda``) raise
+                ``NotImplementedError`` rather than running to completion.
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3)
                 and vision models (eg. ViT, DeiT).
                 The tensor is passed directly to the underlying HuggingFace model.
@@ -2146,9 +2149,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
-
-        # change this to have an allowlist
-
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None:
             if not self._has_registered_blocks():
@@ -2455,8 +2455,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "start_at_layer is only supported on the standard 'blocks' stack, "
                     f"not {alt!r}."
                 )
-
-        # guard for the block stack
         if not self._has_registered_blocks():
             raise NotImplementedError("start_at_layer requires a 'blocks' stack.")
 
@@ -2833,18 +2831,22 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
-                        tokens=penalty_tokens
-                        if _generate_from_embeds
-                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        tokens=(
+                            penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens)
+                        ),
                     ).to(self.cfg.device)
                 else:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
                         repetition_penalty=repetition_penalty,
-                        tokens=penalty_tokens
-                        if _generate_from_embeds
-                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        tokens=(
+                            penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens)
+                        ),
                     ).to(self.cfg.device)
 
                 # Freeze rows that finished on an earlier step so they stop emitting
