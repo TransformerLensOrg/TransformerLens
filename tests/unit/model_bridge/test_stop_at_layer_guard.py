@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import torch
 import torch.nn as nn
@@ -34,3 +36,15 @@ def test_stop_at_layer_raises_without_blocks_stack() -> None:
     )
     with pytest.raises(NotImplementedError, match="stop_at_layer requires a 'blocks' stack"):
         bridge.forward(torch.zeros(1, 3, dtype=torch.long), stop_at_layer=0)
+
+
+def test_blocks_guard_ignores_unregistered_blocks_attribute() -> None:
+    """A wrapped HF model exposing `.blocks` must not satisfy the guard via __getattr__."""
+    bridge = _bare_bridge()
+    bridge.__dict__["original_model"] = SimpleNamespace(blocks=[object()])
+    assert hasattr(bridge, "blocks")  # the trap: __getattr__ falls through to the HF model
+    assert not bridge._has_registered_blocks()
+    with pytest.raises(NotImplementedError, match="stop_at_layer requires a 'blocks' stack"):
+        bridge.forward(torch.zeros(1, 3, dtype=torch.long), stop_at_layer=0)
+    with pytest.raises(NotImplementedError, match="start_at_layer requires a 'blocks' stack"):
+        bridge.forward(torch.zeros(1, 3, 8), start_at_layer=0)
