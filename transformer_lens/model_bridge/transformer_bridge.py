@@ -3,6 +3,7 @@
 This module provides the bridge components that wrap remote model components and provide
 a consistent interface for accessing their weights and performing operations.
 """
+
 import inspect
 import logging
 import re
@@ -459,6 +460,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             int: Parameter count of the uninstrumented wrapped model.
         """
         return self._n_params_total
+
+    def _has_registered_blocks(self) -> bool:
+        """Whether a ``blocks`` stack is registered as a submodule on this bridge.
+
+        Checks ``_modules`` directly rather than ``hasattr``: ``__getattr__`` falls
+        through to the wrapped HF model, so ``hasattr(self, "blocks")`` can be True
+        for a model that merely exposes its own ``.blocks`` attribute.
+        """
+        modules = self.__dict__.get("_modules") or {}
+        return "blocks" in modules
 
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
@@ -2095,7 +2106,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
-            stop_at_layer: Layer to stop forward pass at
+            stop_at_layer: Layer to stop forward pass at. Only supported on the
+                standard ``blocks`` stack; architectures that register no ``blocks``
+                (e.g. Raven's ``prelude``/``core_block``/``coda``) raise
+                ``NotImplementedError`` rather than running to completion.
             pixel_values: Optional image tensor for multimodal models (e.g., LLaVA, Gemma3)
                 and vision models (eg. ViT, DeiT).
                 The tensor is passed directly to the underlying HuggingFace model.
@@ -2135,26 +2149,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
-
         # Set stop_at_layer flag on all blocks if requested
         if stop_at_layer is not None:
-            if (
-                hasattr(self, "L_blocks")
-                or hasattr(self, "H_blocks")
-                or hasattr(self, "encoder_blocks")
-                or hasattr(self, "decoder_blocks")
-            ):
+            if not self._has_registered_blocks():
                 raise NotImplementedError(
-                    "stop_at_layer is not supported on non-standard block list "
-                    "names (L_blocks, H_blocks, encoder_blocks, decoder_blocks). "
-                    "The bridge only supports stop_at_layer on 'blocks'."
+                    "stop_at_layer requires a 'blocks' stack; this architecture "
+                    "does not register one."
                 )
-            if hasattr(self, "blocks"):
-                effective_stop_at_layer = (
-                    len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
-                )
-                for block in self.blocks:
-                    block._stop_at_layer_idx = effective_stop_at_layer
+            effective_stop_at_layer = (
+                len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
+            )
+            for block in self.blocks:
+                block._stop_at_layer_idx = effective_stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -2449,8 +2455,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "start_at_layer is only supported on the standard 'blocks' stack, "
                     f"not {alt!r}."
                 )
-        if not hasattr(self, "blocks"):
+        if not self._has_registered_blocks():
             raise NotImplementedError("start_at_layer requires a 'blocks' stack.")
+
         if not (isinstance(input, torch.Tensor) and input.is_floating_point()):
             raise ValueError(
                 "start_at_layer requires a residual-stream tensor [batch, pos, d_model]; "
@@ -2824,18 +2831,22 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
-                        tokens=penalty_tokens
-                        if _generate_from_embeds
-                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        tokens=(
+                            penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens)
+                        ),
                     ).to(self.cfg.device)
                 else:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
                         repetition_penalty=repetition_penalty,
-                        tokens=penalty_tokens
-                        if _generate_from_embeds
-                        else (decoder_tokens if is_encoder_decoder else current_tokens),
+                        tokens=(
+                            penalty_tokens
+                            if _generate_from_embeds
+                            else (decoder_tokens if is_encoder_decoder else current_tokens)
+                        ),
                     ).to(self.cfg.device)
 
                 # Freeze rows that finished on an earlier step so they stop emitting
