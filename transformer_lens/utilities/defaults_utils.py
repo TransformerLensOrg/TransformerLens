@@ -41,7 +41,7 @@ class LocallyOverridenDefaults:
         Initializes the context manager.
 
         Args:
-            model (HookedTransformer): The model whose default values will be overridden.
+            model (TransformerBridge): The model whose default values will be overridden.
             overrides (dict): Key-value pairs of properties to override and their new values.
         """
         self.model = model

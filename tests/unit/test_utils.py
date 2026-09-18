@@ -5,8 +5,8 @@ import pytest
 import torch
 from torch import nn
 
-from transformer_lens import HookedTransformer
 from transformer_lens import utilities as utils
+from transformer_lens.model_bridge import TransformerBridge
 
 ref_tensor = torch.tensor([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
 shape = ref_tensor.shape
@@ -200,7 +200,7 @@ class TestAttentionMask:
 
     @pytest.fixture(scope="class")
     def model(self, model_name):
-        return HookedTransformer.from_pretrained(model_name)
+        return TransformerBridge.boot_transformers(model_name)
 
     # tests
     @pytest.mark.parametrize("padding_side", ["left", "right"])
@@ -263,9 +263,7 @@ class TestAttentionMask:
 
 
 def test_calc_fan_in_fan_out():
-    """
-    Test for the calc_fan_in_and_fan_out function in the utils module.
-    """
+    """Verifies fan_in/fan_out for 1D/2D/3D tensors and raises ValueError for 0D/4D."""
     # Test for the case when the tensor is 1D
     tensor_1d = torch.tensor([1, 2, 3, 4, 5])
     fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_1d)

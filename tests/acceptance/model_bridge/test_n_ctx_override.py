@@ -51,9 +51,6 @@ def test_n_ctx_combined_with_hf_config_overrides():
     assert bridge.cfg.n_ctx == 256
 
 
-# --- Validation and edge cases ---
-
-
 def test_n_ctx_zero_raises_value_error():
     """n_ctx must be positive; zero should raise ValueError."""
     with pytest.raises(ValueError, match="positive integer"):

@@ -33,6 +33,7 @@ class Gemma2ArchitectureAdapter(ArchitectureAdapter):
 
         self._set_rms_rotary_defaults()
 
+        self.cfg.uses_rms_norm = True
         # Gemma models use (1.0 + weight) in RMSNorm instead of just weight
         # See: https://github.com/huggingface/transformers/pull/29402
         self.cfg.rmsnorm_uses_offset = True

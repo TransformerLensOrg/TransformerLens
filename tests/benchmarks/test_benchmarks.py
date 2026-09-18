@@ -24,8 +24,8 @@ class TestBenchmarkSuite:
 
         This test runs the complete benchmark suite which includes:
         - Phase 1: HuggingFace + Bridge (unprocessed) comparison
-        - Phase 2: Bridge + HookedTransformer (unprocessed) comparison
-        - Phase 3: Bridge + HookedTransformer (processed) compatibility
+        - Phase 2: Bridge self-checks (hooks, cache, gradients)
+        - Phase 3: Processed-weight equivalence vs the Phase-1 HF reference
 
         The benchmark suite covers ~28 tests including:
         - Component-level equivalence
@@ -39,7 +39,6 @@ class TestBenchmarkSuite:
             model_name=model_name,
             device="cpu",
             use_hf_reference=True,
-            use_ht_reference=True,
             enable_compatibility_mode=True,
             verbose=False,  # Keep test output clean
             track_memory=False,

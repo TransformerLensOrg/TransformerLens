@@ -13,8 +13,6 @@ def test_repeat_tensor_conversion_basic():
     Example pattern (h w -> h 2 w):
     We repeat along the second dimension.
     """
-    # Pattern says: "h w -> h repeat1 w"
-    # let's do: pattern="h w -> h 2 w", so we define repeat2=2 for the new axis
     conversion = RepeatTensorConversion("h w -> h 2 w", h=3, w=4)
 
     # Start with a known shape: [3,4], fill with arange to track values

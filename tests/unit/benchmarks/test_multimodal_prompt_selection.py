@@ -53,7 +53,8 @@ def _bridge(processor, image_token_id=None):
     torch.nn.Module.__init__(bridge)  # submodule assignment needs the Module state
     bridge.processor = processor
     bridge.cfg = SimpleNamespace(device="cpu")
-    bridge.original_model = FakeModel(image_token_id)
+    # original_model is a property reading self._driver.underlying_model.
+    bridge._driver = SimpleNamespace(underlying_model=FakeModel(image_token_id))
     return bridge
 
 

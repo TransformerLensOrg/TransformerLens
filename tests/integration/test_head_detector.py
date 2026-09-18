@@ -3,7 +3,6 @@ import math
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
 from transformer_lens.head_detector import (
     HEAD_NAMES,
     ErrorMeasure,
@@ -12,12 +11,16 @@ from transformer_lens.head_detector import (
     get_induction_head_detection_pattern,
     get_previous_token_head_detection_pattern,
 )
+from transformer_lens.model_bridge import TransformerBridge
 
-MODEL = "solu-2l"
+MODEL = "NeelNanda/SoLU_2L512W_C4_Code"  # solu-2l; boot_tl_legacy takes the repo id, not the alias
 ATOL = 1e-4
 # ATOL is set to 1e-4 because the tensors we check on are also to 4 decimal places.
 
-model = HookedTransformer.from_pretrained(MODEL)
+# The expected tensors below were captured from HookedTransformer.from_pretrained,
+# whose default weight processing compatibility mode reproduces.
+model = TransformerBridge.boot_tl_legacy(MODEL, device="cpu")
+model.enable_compatibility_mode(disable_warnings=True)
 test_regular_sequence = " four token sequence"  # Four tokens including BOS
 test_duplicated_sequence = " seven token sequence seven token sequence"
 test_duplicated_sequence2 = " one two three one two three"

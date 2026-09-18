@@ -876,35 +876,34 @@ class ProcessWeights:
             assert mlp_ln_b is not None, f"MLP ln.b not found at key {mlp_ln_b_key}"
             assert mlp_ln_w is not None, f"MLP ln.w not found at key {mlp_ln_w_key}"
 
+            # TL keys hold W_out as [d_mlp, d_model]; nn.Linear bridges hold [d_model, d_mlp].
+            # The fold and the centering must use the same neuron axis, so resolve it once.
+            d_mlp = mlp_ln_w.shape[0]
+            if mlp_W_out.shape[0] == d_mlp and mlp_W_out.shape[-1] != d_mlp:
+                neuron_dim = 0
+            elif mlp_W_out.shape[-1] == d_mlp and mlp_W_out.shape[0] != d_mlp:
+                neuron_dim = -1
+            else:
+                raise ValueError(
+                    f"Cannot resolve the neuron axis of MLP W_out {tuple(mlp_W_out.shape)} "
+                    f"against the mid-MLP LayerNorm (d_mlp={d_mlp}) at layer {layer}."
+                )
+            ln_shape = (-1, 1) if neuron_dim == 0 else (1, -1)
+
             if fold_biases:
-                new_mlp_b_out = mlp_b_out + (mlp_W_out * mlp_ln_b[:, None]).sum(-2)
+                new_mlp_b_out = mlp_b_out + (mlp_W_out * mlp_ln_b.reshape(ln_shape)).sum(neuron_dim)
                 state_dict[mlp_b_out_key] = ProcessWeights.convert_tensor_to_hf_format(
                     mlp_b_out_key, new_mlp_b_out, cfg, adapter, layer
                 )
                 if mlp_ln_b_key in state_dict:
                     state_dict[mlp_ln_b_key] = torch.zeros_like(mlp_ln_b)
 
-            new_mlp_W_out = mlp_W_out * mlp_ln_w[:, None]
+            new_mlp_W_out = mlp_W_out * mlp_ln_w.reshape(ln_shape)
 
             if center_weights:
-                # Center along d_mlp dimension. Detect format:
-                # TL format [d_mlp, d_model] -> center along dim=0
-                # HF format [d_model, d_mlp] -> center along dim=-1
-                d_model_val = cfg.d_model if cfg is not None else None
-                if (
-                    d_model_val is not None
-                    and new_mlp_W_out.shape[-1] == d_model_val
-                    and new_mlp_W_out.shape[0] != d_model_val
-                ):
-                    new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(0, keepdim=True)
-                elif (
-                    d_model_val is not None
-                    and new_mlp_W_out.shape[0] == d_model_val
-                    and new_mlp_W_out.shape[-1] != d_model_val
-                ):
-                    new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(-1, keepdim=True)
-                else:
-                    new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(0, keepdim=True)
+                # The folded mid-MLP LayerNorm emits activations that are mean-zero across
+                # neurons, so a per-row constant along that axis never reaches the output.
+                new_mlp_W_out = new_mlp_W_out - new_mlp_W_out.mean(neuron_dim, keepdim=True)
 
             state_dict[mlp_W_out_key] = ProcessWeights.convert_tensor_to_hf_format(
                 mlp_W_out_key, new_mlp_W_out, cfg, adapter, layer
@@ -1637,7 +1636,7 @@ class ProcessWeights:
         """Apply all weight processing transformations in the correct order.
 
         This is a convenience function that applies all the weight processing steps
-        in the same order as HookedTransformer.load_and_process_state_dict().
+        in the same order as the legacy HookedTransformer load path.
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of the model.

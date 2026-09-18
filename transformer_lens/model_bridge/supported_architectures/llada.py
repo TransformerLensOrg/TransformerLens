@@ -223,6 +223,10 @@ class _LLaDABlockBridge(BlockBridge):
 class _LLaDAGatedMLPBridge(GatedMLPBridge):
     """Executable view over LLaDA's block-local gated MLP projections."""
 
+    # The block calls this view's forward, which fires hook_in/hook_out itself;
+    # the setup-time mirror would double-apply interventions.
+    mirror_placeholder_hooks = False
+
     def set_original_component(self, original_component: torch.nn.Module) -> None:
         """The executable view needs the block's children, not ownership of the block."""
         del original_component

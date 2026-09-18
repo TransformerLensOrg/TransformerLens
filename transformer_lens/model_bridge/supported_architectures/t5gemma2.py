@@ -46,6 +46,7 @@ from transformer_lens.model_bridge.generalized_components.t5gemma2_decoder_block
 from transformer_lens.model_bridge.generalized_components.t5gemma2_merged_attention import (
     T5Gemma2MergedAttentionBridge,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class T5Gemma2ArchitectureAdapter(ArchitectureAdapter):
@@ -295,8 +296,7 @@ class T5Gemma2ArchitectureAdapter(ArchitectureAdapter):
         """
         encoder_rotary = hf_model.model.encoder.text_model.rotary_emb
 
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
+        force_eager_attention(hf_model)
 
         # QK-norm must delegate to HF's exact RMSNorm autograd to avoid manual drift.
         def _enable_qk_native_autograd(layers: Any) -> None:

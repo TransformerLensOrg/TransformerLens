@@ -12,7 +12,8 @@ import warnings
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.direct_path_patching import (
     _check_fold_ln,
     get_act_patch_direct_path,
@@ -24,10 +25,8 @@ from transformer_lens.tools.analysis.direct_path_patching import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def tiny_model():
-    """A small, randomly-initialised transformer with LN folded in."""
-    cfg = HookedTransformerConfig(
+def _tiny_cfg(**overrides):
+    defaults = dict(
         n_layers=3,
         d_model=64,
         d_head=16,
@@ -38,9 +37,24 @@ def tiny_model():
         act_fn="gelu",
         normalization_type="LN",
         attn_only=False,
+        seed=0,
     )
-    model = HookedTransformer(cfg)
-    model.process_weights_()
+    defaults.update(overrides)
+    return TransformerBridgeConfig(**defaults)
+
+
+@pytest.fixture(scope="module")
+def tiny_model():
+    """A small, randomly-initialised native bridge with LN folded in.
+
+    seed pins the weight init: without it the weights depend on the ambient
+    RNG state of the xdist worker, and unlucky draws push the linear-LN
+    approximation error past tolerance.
+    """
+    model = TransformerBridge.boot_native(_tiny_cfg())
+    model.process_weights(
+        fold_ln=True, center_writing_weights=True, center_unembed=True, fold_value_biases=True
+    )
     model.eval()
     return model
 
@@ -71,7 +85,7 @@ def simple_metric(logits):
 
 class TestCheckFoldLn:
     def test_folded_model_no_warning(self, tiny_model):
-        """No warning when LN is already folded (tiny_model fixture calls process_weights_())."""
+        """No warning when LN is already folded (tiny_model fixture calls process_weights())."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _check_fold_ln(tiny_model)
@@ -80,24 +94,11 @@ class TestCheckFoldLn:
 
     def test_unfolded_model_warns(self):
         """UserWarning fires when LN has a non-unit learned scale (pretrained, pre-fold)."""
-        cfg = HookedTransformerConfig(
-            n_layers=2,
-            d_model=32,
-            d_head=8,
-            n_heads=4,
-            d_mlp=64,
-            d_vocab=50,
-            n_ctx=8,
-            act_fn="gelu",
-            normalization_type="LN",
-        )
-        model = HookedTransformer(cfg)
+        model = TransformerBridge.boot_native(_tiny_cfg(n_layers=2, seed=1))
         model.eval()
         # Simulate a pretrained model that has learned non-unit LN scale (not yet folded).
-        # After process_weights_(), LayerNorm is replaced with LayerNormPre (no .w),
-        # so the warning only fires in the pre-fold state with non-trivial .w.
         with torch.no_grad():
-            model.blocks[0].ln1.w.fill_(2.0)
+            model.blocks[0].ln1.weight.fill_(2.0)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _check_fold_ln(model)
@@ -105,25 +106,23 @@ class TestCheckFoldLn:
         assert len(user_warnings) == 1
         assert "fold" in str(user_warnings[0].message).lower()
 
-    def test_hooked_transformer_w_attribute(self):
-        """Before process_weights_(), HookedTransformer LayerNorm exposes .w.
-        After folding, LayerNorm is replaced with LayerNormPre (no .w) — that's
-        why _check_fold_ln passes silently on a folded model.
-        """
-        cfg = HookedTransformerConfig(
-            n_layers=2,
-            d_model=32,
-            d_head=8,
-            n_heads=4,
-            d_mlp=64,
-            d_vocab=50,
-            n_ctx=8,
-            act_fn="gelu",
-            normalization_type="LN",
-        )
-        model = HookedTransformer(cfg)
-        ln1 = model.blocks[0].ln1
-        assert hasattr(ln1, "w"), "HookedTransformer LayerNorm should expose .w before folding"
+    def test_legacy_w_attribute_branch(self):
+        """The guard also reads the legacy ``.w`` layout when ``.weight`` is absent."""
+
+        class LegacyLN:
+            w = torch.full((8,), 2.0)
+
+        class Block:
+            ln1 = LegacyLN()
+
+        class LegacyModel:
+            blocks = [Block()]
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_fold_ln(LegacyModel())
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 1
 
     def test_no_crash_on_missing_attribute(self):
         """_check_fold_ln silently passes when the model has no .blocks[0].ln1."""
@@ -272,20 +271,13 @@ class TestCausalStructure:
 
 
 class TestCorrectness:
-    def test_correctness_against_actual_ln_forward(self, tiny_model, tokens_and_caches):
-        """Logit-diff metric: linear-LN approximation should match actual LN within 1e-3.
-
-        process_weights_() folds LN into the weight matrices, so the linear
-        approximation is exact and the tolerance can be tight.  Using logit diff
-        (correct_tok - incorrect_tok) cancels the centering offset introduced by
-        process_weights_() and gives a numerically clean comparison.
-        """
+    @pytest.mark.parametrize("component", ["q", "k", "v"])
+    def test_matches_frozen_ln_scale_reference(self, tiny_model, tokens_and_caches, component):
+        """Matches a hand-written hook dividing delta_resid by the corrupted run's ln1 scale."""
         _, corrupted_tokens, clean_cache, corrupted_cache = tokens_and_caches
         src_layer, src_head = 0, 0
         dst_layer, dst_head = 2, 1
 
-        # Pick stable token indices for the logit-diff metric
-        torch.manual_seed(0)
         correct_tok = 17
         incorrect_tok = 42
 
@@ -298,28 +290,22 @@ class TestCorrectness:
         corrupted_z = corrupted_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
         delta_resid = (clean_z @ W_O[src_head]) - (corrupted_z @ W_O[src_head])  # type: ignore[index]
 
-        # Independent reference: patch through actual LayerNorm forward
-        corrupted_resid = corrupted_cache[f"blocks.{dst_layer}.hook_resid_pre"]
-        patched_resid = corrupted_resid + delta_resid
+        # Not the true LN forward: its gap to the approximation is weight-dependent and, on
+        # tiny_model, about as large as the patch effect, so it can't catch scale bugs.
+        ln_scale = corrupted_cache[f"blocks.{dst_layer}.ln1.hook_scale"]
+        W_comp = getattr(tiny_model.blocks[dst_layer].attn, f"W_{component.upper()}")[dst_head]
+        ref_delta = (delta_resid / ln_scale) @ W_comp
 
-        with torch.no_grad():
-            ln1 = tiny_model.blocks[dst_layer].ln1  # type: ignore[index]
-            patched_normed = ln1(patched_resid)
-            corrupted_normed = ln1(corrupted_resid)
-
-        W_Q_dst = tiny_model.blocks[dst_layer].attn.W_Q[dst_head]  # type: ignore[index,union-attr]
-        true_delta_q = (patched_normed - corrupted_normed) @ W_Q_dst
-
-        def true_hook(value, hook):
+        def ref_hook(value, hook):
             if value.requires_grad:
                 value = value.clone()
-            value[:, :, dst_head, :] = value[:, :, dst_head, :] + true_delta_q
+            value[:, :, dst_head, :] = value[:, :, dst_head, :] + ref_delta
             return value
 
         with torch.no_grad():
             ref_logits = tiny_model.run_with_hooks(
                 corrupted_tokens,
-                fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_q", true_hook)],
+                fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_{component}", ref_hook)],
             )
         ref_metric = logit_diff(ref_logits).item()
 
@@ -332,14 +318,14 @@ class TestCorrectness:
                 patching_metric=logit_diff,
                 src_layer=src_layer,
                 src_head=src_head,
-                component="q",
+                component=component,
                 verbose=False,
             )
         our_metric = results[dst_layer, dst_head].item()
 
-        assert abs(our_metric - ref_metric) < 1e-3, (
-            f"Linear-LN approx {our_metric:.6f} disagrees with actual-LN ref {ref_metric:.6f} "
-            f"(diff={abs(our_metric - ref_metric):.2e}). process_weights_() should make these exact."
+        assert abs(our_metric - ref_metric) < 1e-5, (
+            f"Direct-path patch {our_metric:.6f} disagrees with frozen-scale reference "
+            f"{ref_metric:.6f} (diff={abs(our_metric - ref_metric):.2e})."
         )
 
     def test_all_sources_consistent_with_single(self, tiny_model, tokens_and_caches):

@@ -1,0 +1,102 @@
+"""HuggingFace transformers Driver."""
+from __future__ import annotations
+
+from typing import Any, Iterator, Mapping
+
+import torch
+from torch import nn
+
+from transformer_lens.model_bridge.driver_protocol import (
+    ForwardResult,
+    Intervention,
+    TensorLike,
+)
+from transformer_lens.model_bridge.sources._driver_base import DriverBase
+
+
+class TransformersDriver(DriverBase):
+    """Wraps an HF ``nn.Module``. PyTorch hooks fire via module replacement during the
+    real forward; this driver just runs the engine and threads the native output back."""
+
+    _supported_features = frozenset(
+        {"gradients", "parameters", "state_dict", "weight_access", "intervention_callbacks"}
+    )
+
+    def __init__(self, model: nn.Module, adapter: Any, tokenizer: Any) -> None:
+        super().__init__(adapter.cfg, tokenizer)
+        self._model = model
+        self._adapter = adapter
+
+    def forward(
+        self,
+        input_ids: TensorLike | None = None,
+        *,
+        capture: tuple[str, ...] = (),
+        intervene: Mapping[str, Intervention] | None = None,
+        max_new_tokens: int = 1,
+        return_logits: bool = True,
+        **kwargs: Any,
+    ) -> ForwardResult:
+        # Module-replacement dialect: these args are served by the bridge's
+        # HookPoints, not here — silently ignoring them would be a lie.
+        if capture:
+            raise NotImplementedError(
+                "TransformersDriver.forward does not serve capture=: on the HF "
+                "backend activations are captured through the bridge's HookPoint "
+                "system — use run_with_cache()/run_with_hooks() on the bridge."
+            )
+        if intervene is not None:
+            raise NotImplementedError(
+                "TransformersDriver.forward does not serve intervene=: on the HF "
+                "backend interventions are torch hooks — use run_with_hooks() on "
+                "the bridge."
+            )
+        if max_new_tokens != 1:
+            raise NotImplementedError(
+                "TransformersDriver.forward does not generate; use "
+                "bridge.generate() for multi-token decoding."
+            )
+        if input_ids is not None:
+            raw = self._model(input_ids, **kwargs)
+        else:
+            raw = self._model(**kwargs)
+
+        logits = None
+        if return_logits:
+            if hasattr(raw, "logits"):
+                logits = raw.logits
+            elif isinstance(raw, tuple) and len(raw) > 0:
+                # HF tuple outputs prepend loss when labels are supplied.
+                logits = raw[1] if kwargs.get("labels") is not None and len(raw) > 1 else raw[0]
+            elif hasattr(raw, "last_hidden_state"):
+                # Bare encoder models (ViTModel, DeiTModel, BertModel, etc. without
+                # a task head) return e.g. BaseModelOutput/BaseModelOutputWithPooling,
+                # which has neither `.logits` nor tuple semantics. Fall back to
+                # `last_hidden_state` so return_type="logits" still yields a plain
+                # tensor rather than silently handing back the raw HF output object.
+                logits = raw.last_hidden_state
+            else:
+                logits = raw
+
+        return ForwardResult(logits=logits, raw_output=raw)
+
+    def parameters(self) -> Iterator[torch.Tensor]:
+        return self._model.parameters()
+
+    def named_parameters(
+        self,
+        prefix: str = "",
+        recurse: bool = True,
+        remove_duplicate: bool = True,
+    ) -> Iterator[tuple[str, torch.Tensor]]:
+        return self._model.named_parameters(prefix, recurse, remove_duplicate)
+
+    @property
+    def underlying_model(self) -> nn.Module:
+        """Escape hatch for code that needs the raw HF module. Driver-specific."""
+        return self._model
+
+    def set_underlying_model(self, value: nn.Module) -> None:
+        """Used by weight-processing paths that move the model to a different
+        device. Non-torch drivers don't implement this."""
+        self._model = value

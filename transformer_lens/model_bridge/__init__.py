@@ -3,7 +3,7 @@
 This module provides functionality to bridge between different model architectures.
 """
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
-from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.bridge import BridgeCore, RemoteBridge, TransformerBridge
 from transformer_lens.model_bridge.component_setup import (
     replace_remote_component,
     set_original_components,
@@ -36,6 +36,8 @@ import transformer_lens.model_bridge.sources.transformers
 
 __all__ = [
     "ArchitectureAdapter",
+    "BridgeCore",
+    "RemoteBridge",
     "TransformerBridge",
     "AttentionBridge",
     "BlockBridge",

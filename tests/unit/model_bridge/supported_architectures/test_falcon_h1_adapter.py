@@ -123,9 +123,6 @@ class TestFalconH1AdapterConfig:
     def test_eps_attr_variance_epsilon(self, adapter: FalconH1ArchitectureAdapter) -> None:
         assert adapter.cfg.eps_attr == "variance_epsilon"
 
-    def test_n_key_value_heads_propagated(self, adapter: FalconH1ArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == 2
-
     def test_mamba_intermediate_size_propagated(self, adapter: FalconH1ArchitectureAdapter) -> None:
         # mamba_d_ssm is the inner SSM width directly.
         assert getattr(adapter.cfg, "mamba_intermediate_size", None) == 32

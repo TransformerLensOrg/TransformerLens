@@ -29,7 +29,7 @@ Read [the root AGENTS.md](../AGENTS.md) for project-wide rules. This file covers
 
 Common combinations: `make test-pr` (unit + docstring + acceptance + integration — the PR-review surface), `make test` (everything including benchmarks + notebooks).
 
-**Rule of thumb:** new tests that load a model should land in `integration/` by default. The `unit/` tier has a few legitimate model-loading exceptions (e.g. `test_bridge_vs_hooked_transformer_*.py` compares numerics across architectures, which is conceptually unit-scoped) — match that pattern only when the test really is testing isolated behaviour that happens to need a model.
+**Rule of thumb:** new tests that load a model should land in `integration/` by default. The `unit/` tier has a few legitimate model-loading exceptions (e.g. `test_bridge_cross_run_*_patching.py` checks patching semantics across architectures, which is conceptually unit-scoped) — match that pattern only when the test really is testing isolated behaviour that happens to need a model.
 
 ---
 
@@ -41,7 +41,8 @@ Common combinations: `make test-pr` (unit + docstring + acceptance + integration
 - `_enable_hf_retry_for_tests` (session autouse) — wraps HF `from_pretrained` with 429 retry
 - Seeded RNG (numpy/torch/Python @ 42)
 - `gpt2_tokenizer` (session)
-- `gpt2_hooked_processed` (session)
+- `gpt2_hooked_processed`, `gpt2_hooked_unprocessed` (session)
+- `gpt2_bridge`, `gpt2_bridge_compat`, `gpt2_bridge_compat_no_processing` (session; acceptance/integration-tier only — see [Hard "don'ts"](#hard-donts))
 - `temp_dir`
 
 Sub-folder conftests:
@@ -49,8 +50,7 @@ Sub-folder conftests:
 | Path | Provides |
 |---|---|
 | [`tests/acceptance/conftest.py`](acceptance/conftest.py) | `gpt2_model`, `bloom_560m_hooked`, `bloom_560m_hf_model`, `bloom_560m_hf_tokenizer` (all session) |
-| [`tests/acceptance/model_bridge/conftest.py`](acceptance/model_bridge/conftest.py) | Bridge variants of gpt2 with/without compat mode |
-| [`tests/integration/model_bridge/conftest.py`](integration/model_bridge/conftest.py) | distilgpt2 + gpt2 Bridge variants × {compat, no-compat, no-processing} |
+| [`tests/integration/model_bridge/conftest.py`](integration/model_bridge/conftest.py) | distilgpt2 Bridge/Hooked variants × {compat, no-compat, no-processing}; module-scoped `sample_tokens` for adapter tests |
 
 Two cross-cutting rules:
 

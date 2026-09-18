@@ -8,7 +8,6 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
-    MLPBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
@@ -39,13 +38,7 @@ class ApertusArchitectureAdapter(ArchitectureAdapter):
         """Initialize the Apertus architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = False
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults(gated=False)
 
         # Use eager attention to support output_attentions for hook_attn_scores and hook_pattern
         # SDPA doesn't support output_attentions, which is required for HookedTransformer compatibility
@@ -79,13 +72,7 @@ class ApertusArchitectureAdapter(ArchitectureAdapter):
                             "k_norm": RMSNormalizationBridge(name="k_norm", config=self.cfg),
                         },
                     ),
-                    "mlp": MLPBridge(
-                        name="mlp",
-                        submodules={
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._ungated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),

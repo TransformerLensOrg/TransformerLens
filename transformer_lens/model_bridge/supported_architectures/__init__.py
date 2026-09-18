@@ -104,6 +104,9 @@ from transformer_lens.model_bridge.supported_architectures.hrm_text import (
     HrmTextArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.hubert import HubertArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.wav2vec2 import (
+    Wav2Vec2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.hunyuan_v1_dense import (
     HunYuanDenseV1ArchitectureAdapter,
 )
@@ -207,6 +210,39 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import Qwen2Arc
 from transformer_lens.model_bridge.supported_architectures.qwen2_5_vl import (
     Qwen2_5_VLArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.olmo3 import (
+    Olmo3ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.olmoe import (
+    OlmoeArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.openelm import (
+    OpenElmArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.opt import (
+    OptArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.ouro import (
+    OuroArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.phi import (
+    PhiArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.phi3 import (
+    Phi3ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.phimoe import (
+    PhiMoEArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.pretrain import (
+    PretrainArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.qwen import (
+    QwenArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.qwen2 import (
+    Qwen2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen2_audio import (
     Qwen2AudioArchitectureAdapter,
 )
@@ -227,6 +263,18 @@ from transformer_lens.model_bridge.supported_architectures.qwen3_moe import (
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_next import (
     Qwen3NextArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.raven import (
+    RavenArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.recurrent_gemma import (
+    RecurrentGemmaArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.rwkv7 import (
+    RWKV7ArchitectureAdapter,
+)
+from transformer_lens.model_bridge.supported_architectures.smollm3 import (
+    SmolLM3ArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.qwen3_vl import (
     Qwen3VLArchitectureAdapter,
@@ -287,6 +335,7 @@ __all__ = [
     "CohereArchitectureAdapter",
     "DeepSeekV2ArchitectureAdapter",
     "DeepSeekV3ArchitectureAdapter",
+    "DeepSeekV4ArchitectureAdapter",
     "DreamArchitectureAdapter",
     "Emu3ArchitectureAdapter",
     "Ernie4_5ArchitectureAdapter",
@@ -322,6 +371,7 @@ __all__ = [
     "Gpt2LmHeadCustomArchitectureAdapter",
     "GptjArchitectureAdapter",
     "HubertArchitectureAdapter",
+    "Wav2Vec2ArchitectureAdapter",
     "HyenaDNAArchitectureAdapter",
     "HunYuanDenseV1ArchitectureAdapter",
     "Idefics3ArchitectureAdapter",
@@ -393,7 +443,9 @@ __all__ = [
     "Qwen3_5MoeArchitectureAdapter",
     "Qwen3_5MoeMultimodalArchitectureAdapter",
     "Qwen3_5MultimodalArchitectureAdapter",
+    "RavenArchitectureAdapter",
     "RecurrentGemmaArchitectureAdapter",
+    "RWKV7ArchitectureAdapter",
     "SeedOssArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
     "StableLmArchitectureAdapter",

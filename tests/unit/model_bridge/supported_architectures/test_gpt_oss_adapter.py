@@ -32,6 +32,7 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -222,11 +223,12 @@ class TestGPTOSSComponentMapping:
         assert isinstance(subs["ln1"], RMSNormalizationBridge)
         assert isinstance(subs["ln2"], RMSNormalizationBridge)
 
-    def test_mlp_has_no_submodules(self, adapter: GPTOSSArchitectureAdapter) -> None:
-        """GPT-OSS exposes no router submodule on the MoE block, the entire MoE module
-        is wrapped opaquely by MoEBridge."""
+    def test_mlp_exposes_a_hookable_router(self, adapter: GPTOSSArchitectureAdapter) -> None:
+        """The MoE block wraps GPT-OSS's router so the routing observables are hookable."""
         mlp = _mapping(adapter)["blocks"].submodules["mlp"]
-        assert mlp.submodules == {}
+        assert set(mlp.submodules) == {"router"}
+        assert isinstance(mlp.submodules["router"], MoERouterBridge)
+        assert mlp.submodules["router"].name == "router"
 
     def test_hf_module_paths(self, adapter: GPTOSSArchitectureAdapter) -> None:
         mapping = _mapping(adapter)

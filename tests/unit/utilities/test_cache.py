@@ -5,11 +5,9 @@ This module tests the cache utility functions, particularly the get_pos_offset f
 
 import torch
 
-from transformer_lens.cache.key_value_cache import (
-    TransformerLensKeyValueCache as HookedTransformerKeyValueCache,
-)
+from transformer_lens.cache.key_value_cache import TransformerLensKeyValueCache
 from transformer_lens.cache.key_value_cache_entry import (
-    TransformerLensKeyValueCacheEntry as HookedTransformerKeyValueCacheEntry,
+    TransformerLensKeyValueCacheEntry,
 )
 from transformer_lens.utilities.cache import get_pos_offset
 
@@ -26,11 +24,11 @@ class TestGetPosOffset:
     def test_get_pos_offset_with_empty_cache(self):
         """Test get_pos_offset with an empty cache (0 positions)."""
         # Create a real cache entry with 0 positions
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((2, 0, 8, 64)), past_values=torch.empty((2, 0, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((2, 0), dtype=torch.int)
         )
 
@@ -41,11 +39,11 @@ class TestGetPosOffset:
     def test_get_pos_offset_with_single_position_cache(self):
         """Test get_pos_offset with a cache containing 1 position."""
         # Create a real cache entry with 1 position
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((1, 1, 12, 64)), past_values=torch.empty((1, 1, 12, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((1, 0), dtype=torch.int)
         )
 
@@ -56,11 +54,11 @@ class TestGetPosOffset:
     def test_get_pos_offset_with_multiple_positions_cache(self):
         """Test get_pos_offset with a cache containing multiple positions."""
         # Create a real cache entry with multiple positions
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((4, 10, 16, 128)), past_values=torch.empty((4, 10, 16, 128))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((4, 0), dtype=torch.int)
         )
 
@@ -71,11 +69,11 @@ class TestGetPosOffset:
     def test_get_pos_offset_with_large_cache(self):
         """Test get_pos_offset with a large cache."""
         # Create a real cache entry with many positions
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((8, 1024, 32, 256)), past_values=torch.empty((8, 1024, 32, 256))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((8, 0), dtype=torch.int)
         )
 
@@ -84,12 +82,12 @@ class TestGetPosOffset:
         assert isinstance(result, int)
 
     def test_get_pos_offset_with_real_cache_entry(self):
-        """Test get_pos_offset with a real HookedTransformerKeyValueCacheEntry."""
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        """Test get_pos_offset with a real TransformerLensKeyValueCacheEntry."""
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((2, 5, 8, 64)), past_values=torch.empty((2, 5, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((2, 0), dtype=torch.int)
         )
 
@@ -101,18 +99,18 @@ class TestGetPosOffset:
         """Test get_pos_offset with a real cache containing multiple entries."""
         # Create multiple real cache entries
         cache_entries = [
-            HookedTransformerKeyValueCacheEntry(
+            TransformerLensKeyValueCacheEntry(
                 past_keys=torch.empty((2, 3, 8, 64)), past_values=torch.empty((2, 3, 8, 64))
             ),
-            HookedTransformerKeyValueCacheEntry(
+            TransformerLensKeyValueCacheEntry(
                 past_keys=torch.empty((2, 3, 8, 64)), past_values=torch.empty((2, 3, 8, 64))
             ),
-            HookedTransformerKeyValueCacheEntry(
+            TransformerLensKeyValueCacheEntry(
                 past_keys=torch.empty((2, 3, 8, 64)), past_values=torch.empty((2, 3, 8, 64))
             ),
         ]
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=cache_entries, previous_attention_mask=torch.empty((2, 0), dtype=torch.int)
         )
 
@@ -122,11 +120,11 @@ class TestGetPosOffset:
 
     def test_get_pos_offset_batch_size_parameter_ignored(self):
         """Test that the batch_size parameter is ignored when cache is provided."""
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((2, 7, 8, 64)), past_values=torch.empty((2, 7, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((2, 0), dtype=torch.int)
         )
 
@@ -143,11 +141,11 @@ class TestGetPosOffset:
         assert isinstance(result, int)
 
         # Test with real cache
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((1, 5, 8, 64)), past_values=torch.empty((1, 5, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((1, 0), dtype=torch.int)
         )
 
@@ -157,11 +155,11 @@ class TestGetPosOffset:
     def test_get_pos_offset_edge_cases(self):
         """Test get_pos_offset with edge cases."""
         # Test with very large position count
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((1, 999999, 8, 64)), past_values=torch.empty((1, 999999, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((1, 0), dtype=torch.int)
         )
 
@@ -170,11 +168,11 @@ class TestGetPosOffset:
         assert isinstance(result, int)
 
         # Test with zero batch size in cache
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((0, 5, 8, 64)), past_values=torch.empty((0, 5, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((0, 0), dtype=torch.int)
         )
 
@@ -189,11 +187,11 @@ class TestGetPosOffset:
         assert result == 0
 
         # Example 2: Cache with some positions
-        cache_entry = HookedTransformerKeyValueCacheEntry(
+        cache_entry = TransformerLensKeyValueCacheEntry(
             past_keys=torch.empty((1, 10, 8, 64)), past_values=torch.empty((1, 10, 8, 64))
         )
 
-        cache = HookedTransformerKeyValueCache(
+        cache = TransformerLensKeyValueCache(
             entries=[cache_entry], previous_attention_mask=torch.empty((1, 0), dtype=torch.int)
         )
 

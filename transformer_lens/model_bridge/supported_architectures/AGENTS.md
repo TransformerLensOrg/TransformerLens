@@ -109,7 +109,7 @@ HF raw config attributes are invisible to TL-side consumers unless propagated to
 
 Rule of thumb: if the model card or HF source mentions a numerical knob, assume it needs to land on `self.cfg`. If that knob changes weights or final outputs and HF's forward applies it natively, you ALSO need a `preprocess_weights` override or compatibility mode will diverge.
 
-**Passthrough gotcha:** if your attr is NOT a declared `TransformerBridgeConfig` field, `TransformerBridgeConfig.from_dict(hf_config)` silently filters it out — `getattr(cfg, "<attr>", None)` in your adapter will return `None` and your fallback default fires regardless of the model's actual value. To propagate, add the attr name to `_HF_PASSTHROUGH_ATTRS` in [`sources/transformers.py`](../sources/transformers.py) (and the duplicate list in [`sources/_bridge_builder.py`](../sources/_bridge_builder.py)). Verify with an integration-test assertion: `assert bridge.cfg.<attr> == hf_model.config.<attr>`.
+**Passthrough gotcha:** if your attr is NOT a declared `TransformerBridgeConfig` field, `TransformerBridgeConfig.from_dict(hf_config)` silently filters it out — `getattr(cfg, "<attr>", None)` in your adapter will return `None` and your fallback default fires regardless of the model's actual value. To propagate, add the attr name to `_HF_PASSTHROUGH_ATTRS` in [`sources/_bridge_builder.py`](../sources/_bridge_builder.py). Verify with an integration-test assertion: `assert bridge.cfg.<attr> == hf_model.config.<attr>`.
 
 ---
 
