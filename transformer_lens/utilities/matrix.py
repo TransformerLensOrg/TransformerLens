@@ -19,8 +19,12 @@ def composition_scores(
     Float[torch.Tensor, "*leading_dims"],
     Float[torch.Tensor, "*leading_dims_left_and_right"],
 ]:
-    """
-    See `HookedTransformer.all_composition_scores` for documentation.
+    """Composition scores between two factored matrices.
+
+    Returns ``||left @ right||_F / (||left||_F * ||right||_F)``, computed from the factored
+    forms so the full products are never materialized. With ``broadcast_dims``, left and right
+    leading dims are broadcast against each other (left dims first), scoring every left/right
+    pair. See ``TransformerBridge.all_composition_scores``.
     """
     if broadcast_dims:
         r_leading = right.ndim - 2

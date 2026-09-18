@@ -197,33 +197,13 @@ class TestTrainEvalModePropagation:
         assert bridge.eval() is bridge
 
     def test_bridge_can_be_reconstructed_from_supported_state(self) -> None:
-        """The adapter's actual persistence contract is: rebuild the
-        bridge from the source model class + cfg + the source model's
-        *raw* state_dict, then confirm behavior (outputs, train/eval
-        propagation) survives the round trip.
+        """Rebuild the bridge from the source model's *raw* state_dict and
+        confirm behavior survives the round trip.
 
         The state_dict must be snapshotted BEFORE `build_pretrain_bridge`
-        is called. Building the bridge wraps the model's submodules in
-        place (each one gains an `_original_component` wrapper for
-        hooking), so `model.state_dict()` taken *after* wrapping has
-        keys like `embed._original_component.weight` instead of
-        `embed.weight` -- a fresh, unwrapped `TinyPretrainModel` can't
-        load that. Capturing the state_dict first, then wrapping a
-        second fresh model and loading the pre-wrap snapshot into it,
-        avoids that trap.
-
-        Only the source model's state_dict is used -- not
-        `bridge.state_dict()` -- since the bridge doesn't own an
-        independent set of learned weights; it exposes the wrapped
-        source model's parameters under bridge-shaped names.
-
-        This is deliberately weaker than whole-object `pickle.dumps`,
-        which would also require every nested `TransformerBridge`
-        implementation detail (e.g. `AttentionBridge`'s hook
-        conversions) to be picklable -- a guarantee unrelated to this
-        adapter and not part of what it needs to promise. If a stronger
-        whole-object-pickle guarantee is later required, it belongs in a
-        `TransformerBridge`-level test, not here.
+        wraps the model's submodules in place; taken after, keys become
+        `embed._original_component.weight` and a fresh unwrapped model
+        can't load them.
         """
         cfg = _make_cfg(n_layers=1)
         model = TinyPretrainModel(d_model=16, n_heads=2, n_layers=1, d_ff=32, vocab_size=64)

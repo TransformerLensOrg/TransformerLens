@@ -13,6 +13,11 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources._hf_format import (
+    get_effective_text_config,
+    map_default_transformer_lens_config,
+    setup_tokenizer,
+)
 from transformer_lens.utilities.heterogeneous_config import (
     het_safe_view,
     per_layer_attr_names,
@@ -172,11 +177,6 @@ def build_bridge_config_from_hf(
     dtype: torch.dtype,
 ) -> TransformerBridgeConfig:
     """Translate an HF config into a :class:`TransformerBridgeConfig`."""
-    from transformer_lens.model_bridge.sources.transformers import (
-        get_effective_text_config,
-        map_default_transformer_lens_config,
-    )
-
     tl_config = map_default_transformer_lens_config(hf_config)
     config_dict = dict(tl_config.__dict__)
     # HF's attribute_map remaps num_experts → num_local_experts; restore the TL name.
@@ -235,22 +235,43 @@ def build_bridge_config_from_hf(
 
 
 def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
-    """Detect whether the tokenizer prepends BOS and/or appends EOS.
-
-    Non-empty test string — "" is unreliable with token aliasing.
-    """
+    """Detect whether the tokenizer prepends BOS and/or appends EOS."""
+    # Non-empty test string — "" is unreliable with token aliasing.
     encoded_test = tokenizer.encode("a")
-    prepends_bos = (
-        len(encoded_test) > 1
-        and tokenizer.bos_token_id is not None
-        and encoded_test[0] == tokenizer.bos_token_id
-    )
+    # CLS counts: BERT-style tokenizers prepend [CLS], which the legacy stack
+    # treats as the BOS-like token; comparing only against bos_token_id (a
+    # fallback string on such tokenizers) concludes False and desyncs the stacks.
+    leading_special_ids = {
+        token_id
+        for token_id in (tokenizer.bos_token_id, getattr(tokenizer, "cls_token_id", None))
+        if token_id is not None
+    }
+    prepends_bos = len(encoded_test) > 1 and encoded_test[0] in leading_special_ids
     appends_eos = (
         len(encoded_test) > 1
         and tokenizer.eos_token_id is not None
         and encoded_test[-1] == tokenizer.eos_token_id
     )
     return prepends_bos, appends_eos
+
+
+def skip_tokenizer_for_modality(cfg: Any) -> bool:
+    """True when a source must not auto-load a text tokenizer: audio/vision models use
+    feature extractors or image processors, not text tokenizers (their repos ship none)."""
+    return bool(getattr(cfg, "is_audio_model", False) or getattr(cfg, "is_visual_model", False))
+
+
+def configure_tokenizer(tokenizer: Any, cfg: Any) -> Any:
+    """Shared boot step: normalize the tokenizer and record its BOS/EOS behavior on cfg.
+
+    Every source must run this — skipping it leaves the dataclass default
+    ``tokenizer_prepends_bos=True``, which position-shifts every activation on
+    non-BOS-prepending tokenizers (Qwen family)."""
+    tokenizer = setup_tokenizer(
+        tokenizer, default_padding_side=getattr(cfg, "default_padding_side", None)
+    )
+    cfg.tokenizer_prepends_bos, cfg.tokenizer_appends_eos = detect_tokenizer_bos_eos(tokenizer)
+    return tokenizer
 
 
 def build_bridge_from_module(
@@ -318,6 +339,7 @@ def build_bridge_from_module(
         # ...) don't leak between bridges built from the same config.
         bridge_config = copy.deepcopy(tl_config)
         bridge_config.architecture = architecture
+        # Explicit kwarg wins over whatever tl_config carries; default only fills a gap.
         if model_name != "external" or not getattr(bridge_config, "model_name", None):
             bridge_config.model_name = model_name
         bridge_config.dtype = dtype
@@ -340,13 +362,11 @@ def build_bridge_from_module(
     adapter.prepare_model(model)
 
     if tokenizer is not None:
-        from transformer_lens.model_bridge.sources.transformers import setup_tokenizer
+        tokenizer = configure_tokenizer(tokenizer, adapter.cfg)
 
-        default_padding_side = getattr(adapter.cfg, "default_padding_side", None)
-        tokenizer = setup_tokenizer(tokenizer, default_padding_side=default_padding_side)
-        (
-            adapter.cfg.tokenizer_prepends_bos,
-            adapter.cfg.tokenizer_appends_eos,
-        ) = detect_tokenizer_bos_eos(tokenizer)
+    from transformer_lens.model_bridge.sources.transformers_driver import (
+        TransformersDriver,
+    )
 
-    return TransformerBridge(model, adapter, tokenizer)
+    driver = TransformersDriver(model, adapter, tokenizer)
+    return TransformerBridge(model, adapter, tokenizer, driver=driver)

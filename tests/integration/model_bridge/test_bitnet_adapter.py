@@ -16,38 +16,38 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
-def bitnet_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
 @pytest.fixture(scope="module")
-def sample_tokens(bitnet_bridge):
-    return bitnet_bridge.tokenizer("The capital of France is", return_tensors="pt").input_ids
+def sample_tokens(bridge):
+    return bridge.tokenizer("The capital of France is", return_tensors="pt").input_ids
 
 
 class TestBitNetBridgeCreation:
-    def test_adapter_and_sub_norms(self, bitnet_bridge):
+    def test_adapter_and_sub_norms(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.bitnet import (
             BitNetArchitectureAdapter,
         )
 
-        assert isinstance(bitnet_bridge.adapter, BitNetArchitectureAdapter)
-        hf_attn = bitnet_bridge.blocks[0].attn.original_component
+        assert isinstance(bridge.adapter, BitNetArchitectureAdapter)
+        hf_attn = bridge.blocks[0].attn.original_component
         assert hasattr(hf_attn, "attn_sub_norm")
 
 
 class TestBitNetForwardEquivalence:
-    def test_forward_matches_hf(self, bitnet_bridge, sample_tokens):
-        hf_model = bitnet_bridge.original_model
+    def test_forward_matches_hf(self, bridge, sample_tokens):
+        hf_model = bridge.original_model
         with torch.no_grad():
-            bridge_out = bitnet_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = hf_model(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs HF max diff = {max_diff}"
 
 
 class TestBitNetHooks:
-    def test_hooks_fire(self, bitnet_bridge, sample_tokens):
+    def test_hooks_fire(self, bridge, sample_tokens):
         captured = {}
 
         def grab(tensor, hook):
@@ -55,8 +55,8 @@ class TestBitNetHooks:
 
         hooks = ["blocks.0.attn.hook_out", "blocks.0.mlp.hook_out"]
         with torch.no_grad():
-            bitnet_bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
         seq = sample_tokens.shape[1]
-        d_model = bitnet_bridge.cfg.d_model
+        d_model = bridge.cfg.d_model
         assert captured["blocks.0.attn.hook_out"] == (1, seq, d_model)
         assert captured["blocks.0.mlp.hook_out"] == (1, seq, d_model)

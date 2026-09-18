@@ -30,10 +30,6 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-class Glm4MoeRouterBridge(MoERouterBridge):
-    """Tuple-preserving router bridge for ``Glm4MoeTopkRouter``."""
-
-
 class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for GLM-4.5 / 4.6 / 4.7 MoE decoder models.
 
@@ -92,7 +88,7 @@ class Glm4MoeArchitectureAdapter(ArchitectureAdapter):
                         config=self.cfg,
                         sparse_required=("gate",),
                         submodules={
-                            "gate": Glm4MoeRouterBridge(name="gate", optional=True),
+                            "gate": MoERouterBridge(name="gate", optional=True),
                             # Dense-layer projections (present only on the
                             # dense layers of this interleaved stack); their
                             # presence is what makes MoEBridge bind gated-MLP

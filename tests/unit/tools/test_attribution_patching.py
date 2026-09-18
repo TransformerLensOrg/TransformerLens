@@ -1797,15 +1797,10 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
 # Exact-patch parity
 # ---------------------------------------------------------------------------
 #
-# generic_activation_patch (transformer_lens/patching.py) is not used for this
-# check: its `model: HookedTransformer` parameter is enforced at runtime by
-# this repo's jaxtyping/beartype pytest configuration
-# (--jaxtyping-packages=transformer_lens,beartype.beartype), which rejects any
-# argument that is not actually a HookedTransformer instance -- including a
-# real TransformerBridge, not just this module's toy double. A `# type:
-# ignore` only silences the static checker; it cannot satisfy a runtime
-# isinstance check. The patch below is instead driven directly through the
-# same hooks() mechanism generic_activation_patch itself uses internally.
+# generic_activation_patch (transformer_lens/patching.py) replaces indexed
+# activation slices with clean-cache values; a single-edge patch instead adds
+# one writer's delta to a reader's input, so it is driven directly through the
+# same hooks() mechanism generic_activation_patch uses internally.
 
 
 def _patch_edge_toward_clean(

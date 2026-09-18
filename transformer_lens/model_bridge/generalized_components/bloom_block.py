@@ -128,7 +128,6 @@ class BloomBlockBridge(BlockBridge):
             alibi = self.build_alibi_tensor(attention_mask_2d, num_heads, dtype)
             alibi = alibi.reshape(batch_size * num_heads, 1, seq_length)
 
-            # Add alibi to kwargs
             kwargs["alibi"] = alibi
         # else: alibi is already present from HF, don't overwrite it!
 

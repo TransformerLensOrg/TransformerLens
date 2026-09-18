@@ -117,7 +117,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --extra inspect
       - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"
@@ -171,7 +171,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --extra inspect
       - name: MPS Availability Check
         run: |
           uv run python -c "
@@ -189,11 +189,9 @@ jobs:
           --ignore=tests/unit/model_bridge/test_optimizer_compatibility.py
           --ignore=tests/unit/model_bridge/test_gpt_oss_moe.py
           --ignore=tests/unit/model_bridge/test_component_inspection.py
-          --ignore=tests/unit/model_bridge/test_key_analysis.py
           --ignore=tests/unit/model_bridge/test_benchmark_gated_hooks_fire.py
-          --ignore=tests/unit/model_bridge/test_weight_processing_adapter_paths.py
           --ignore=tests/unit/model_bridge/test_bridge_generate_kv_cache.py
-          --ignore=tests/unit/model_bridge/test_bridge_vs_hooked_transformer_patching.py
+          --ignore=tests/unit/model_bridge/test_bridge_cross_run_qkv_patching.py
           --ignore=tests/unit/model_bridge/compatibility/
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -347,7 +345,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv lock --check
-          uv sync
+          uv sync --extra inspect
       - name: Authenticate HuggingFace
         if: env.HF_TOKEN != ''
         run: uv run python -c "import os; from huggingface_hub import login; login(token=os.environ['HF_TOKEN'])"

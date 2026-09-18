@@ -13,7 +13,7 @@ class TestResolveCheckpointToRevision:
     def test_pythia_index_resolves_to_step_revision(self):
         labels = [0, 1000, 3000, 10000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             revision = _resolve_checkpoint_to_revision(
@@ -24,7 +24,7 @@ class TestResolveCheckpointToRevision:
     def test_pythia_value_resolves_to_step_revision(self):
         labels = [0, 1000, 3000, 10000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             revision = _resolve_checkpoint_to_revision(
@@ -35,7 +35,7 @@ class TestResolveCheckpointToRevision:
     def test_stanford_crfm_uses_checkpoint_prefix(self):
         labels = [100, 200, 400]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             revision = _resolve_checkpoint_to_revision(
@@ -50,7 +50,7 @@ class TestResolveCheckpointToRevision:
     def test_index_out_of_range_raises(self):
         labels = [0, 1000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             with pytest.raises(ValueError, match="out of range"):
@@ -61,7 +61,7 @@ class TestResolveCheckpointToRevision:
     def test_unknown_value_raises(self):
         labels = [0, 1000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             with pytest.raises(ValueError, match="not in available checkpoints"):
@@ -125,7 +125,7 @@ class TestBootRevisionPlumbing:
     def test_checkpoint_index_resolves_to_revision(self):
         labels = [0, 1000, 3000, 10000]
         with patch(
-            "transformer_lens.loading_from_pretrained.get_checkpoint_labels",
+            "transformer_lens.model_bridge.sources.transformers.helpers.get_checkpoint_labels",
             return_value=(labels, "step"),
         ):
             captured = self._patched_boot(checkpoint_index=2)
@@ -143,28 +143,9 @@ class TestBootRevisionPlumbing:
             )
 
     def test_default_revision_is_none(self):
-        """With no revision/checkpoint args, revision is not added to model_kwargs."""
+        """With no revision/checkpoint args, boot passes an explicit revision=None
+        to AutoConfig and omits revision from the model-load kwargs."""
         captured = self._patched_boot()
-        assert captured["autoconfig_kwargs"].get("revision") is None
+        assert "revision" in captured["autoconfig_kwargs"]
+        assert captured["autoconfig_kwargs"]["revision"] is None
         assert "revision" not in captured.get("model_kwargs", {})
-
-
-class TestHookedTransformerCheckpointLabelAlias:
-    def test_checkpoint_label_routes_to_checkpoint_value(self):
-        from transformer_lens import HookedTransformer
-
-        with patch("transformer_lens.loading.get_pretrained_model_config") as mock_get_cfg:
-            mock_get_cfg.side_effect = RuntimeError("stop after config call")
-            with pytest.raises(RuntimeError, match="stop after config call"):
-                HookedTransformer.from_pretrained("EleutherAI/pythia-70m", checkpoint_label=3000)
-
-        _, kwargs = mock_get_cfg.call_args
-        assert kwargs["checkpoint_value"] == 3000
-
-    def test_checkpoint_label_and_value_together_raises(self):
-        from transformer_lens import HookedTransformer
-
-        with pytest.raises(ValueError, match="aliases"):
-            HookedTransformer.from_pretrained(
-                "EleutherAI/pythia-70m", checkpoint_label=3000, checkpoint_value=1000
-            )

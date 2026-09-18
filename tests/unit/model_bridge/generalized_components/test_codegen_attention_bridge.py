@@ -465,7 +465,7 @@ class TestCodeGenAttentionBridgeRoPE:
             q_after_rope.append(tensor.clone())
             return tensor
 
-        # Patch module-level _apply_rotary_pos_emb to capture Q/K passed into RoPE.
+        # Patch the module-level _apply_rotary_pos_emb to capture Q/K post-RoPE.
         import transformer_lens.model_bridge.generalized_components.codegen_attention as codegen_attn_mod
 
         original_fn = codegen_attn_mod._apply_rotary_pos_emb

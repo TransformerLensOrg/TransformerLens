@@ -19,13 +19,13 @@ import torch.nn as nn
 
 from transformer_lens.model_bridge import TransformerBridge
 
-# Unbound so it can run against a stand-in that owns only ``original_model``;
-# the gate reads nothing else off the bridge.
+# Unbound so it can run against a stand-in that owns only ``_driver``; the gate
+# reads nothing else off the bridge.
 gate = TransformerBridge._accepts_derived_position_ids
 
 
 def _bridge_over(model: Optional[nn.Module]) -> Any:
-    return SimpleNamespace(original_model=model)
+    return SimpleNamespace(_driver=SimpleNamespace(underlying_model=model))
 
 
 class _FixedSignature(nn.Module):
@@ -147,8 +147,8 @@ class TestOwnsPositionsGate:
 
 
 class TestDriverAndCaching:
-    def test_refuses_bridge_without_a_local_module(self) -> None:
-        """A bridge with no wrapped module exposes nothing to introspect."""
+    def test_refuses_driver_without_a_local_module(self) -> None:
+        """vLLM/Inspect expose no module to introspect and own positions internally."""
         assert gate(_bridge_over(None)) is False
 
     def test_recomputes_when_the_underlying_model_is_swapped(self) -> None:
@@ -156,5 +156,5 @@ class TestDriverAndCaching:
         the old module must not survive."""
         bridge = _bridge_over(_AcceptsPositionIds())
         assert gate(bridge) is True
-        bridge.original_model = _FixedSignature()
+        bridge._driver.underlying_model = _FixedSignature()
         assert gate(bridge) is False

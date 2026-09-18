@@ -7,7 +7,8 @@ end-to-end correctness of the wiring is covered by the verify suite + the integr
 
 from types import SimpleNamespace
 
-from transformer_lens.config import TransformerBridgeConfig
+import torch
+
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
@@ -106,3 +107,28 @@ class TestVisionDecomposition:
         for leaf in ("attn.qkv", "attn.proj", "mlp.linear_fc1", "mlp.linear_fc2"):
             comp, sub = leaf.split(".")
             assert isinstance(block.submodules[comp].submodules[sub], LinearBridge)
+
+
+def test_gated_q_proj_exposes_query_only_w_q_without_mutating_live_weight():
+    """The multimodal adapter shares the non-mutating gated W_Q analysis view."""
+    adapter = Qwen3_5MultimodalArchitectureAdapter(_make_cfg())
+    attention = adapter.component_mapping["blocks"].submodules["attn"]
+    n_heads, d_head, hidden = adapter.cfg.n_heads, adapter.cfg.d_head, adapter.cfg.d_model
+    q_proj = torch.nn.Linear(hidden, n_heads * d_head * 2, bias=False)
+    with torch.no_grad():
+        values = torch.arange(q_proj.weight.numel(), dtype=q_proj.weight.dtype)
+        q_proj.weight.copy_(values.reshape_as(q_proj.weight))
+    original_weight = q_proj.weight.detach().clone()
+    query = attention.submodules["q"]
+    query.set_original_component(q_proj)
+    attention.add_module("q", query)
+
+    expected = (
+        original_weight.view(n_heads, d_head * 2, hidden)[:, :d_head, :]
+        .transpose(-1, -2)
+        .contiguous()
+    )
+
+    assert attention.W_Q.shape == (n_heads, hidden, d_head)
+    torch.testing.assert_close(attention.W_Q, expected)
+    torch.testing.assert_close(q_proj.weight, original_weight)

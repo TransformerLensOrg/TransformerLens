@@ -35,11 +35,25 @@ class _Block(torch.nn.Module):
         self.mlp = mlp  # nn.Module assignment registers into _modules
 
 
+_BORROWED_HELPERS = (
+    "_enumerate_blocks",
+    "_resolve_submodule_name",
+    "_rewrite_submodule_path",
+)
+
+
 def _stub(mlps):
-    return SimpleNamespace(
-        blocks=[_Block(m) for m in mlps],
+    blocks = torch.nn.ModuleList([_Block(m) for m in mlps])
+    # _stack_block_params walks the registered block lists, so the stub exposes
+    # the same _modules shape a real bridge does and borrows the real helpers.
+    stub = SimpleNamespace(
+        blocks=blocks,
+        _modules={"blocks": blocks},
         cfg=SimpleNamespace(n_devices=1, device=None),
     )
+    for helper in _BORROWED_HELPERS:
+        setattr(stub, helper, getattr(TransformerBridge, helper).__get__(stub))
+    return stub
 
 
 def test_interleaved_model_stacks_dense_layers_only(caplog) -> None:

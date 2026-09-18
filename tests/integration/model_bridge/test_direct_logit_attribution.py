@@ -12,7 +12,7 @@ cancel (gpt2's folded ``ln_final`` bias makes them differ), so::
 
     sum(component DLA, correct vs incorrect) == logit_diff - (b_U[c] - b_U[i])
 
-We assert these for ``HookedTransformer`` and for ``TransformerBridge``
+We assert these for ``TransformerBridge``
 (compatibility mode) — the latter is the reason issue #1263 exists.
 
 These tests load gpt2 (cached), so they live in ``integration/`` per
@@ -61,63 +61,74 @@ def _assert_complete_decomposition(model, unit):
     assert single_total.item() == pytest.approx(logit_c - bu_c, abs=1e-2)
 
 
-@pytest.fixture(scope="module")
-def gpt2_ht():
-    from transformer_lens import HookedTransformer
-
-    return HookedTransformer.from_pretrained("gpt2", device="cpu")
-
-
-class TestDirectLogitAttributionHooked:
-    """Correctness on HookedTransformer (the reference numerics)."""
+class TestDirectLogitAttributionCore:
+    """Core DLA behavior (labels, decomposition, cache reuse) on the bridge."""
 
     @pytest.mark.parametrize("unit", ["component", "layer", "head"])
-    def test_decomposition_reconstructs_logit(self, gpt2_ht, unit):
-        _assert_complete_decomposition(gpt2_ht, unit)
+    def test_decomposition_reconstructs_logit(self, gpt2_bridge_compat, unit):
+        _assert_complete_decomposition(gpt2_bridge_compat, unit)
 
-    def test_component_labels_and_shape(self, gpt2_ht):
+    def test_component_labels_and_shape(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
         res = direct_logit_attribution(
-            gpt2_ht, PROMPT, answer_tokens=CORRECT, incorrect_tokens=INCORRECT, unit="component"
+            gpt2_bridge_compat,
+            PROMPT,
+            answer_tokens=CORRECT,
+            incorrect_tokens=INCORRECT,
+            unit="component",
         )
         assert res.unit == "component"
         assert res.attribution.shape[0] == len(res.labels)
         # Embedding term(s) plus each layer's attn_out and mlp_out.
         assert "embed" in res.labels
-        assert sum(label.endswith("_attn_out") for label in res.labels) == gpt2_ht.cfg.n_layers
-        assert sum(label.endswith("_mlp_out") for label in res.labels) == gpt2_ht.cfg.n_layers
+        assert (
+            sum(label.endswith("_attn_out") for label in res.labels)
+            == gpt2_bridge_compat.cfg.n_layers
+        )
+        assert (
+            sum(label.endswith("_mlp_out") for label in res.labels)
+            == gpt2_bridge_compat.cfg.n_layers
+        )
 
-    def test_head_labels_include_remainder(self, gpt2_ht):
+    def test_head_labels_include_remainder(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
-        res = direct_logit_attribution(gpt2_ht, PROMPT, answer_tokens=CORRECT, unit="head")
-        assert len(res.labels) == gpt2_ht.cfg.n_layers * gpt2_ht.cfg.n_heads + 1
+        res = direct_logit_attribution(
+            gpt2_bridge_compat, PROMPT, answer_tokens=CORRECT, unit="head"
+        )
+        assert (
+            len(res.labels) == gpt2_bridge_compat.cfg.n_layers * gpt2_bridge_compat.cfg.n_heads + 1
+        )
         assert res.labels[-1] == "remainder"
 
-    def test_reuses_precomputed_cache(self, gpt2_ht):
+    def test_reuses_precomputed_cache(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
-        logit_c, _, bu_c, _ = _refs(gpt2_ht)
-        _, cache = gpt2_ht.run_with_cache(PROMPT)
-        res = direct_logit_attribution(gpt2_ht, answer_tokens=CORRECT, cache=cache)
+        logit_c, _, bu_c, _ = _refs(gpt2_bridge_compat)
+        _, cache = gpt2_bridge_compat.run_with_cache(PROMPT)
+        res = direct_logit_attribution(gpt2_bridge_compat, answer_tokens=CORRECT, cache=cache)
         assert res.attribution.sum().item() == pytest.approx(logit_c - bu_c, abs=1e-2)
 
-    def test_pos_none_keeps_position_axis(self, gpt2_ht):
+    def test_pos_none_keeps_position_axis(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
-        n_tokens = gpt2_ht.to_tokens(PROMPT).shape[1]
+        n_tokens = gpt2_bridge_compat.to_tokens(PROMPT).shape[1]
         res = direct_logit_attribution(
-            gpt2_ht, PROMPT, answer_tokens=CORRECT, unit="component", pos=None
+            gpt2_bridge_compat, PROMPT, answer_tokens=CORRECT, unit="component", pos=None
         )
         assert res.attribution.ndim == 3  # [component, batch, pos]
         assert res.attribution.shape[-1] == n_tokens
 
-    def test_top_returns_sorted_pairs(self, gpt2_ht):
+    def test_top_returns_sorted_pairs(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
         res = direct_logit_attribution(
-            gpt2_ht, PROMPT, answer_tokens=CORRECT, incorrect_tokens=INCORRECT, unit="head"
+            gpt2_bridge_compat,
+            PROMPT,
+            answer_tokens=CORRECT,
+            incorrect_tokens=INCORRECT,
+            unit="head",
         )
         top = res.top(3)
         assert len(top) == 3
@@ -148,20 +159,22 @@ class TestDirectLogitAttributionBridgeGuards:
 
 
 class TestDirectLogitAttributionValidation:
-    def test_invalid_unit_raises(self, gpt2_ht):
+    def test_invalid_unit_raises(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
         with pytest.raises(ValueError, match="unit must be one of"):
-            direct_logit_attribution(gpt2_ht, PROMPT, answer_tokens=CORRECT, unit="neuron")
+            direct_logit_attribution(
+                gpt2_bridge_compat, PROMPT, answer_tokens=CORRECT, unit="neuron"
+            )
 
-    def test_missing_answer_tokens_raises(self, gpt2_ht):
+    def test_missing_answer_tokens_raises(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
         with pytest.raises(ValueError, match="answer_tokens is required"):
-            direct_logit_attribution(gpt2_ht, PROMPT)
+            direct_logit_attribution(gpt2_bridge_compat, PROMPT)
 
-    def test_missing_input_and_cache_raises(self, gpt2_ht):
+    def test_missing_input_and_cache_raises(self, gpt2_bridge_compat):
         from transformer_lens.tools.analysis import direct_logit_attribution
 
         with pytest.raises(ValueError, match="either `input`"):
-            direct_logit_attribution(gpt2_ht, answer_tokens=CORRECT)
+            direct_logit_attribution(gpt2_bridge_compat, answer_tokens=CORRECT)

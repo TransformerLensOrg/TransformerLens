@@ -66,13 +66,14 @@ def _resolve(component: GeneralizedComponent, target: str) -> Any:
 
 
 # xfail(strict=True) so future fixes XPASS and force the marker to be removed.
+# Each entry marks an adapter with known-dead hook aliases; xfail until fixed.
 _KNOWN_DEAD_ALIASES = {
-    "GPT2LMHeadCustomModel": "audit H27 — stale adapter, delete candidate",
-    "NanoGPTForCausalLM": "audit H28 — broken weight conversion, delete candidate",
-    "NeelSoluOldForCausalLM": "audit H28 — orphan weight conversion, delete candidate",
-    "LlavaForConditionalGeneration": "audit H15 — vision-encoder layer submodules unwired",
-    "LlavaNextForConditionalGeneration": "audit H15 + M24 — vision encoder + tiling opaque",
-    "LlavaOnevisionForConditionalGeneration": "audit H15 + M25 — vision encoder + video frames opaque",
+    "GPT2LMHeadCustomModel": "stale adapter, delete candidate",
+    "NanoGPTForCausalLM": "broken weight conversion, delete candidate",
+    "NeelSoluOldForCausalLM": "orphan weight conversion, delete candidate",
+    "LlavaForConditionalGeneration": "vision-encoder layer submodules unwired",
+    "LlavaNextForConditionalGeneration": "vision-encoder submodules unwired; tiling path opaque",
+    "LlavaOnevisionForConditionalGeneration": "vision-encoder submodules unwired; video-frame path opaque",
     # Gemma3 and Idefics3 both build their tower from SiglipVisionEncoderBridge,
     # whose layers now wire attn/mlp submodules, so their aliases resolve. The
     # Llava family above still routes through its own opaque vision path.

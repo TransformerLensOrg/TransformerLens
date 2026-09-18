@@ -33,8 +33,8 @@ content/gallery
 :hidden:
 :caption: News
 
-content/news/release-3.0
-content/news/release-2.0
+content/news/release-4.0
+content/news/past_releases
 ```
 
 ```{toctree}
@@ -50,12 +50,14 @@ content/model_structure
 :hidden:
 :caption: Resources
 
+content/migrating_to_v4
 content/migrating_to_v3
 content/analysis_tools
 content/tutorials
 content/citation
 content/contributing
 content/hook_system
+content/drivers
 content/compatibility_mode
 content/ssm_interpretability
 content/projection_kernel

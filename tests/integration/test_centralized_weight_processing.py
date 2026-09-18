@@ -5,7 +5,7 @@ Integration Tests for Centralized Weight Processing
 
 This test verifies the centralized ProcessWeights.process_weights functionality:
 1. Processing with architecture adapter (TransformerBridge case)
-2. Processing without architecture adapter (HookedTransformer case)
+2. Processing without architecture adapter (raw state-dict case)
 3. Bypass mechanisms for fine-grained control
 4. Custom component processing integration
 5. Architecture adapter detection and divergence handling

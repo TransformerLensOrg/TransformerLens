@@ -83,7 +83,7 @@ def test_text_path_nested_under_language_model():
     assert isinstance(m["embed"], EmbeddingBridge)
     assert isinstance(m["blocks"], AltUpBlockBridge)
     assert isinstance(m["unembed"], UnembeddingBridge)
-    # Vision/audio are referenced-but-unbridged.
+    # Vision/audio are referenced but not bridged (text-only adapter for now).
     assert "vision_encoder" not in m and "audio_encoder" not in m
 
 

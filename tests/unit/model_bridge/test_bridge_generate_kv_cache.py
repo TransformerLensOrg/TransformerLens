@@ -15,8 +15,8 @@ from transformer_lens.model_bridge import TransformerBridge
 
 
 @pytest.fixture(scope="module")
-def gpt2_bridge():
-    """Load a small GPT-2 bridge for testing."""
+def distilgpt2_bridge():
+    """Distilgpt2 bridge with pad_token set — local so the tokenizer mutation stays contained."""
     bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
     if bridge.tokenizer.pad_token is None:
         bridge.tokenizer.pad_token = bridge.tokenizer.eos_token
@@ -26,9 +26,9 @@ def gpt2_bridge():
 class TestGenerateExceptionSafety:
     """Test that generate() cleans up state even when forward() raises."""
 
-    def test_capture_flag_cleared_on_exception(self, gpt2_bridge):
+    def test_capture_flag_cleared_on_exception(self, distilgpt2_bridge):
         """_capture_hf_cache is cleaned up even if forward() raises mid-generation."""
-        bridge = gpt2_bridge
+        bridge = distilgpt2_bridge
 
         # Verify clean state before
         assert not getattr(bridge, "_capture_hf_cache", False)
@@ -60,9 +60,9 @@ class TestGenerateExceptionSafety:
         assert bridge._capture_hf_cache is False
         assert not hasattr(bridge, "_last_hf_cache")
 
-    def test_forward_clean_after_failed_generate(self, gpt2_bridge):
+    def test_forward_clean_after_failed_generate(self, distilgpt2_bridge):
         """After a failed generate(), the next forward() must not stash caches."""
-        bridge = gpt2_bridge
+        bridge = distilgpt2_bridge
         original_forward = bridge.forward
         call_count = 0
 
@@ -92,9 +92,9 @@ class TestGenerateExceptionSafety:
 class TestGenerateGuards:
     """Test that generate() handles edge cases for cache configuration."""
 
-    def test_encoder_decoder_disables_cache_silently(self, gpt2_bridge):
+    def test_encoder_decoder_disables_cache_silently(self, distilgpt2_bridge):
         """Encoder-decoder models silently disable KV cache instead of crashing."""
-        bridge = gpt2_bridge
+        bridge = distilgpt2_bridge
 
         original_config = bridge.original_model.config
         original_config.is_encoder_decoder = True
@@ -120,9 +120,9 @@ class TestGenerateGuards:
 class TestForwardCacheExtraction:
     """Test that forward() extracts only past_key_values, not the full output."""
 
-    def test_forward_stashes_only_cache(self, gpt2_bridge):
+    def test_forward_stashes_only_cache(self, distilgpt2_bridge):
         """When _capture_hf_cache is True, only past_key_values is stored."""
-        bridge = gpt2_bridge
+        bridge = distilgpt2_bridge
         tokens = bridge.to_tokens("Hello world", prepend_bos=False)
 
         bridge._capture_hf_cache = True
@@ -148,9 +148,9 @@ class TestForwardCacheExtraction:
 class TestGenerateKVCacheParity:
     """Test that generate with KV cache produces same results as without."""
 
-    def test_greedy_parity(self, gpt2_bridge):
+    def test_greedy_parity(self, distilgpt2_bridge):
         """Greedy generation with and without KV cache should produce identical tokens."""
-        bridge = gpt2_bridge
+        bridge = distilgpt2_bridge
         prompt = "The quick brown fox"
         max_new = 8
 
@@ -180,9 +180,9 @@ class TestGenerateKVCacheParity:
             f"  with_cache: {result_with_cache}"
         )
 
-    def test_batched_greedy_parity(self, gpt2_bridge):
+    def test_batched_greedy_parity(self, distilgpt2_bridge):
         """Batched greedy generation should match between cached and non-cached."""
-        bridge = gpt2_bridge
+        bridge = distilgpt2_bridge
         prompts = ["Hello world", "Goodbye world"]
         max_new = 5
 

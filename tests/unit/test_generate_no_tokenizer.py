@@ -1,4 +1,4 @@
-"""Tests for HookedTransformer.generate() when no tokenizer is set.
+"""Tests for generate() when no tokenizer is set.
 
 Regression test for https://github.com/TransformerLensOrg/TransformerLens/issues/483
 """
@@ -6,13 +6,13 @@ Regression test for https://github.com/TransformerLensOrg/TransformerLens/issues
 import pytest
 import torch
 
-from transformer_lens import HookedTransformer
-from transformer_lens.config import HookedTransformerConfig
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
 
 
-def _make_tokenizer_free_model() -> HookedTransformer:
-    """Create a small HookedTransformer with no tokenizer (algorithmic task setup)."""
-    cfg = HookedTransformerConfig(
+def _make_tokenizer_free_model() -> TransformerBridge:
+    """Create a small native bridge with no tokenizer (algorithmic task setup)."""
+    cfg = TransformerBridgeConfig(
         n_layers=1,
         d_model=16,
         d_head=4,
@@ -21,7 +21,7 @@ def _make_tokenizer_free_model() -> HookedTransformer:
         d_vocab=20,
         attn_only=True,
     )
-    return HookedTransformer(cfg)
+    return TransformerBridge.boot_native(cfg)
 
 
 def test_generate_without_tokenizer_stop_at_eos_false_kv_cache():
@@ -117,7 +117,7 @@ def test_generate_cpu_tokens_cuda_model():
     input_tokens used to stay on the input's original device after the input was
     moved to the model's device, breaking the sampling-path and output torch.cat.
     """
-    cfg = HookedTransformerConfig(
+    cfg = TransformerBridgeConfig(
         n_layers=1,
         d_model=16,
         d_head=4,
@@ -127,7 +127,7 @@ def test_generate_cpu_tokens_cuda_model():
         attn_only=True,
         device="cuda",
     )
-    model = HookedTransformer(cfg)
+    model = TransformerBridge.boot_native(cfg)
 
     tokens = torch.zeros((1, 5), dtype=torch.long)  # deliberately left on CPU
 
