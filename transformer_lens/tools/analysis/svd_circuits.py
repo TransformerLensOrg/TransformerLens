@@ -153,7 +153,7 @@ class HeadSVD:
     rank_report: List[RankReportRow]
     eps: float
     null_rtol: float
-    compatibility_mode: bool
+    compatibility_mode: bool = False
 
     def is_degenerate(self, i: int) -> bool:
         """Whether direction ``i`` is refused: rotation-ambiguous inside a block, or null."""
