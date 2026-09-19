@@ -1,0 +1,3806 @@
+{
+  "control_success_ci": {
+    "ci_high": 0.0,
+    "ci_low": 0.0,
+    "confidence": 0.95,
+    "n_resamples": 10000,
+    "point_estimate": 0.0
+  },
+  "excluded_baselines": [
+    {
+      "function": "capital",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -0.2864990234375,
+        "target_rank": 2,
+        "target_tied_for_top": false,
+        "top1_token_id": 6586
+      },
+      "prompt": "The capital of Canada is the city of",
+      "source": "Canada"
+    },
+    {
+      "function": "capital",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -0.7241363525390625,
+        "target_rank": 2,
+        "target_tied_for_top": false,
+        "top1_token_id": 20834
+      },
+      "prompt": "The capital of China is the city of",
+      "source": "China"
+    },
+    {
+      "function": "capital",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.7487869262695312,
+        "target_rank": 7,
+        "target_tied_for_top": false,
+        "top1_token_id": 27872
+      },
+      "prompt": "The capital of Egypt is the city of",
+      "source": "Egypt"
+    },
+    {
+      "function": "language",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.105224609375,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 257
+      },
+      "prompt": "Most people in China speak",
+      "source": "China"
+    },
+    {
+      "function": "continent",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9497413635253906,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 262
+      },
+      "prompt": "Canada is a country on the continent of",
+      "source": "Canada"
+    },
+    {
+      "function": "continent",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -0.6490402221679688,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 262
+      },
+      "prompt": "China is a country on the continent of",
+      "source": "China"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9744873046875,
+        "target_rank": 7,
+        "target_tied_for_top": false,
+        "top1_token_id": 366
+      },
+      "prompt": "The single-word name for the currency now used in France is the",
+      "source": "France"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -4.760887145996094,
+        "target_rank": 38,
+        "target_tied_for_top": false,
+        "top1_token_id": 5398
+      },
+      "prompt": "The single-word name for the currency now used in Canada is the",
+      "source": "Canada"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.1355819702148438,
+        "target_rank": 6,
+        "target_tied_for_top": false,
+        "top1_token_id": 34847
+      },
+      "prompt": "The single-word name for the currency now used in China is the",
+      "source": "China"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -5.075996398925781,
+        "target_rank": 116,
+        "target_tied_for_top": false,
+        "top1_token_id": 14075
+      },
+      "prompt": "The single-word name for the currency now used in Egypt is the",
+      "source": "Egypt"
+    }
+  ],
+  "protocol_fingerprint": "deae49a4df19fb44f8bed71db87b6bd6c09e5ca5c0e5531ba8bb3926b5a46b7d",
+  "protocol_manifest": {
+    "alpha": 1.0,
+    "baseline_definition": "source answer token id equals deterministic argmax token id",
+    "control_seed": 0,
+    "control_tolerance": 0.1,
+    "corpus_name": "countries",
+    "k": 25,
+    "layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "lens_file": "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt",
+    "lens_repo": "neuronpedia/jacobian-lens",
+    "lens_revision": "a4114d7752d11eb546e6cf372213d7e75526d3a1",
+    "model_id": "gpt2",
+    "model_revision": "n/a",
+    "rank_definition": "1 + count(logits strictly greater than target logit)",
+    "success_definition": "target token id equals deterministic argmax token id"
+  },
+  "real_success_ci": {
+    "ci_high": 0.0,
+    "ci_low": 0.0,
+    "confidence": 0.95,
+    "n_resamples": 10000,
+    "point_estimate": 0.0
+  },
+  "schema_version": 1,
+  "trials": [
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5518,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7035,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 39809,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 1133,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7035,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 10445,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4942,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7035,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 10445,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7037,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 554,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6928,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5519,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7035,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 39809,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7037,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 554,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9505,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5041,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4343,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 32814,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7840,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4345,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 17967,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5303,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4346,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 17967,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8287,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 12537,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13961,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7840,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4345,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 32814,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8287,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 12537,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9934,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 11776,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 809,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 24970,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6829,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8117,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 35809,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13059,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 809,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 35809,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8287,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 543,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8225,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6829,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 809,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 24970,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8287,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 543,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4430,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9817,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4802,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 20411,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 1974,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4803,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16327,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 11202,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4805,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16327,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 12308,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9322,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8129,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9817,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4803,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 20411,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 11202,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9322,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 592,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5348,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8748,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13468,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13092,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8748,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 12572,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8966,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8748,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 12572,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7209,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8329,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6602,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5350,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8748,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13468,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8966,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8329,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5713,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 607,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6082,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 250,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 67,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6090,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 15187,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 15671,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 299,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 15187,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9817,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 1805,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6090,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 607,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6090,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 250,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9817,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 1805,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4281,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5832,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5938,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 23431,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8284,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5940,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2913,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8478,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 3629,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2913,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5420,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16981,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5940,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5833,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5940,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 23431,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8478,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16981,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 12460,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 14104,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 521,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6998,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9667,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4245,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16292,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9234,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 521,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16292,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 288,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7593,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 10117,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 14104,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 521,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 16293,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 3730,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7593,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8315,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4473,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5982,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 17945,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9564,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8072,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13572,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 9686,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5984,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13572,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 18842,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 986,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4783,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4474,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5984,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13574,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4965,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 986,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4156,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7518,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2005,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 17343,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7518,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2863,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 18003,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 14582,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2863,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 18003,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 8060,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 6918,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 1614,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 7518,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2005,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 18003,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.921661376953125,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 4771,
+      "error": null,
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9085540771484375,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.8730621337890625,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 6918,
+      "error": null,
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.825183868408203,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.7609634399414062,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 1632,
+      "error": null,
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.7115440368652344,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 4266,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 15185,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_target_metrics": null,
+      "control_token_id": 454,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "capital",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 11361,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2669,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_target_metrics": null,
+      "control_token_id": 35113,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 5650,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2669,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_target_metrics": null,
+      "control_token_id": 26821,
+      "error": "source_idx=3340 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 3866,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 13206,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_target_metrics": null,
+      "control_token_id": 10357,
+      "error": "source_idx=6365 is not in the decomposition's active support",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 11361,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 2670,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_target_metrics": null,
+      "control_token_id": 35113,
+      "error": "source_idx=4881 is not in the decomposition's active support",
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.8690147399902344,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 12053,
+      "error": null,
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.7807693481445312,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.7808380126953125,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 4268,
+      "error": null,
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.749217987060547,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.6646461486816406,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 15185,
+      "error": null,
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.54638671875,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "China"
+    }
+  ]
+}
