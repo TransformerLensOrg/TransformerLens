@@ -236,7 +236,8 @@ def test_lbfgs_matches_independent_newton_solution_and_gradient():
     assert result.gradient_inf_norm <= 1e-7
 
 
-def test_metrics_match_an_independent_heldout_recompute_at_the_logit_zero_threshold():
+@pytest.mark.parametrize("preprocess", ["none", "standardize"])
+def test_metrics_match_an_independent_heldout_recompute_at_the_logit_zero_threshold(preprocess):
     generator = torch.Generator().manual_seed(41)
     n_examples, n_features = 300, 8
     labels = torch.arange(n_examples) % 2
@@ -248,9 +249,15 @@ def test_metrics_match_an_independent_heldout_recompute_at_the_logit_zero_thresh
     permutation = torch.randperm(n_examples, generator=generator)
     features, labels = features[permutation], labels[permutation]
 
-    result = fit_sparse_probe(features, labels, k=3, seed=7)
+    result = fit_sparse_probe(features, labels, k=3, preprocess=preprocess, seed=7)
 
+    # Standardize the raw held-out rows with the module's returned train-only statistics,
+    # matching what the module does internally. Under preprocess="none" the statistics are
+    # identity (mean 0, scale 1) so this is a no-op; under preprocess="standardize" it pins
+    # the recompute to train-only statistics, so a leakage bug that standardized held-out
+    # rows with their own mean and std would diverge from result.metrics and fail below.
     test_features = features[result.test_indices][:, result.selected_features].double()
+    test_features = (test_features - result.preprocess_mean) / result.preprocess_scale
     logits = test_features @ result.coefficients + result.intercept
     predictions = logits >= 0
     positive = labels[result.test_indices].bool()
