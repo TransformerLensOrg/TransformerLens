@@ -772,14 +772,16 @@ class PatchResult:
         original_metric: Metric value on the unmodified prompt.
         patched_metric: Metric value after the subspace reconstruction.
         delta_metric: ``patched_metric - original_metric``.
-        baseline_delta_metric: the mean ``delta_metric`` over several random control
-            subspaces of the same width as ``retained``, each drawn inside the head's
-            own OV span ``span(V)`` rather than from the full residual stream, so the
-            control is the effect of an arbitrary same-size subspace of this head's
-            output rather than of an unrelated residual-stream direction.
+        baseline_delta_metric: the mean of the per-draw ``delta_metric`` magnitudes over
+            several random control subspaces of the same width as ``retained``, each drawn
+            inside the head's own OV span ``span(V)`` rather than from the full residual
+            stream, so the control is the effect of an arbitrary same-size subspace of this
+            head's output rather than of an unrelated residual-stream direction. Averaging
+            the magnitudes rather than the signed deltas keeps this a typical control
+            effect that does not shrink when the controls mix sign, so it is non-negative.
         gated: whether the retained subspace passed the causal test for the mode it was
-            expressed in, against ``abs(baseline_delta_metric)`` (or an explicit
-            threshold, if one was passed). For ``ablate`` (retain the complement),
+            expressed in, comparing ``abs(delta_metric)`` against ``baseline_delta_metric``
+            (or an explicit threshold, if one was passed). For ``ablate`` (retain the complement),
             removing a load-bearing subspace should move the metric more than removing an
             arbitrary same-size one, so ``gated`` is ``abs(delta_metric) > threshold``.
             For ``keep`` (retain only the given subspace), a subspace that reconstructs
@@ -821,8 +823,9 @@ def patch_along_directions(
     ``span(V)`` (not from the full residual stream, where a width-``w`` random subspace
     would keep only ``w/d_model`` of a head output that lives entirely in ``w/rank`` of
     the stream), so a moved metric is compared against the effect of an arbitrary
-    subspace of this head's output of the same width. The control delta is averaged over
-    ``n_baseline`` draws so one lucky or unlucky draw does not decide the gate. Restores
+    subspace of this head's output of the same width. The per-draw control delta magnitudes
+    are averaged over ``n_baseline`` draws so one lucky or unlucky draw does not decide the
+    gate, and so controls that mix sign do not cancel into a smaller threshold. Restores
     the model's prior ``use_attn_result`` setting afterward.
 
     The gate's success condition depends on the mode the caller expressed, because
@@ -839,7 +842,7 @@ def patch_along_directions(
             ``keep``/``ablate`` must be given.
         ablate: Direction indices to zero; the rest are retained.
         threshold: Explicit gate threshold. Defaults to ``None``, which uses
-            ``abs(baseline_delta_metric)`` instead.
+            ``baseline_delta_metric`` (already a magnitude) instead.
         rng: Optional generator for the random control subspaces, for reproducibility.
             Defaults to a generator seeded with ``_DEFAULT_BASELINE_SEED`` so a bare
             call is reproducible rather than drawing from the global RNG.
@@ -917,8 +920,8 @@ def patch_along_directions(
         model.set_use_attn_result(previous)
 
     delta_metric = patched_metric - original_metric
-    baseline_delta_metric = sum(baseline_deltas) / len(baseline_deltas)
-    gate_threshold = abs(baseline_delta_metric) if threshold is None else threshold
+    baseline_delta_metric = sum(abs(d) for d in baseline_deltas) / len(baseline_deltas)
+    gate_threshold = baseline_delta_metric if threshold is None else threshold
     # keep retains only the claimed subspace, so it passes when it reconstructs the head's
     # behavior better than an arbitrary same-width one (moves the metric less); ablate
     # removes it, so it passes when removing it matters more than removing an arbitrary

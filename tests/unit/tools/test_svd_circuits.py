@@ -15,6 +15,7 @@ import pytest
 import torch
 
 from transformer_lens.tools.analysis.svd_circuits import (
+    _DEFAULT_N_BASELINE,
     ActivationProjection,
     DegenerateDirectionError,
     HeadSVD,
@@ -1119,6 +1120,62 @@ def test_patch_baseline_is_reproducible():
     )
     assert same_seed.baseline_delta_metric == first.baseline_delta_metric
     assert other_seed.baseline_delta_metric != first.baseline_delta_metric
+
+
+def _manual_baseline_deltas(stub, ov, width, seed, head=None):
+    """Replay one baseline draw loop deterministically, mirroring patch_along_directions'
+    control-subspace arithmetic exactly, and return the list of signed per-draw deltas.
+
+    Kept in lockstep with the production loop (same QR draw order, same in-span projection,
+    same hook) so a test can recover the raw signed deltas the gate is built from and check
+    how they are reduced to a threshold.
+    """
+    head = ov.head if head is None else head
+    V = ov.V
+    rank = V.shape[1]
+    g = torch.Generator().manual_seed(seed)
+    name = f"blocks.{ov.layer}.attn.hook_result"
+    original = float(stub(None).sum())
+    deltas = []
+    for _ in range(_DEFAULT_N_BASELINE):
+        random_rank = torch.randn(rank, rank, generator=g, dtype=V.dtype)
+        basis, _ = torch.linalg.qr(random_rank)
+        directions = V @ basis[:, :width]
+        projector = directions @ directions.transpose(-2, -1)
+        logits = stub.run_with_hooks(None, [(name, _make_subspace_hook(head, projector))])
+        deltas.append(float(logits.sum()) - original)
+    return deltas
+
+
+def test_patch_baseline_thresholds_on_mean_magnitude():
+    """The gate threshold is the mean of the per-draw control delta magnitudes, not the
+    magnitude of their signed mean. The controls must mix sign for the two to differ. The
+    projector zeroes every out-of-span dimension identically on every draw, so put both the
+    head output and the readout inside span(V) to hide that fixed removal, and make them
+    orthogonal so the surviving control deltas (a quadratic form in the random leftover
+    direction) split near evenly in sign across draws. Averaging magnitudes then yields the
+    larger, correct threshold that does not shrink toward zero as the signs cancel."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    rank = ov.V.shape[1]
+    stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
+    # Head output along one span axis, readout along an orthogonal span axis (V's columns are
+    # orthonormal), so the deltas mix sign rather than sharing one.
+    stub._result = torch.zeros_like(stub._result)
+    stub._result[:, :, 0, :] = ov.V @ torch.tensor([0.0, 1.0, 0.0, 0.0], dtype=ov.V.dtype)
+    stub._readout = ov.V @ torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=ov.V.dtype)
+    metric = lambda logits: float(logits.sum())
+    result = patch_along_directions(
+        stub, ov, "prompt", metric, ablate=[0], rng=torch.Generator().manual_seed(0)
+    )
+    deltas = _manual_baseline_deltas(stub, ov, width=rank - 1, seed=0)
+    mean_magnitude = sum(abs(d) for d in deltas) / len(deltas)
+    signed_mean_magnitude = abs(sum(deltas) / len(deltas))
+    assert result.baseline_delta_metric == pytest.approx(mean_magnitude)
+    # The controls mix sign here, so the magnitude mean is strictly larger than the signed
+    # mean's magnitude; this guards against a regression back to abs(signed mean).
+    assert mean_magnitude > signed_mean_magnitude
 
 
 def test_patch_keep_mode_gate_semantics():
