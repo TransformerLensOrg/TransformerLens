@@ -856,8 +856,9 @@ def patch_along_directions(
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under a
             different compatibility-mode state than ``model`` now has, if ``keep``/``ablate``
             are both given or both omitted, if any index is out of ``[0, rank)``, if the
-            retained set is empty (``keep=[]`` or ``ablate`` over the full rank) and no
-            explicit ``threshold`` is supplied, or if ``n_baseline < 1``.
+            retained set is empty (``keep=[]`` or ``ablate`` over the full rank) or spans the
+            full rank (``keep`` over every direction) and no explicit ``threshold`` is
+            supplied, or if ``n_baseline < 1``.
         DegenerateDirectionError: If the retained directions split a degenerate block
             (see :func:`_validate_retained_blocks`).
     """
@@ -872,22 +873,25 @@ def patch_along_directions(
     # _resolve_retained has confirmed exactly one of keep/ablate is set, so the mode the
     # caller expressed is unambiguous and selects the gate's success condition (see below).
     mode = "keep" if keep is not None else "ablate"
-    if not retained and threshold is None:
-        # An empty retained set reconstructs the head onto the zero subspace, so its delta and
-        # the equal-width random baseline's delta are both the full-ablation effect: the gate
-        # compares a quantity against itself and is meaningless. Require an explicit threshold
-        # to gate an empty set on purpose.
+    V = head_svd.V
+    rank = V.shape[1]
+    if (not retained or len(retained) == rank) and threshold is None:
+        # An empty retained set reconstructs the head onto the zero subspace; a full-rank
+        # retained set reconstructs it onto span(V) itself (V V^T). In both cases the kept
+        # projector and the equal-width random control projector coincide: for the empty set
+        # both are the zero projector, and for the full set every width-rank in-span control
+        # is V Q Q^T V^T = V V^T. The two deltas then tie by construction and the gate
+        # compares a quantity against itself. Require an explicit threshold to gate either
+        # degenerate set on purpose.
         raise ValueError(
-            "keep/ablate retain no directions, so the reconstruction is the zero subspace "
-            "and its delta ties the random baseline by construction; pass an explicit "
-            "threshold to gate an empty retained set."
+            "keep/ablate retains either no directions or every direction, so the "
+            "reconstruction's kept projector coincides with the random control projector "
+            "and their deltas tie by construction; pass an explicit threshold to gate this."
         )
 
     if rng is None:
         rng = torch.Generator().manual_seed(_DEFAULT_BASELINE_SEED)
 
-    V = head_svd.V
-    rank = V.shape[1]
     width = len(retained)
     kept_projector = V[:, retained] @ V[:, retained].transpose(-2, -1)
 

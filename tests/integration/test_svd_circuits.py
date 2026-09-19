@@ -78,8 +78,12 @@ def test_svd_circuits_readout_and_patch_gate_on_name_mover_head(gpt2_bridge) -> 
     rank = ov.V.shape[1]
 
     # Keeping every direction reconstructs the head onto its own full OV span: a no-op, so the
-    # metric barely moves. A hook never installed, or one projecting the wrong basis, breaks this.
-    full_keep = patch_along_directions(gpt2_bridge, ov, prompt, metric, keep=list(range(rank)))
+    # metric barely moves. A width-rank in-span control also spans span(V), so it ties this
+    # kept projector by construction and the gate needs an explicit threshold. A hook never
+    # installed, or one projecting the wrong basis, breaks the delta assertion.
+    full_keep = patch_along_directions(
+        gpt2_bridge, ov, prompt, metric, keep=list(range(rank)), threshold=1e-4
+    )
     assert abs(full_keep.delta_metric) < 1e-4
 
     # Ablating every direction zeroes the head's whole output, which must move the logit diff.

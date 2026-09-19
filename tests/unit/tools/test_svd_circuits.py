@@ -950,19 +950,25 @@ def test_resolve_retained_rejects_out_of_range():
             _resolve_retained(ov, keep=None, ablate=bad)
 
 
-def test_patch_rejects_empty_retained_without_threshold():
-    """An empty retained set (keep=[] or ablate over the full rank) reconstructs onto the zero
-    subspace and ties the baseline by construction, so it is refused unless the caller passes
-    an explicit threshold, and accepted when one is."""
+def test_patch_rejects_degenerate_retained_without_threshold():
+    """A retained set that is empty (keep=[] or ablate over the full rank) or spans the full
+    rank (keep over every direction) makes the kept projector coincide with every equal-width
+    random control, so the gate ties by construction. Each case is refused unless the caller
+    passes an explicit threshold, and accepted when one is."""
     ov = _factored_head_svd(
         *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
     )
     rank = ov.V.shape[1]
     stub = _PatchStubModel(d_model=D_MODEL, n_heads=1)
     metric = lambda logits: float(logits.sum())
-    for empty in (dict(keep=[]), dict(ablate=list(range(rank)))):
+    cases = [
+        (dict(keep=[]), []),
+        (dict(ablate=list(range(rank))), []),
+        (dict(keep=list(range(rank))), list(range(rank))),
+    ]
+    for kwargs, expected_retained in cases:
         with pytest.raises(ValueError, match="threshold"):
-            patch_along_directions(stub, ov, "prompt", metric, **empty)
+            patch_along_directions(stub, ov, "prompt", metric, **kwargs)
         result = patch_along_directions(
             stub,
             ov,
@@ -970,10 +976,10 @@ def test_patch_rejects_empty_retained_without_threshold():
             metric,
             threshold=0.0,
             rng=torch.Generator().manual_seed(0),
-            **empty,
+            **kwargs,
         )
         assert isinstance(result, PatchResult)
-        assert result.retained == []
+        assert result.retained == expected_retained
 
 
 def test_patch_ablate_rejects_partial_degenerate_block():
