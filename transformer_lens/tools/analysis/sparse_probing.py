@@ -359,10 +359,6 @@ def _fit_logistic(
         tolerance_change=0.0,
         line_search_fn="strong_wolfe",
     )
-    initial_gradient = _objective_gradient(
-        features, labels, parameters.detach(), sample_weights, l2_strength
-    )
-    initial_gradient_inf_norm = float(initial_gradient.abs().max().item())
 
     def closure() -> torch.Tensor:
         optimizer.zero_grad()
@@ -382,7 +378,9 @@ def _fit_logistic(
     gradient_inf_norm = float(gradient.abs().max().item())
     if not math.isfinite(objective) or not math.isfinite(gradient_inf_norm):
         raise RuntimeError("sparse probe optimizer produced non-finite output")
-    acceptance_threshold = gradient_tolerance * max(1.0, initial_gradient_inf_norm)
+    acceptance_threshold = gradient_tolerance * max(
+        1.0, features.shape[1] * float(features.abs().max().item())
+    )
     if gradient_inf_norm > acceptance_threshold:
         raise RuntimeError(
             "sparse probe optimizer did not converge: "
@@ -568,7 +566,9 @@ def fit_sparse_probe(
         l2_strength: Positive coefficient penalty in the logistic objective.
         seed: Local CPU-generator seed used only for the stratified split.
         max_iter: Maximum LBFGS iterations.
-        gradient_tolerance: Required final objective-gradient infinity norm.
+        gradient_tolerance: Acceptance strictness. The fit is accepted only when the
+            final objective-gradient infinity norm is at most
+            ``gradient_tolerance * max(1.0, k * max abs(selected training features))``.
 
     Returns:
         Selected support, fitted parameters, split/preprocessing metadata, metrics,
@@ -649,7 +649,9 @@ def sweep_sparse_probe(
         n_label_shuffles: Shuffled-training-label control fits per sparsity level.
         seed: Local CPU-generator seed for splitting and controls.
         max_iter: Maximum LBFGS iterations per fit.
-        gradient_tolerance: Required final objective-gradient infinity norm.
+        gradient_tolerance: Acceptance strictness. The fit is accepted only when the
+            final objective-gradient infinity norm is at most
+            ``gradient_tolerance * max(1.0, k * max abs(selected training features))``.
 
     Returns:
         Main probe results plus aligned raw control distributions.

@@ -318,23 +318,56 @@ def test_forced_nonconvergence_raises():
         )
 
 
-def test_default_tolerance_accepts_large_scale_activations():
-    # Raw (unstandardized) activations with a per-coordinate std in the hundreds make the
-    # objective gradient large at the zero starting parameters. The acceptance bound is
-    # scale-relative, so a Newton-quality solve must still be accepted under the default
-    # gradient_tolerance instead of being rejected by a bare absolute threshold.
-    generator = torch.Generator().manual_seed(0)
-    n_examples, n_features = 1000, 768
+def _large_scale_data(
+    *, n_examples: int = 1000, n_features: int = 768, seed: int = 0
+) -> tuple[torch.Tensor, torch.Tensor]:
+    # Raw (unstandardized) activations with a per-coordinate std in the thousands leave a
+    # sizable objective gradient at the default max_iter, large enough to clear the bare
+    # absolute floor while still landing under the feature-magnitude-scaled bound.
+    generator = torch.Generator().manual_seed(seed)
     labels = torch.arange(n_examples) % 2
-    features = 60.0 * torch.randn(n_examples, n_features, generator=generator)
-    features[:, 7] += 150.0 * (2 * labels - 1)
+    features = 8000.0 * torch.randn(n_examples, n_features, generator=generator)
+    features[:, 7] += 20000.0 * (2 * labels - 1)
     permutation = torch.randperm(n_examples, generator=generator)
-    features, labels = features[permutation], labels[permutation]
+    return features[permutation], labels[permutation]
+
+
+def test_default_tolerance_accepts_large_scale_activations():
+    features, labels = _large_scale_data()
 
     result = fit_sparse_probe(features, labels, k=4, seed=1)
 
     assert isinstance(result, SparseProbeResult)
     assert result.selected_features.numel() == 4
+    # The achieved gradient must exercise the relative bound: strictly above the bare
+    # absolute floor (gradient_tolerance) yet within the feature-magnitude-scaled bound.
+    # Both sides are recomputed here so the test fails if the bound regresses to absolute
+    # or if the fixture regresses to a too-easy, fully-converged solve.
+    max_abs_train = features[result.train_indices][:, result.selected_features].abs().max()
+    assert result.gradient_inf_norm > result.gradient_tolerance
+    assert result.gradient_inf_norm <= result.gradient_tolerance * max(
+        1.0, result.selected_features.numel() * float(max_abs_train)
+    )
+
+
+def test_sweep_controls_accept_activation_scale_fits():
+    # Random-coordinate and label-shuffle controls have near-zero label correlation by
+    # construction. Keying acceptance to feature magnitude rather than the initial
+    # correlation lets these controls complete at the same large activation scale that
+    # pinned the old initial-gradient bound to its absolute floor.
+    features, labels = _large_scale_data()
+
+    sweep = sweep_sparse_probe(
+        features,
+        labels,
+        ks=[4],
+        n_random_subsets=1,
+        n_label_shuffles=1,
+        seed=1,
+    )
+
+    assert sweep.random_coordinate_controls[0].accuracy.numel() == 1
+    assert sweep.label_shuffle_controls[0].accuracy.numel() == 1
 
 
 def test_binary_metrics_zero_division_policy():
