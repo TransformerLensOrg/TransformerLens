@@ -457,22 +457,31 @@ def _validate_bridge_compatibility(model) -> None:
     """Reject a ``TransformerBridge`` whose ``W_U`` would give a silently wrong projection.
 
     Projecting an OV direction through ``W_U`` requires the final LayerNorm folded
-    into ``W_U``; on a ``TransformerBridge`` that folding is only present in
-    compatibility mode, so this check requires it. Mirrors the compatibility-mode
-    check other unembedding-touching analysis tools already run, without any
-    hybrid-architecture restriction: projecting a rank-1 OV direction through ``W_U``
-    does not depend on the block-layout assumptions that check exists for elsewhere.
+    into ``W_U``. This mirrors :func:`direct_logit_attribution`, the other
+    unembedding-touching analysis tool, but the check here is stricter: it reads the
+    bridge's recorded weight-processing state rather than the ``compatibility_mode``
+    flag. ``enable_compatibility_mode`` sets that flag before it processes weights and
+    skips processing entirely under ``no_processing``, so the flag can be ``True`` while
+    ``W_U`` is still unfolded. The fold only happens once the bridge processes its
+    weights with ``fold_ln`` enabled, which is what ``_weights_processed`` and the
+    adapter's ``_fold_ln_requested`` record. No hybrid-architecture restriction applies:
+    projecting a rank-1 OV direction through ``W_U`` does not depend on the block-layout
+    assumptions that check exists for elsewhere.
     """
     # Lazy import - keeps the module importable without the bridge as a hard dependency.
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):
         return
-    if not getattr(model, "compatibility_mode", False):
+    processed = getattr(model, "_weights_processed", False)
+    fold_ln_requested = getattr(getattr(model, "adapter", None), "_fold_ln_requested", True)
+    if not (processed and fold_ln_requested):
         raise ValueError(
-            "Projecting an OV direction through W_U on a TransformerBridge requires "
-            "compatibility mode, so that LayerNorm weights are folded into W_U. Call "
-            "`model.enable_compatibility_mode()` after loading the bridge, then retry."
+            "Projecting an OV direction through W_U on a TransformerBridge requires the "
+            "final LayerNorm folded into W_U, which only happens once the bridge has "
+            "processed its weights with fold_ln enabled. Call "
+            "`model.enable_compatibility_mode()` (its default folds LayerNorm) after "
+            "loading the bridge, then retry."
         )
 
 
@@ -483,9 +492,9 @@ def _validate_decomposition_matches_model(model, head_svd: HeadSVD) -> None:
     so a :class:`HeadSVD` decomposed before the call describes a different OV map than the
     model now computes: the cached ``U``/``S``/``V`` are stale, and the returned readout or
     patch would be silently wrong rather than raise a shape error. This guard is orthogonal
-    to :func:`_validate_bridge_compatibility` (which only checks that ``W_U`` carries the
-    folded LayerNorm): here the model may be in either state, only mismatched from the
-    decomposition's.
+    to :func:`_validate_bridge_compatibility` (which checks that the bridge actually folded
+    LayerNorm into ``W_U`` via its recorded processing state): here the model may be in
+    either state, only mismatched from the decomposition's.
     """
     current = getattr(model, "compatibility_mode", False)
     if current != head_svd.compatibility_mode:
