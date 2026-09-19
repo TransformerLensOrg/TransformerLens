@@ -13,6 +13,7 @@ from transformer_lens.tools.analysis import (
     sweep_sparse_probe as exported_sweep_sparse_probe,
 )
 from transformer_lens.tools.analysis.sparse_probing import (
+    ClassWeightMode,
     SparseProbeControl,
     SparseProbeResult,
     SparseProbeSweep,
@@ -43,21 +44,29 @@ def _planted_data(
     return features[permutation], labels[permutation]
 
 
-def _balanced_objective_gradient(
+def _reference_sample_weights(labels: torch.Tensor, class_weight: ClassWeightMode) -> torch.Tensor:
+    if class_weight is None:
+        return torch.ones_like(labels)
+    count = labels.numel()
+    positive_count = labels.sum()
+    return torch.where(
+        labels == 1,
+        count / (2 * positive_count),
+        count / (2 * (count - positive_count)),
+    )
+
+
+def _objective_gradient_reference(
     features: torch.Tensor,
     labels: torch.Tensor,
     coefficients: torch.Tensor,
     intercept: torch.Tensor,
     l2_strength: float,
+    class_weight: ClassWeightMode,
 ) -> torch.Tensor:
     labels = labels.double()
     count = labels.numel()
-    positive_count = labels.sum()
-    weights = torch.where(
-        labels == 1,
-        count / (2 * positive_count),
-        count / (2 * (count - positive_count)),
-    )
+    weights = _reference_sample_weights(labels, class_weight)
     residual = weights * (torch.sigmoid(features @ coefficients + intercept) - labels) / count
     return torch.cat(
         (features.T @ residual + l2_strength * coefficients, residual.sum().reshape(1))
@@ -68,17 +77,13 @@ def _newton_reference(
     features: torch.Tensor,
     labels: torch.Tensor,
     l2_strength: float,
+    class_weight: ClassWeightMode,
 ) -> torch.Tensor:
     features = features.double()
     labels = labels.double()
     design = torch.cat((features, torch.ones(features.shape[0], 1, dtype=torch.float64)), dim=1)
     count = labels.numel()
-    positive_count = labels.sum()
-    weights = torch.where(
-        labels == 1,
-        count / (2 * positive_count),
-        count / (2 * (count - positive_count)),
-    )
+    weights = _reference_sample_weights(labels, class_weight)
     penalty = torch.diag(
         torch.tensor([l2_strength] * features.shape[1] + [0.0], dtype=torch.float64)
     )
@@ -128,14 +133,44 @@ def test_positive_label_controls_score_sign_and_class_metadata():
     assert result.feature_scores[3] > 0
 
 
-def test_unweighted_classification_policy_is_explicit():
-    features, labels = _planted_data(n_examples=100, n_features=6)
+def test_class_weight_changes_the_fit_against_a_weighted_newton_reference():
+    # On an imbalanced fixture the balanced and unweighted objectives diverge: the two
+    # class weights are no longer both 1.0, so class_weight="balanced" and
+    # class_weight=None fit measurably different coefficients. A balanced fixture would
+    # make the modes numerically identical and hide a bug that ignores class_weight=None
+    # or always balances. Same seed keeps the split and selected support identical across
+    # modes, so the coefficients are directly comparable.
+    generator = torch.Generator().manual_seed(19)
+    n_examples, n_features = 250, 6
+    labels = (torch.arange(n_examples) % 5 == 0).to(torch.int64)
+    features = torch.randn(n_examples, n_features, generator=generator)
+    features[:, 2] += 1.5 * (2 * labels - 1)
+    permutation = torch.randperm(n_examples, generator=generator)
+    features, labels = features[permutation], labels[permutation]
+    l2_strength = 0.02
 
-    result = fit_sparse_probe(features, labels, k=2, class_weight=None, seed=2)
-    sweep = sweep_sparse_probe(features, labels, ks=[1], class_weight=None, seed=2)
+    balanced = fit_sparse_probe(
+        features, labels, k=4, class_weight="balanced", l2_strength=l2_strength, seed=2
+    )
+    unweighted = fit_sparse_probe(
+        features, labels, k=4, class_weight=None, l2_strength=l2_strength, seed=2
+    )
 
-    assert result.class_weight is None
-    assert sweep.results[0].class_weight is None
+    assert balanced.class_weight == "balanced"
+    assert unweighted.class_weight is None
+    assert torch.equal(balanced.selected_features, unweighted.selected_features)
+    assert not torch.allclose(balanced.coefficients, unweighted.coefficients)
+
+    modes: tuple[tuple[SparseProbeResult, ClassWeightMode], ...] = (
+        (balanced, "balanced"),
+        (unweighted, None),
+    )
+    for result, mode in modes:
+        train_features = features[result.train_indices][:, result.selected_features].double()
+        train_labels = labels[result.train_indices]
+        expected = _newton_reference(train_features, train_labels, l2_strength, mode)
+        assert torch.allclose(result.coefficients, expected[:-1], atol=2e-6, rtol=2e-6)
+        assert result.intercept.item() == pytest.approx(expected[-1].item(), abs=2e-6)
 
 
 def test_standardization_is_train_only_and_heldout_values_do_not_change_selection():
@@ -185,13 +220,14 @@ def test_lbfgs_matches_independent_newton_solution_and_gradient():
     )
     train_features = features[result.train_indices][:, result.selected_features].double()
     train_labels = labels[result.train_indices]
-    expected = _newton_reference(train_features, train_labels, l2_strength)
-    gradient = _balanced_objective_gradient(
+    expected = _newton_reference(train_features, train_labels, l2_strength, "balanced")
+    gradient = _objective_gradient_reference(
         train_features,
         train_labels,
         result.coefficients,
         result.intercept,
         l2_strength,
+        "balanced",
     )
 
     assert torch.allclose(result.coefficients, expected[:-1], atol=2e-6, rtol=2e-6)
