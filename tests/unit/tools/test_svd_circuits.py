@@ -1199,6 +1199,72 @@ def test_patch_baseline_thresholds_on_mean_magnitude():
     assert mean_magnitude > signed_mean_magnitude
 
 
+def test_patch_baseline_matches_haar_expectation():
+    """The averaged baseline matches the analytic Haar expectation of an in-span control, which
+    separates a correct in-span draw from a full-residual-stream one.
+
+    On the span-aligned stub the single head writes ``h = ov.V @ weights`` at each of ``pos``
+    positions and the readout is ``h``, so for a projector ``P`` the metric is ``pos * (h^T P h)``
+    and each control delta is ``pos * (h^T P h - ||h||^2)``. For a random width-``w`` Haar subspace
+    drawn inside the rank-dim OV span, ``E[h^T P h] = (w/rank) * ||h||^2``, so
+    ``|E[delta]| = pos * ||h||^2 * (1 - w/rank)``. A full-stream control of the same width would
+    instead give ``pos * ||h||^2 * (1 - w/d_model)``. Because ``rank != d_model`` the two differ,
+    so a tight tolerance confirms the control is drawn in-span rather than across the full stream.
+    A single draw or a same-sign stub alone cannot tell the two apart; enough draws can.
+    """
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    # h = V @ [1, 1, 1, 1] has ||h||^2 = 4 (V's columns are orthonormal); pos = 3 (stub default).
+    stub = _span_aligned_stub(ov, [1.0, 1.0, 1.0, 1.0])
+    metric = lambda logits: float(logits.sum())
+    result = patch_along_directions(
+        stub,
+        ov,
+        "prompt",
+        metric,
+        ablate=[0],
+        n_baseline=400,
+        rng=torch.Generator().manual_seed(0),
+    )
+    # ablate=[0] retains width 3 of rank 4: in-span |E| = 3 * 4 * (1 - 3/4) = 3.0; a full-stream
+    # width-3 control would give 3 * 4 * (1 - 3/12) = 9.0. The 0.5 band separates the two, and
+    # 400 draws keep the Monte Carlo error comfortably inside it.
+    in_span, full_stream = 3.0, 9.0
+    assert result.baseline_delta_metric == pytest.approx(in_span, abs=0.5)
+    assert result.baseline_delta_metric != pytest.approx(full_stream, abs=0.5)
+
+
+def test_patch_baseline_generator_threading_reproduces_average():
+    """Threading one generator through N single-draw calls reproduces a single N-draw call's
+    average bit-for-bit, pinning that the generator is consumed once per draw in sequence with no
+    per-draw reseed. On the same-sign span-aligned stub the magnitude mean equals the signed
+    mean's magnitude, so the equality is exact rather than approximate."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _span_aligned_stub(ov, [1.0, 1.0, 1.0, 1.0])
+    metric = lambda logits: float(logits.sum())
+    n_draws = _DEFAULT_N_BASELINE
+    shared = torch.Generator().manual_seed(0)
+    singles = [
+        patch_along_directions(
+            stub, ov, "prompt", metric, ablate=[0], n_baseline=1, rng=shared
+        ).baseline_delta_metric
+        for _ in range(n_draws)
+    ]
+    combined = patch_along_directions(
+        stub,
+        ov,
+        "prompt",
+        metric,
+        ablate=[0],
+        n_baseline=n_draws,
+        rng=torch.Generator().manual_seed(0),
+    )
+    assert combined.baseline_delta_metric == sum(singles) / n_draws
+
+
 def test_patch_keep_mode_gate_semantics():
     """In keep mode the gate asks whether the retained subspace reconstructs the head: keeping
     the single direction the head output lies along preserves the metric better than keeping an
