@@ -6,6 +6,7 @@ downloaded. A few tests instantiate a tiny, randomly-initialized TransformerBrid
 no Hub access) where a real per-head decomposition is needed for a cross-check.
 """
 
+import dataclasses
 import math
 import warnings
 from types import SimpleNamespace
@@ -1321,10 +1322,11 @@ def test_patch_completes_on_accelerator_device():
     assert math.isfinite(result.baseline_delta_metric)
 
 
-def test_patch_along_directions_discriminates_causal_direction(tiny_bridge):
+@pytest.mark.parametrize("head", [0, 1])
+def test_patch_along_directions_discriminates_causal_direction(tiny_bridge, head):
     """Ablating the head's strongest OV direction should move a metric aligned with that
     direction materially more than ablating its weakest, least load-bearing direction."""
-    layer, head = 0, 0
+    layer = 0
     decomposition = decompose_head(tiny_bridge, layer, head, which=("OV",))
     ov = decomposition.OV
     strong = ov.rank_report[0].idx
@@ -1351,6 +1353,17 @@ def test_patch_along_directions_discriminates_causal_direction(tiny_bridge):
     # collapses the strong-vs-weak ratio toward 1 while still ordering the two, so a bare `>`
     # would pass the swap this decomposition's OV convention exists to prevent.
     assert abs(strong_result.delta_metric) > 5 * abs(weak_result.delta_metric)
+
+    # The baseline control is drawn with _make_subspace_hook(head_svd.head, ...), so its value
+    # depends on which head slice it patches. Mislabeling the decomposition's head, keeping the
+    # same V, must therefore move the baseline. A baseline hook hardcoded to head 0 would patch
+    # the same slice with the same projector for both, tying the two baselines and failing here.
+    other = 1 - head
+    mislabeled = dataclasses.replace(ov, head=other)
+    mislabeled_result = patch_along_directions(
+        tiny_bridge, mislabeled, prompt, metric, ablate=[strong], rng=torch.Generator().manual_seed(0)
+    )
+    assert strong_result.baseline_delta_metric != mislabeled_result.baseline_delta_metric
 
 
 def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
