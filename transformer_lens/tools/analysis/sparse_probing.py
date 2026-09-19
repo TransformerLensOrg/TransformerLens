@@ -219,9 +219,9 @@ def _validate_inputs(
         raise ValueError(f"seed must be an integer in [0, 2**63), got {seed!r}")
     validated_max_iter = _positive_integer(max_iter, "max_iter")
     validated_tolerance = _finite_positive_real(gradient_tolerance, "gradient_tolerance")
-    if validated_tolerance > 1:
+    if validated_tolerance >= 1:
         raise ValueError(
-            "gradient_tolerance must be a finite real in (0, 1], " f"got {gradient_tolerance!r}"
+            "gradient_tolerance must be a finite real in (0, 1), " f"got {gradient_tolerance!r}"
         )
     return _ValidatedInputs(
         features=features.detach(),

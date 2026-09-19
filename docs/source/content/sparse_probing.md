@@ -88,7 +88,7 @@ move to CPU float64 for deterministic LBFGS fitting. All result tensors are deta
 The fit raises when output is non-finite or the final objective-gradient infinity norm exceeds
 `gradient_tolerance` times `max(1, k * max|X_train|)`, a bound scaled to the magnitude of the
 selected training features rather than to how strongly they correlate with the label.
-`gradient_tolerance` must lie in `(0, 1]`.
+`gradient_tolerance` must lie in `(0, 1)`.
 Results retain the requested `k`, `max_iter`, and `gradient_tolerance` alongside the realized
 objective, gradient norm, iteration count, function-evaluation count, and stop reason
 (`"tolerance_grad"`, `"max_iter"`, or `"max_eval"`). There is no

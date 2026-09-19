@@ -440,6 +440,12 @@ def test_binary_metrics_zero_division_policy():
         (
             torch.ones(4, 2),
             torch.tensor([0, 1, 0, 1]),
+            {"gradient_tolerance": 1},
+            "gradient_tolerance",
+        ),
+        (
+            torch.ones(4, 2),
+            torch.tensor([0, 1, 0, 1]),
             {"gradient_tolerance": 2},
             "gradient_tolerance",
         ),
