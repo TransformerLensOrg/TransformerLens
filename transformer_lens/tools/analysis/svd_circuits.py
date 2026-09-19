@@ -832,8 +832,9 @@ def patch_along_directions(
     slice reconstructed onto ``span(head_svd.V[:, retained])``, and once per random
     control subspace. Each control subspace is drawn *inside the head's own OV span*
     ``span(V)`` (not from the full residual stream, where a width-``w`` random subspace
-    would keep only ``w/d_model`` of a head output that lives entirely in ``w/rank`` of
-    the stream), so a moved metric is compared against the effect of an arbitrary
+    would keep only ``w/d_model`` of a head output that itself occupies only
+    ``rank/d_model`` of the stream; an in-span control of width ``w`` keeps ``w/rank``
+    of it), so a moved metric is compared against the effect of an arbitrary
     subspace of this head's output of the same width. The per-draw control delta magnitudes
     are averaged over ``n_baseline`` draws so one lucky or unlucky draw does not decide the
     gate, and so controls that mix sign do not cancel into a smaller threshold. Restores
