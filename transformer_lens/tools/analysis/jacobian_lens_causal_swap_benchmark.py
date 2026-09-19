@@ -7,10 +7,14 @@ answers correctly), norm-matched random-atom controls (isolate "this concept mat
 from "any edit of similar magnitude would have mattered"), and bootstrap uncertainty on
 every reported rate.
 
-This module is layered bottom-up and built out across several stages: the model-free prompt
-corpus and rank/margin metric, baseline-capability filtering, norm-matched control-token
-selection, and this stage's per-trial runner, which wires the first three together with real
-``coordinate_patch_hooks`` calls against a live model.
+This module is layered bottom-up: the model-free prompt corpus and rank/margin metric,
+baseline-capability filtering, norm-matched control-token selection, a per-trial runner that
+wires the first three together with real ``coordinate_patch_hooks`` calls against a live model,
+and bootstrap confidence intervals plus a versioned, fingerprinted JSON artifact schema. Running
+this module as a script (``python -m
+transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark``) generates the frozen
+artifact consumed by ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb``; see
+``main()`` below for the exact invocation.
 """
 
 from __future__ import annotations
@@ -562,3 +566,136 @@ def load_artifact(path: Path) -> Dict[str, Any]:
             "its protocol_manifest (the manifest may have been hand-edited or corrupted)"
         )
     return artifact
+
+
+_COUNTRY_CORPUS = BenchmarkCorpus(
+    name="countries",
+    concepts=("France", "Canada", "China", "Egypt"),
+    functions=(
+        FunctionSpec(
+            name="capital",
+            template="The capital of {arg} is the city of",
+            answers={"France": "Paris", "Canada": "Ottawa", "China": "Beijing", "Egypt": "Cairo"},
+        ),
+        FunctionSpec(
+            name="language",
+            template="Most people in {arg} speak",
+            answers={
+                "France": "French",
+                "Canada": "English",
+                "China": "Chinese",
+                "Egypt": "Arabic",
+            },
+        ),
+        FunctionSpec(
+            name="continent",
+            template="{arg} is a country on the continent of",
+            answers={"France": "Europe", "Canada": "North", "China": "Asia", "Egypt": "Africa"},
+        ),
+        FunctionSpec(
+            name="currency",
+            template="The single-word name for the currency now used in {arg} is the",
+            answers={"France": "Euro", "Canada": "Dollar", "China": "Yuan", "Egypt": "Pound"},
+        ),
+    ),
+)
+
+_GPT2_LENS_REPO = "neuronpedia/jacobian-lens"
+_GPT2_LENS_FILE = "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"
+_GPT2_LENS_REVISION = "a4114d7752d11eb546e6cf372213d7e75526d3a1"
+_DEFAULT_ARTIFACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "demos"
+    / "data"
+    / "jacobian_lens_causal_swap_benchmark_gpt2.json"
+)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    """Generates the frozen GPT-2 causal-swap benchmark artifact.
+
+    Reproduce with (no ``HF_TOKEN`` needed -- GPT-2 is not gated)::
+
+        uv run python -m transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark
+
+    Loads the published GPT-2-small lens (the same artifact
+    ``tests/integration/test_jacobian_lens.py`` uses), runs the reused country corpus over
+    every one of the lens's fitted source layers, and writes the versioned, fingerprinted JSON
+    artifact consumed by ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb``.
+    """
+    import argparse
+
+    import torch
+
+    from transformer_lens.model_bridge import TransformerBridge
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--output", type=Path, default=_DEFAULT_ARTIFACT_PATH)
+    parser.add_argument("--control-tolerance", type=float, default=0.1)
+    parser.add_argument("--control-seed", type=int, default=0)
+    parser.add_argument("--alpha", type=float, default=1.0)
+    parser.add_argument("--k", type=int, default=DEFAULT_K)
+    args = parser.parse_args(argv)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = TransformerBridge.boot_transformers("gpt2", dtype=torch.float32, device=device)
+    lens = JacobianLens.from_pretrained(
+        _GPT2_LENS_REPO,
+        filename=_GPT2_LENS_FILE,
+        revision=_GPT2_LENS_REVISION,
+        model=model,
+    )
+    layers = list(lens.source_layers)
+
+    trials, excluded = run_causal_swap_benchmark(
+        lens,
+        model,
+        _COUNTRY_CORPUS,
+        layers,
+        control_tolerance=args.control_tolerance,
+        control_seed=args.control_seed,
+        alpha=args.alpha,
+        k=args.k,
+    )
+    ok_trials = [trial for trial in trials if trial.status == "ok"]
+    if not ok_trials:
+        raise RuntimeError("no trial survived baseline filtering and the active-support check")
+
+    real_successes: List[bool] = []
+    control_successes: List[bool] = []
+    for trial in ok_trials:
+        assert trial.real_target_metrics is not None
+        assert trial.control_target_metrics is not None
+        real_successes.append(trial.real_target_metrics.target_is_top1)
+        control_successes.append(trial.control_target_metrics.target_is_top1)
+
+    manifest = build_protocol_manifest(
+        model_id="gpt2",
+        model_revision="n/a",
+        lens_repo=_GPT2_LENS_REPO,
+        lens_file=_GPT2_LENS_FILE,
+        lens_revision=_GPT2_LENS_REVISION,
+        corpus_name=_COUNTRY_CORPUS.name,
+        layers=layers,
+        alpha=args.alpha,
+        k=args.k,
+        control_tolerance=args.control_tolerance,
+        control_seed=args.control_seed,
+        success_definition="target token id equals deterministic argmax token id",
+        baseline_definition="source answer token id equals deterministic argmax token id",
+        rank_definition="1 + count(logits strictly greater than target logit)",
+    )
+    real_ci = bootstrap_success_rate_ci(real_successes)
+    control_ci = bootstrap_success_rate_ci(control_successes)
+    artifact = serialize_artifact(manifest, trials, excluded, real_ci, control_ci)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n")
+    print(
+        f"wrote {len(trials)} trials ({len(ok_trials)} ok, {len(excluded)} excluded prompts) "
+        f"to {args.output}"
+    )
+
+
+if __name__ == "__main__":
+    main()

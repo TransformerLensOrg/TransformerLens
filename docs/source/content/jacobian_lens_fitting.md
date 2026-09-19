@@ -404,6 +404,24 @@ vocabulary-scale solve on every forward pass unless `decomposition_cache` alread
 it. The conditioning and near-parallel warnings described above still fire from inside the hook,
 per pair, exactly as they would from an offline `coordinate_patch` call on that pair's activation.
 
+### Causal-swap benchmark
+
+`transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark` measures whether
+`coordinate_patch_hooks` causes a directional change in model output, under baseline-capability
+filtering, a norm-matched random-atom control, and bootstrap confidence intervals on every
+reported rate. Each trial installs the hook at exactly one layer and the final prompt position;
+a trial whose source concept is not active in that layer's support is recorded as skipped, not
+silently dropped.
+
+A generation script (`python -m
+transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark`, no `HF_TOKEN` required)
+produces a versioned, fingerprinted JSON artifact against the published GPT-2-small lens. The
+[coordinate-patch benchmark demo](../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo)
+loads that frozen artifact and renders it; it never calls the model itself. A successful swap in
+that artifact shows a directional causal effect under the stated controls on GPT-2-small, not
+proof of unique causal mediation, exhaustive concept coverage, or a result that transfers to
+closed-weight models.
+
 ### Interpreting the numbers honestly
 
 The quantitative findings below are from Gurnee et al. (2026) and were measured on **closed
