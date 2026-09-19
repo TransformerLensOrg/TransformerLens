@@ -657,6 +657,8 @@ def project_activations(
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
             a different compatibility-mode state than ``model`` now has, or if ``prompt``
             is not a single (batch-size-1) prompt.
+        NotImplementedError: If the model's attention adapter exposes no per-head result,
+            so ``set_use_attn_result(True)`` cannot fork the attention output.
     """
     if head_svd.which != "OV":
         raise ValueError(
@@ -868,6 +870,8 @@ def patch_along_directions(
             retained set is empty (``keep=[]`` or ``ablate`` over the full rank) or spans the
             full rank (``keep`` over every direction) and no explicit ``threshold`` is
             supplied, or if ``n_baseline < 1``.
+        NotImplementedError: If the model's attention adapter exposes no per-head result,
+            so ``set_use_attn_result(True)`` cannot fork the attention output.
         DegenerateDirectionError: If the retained directions split a degenerate block
             (see :func:`_validate_retained_blocks`).
     """
