@@ -370,6 +370,33 @@ def test_sweep_controls_accept_activation_scale_fits():
     assert sweep.label_shuffle_controls[0].accuracy.numel() == 1
 
 
+def test_stop_reason_distinguishes_converged_from_capped_fits():
+    # A converged fit meets its gradient tolerance; a fit truncated by an iteration or
+    # evaluation cap still passes acceptance but reports which cap stopped it, so a caller
+    # can tell an off-optimum solve from one that actually reached tolerance_grad.
+    features, labels = _planted_data()
+
+    converged = fit_sparse_probe(features, labels, k=4, seed=3)
+    assert converged.stop_reason == "tolerance_grad"
+    assert converged.gradient_inf_norm <= converged.gradient_tolerance
+
+    # A larger gradient_tolerance widens the acceptance bound so a deliberately
+    # iteration-capped fit clears acceptance while still missing tolerance_grad.
+    capped_by_iter = fit_sparse_probe(
+        features, labels, k=4, seed=3, max_iter=6, gradient_tolerance=1e-3
+    )
+    assert capped_by_iter.stop_reason == "max_iter"
+    assert capped_by_iter.iterations == capped_by_iter.max_iter
+    assert capped_by_iter.gradient_inf_norm > capped_by_iter.gradient_tolerance
+
+    # Large-scale activations make the strong-Wolfe line search exhaust the evaluation
+    # budget before the iteration cap, so the same truncation surfaces as max_eval.
+    large_features, large_labels = _large_scale_data()
+    capped_by_eval = fit_sparse_probe(large_features, large_labels, k=4, seed=1)
+    assert capped_by_eval.stop_reason == "max_eval"
+    assert capped_by_eval.gradient_inf_norm > capped_by_eval.gradient_tolerance
+
+
 def test_binary_metrics_zero_division_policy():
     metrics = _binary_metrics(torch.tensor([-2.0, -1.0]), torch.tensor([0, 1]))
 

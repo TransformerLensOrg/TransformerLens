@@ -76,6 +76,7 @@ class SparseProbeResult:
     gradient_inf_norm: float
     iterations: int
     function_evaluations: int
+    stop_reason: str
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,7 @@ class _FitOutcome:
     gradient_inf_norm: float
     iterations: int
     function_evaluations: int
+    stop_reason: str
 
 
 def _finite_positive_real(value: int | float, name: str) -> float:
@@ -352,9 +354,11 @@ def _fit_logistic(
     labels = labels.to(dtype=torch.float64)
     sample_weights = _sample_weights(labels, class_weight)
     parameters = torch.zeros(features.shape[1] + 1, dtype=torch.float64, requires_grad=True)
+    max_eval = max_iter * 5 // 4
     optimizer = torch.optim.LBFGS(
         [parameters],
         max_iter=max_iter,
+        max_eval=max_eval,
         tolerance_grad=gradient_tolerance,
         tolerance_change=0.0,
         line_search_fn="strong_wolfe",
@@ -387,13 +391,27 @@ def _fit_logistic(
             f"gradient infinity norm {gradient_inf_norm:.6g} exceeds {acceptance_threshold:.6g}"
         )
     state = optimizer.state[parameters]
+    iterations = int(state.get("n_iter", 0))
+    function_evaluations = int(state.get("func_evals", 0))
+    if gradient_inf_norm <= gradient_tolerance:
+        stop_reason = "tolerance_grad"
+    elif iterations >= max_iter:
+        stop_reason = "max_iter"
+    elif function_evaluations >= max_eval:
+        stop_reason = "max_eval"
+    else:
+        # tolerance_change is disabled (set to 0.0), so this covers only the remaining
+        # LBFGS stop paths and should be unreachable in practice. Keeping it total avoids
+        # raising on an unanticipated optimizer internal.
+        stop_reason = "tolerance_change"
     return _FitOutcome(
         coefficients=detached[:-1].clone(),
         intercept=detached[-1].clone(),
         objective=objective,
         gradient_inf_norm=gradient_inf_norm,
-        iterations=int(state.get("n_iter", 0)),
-        function_evaluations=int(state.get("func_evals", 0)),
+        iterations=iterations,
+        function_evaluations=function_evaluations,
+        stop_reason=stop_reason,
     )
 
 
@@ -479,6 +497,7 @@ def _fit_result(
         gradient_inf_norm=fit.gradient_inf_norm,
         iterations=fit.iterations,
         function_evaluations=fit.function_evaluations,
+        stop_reason=fit.stop_reason,
     )
 
 

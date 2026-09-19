@@ -90,7 +90,8 @@ The fit raises when output is non-finite or the final objective-gradient infinit
 selected training features rather than to how strongly they correlate with the label.
 `gradient_tolerance` must lie in `(0, 1]`.
 Results retain the requested `k`, `max_iter`, and `gradient_tolerance` alongside the realized
-objective, gradient norm, iteration count, and function-evaluation count. There is no
+objective, gradient norm, iteration count, function-evaluation count, and stop reason
+(`"tolerance_grad"`, `"max_iter"`, or `"max_eval"`). There is no
 convergence flag: a fit that misses the acceptance threshold raises instead of returning.
 
 ## Sweep and controls
