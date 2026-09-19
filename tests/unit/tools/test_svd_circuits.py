@@ -833,6 +833,21 @@ def test_project_activations_rejects_batched_tensor_before_forward(tiny_bridge):
         project_activations(tiny_bridge, ov, batched)
 
 
+def test_project_activations_accepts_1d_prompt(tiny_bridge):
+    """A 1-D [pos] token tensor is a single prompt and matches the [1, pos] result.
+
+    patch_along_directions already accepts a bare [pos] tensor, so project_activations must
+    treat it identically to its [1, pos] form rather than rejecting it as non-2-D.
+    """
+    ov = decompose_head(tiny_bridge, 0, 0, which=("OV",)).OV
+    flat = torch.tensor([5, 63, 7, 9])
+    batched = flat.unsqueeze(0)
+    assert torch.allclose(
+        project_activations(tiny_bridge, ov, flat).coefficients,
+        project_activations(tiny_bridge, ov, batched).coefficients,
+    )
+
+
 @pytest.mark.parametrize("head", [0, 1])
 def test_subspace_hook_leaves_sibling_head_untouched(tiny_bridge, head):
     """The patch hook rewrites only its own head's slice of the [batch, pos, head, d_model]
