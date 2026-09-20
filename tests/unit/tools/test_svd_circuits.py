@@ -1361,7 +1361,12 @@ def test_patch_along_directions_discriminates_causal_direction(tiny_bridge, head
     other = 1 - head
     mislabeled = dataclasses.replace(ov, head=other)
     mislabeled_result = patch_along_directions(
-        tiny_bridge, mislabeled, prompt, metric, ablate=[strong], rng=torch.Generator().manual_seed(0)
+        tiny_bridge,
+        mislabeled,
+        prompt,
+        metric,
+        ablate=[strong],
+        rng=torch.Generator().manual_seed(0),
     )
     assert strong_result.baseline_delta_metric != mislabeled_result.baseline_delta_metric
 
