@@ -33,6 +33,9 @@ class MiniMaxM2ArchitectureAdapter(ArchitectureAdapter):
             **self._qkvo_weight_conversions(),
         }
 
+        # Deliberate mirror of olmoe.py / qwen3_moe.py: same wiring by structural
+        # coincidence, not lineage (norm/router semantics differ per vendor),
+        # so each file keeps its mapping inline and readable.
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),

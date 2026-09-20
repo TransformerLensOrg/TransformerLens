@@ -53,12 +53,6 @@ class OlmoArchitectureAdapter(ArchitectureAdapter):
         # Force eager attention for numerical consistency with benchmark reference
         self.cfg.attn_implementation = "eager"
 
-        n_kv_heads = (
-            self.cfg.n_key_value_heads
-            if self.cfg.n_key_value_heads is not None
-            else self.cfg.n_heads
-        )
-
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }

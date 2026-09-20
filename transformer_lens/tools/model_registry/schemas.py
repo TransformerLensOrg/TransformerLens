@@ -67,8 +67,10 @@ class ModelEntry:
         prompt_profile: Phase-4 prompt profile used (e.g. "task:translation@en-de");
             omitted from JSON for the default continuation profile
         phase1_score: Benchmark Phase 1 score (HF vs Bridge), 0-100 or None
-        phase2_score: Benchmark Phase 2 score (Bridge vs HT unprocessed), 0-100 or None
-        phase3_score: Benchmark Phase 3 score (Bridge vs HT processed), 0-100 or None
+        phase2_score: Benchmark Phase 2 score (unprocessed runtime self-checks +
+            HF logits/loss equivalence), 0-100 or None
+        phase3_score: Benchmark Phase 3 score (compatibility mode + HF logits/loss
+            equivalence), 0-100 or None
         phase4_score: Benchmark Phase 4 score (generation / text quality), 0-100 or None
         phase7_score: Benchmark Phase 7 score (multimodal), 0-100 or None
         phase8_score: Benchmark Phase 8 score (audio), 0-100 or None

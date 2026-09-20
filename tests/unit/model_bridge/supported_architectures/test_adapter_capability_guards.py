@@ -13,13 +13,13 @@ import pytest
 import torch.nn as nn
 
 from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
-from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.supported_architectures.dream import (
     DreamArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.gidd import (
     GiddArchitectureAdapter,
 )
+from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
 
 class _StubModel(nn.Module):
@@ -35,7 +35,8 @@ def _bare_bridge(adapter) -> TransformerBridge:
     nn.Module.__init__(bridge)
     bridge.adapter = adapter
     bridge.cfg = adapter.cfg
-    bridge.__dict__["original_model"] = _StubModel()
+    # 4.x routes original_model through the driver.
+    bridge.__dict__["_driver"] = SimpleNamespace(underlying_model=_StubModel())
     return bridge
 
 

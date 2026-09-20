@@ -7,18 +7,14 @@ enable_compatibility_mode() must raise instead of silently returning
 wrong logits.
 """
 
-import copy
-
 import pytest
 import torch
 
+from tests.integration.model_bridge.helpers import make_tiny_pair
+
 
 def _tiny_vaultgemma_pair():
-    from transformers import AutoModelForCausalLM, VaultGemmaConfig
-
-    from transformer_lens.model_bridge.sources._bridge_builder import (
-        build_bridge_from_module,
-    )
+    from transformers import VaultGemmaConfig
 
     cfg = VaultGemmaConfig(
         vocab_size=128,
@@ -33,16 +29,7 @@ def _tiny_vaultgemma_pair():
         bos_token_id=1,
         eos_token_id=2,
     )
-    cfg._attn_implementation = "eager"
-
-    torch.manual_seed(42)
-    ref = AutoModelForCausalLM.from_config(cfg).eval()
-    hf = AutoModelForCausalLM.from_config(copy.deepcopy(cfg)).eval()
-    hf.load_state_dict(ref.state_dict())
-    bridge = build_bridge_from_module(
-        hf, "VaultGemmaForCausalLM", hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
-    ).eval()
-    return bridge, ref
+    return make_tiny_pair(cfg, "VaultGemmaForCausalLM")
 
 
 class TestVaultGemmaBridge:

@@ -32,6 +32,20 @@ from transformer_lens.model_bridge.supported_architectures.rwkv7 import (
 )
 
 
+def _subs(component) -> dict:
+    """component.submodules, asserted non-None for mypy."""
+    submodules = component.submodules
+    assert submodules is not None
+    return submodules
+
+
+def _mapping(adapter) -> dict:
+    """adapter.component_mapping, asserted non-None for mypy."""
+    mapping = adapter.component_mapping
+    assert mapping is not None
+    return mapping
+
+
 def _make_cfg(
     d_model: int = 64,
     head_dim: int = 64,
@@ -132,42 +146,42 @@ class TestRWKV7ShapeAttrPropagation:
         assert adapter.cfg.head_dim == 64
 
     def test_num_heads(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert adapter.cfg.num_heads == 1
+        assert getattr(adapter.cfg, "num_heads") == 1
 
     def test_value_dim(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert adapter.cfg.value_dim == [64, 64, 64, 64]
+        assert getattr(adapter.cfg, "value_dim") == [64, 64, 64, 64]
 
     def test_low_rank_dims(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert adapter.cfg.decay_low_rank_dim == 64
-        assert adapter.cfg.gate_low_rank_dim == 128
-        assert adapter.cfg.a_low_rank_dim == 64
-        assert adapter.cfg.v_low_rank_dim == 16
+        assert getattr(adapter.cfg, "decay_low_rank_dim") == 64
+        assert getattr(adapter.cfg, "gate_low_rank_dim") == 128
+        assert getattr(adapter.cfg, "a_low_rank_dim") == 64
+        assert getattr(adapter.cfg, "v_low_rank_dim") == 16
 
     def test_norm_flags(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert adapter.cfg.norm_first is True
-        assert adapter.cfg.norm_bias is True
-        assert adapter.cfg.fuse_norm is True
+        assert getattr(adapter.cfg, "norm_first") is True
+        assert getattr(adapter.cfg, "norm_bias") is True
+        assert getattr(adapter.cfg, "fuse_norm") is True
 
     def test_attn_mode_and_hidden_act(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert adapter.cfg.attn_mode == "chunk"
-        assert adapter.cfg.hidden_act == "sqrelu"
+        assert getattr(adapter.cfg, "attn_mode") == "chunk"
+        assert getattr(adapter.cfg, "hidden_act") == "sqrelu"
 
     def test_defaults_when_absent(self) -> None:
         """Adapter falls back to RWKV-7 defaults if the attrs are missing."""
         bare = _make_cfg(inject_shape_attrs=False)
         a = RWKV7ArchitectureAdapter(bare)
-        assert a.cfg.head_dim == 64
+        assert getattr(a.cfg, "head_dim") == 64
         # num_heads defaults to d_model // head_dim.
-        assert a.cfg.num_heads == 1
+        assert getattr(a.cfg, "num_heads") == 1
         # value_dim defaults to [d_model] * n_layers.
-        assert a.cfg.value_dim == [64, 64, 64, 64]
-        assert a.cfg.decay_low_rank_dim == 64
-        assert a.cfg.gate_low_rank_dim == 128
-        assert a.cfg.a_low_rank_dim == 64
-        assert a.cfg.v_low_rank_dim == 16
-        assert a.cfg.norm_first is True
-        assert a.cfg.fuse_norm is True
-        assert a.cfg.hidden_act == "sqrelu"
+        assert getattr(a.cfg, "value_dim") == [64, 64, 64, 64]
+        assert getattr(a.cfg, "decay_low_rank_dim") == 64
+        assert getattr(a.cfg, "gate_low_rank_dim") == 128
+        assert getattr(a.cfg, "a_low_rank_dim") == 64
+        assert getattr(a.cfg, "v_low_rank_dim") == 16
+        assert getattr(a.cfg, "norm_first") is True
+        assert getattr(a.cfg, "fuse_norm") is True
+        assert getattr(a.cfg, "hidden_act") == "sqrelu"
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +193,7 @@ class TestRWKV7TopLevelComponents:
     """component_mapping exposes embed / blocks / ln_final / unembed."""
 
     def test_required_keys(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert set(adapter.component_mapping.keys()) == {
+        assert set(_mapping(adapter).keys()) == {
             "embed",
             "blocks",
             "ln_final",
@@ -187,24 +201,24 @@ class TestRWKV7TopLevelComponents:
         }
 
     def test_embed_is_embedding_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["embed"], EmbeddingBridge)
-        assert adapter.component_mapping["embed"].name == "model.embeddings"
+        assert isinstance(_mapping(adapter)["embed"], EmbeddingBridge)
+        assert _mapping(adapter)["embed"].name == "model.embeddings"
 
     def test_blocks_is_ssm_block_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
         # OpaqueBlockBridge delegates the whole recurrent block so the internal
         # mixing is preserved (a standard BlockBridge assumes a pre-norm attn flow).
-        blocks = adapter.component_mapping["blocks"]
+        blocks = _mapping(adapter)["blocks"]
         assert isinstance(blocks, OpaqueBlockBridge)
         assert blocks.name == "model.layers"
 
     def test_ln_final_is_normalization_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        ln_final = adapter.component_mapping["ln_final"]
+        ln_final = _mapping(adapter)["ln_final"]
         assert isinstance(ln_final, NormalizationBridge)
         assert ln_final.name == "model.norm"
 
     def test_unembed_is_unembedding_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        assert isinstance(adapter.component_mapping["unembed"], UnembeddingBridge)
-        assert adapter.component_mapping["unembed"].name == "lm_head"
+        assert isinstance(_mapping(adapter)["unembed"], UnembeddingBridge)
+        assert _mapping(adapter)["unembed"].name == "lm_head"
 
 
 # ---------------------------------------------------------------------------
@@ -216,11 +230,11 @@ class TestRWKV7BlockSubmodules:
     """Each block wraps attn_norm / attn / ffn_norm / ffn."""
 
     def test_submodule_keys(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        block = adapter.component_mapping["blocks"]
-        assert set(block.submodules.keys()) == {"attn_norm", "attn", "ffn_norm", "ffn"}
+        block = _mapping(adapter)["blocks"]
+        assert set(_subs(block).keys()) == {"attn_norm", "attn", "ffn_norm", "ffn"}
 
     def test_attn_norm_is_normalization_bridge(self, adapter: RWKV7ArchitectureAdapter) -> None:
-        attn_norm = adapter.component_mapping["blocks"].submodules["attn_norm"]
+        attn_norm = _subs(_mapping(adapter)["blocks"])["attn_norm"]
         assert isinstance(attn_norm, NormalizationBridge)
         assert attn_norm.name == "attn_norm"
 
@@ -228,7 +242,7 @@ class TestRWKV7BlockSubmodules:
         # Under config.fuse_norm the block calls ffn_norm(x, residual, True) ->
         # (normed, residual); the reimplementing NormalizationBridge can't express
         # that, so it is a plain delegating GeneralizedComponent, not a norm bridge.
-        ffn_norm = adapter.component_mapping["blocks"].submodules["ffn_norm"]
+        ffn_norm = _subs(_mapping(adapter)["blocks"])["ffn_norm"]
         assert type(ffn_norm) is GeneralizedComponent
         assert not isinstance(ffn_norm, NormalizationBridge)
         assert ffn_norm.name == "ffn_norm"
@@ -236,26 +250,26 @@ class TestRWKV7BlockSubmodules:
     def test_attn_is_generalized_component_with_projections(
         self, adapter: RWKV7ArchitectureAdapter
     ) -> None:
-        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        attn = _subs(_mapping(adapter)["blocks"])["attn"]
         assert isinstance(attn, GeneralizedComponent)
         assert attn.name == "attn"
-        assert set(attn.submodules.keys()) == {"r_proj", "k_proj", "v_proj", "o_proj"}
+        assert set(_subs(attn).keys()) == {"r_proj", "k_proj", "v_proj", "o_proj"}
         for proj in ("r_proj", "k_proj", "v_proj", "o_proj"):
-            assert isinstance(attn.submodules[proj], LinearBridge)
-            assert attn.submodules[proj].name == proj
+            assert isinstance(_subs(attn)[proj], LinearBridge)
+            assert _subs(attn)[proj].name == proj
 
     def test_ffn_is_generalized_component_with_projections(
         self, adapter: RWKV7ArchitectureAdapter
     ) -> None:
-        ffn = adapter.component_mapping["blocks"].submodules["ffn"]
+        ffn = _subs(_mapping(adapter)["blocks"])["ffn"]
         assert isinstance(ffn, GeneralizedComponent)
         assert ffn.name == "ffn"
         # HF names the up-projection "key" and the (down) output projection "value".
-        assert set(ffn.submodules.keys()) == {"key", "value"}
-        assert isinstance(ffn.submodules["key"], LinearBridge)
-        assert ffn.submodules["key"].name == "key"
-        assert isinstance(ffn.submodules["value"], LinearBridge)
-        assert ffn.submodules["value"].name == "value"
+        assert set(_subs(ffn).keys()) == {"key", "value"}
+        assert isinstance(_subs(ffn)["key"], LinearBridge)
+        assert _subs(ffn)["key"].name == "key"
+        assert isinstance(_subs(ffn)["value"], LinearBridge)
+        assert _subs(ffn)["value"].name == "value"
 
 
 # ---------------------------------------------------------------------------

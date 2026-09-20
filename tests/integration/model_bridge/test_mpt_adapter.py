@@ -15,8 +15,10 @@ import torch
 from transformers import MptConfig
 from transformers.models.mpt.modeling_mpt import MptForCausalLM
 
-from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources._bridge_builder import (
+    build_bridge_config_from_hf,
+)
 from transformer_lens.model_bridge.supported_architectures.mpt import (
     MPTArchitectureAdapter,
 )
@@ -34,7 +36,7 @@ _MAX_SEQ_LEN = 32
 
 def _make_hf_config() -> MptConfig:
     """Return a tiny MptConfig. max_seq_len is the MPT-specific name."""
-    return MptConfig(
+    cfg = MptConfig(
         d_model=_D_MODEL,
         n_heads=_N_HEADS,
         n_layers=_N_LAYERS,
@@ -43,31 +45,21 @@ def _make_hf_config() -> MptConfig:
         vocab_size=_D_VOCAB,
         no_bias=True,
     )
+    cfg.architectures = ["MPTForCausalLM"]
+    return cfg
 
 
 def _make_bridge() -> TransformerBridge:
     """Construct a TransformerBridge from a programmatic tiny MptForCausalLM.
 
-    Bypasses boot_transformers (which calls AutoConfig.from_pretrained) and
-    directly instantiates the adapter and bridge. Safe for CI — no download.
+    Uses the production HF→bridge config translation (build_bridge_config_from_hf)
+    so MPT translation regressions are caught here. No Hub download.
     """
     hf_cfg = _make_hf_config()
     hf_model = MptForCausalLM(hf_cfg)
     hf_model.eval()
 
-    bridge_cfg = TransformerBridgeConfig(
-        d_model=_D_MODEL,
-        d_head=_D_MODEL // _N_HEADS,
-        n_layers=_N_LAYERS,
-        n_ctx=_MAX_SEQ_LEN,
-        n_heads=_N_HEADS,
-        d_vocab=_D_VOCAB,
-        d_mlp=_D_MLP,
-        default_prepend_bos=False,
-        architecture="MPTForCausalLM",
-        device="cpu",
-    )
-
+    bridge_cfg = build_bridge_config_from_hf(hf_cfg, "MPTForCausalLM", "mpt-tiny", torch.float32)
     adapter = MPTArchitectureAdapter(bridge_cfg)
     return TransformerBridge(hf_model, adapter, tokenizer=None)
 
@@ -80,6 +72,11 @@ def _make_bridge() -> TransformerBridge:
 @pytest.fixture(scope="module")
 def mpt_bridge() -> TransformerBridge:
     return _make_bridge()
+
+
+def test_n_ctx_maps_from_max_seq_len(mpt_bridge: TransformerBridge) -> None:
+    """MPT's context field is max_seq_len; the 2048 fallback would mask it."""
+    assert mpt_bridge.cfg.n_ctx == _MAX_SEQ_LEN
 
 
 # ---------------------------------------------------------------------------

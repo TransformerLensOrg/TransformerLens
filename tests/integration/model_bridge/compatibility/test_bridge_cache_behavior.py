@@ -1,7 +1,7 @@
 """Consolidated tests for TransformerBridge cache behavior.
 
 Tests run_with_cache output, cache contents, names filtering, and
-cache equality with HookedTransformer. Consolidates overlapping tests from:
+cache equality with the frozen HookedTransformer goldens. Consolidates overlapping tests from:
 - tests/integration/model_bridge/compatibility/test_hooks.py (cache tests)
 - tests/integration/model_bridge/compatibility/test_legacy_hooks.py
 
@@ -18,10 +18,10 @@ def bridge_compat(distilgpt2_bridge_compat):
     return distilgpt2_bridge_compat
 
 
-@pytest.fixture()
-def reference_ht(distilgpt2_hooked_processed):
-    """Alias session fixture for backward compatibility with test signatures."""
-    return distilgpt2_hooked_processed
+@pytest.fixture(scope="module")
+def golden(distilgpt2_goldens_processed):
+    """Golden cell replacing the live-HT reference."""
+    return distilgpt2_goldens_processed
 
 
 EXPECTED_HOOKS = [
@@ -123,17 +123,16 @@ class TestCacheCompleteness:
 
 
 class TestCacheEqualityWithHookedTransformer:
-    """Test that cache values match between bridge and HookedTransformer."""
+    """Test that cache values match the frozen HookedTransformer golden snapshot."""
 
-    def test_cache_values_match(self, bridge_compat, reference_ht):
-        """Cache activations should match between bridge and HookedTransformer.
+    def test_cache_values_match(self, bridge_compat, golden):
+        """Cache activations should match the golden HT snapshot.
 
         Compatibility mode normalizes masked attention scores to -inf, matching
         HookedTransformer. Unmasked scores and resulting patterns should match.
         """
-        prompt = "Hello World!"
-        _, bridge_cache = bridge_compat.run_with_cache(prompt)
-        _, ht_cache = reference_ht.run_with_cache(prompt)
+        ht_cache = golden.tensors("activations")
+        _, bridge_cache = bridge_compat.run_with_cache(golden.scalars["short_prompt"])
 
         for hook in EXPECTED_HOOKS:
             if hook not in bridge_cache or hook not in ht_cache:

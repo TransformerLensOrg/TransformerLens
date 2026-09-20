@@ -152,6 +152,29 @@ class TestGetBridgeParams:
             assert isinstance(params[gate_key], torch.Tensor)
             assert isinstance(params[gate_bias_key], torch.Tensor)
 
+    def test_real_mlp_without_dense_weights_is_not_zero_filled(self):
+        """A structurally unsupported real MLP must not masquerade as dense weights."""
+        mock_bridge = self._create_mock_bridge()
+        mock_bridge.blocks[0].mlp = Mock(spec=[])
+
+        params = get_bridge_params(mock_bridge)
+
+        assert not any(key.startswith("blocks.0.mlp.") for key in params)
+        assert "blocks.1.mlp.W_in" in params
+        assert "blocks.1.mlp.W_out" in params
+
+    def test_missing_real_mlp_output_weight_is_not_zero_filled(self):
+        """A missing dense output projection must remain unavailable to consumers."""
+        mock_bridge = self._create_mock_bridge()
+        mock_bridge.blocks[0].mlp.W_out = None
+
+        params = get_bridge_params(mock_bridge)
+
+        assert "blocks.0.mlp.W_in" in params
+        assert "blocks.0.mlp.W_out" not in params
+        assert "blocks.0.mlp.b_in" in params
+        assert "blocks.0.mlp.b_out" in params
+
     def _create_mock_bridge(self):
         """Create a mock bridge with all standard components."""
         mock_bridge = Mock()

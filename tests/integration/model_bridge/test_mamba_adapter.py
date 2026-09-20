@@ -7,9 +7,8 @@ Verifies wrap-don't-reimplement behavior against state-spaces/mamba-130m-hf:
 - SSM blocks correctly exclude transformer-specific hook_resid_mid
 - Parameter access via __getattr__ fallback (A_log, D)
 
-Note on cache clone safety: hooks never expose ssm_states (the MambaMixer stays
-opaque); any future per-step SSM-state hook must `.clone()` captured state, since
-HF mutates the cache in place.
+Cache-clone safety: hooks never expose HF's in-place-mutated `ssm_states`; any
+future per-step SSM-state hook MUST `.clone()` captured state.
 """
 
 import contextlib
@@ -554,7 +553,7 @@ def _eager_scan(bridge):
 
 
 class TestMamba1EagerScanIntervention:
-    """Mamba-1 opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
+    """Opt-in eager S6 scan exposes hook_ssm_write / hook_ssm_state
     for interventions that propagate to logits, while the default path is untouched.
     Eager scan needs use_cache=False (prefill; cache_params is None)."""
 

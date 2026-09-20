@@ -3,7 +3,7 @@
 Centralized location for selection supported activation functions throughout TransformerLens
 """
 
-from transformer_lens.config.hooked_transformer_config import HookedTransformerConfig
+from transformer_lens.config import TransformerLensConfig
 from transformer_lens.utilities.activation_functions import (
     SUPPORTED_ACTIVATIONS,
     XIELU,
@@ -13,11 +13,11 @@ from transformer_lens.utilities.activation_functions import (
 
 class ActivationFunctionFactory:
     @staticmethod
-    def pick_activation_function(cfg: HookedTransformerConfig) -> ActivationFunction:
+    def pick_activation_function(cfg: TransformerLensConfig) -> ActivationFunction:
         """Use this to select what activation function is needed based on configuration.
 
         Args:
-            cfg (HookedTransformerConfig): The already created hooked transformer config
+            cfg (TransformerLensConfig): The already created model config
 
         Raises:
             ValueError: If there is a problem with the requested activation function.

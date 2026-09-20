@@ -48,27 +48,28 @@ def snapshot_path(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def olmo_bridge(snapshot_path):
+def bridge(snapshot_path):
     return TransformerBridge.boot_transformers(snapshot_path, device="cpu", dtype=torch.float32)
 
 
 @pytest.fixture(scope="module")
 def sample_tokens():
+    # Shadows the conftest fixture: keeps the original 0-2000 draw range, not d_vocab-10.
     torch.manual_seed(0)
     return torch.randint(0, 2000, (1, 12))
 
 
 class TestOlmoHybridBridgeCreation:
-    def test_adapter_selected(self, olmo_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.olmo_hybrid import (
             OlmoHybridArchitectureAdapter,
         )
 
-        assert isinstance(olmo_bridge.adapter, OlmoHybridArchitectureAdapter)
+        assert isinstance(bridge.adapter, OlmoHybridArchitectureAdapter)
 
 
 class TestOlmoHybridForwardEquivalence:
-    def test_forward_matches_fresh_hf(self, olmo_bridge, snapshot_path, sample_tokens):
+    def test_forward_matches_fresh_hf(self, bridge, snapshot_path, sample_tokens):
         from transformers import AutoModelForCausalLM
 
         fresh = AutoModelForCausalLM.from_pretrained(
@@ -76,16 +77,16 @@ class TestOlmoHybridForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = olmo_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestOlmoHybridHooks:
-    def test_hooks_fire_per_layer_type(self, olmo_bridge, sample_tokens):
+    def test_hooks_fire_per_layer_type(self, bridge, sample_tokens):
         """Layer 0 is linear attention, layer 1 is full attention."""
-        d_model = olmo_bridge.cfg.d_model
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.linear_attn.hook_out": (1, seq, d_model),
@@ -99,7 +100,7 @@ class TestOlmoHybridHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            olmo_bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
@@ -110,11 +111,11 @@ class TestOlmoHybridHookSemantics:
     (contribution = norm output), linear-attention layers are pre-norm
     (contribution = raw sublayer output). See issue #1648."""
 
-    def test_residual_contributions_decompose_stream(self, olmo_bridge, sample_tokens):
+    def test_residual_contributions_decompose_stream(self, bridge, sample_tokens):
         with torch.no_grad():
-            _, cache = olmo_bridge.run_with_cache(sample_tokens)
+            _, cache = bridge.run_with_cache(sample_tokens)
 
-        for layer in range(olmo_bridge.cfg.n_layers):
+        for layer in range(bridge.cfg.n_layers):
             torch.testing.assert_close(
                 cache[f"blocks.{layer}.hook_resid_post"],
                 cache[f"blocks.{layer}.hook_resid_pre"]
@@ -122,10 +123,10 @@ class TestOlmoHybridHookSemantics:
                 + cache[f"blocks.{layer}.hook_mlp_out"],
             )
 
-    def test_full_attention_contributions_are_post_norm(self, olmo_bridge, sample_tokens):
+    def test_full_attention_contributions_are_post_norm(self, bridge, sample_tokens):
         """Layers 1/3 are full attention: aliases must differ from raw module outputs."""
         with torch.no_grad():
-            _, cache = olmo_bridge.run_with_cache(sample_tokens)
+            _, cache = bridge.run_with_cache(sample_tokens)
 
         for layer in (1, 3):
             assert not torch.allclose(
@@ -137,28 +138,28 @@ class TestOlmoHybridHookSemantics:
                 cache[f"blocks.{layer}.hook_mlp_out"],
             )
 
-    def test_hook_mlp_in_exposes_mid_residual_on_both_layer_types(self, olmo_bridge, sample_tokens):
+    def test_hook_mlp_in_exposes_mid_residual_on_both_layer_types(self, bridge, sample_tokens):
         """hook_mlp_in must capture the mid-residual on both layouts: ln2's
         input on pre-norm linear layers, the MLP's own input on post-norm
         full-attention layers (where ln2's input is the raw attention output)."""
-        olmo_bridge.set_use_hook_mlp_in(True)
+        bridge.set_use_hook_mlp_in(True)
         try:
             with torch.no_grad():
-                _, cache = olmo_bridge.run_with_cache(sample_tokens)
-            for layer in range(olmo_bridge.cfg.n_layers):
+                _, cache = bridge.run_with_cache(sample_tokens)
+            for layer in range(bridge.cfg.n_layers):
                 torch.testing.assert_close(
                     cache[f"blocks.{layer}.hook_mlp_in"],
                     cache[f"blocks.{layer}.hook_resid_pre"]
                     + cache[f"blocks.{layer}.hook_attn_out"],
                 )
         finally:
-            olmo_bridge.set_use_hook_mlp_in(False)
+            bridge.set_use_hook_mlp_in(False)
 
-    def test_full_attention_attn_out_write_lands_unmodified(self, olmo_bridge, sample_tokens):
+    def test_full_attention_attn_out_write_lands_unmodified(self, bridge, sample_tokens):
         """Writing v to a full-attention layer's hook_attn_out must make the
         contribution exactly v (mlp.hook_in fires on the post-attention stream)."""
         torch.manual_seed(1)
-        replacement = torch.randn(1, sample_tokens.shape[1], olmo_bridge.cfg.d_model)
+        replacement = torch.randn(1, sample_tokens.shape[1], bridge.cfg.d_model)
         captured = {}
 
         def grab(key):
@@ -169,7 +170,7 @@ class TestOlmoHybridHookSemantics:
             return hook_fn
 
         with torch.no_grad():
-            olmo_bridge.run_with_hooks(
+            bridge.run_with_hooks(
                 sample_tokens,
                 fwd_hooks=[
                     ("blocks.1.hook_attn_out", lambda tensor, hook: replacement.clone()),
@@ -182,7 +183,7 @@ class TestOlmoHybridHookSemantics:
 
 
 class TestOlmoHybridGeneration:
-    def test_generate_with_stateful_cache(self, olmo_bridge):
-        text = olmo_bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
+    def test_generate_with_stateful_cache(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=5, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")

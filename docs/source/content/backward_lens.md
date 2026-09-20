@@ -6,28 +6,36 @@ with the forward inputs and backward signals that compose a gradient. A readable
 vocabulary projection is a diagnostic, not by itself evidence that a token or neuron
 causes a model behavior.
 
-TransformerLens currently provides a focused GPT-2 implementation through
-`TransformerBridge`. It follows the method introduced by
-[Katz et al. (2024)](https://aclanthology.org/2024.emnlp-main.142/).
+TransformerLens supports dense-MLP decoder-only implementations through
+`TransformerBridge` (for example GPT-2 and Pythia/GPT-NeoX). It follows the method
+introduced by [Katz et al. (2024)](https://aclanthology.org/2024.emnlp-main.142/).
 
 ## Gradient factorization
 
 For one linear projection and one prompt, let $x_i \in \mathbb{R}^{d_{in}}$ be
 the input at token position $i$, and let
 $\delta_i = \partial L / \partial y_i \in \mathbb{R}^{d_{out}}$ be the loss
-gradient at its output. GPT-2 stores `Conv1D` weights in `[in, out]` order, so
+gradient at its output. A dense MLP projection stores its weight either as
+`[in, out]` (`Conv1D`, e.g. GPT-2) or as `[out, in]` (`torch.nn.Linear`, e.g.
+Pythia/GPT-NeoX). `BackwardLens` reads which layout applies from the Bridge
+projection component itself, not from the model class, then computes
 
 $$
-\nabla_W L = \sum_i x_i \delta_i^\mathsf{T} = X^\mathsf{T}\Delta.
+\nabla_W L = \sum_i x_i \delta_i^\mathsf{T} = X^\mathsf{T}\Delta,
 $$
+
+reporting the result in that projection's own storage layout: directly for
+`[in, out]` storage, transposed for `[out, in]` storage.
 
 `BackwardLens` captures both factors and independently computes the weight gradient.
 Each matrix result includes the reconstructed gradient and maximum absolute and
 scale-aware relative reconstruction errors.
 
-### The two GPT-2 MLP matrices
+### The two dense MLP matrices
 
-The two projections expose different residual-width factors:
+The two projections expose different residual-width factors. The weight shapes
+below use `Conv1D` (`[in, out]`) storage, as GPT-2 uses; `torch.nn.Linear` storage
+(e.g. Pythia/GPT-NeoX) reports each weight transposed.
 
 | Result | Weight shape | Projected factor | Shape before vocabulary projection |
 |---|---:|---|---:|
@@ -121,6 +129,23 @@ according to the model and tokenizer configuration, so it includes a prepended B
 only when that configuration requests one. Treat `result.prompt_token_ids` as the
 source of truth for aligning all position-indexed factors and readouts.
 
+The same call works unchanged against a Pythia/GPT-NeoX Bridge, whose `torch.nn.Linear`
+MLP projections resolve to the `"out_in"` weight layout instead of GPT-2's `"in_out"`:
+
+```python
+pythia = TransformerBridge.boot_transformers(
+    "EleutherAI/pythia-70m", device="cpu", dtype=torch.float32
+)
+
+pythia_result = BackwardLens(pythia).analyze(
+    prompt="The capital of France is",
+    target_token=" Paris",
+    layers=[0],
+)
+
+pythia_result.layer(0).input_projection.factors.weight_layout  # "out_in"
+```
+
 ## Result structure
 
 `BackwardLens.analyze(...)` returns a detached `BackwardLensResult`:
@@ -154,14 +179,17 @@ ranks use int64. The bounded default avoids retaining a
 
 The current implementation requires:
 
-- A freshly booted, raw `TransformerBridge` using `GPT2ArchitectureAdapter`.
-- Original, trainable GPT-2 `Conv1D` weights and a dense, non-gated MLP.
+- A freshly booted, raw `TransformerBridge` whose dense MLP projections have a
+  Bridge-orientable weight layout (`Conv1D`, e.g. GPT-2, or `torch.nn.Linear`,
+  e.g. Pythia/GPT-NeoX).
+- Original, trainable weights and a dense, non-gated MLP.
 - Compatibility mode and weight processing to remain disabled.
 - One non-empty prompt, one single-token target, and unique valid layer indices.
 
 It does not currently support batched prompts, multi-token target losses, gated MLPs,
-other architecture families, compatibility-mode weights, model editing, or causal
-claims about the displayed vocabulary rankings.
+architecture families whose MLP projections have an unknown weight layout,
+compatibility-mode weights, model editing, or causal claims about the displayed
+vocabulary rankings.
 
 ## Model-state safety
 
@@ -176,7 +204,7 @@ activation-editing hooks still affect the analyzed computation.
 | Symptom | Cause and resolution |
 |---|---|
 | Raw-Bridge or processed-weight error | Reboot with `TransformerBridge.boot_transformers(...)`; do not enable compatibility mode or process weights. |
-| Target encodes to zero or multiple tokens | Choose text that maps to one GPT-2 token without BOS; check leading whitespace. |
+| Target encodes to zero or multiple tokens | Choose text that maps to one token under the model's tokenizer without BOS; check leading whitespace. |
 | Duplicate or out-of-range layer error | Pass a non-empty sequence of unique indices in `[0, model.cfg.n_layers)`. |
 | Normalized logits were not requested | Call `analyze(..., normalized=True)` before using `logits(normalized=True)` or normalized ranks. |
 | Full logits were not retained | Call `analyze(..., return_full_logits=True)` before using `logits(...)` or ranking a token other than the analyzed target. |

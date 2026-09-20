@@ -33,7 +33,7 @@ Key adapter decisions:
   ``.input_layernorm`` or ``.mamba``). Block-level ``hook_in``/``hook_out``
   still fire on every layer.
 - ``applicable_phases = [1, 2, 3, 4]``: P1 is exact vs raw HF (pure
-  passthrough); P2/P3 skip without a HookedTransformer; P4 exercises
+  passthrough); P2/P3 run hook/cache self-checks and HF equivalence; P4 exercises
   ``past_key_values`` cache threading across Mamba-2 and attention layers.
 """
 
@@ -75,7 +75,7 @@ class Zamba2ArchitectureAdapter(ArchitectureAdapter):
     Mamba-2 step.
     """
 
-    # P1: exact passthrough vs raw HF; P2/P3: skip without HookedTransformer;
+    # P1: exact passthrough vs raw HF; P2/P3: hook/cache self-checks + HF equivalence;
     # P4: generation with past_key_values cache threading.
     applicable_phases: list[int] = [1, 2, 3, 4]
 

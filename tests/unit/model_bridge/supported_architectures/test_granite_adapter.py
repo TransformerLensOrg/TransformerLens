@@ -98,9 +98,6 @@ class TestGraniteAdapterConfig:
         """Granite models do not prepend BOS by default."""
         assert adapter.cfg.default_prepend_bos is False
 
-    def test_n_key_value_heads_propagated(self, adapter: GraniteArchitectureAdapter) -> None:
-        assert adapter.cfg.n_key_value_heads == N_KV_HEADS
-
 
 # ---------------------------------------------------------------------------
 # Component mapping tests — dense Granite

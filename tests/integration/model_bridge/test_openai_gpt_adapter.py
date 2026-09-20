@@ -9,39 +9,39 @@ MODEL = "openai-community/openai-gpt"
 
 
 @pytest.fixture(scope="module")
-def gpt1_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
 @pytest.fixture(scope="module")
-def sample_tokens(gpt1_bridge):
-    return gpt1_bridge.tokenizer("the capital of france is", return_tensors="pt").input_ids
+def sample_tokens(bridge):
+    return bridge.tokenizer("the capital of france is", return_tensors="pt").input_ids
 
 
 class TestOpenAIGPTBridgeCreation:
-    def test_adapter_and_structure(self, gpt1_bridge):
+    def test_adapter_and_structure(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.openai_gpt import (
             OpenAIGPTArchitectureAdapter,
         )
 
-        assert isinstance(gpt1_bridge.adapter, OpenAIGPTArchitectureAdapter)
-        assert len(gpt1_bridge.blocks) == 12
-        assert not hasattr(gpt1_bridge, "ln_final")
+        assert isinstance(bridge.adapter, OpenAIGPTArchitectureAdapter)
+        assert len(bridge.blocks) == 12
+        assert not hasattr(bridge, "ln_final")
 
 
 class TestOpenAIGPTForwardEquivalence:
-    def test_forward_matches_hf(self, gpt1_bridge, sample_tokens):
-        hf_model = gpt1_bridge.original_model
+    def test_forward_matches_hf(self, bridge, sample_tokens):
+        hf_model = bridge.original_model
         with torch.no_grad():
-            bridge_out = gpt1_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = hf_model(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs HF max diff = {max_diff}"
 
 
 class TestOpenAIGPTHooks:
-    def test_hooks_fire(self, gpt1_bridge, sample_tokens):
-        d_model = gpt1_bridge.cfg.d_model
+    def test_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         captured = {}
 
         def grab(tensor, hook):
@@ -56,7 +56,7 @@ class TestOpenAIGPTHooks:
             "blocks.11.ln2.hook_out",
         ]
         with torch.no_grad():
-            gpt1_bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
         seq = sample_tokens.shape[1]
         assert captured["embed.hook_out"] == (1, seq, d_model)
         assert captured["blocks.0.attn.hook_out"] == (1, seq, d_model)
@@ -65,8 +65,8 @@ class TestOpenAIGPTHooks:
 
 
 class TestOpenAIGPTGeneration:
-    def test_greedy_generation_is_coherent(self, gpt1_bridge):
-        out = gpt1_bridge.generate(
+    def test_greedy_generation_is_coherent(self, bridge):
+        out = bridge.generate(
             "the capital of france is", max_new_tokens=5, do_sample=False, verbose=False
         )
         assert isinstance(out, str)

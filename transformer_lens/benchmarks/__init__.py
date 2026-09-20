@@ -1,7 +1,7 @@
 """Benchmark utilities for TransformerBridge testing.
 
-This module provides reusable benchmark functions for comparing TransformerBridge
-with HuggingFace models and HookedTransformer implementations.
+This module provides reusable benchmark functions for validating TransformerBridge
+against raw HuggingFace models and pre-computed reference data (golden fixtures).
 """
 
 from transformer_lens.benchmarks.activation_cache import (
@@ -30,11 +30,6 @@ from transformer_lens.benchmarks.hook_registration import (
     benchmark_hook_functionality,
     benchmark_hook_registry,
 )
-from transformer_lens.benchmarks.hook_structure import (
-    benchmark_activation_cache_structure,
-    benchmark_backward_hooks_structure,
-    benchmark_forward_hooks_structure,
-)
 from transformer_lens.benchmarks.main_benchmark import run_benchmark_suite
 from transformer_lens.benchmarks.text_quality import benchmark_text_quality
 from transformer_lens.benchmarks.utils import (
@@ -42,11 +37,7 @@ from transformer_lens.benchmarks.utils import (
     BenchmarkSeverity,
     PhaseReferenceData,
 )
-from transformer_lens.benchmarks.weight_processing import (
-    benchmark_weight_modification,
-    benchmark_weight_processing,
-    benchmark_weight_sharing,
-)
+from transformer_lens.benchmarks.weight_processing import benchmark_weight_modification
 
 __all__ = [
     # Main benchmark runner
@@ -65,10 +56,6 @@ __all__ = [
     "benchmark_gated_hooks_fire",
     "benchmark_hook_functionality",
     "benchmark_hook_registry",
-    # Hook structure benchmarks
-    "benchmark_forward_hooks_structure",
-    "benchmark_backward_hooks_structure",
-    "benchmark_activation_cache_structure",
     # Gradient benchmarks
     "benchmark_backward_hooks",
     "benchmark_critical_backward_hooks",
@@ -80,8 +67,6 @@ __all__ = [
     # Text quality benchmarks
     "benchmark_text_quality",
     # Weight processing benchmarks
-    "benchmark_weight_processing",
-    "benchmark_weight_sharing",
     "benchmark_weight_modification",
     # Activation cache benchmarks
     "benchmark_activation_cache",

@@ -62,7 +62,7 @@ from typing_extensions import Literal
 
 import transformer_lens.utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.HookedTransformer import HookedTransformer
+from transformer_lens.model_protocol import TransformerLensModel
 
 # %%
 Logits = torch.Tensor
@@ -90,7 +90,7 @@ PatchedActivation = torch.Tensor
 
 @overload
 def generic_activation_patch(
-    model: HookedTransformer,
+    model: TransformerLensModel,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
     patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
@@ -107,7 +107,7 @@ def generic_activation_patch(
 
 @overload
 def generic_activation_patch(
-    model: HookedTransformer,
+    model: TransformerLensModel,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
     patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
@@ -123,7 +123,7 @@ def generic_activation_patch(
 
 
 def generic_activation_patch(
-    model: HookedTransformer,
+    model: TransformerLensModel,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
     patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],

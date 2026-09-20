@@ -8,20 +8,18 @@ status at 0 — silently, while reporting the model as verified.
 
 import pytest
 
+from transformer_lens.factories.architecture_adapter_factory import (
+    SUPPORTED_ARCHITECTURES,
+)
 from transformer_lens.tools.model_registry.verify_models import (
     _default_phases_for_architecture,
     _full_and_core_phases,
 )
 
-# One representative per class the runner distinguishes.
-ARCHITECTURES = [
-    "GPT2LMHeadModel",
-    "LlamaForCausalLM",
-    "Mistral3ForConditionalGeneration",
-    "Idefics3ForConditionalGeneration",
-    "Qwen2_5_VLForConditionalGeneration",
-    "HubertForCTC",
-]
+# Every registered architecture: the functions under test are pure, so there is
+# no reason to sample representatives — a new modality kind (as vision was) is
+# covered the moment its adapters register.
+ARCHITECTURES = sorted(SUPPORTED_ARCHITECTURES)
 
 
 @pytest.mark.parametrize("arch", ARCHITECTURES)
@@ -41,9 +39,10 @@ def test_default_run_is_not_treated_as_partial(arch: str) -> None:
     assert set(_default_phases_for_architecture(arch)) == full
 
 
-def test_vision_and_audio_defaults_differ_from_text() -> None:
+def test_modality_defaults_differ_from_text() -> None:
     """Guards the regression directly: were these to collapse back to the text
-    set, both families would silently become unverifiable again."""
+    set, the non-text families would silently become unverifiable again."""
     assert 7 in _default_phases_for_architecture("Mistral3ForConditionalGeneration")
     assert 8 in _default_phases_for_architecture("HubertForCTC")
+    assert 9 in _default_phases_for_architecture("ViTModel")
     assert _default_phases_for_architecture("GPT2LMHeadModel") == [1, 2, 3, 4]

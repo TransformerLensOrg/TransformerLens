@@ -74,12 +74,56 @@ def gpt2_tokenizer():
     return AutoTokenizer.from_pretrained("gpt2")
 
 
+# Golden fixtures: frozen HT-captured reference data (see tests/goldens.py),
+# skipping when the golden dataset is unreachable.
 @pytest.fixture(scope="session")
-def gpt2_hooked_processed():
-    """Read-only use only — mutations leak across the session."""
-    from transformer_lens import HookedTransformer
+def gpt2_goldens_processed():
+    """Golden cell for gpt2 with default weight processing (full_defaults)."""
+    from tests import goldens
 
-    return HookedTransformer.from_pretrained("gpt2", device="cpu")
+    if not goldens.goldens_available("gpt2", "full_defaults"):
+        pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+    return goldens.GoldenCell("gpt2", "full_defaults")
+
+
+@pytest.fixture(scope="session")
+def gpt2_goldens_unprocessed():
+    """Golden cell for gpt2 without weight processing (no_processing)."""
+    from tests import goldens
+
+    if not goldens.goldens_available("gpt2", "no_processing"):
+        pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+    return goldens.GoldenCell("gpt2", "no_processing")
+
+
+@pytest.fixture(scope="session")
+def gpt2_bridge():
+    """TransformerBridge wrapping gpt2 (no compatibility mode). Read-only use only."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    return TransformerBridge.boot_transformers("gpt2", device="cpu")
+
+
+@pytest.fixture(scope="session")
+def gpt2_bridge_compat():
+    """TransformerBridge wrapping gpt2 with compatibility mode enabled. Read-only use only."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    bridge.enable_compatibility_mode()
+    return bridge
+
+
+# Full-model fixtures for the acceptance/integration tiers — per tests/AGENTS.md, don't
+# adopt them in unit-tier tests (they time out / OOM there).
+@pytest.fixture(scope="session")
+def gpt2_bridge_compat_no_processing():
+    """TransformerBridge wrapping gpt2 with compat mode, no weight processing. Read-only use only."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
+    bridge.enable_compatibility_mode(no_processing=True)
+    return bridge
 
 
 def pytest_sessionfinish(session, exitstatus):

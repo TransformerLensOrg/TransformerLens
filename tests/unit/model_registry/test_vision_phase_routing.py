@@ -1,6 +1,6 @@
 """Vision encoders must route to the {1, 9} verification set.
 
-Vision architectures have no tokenizer and no HookedTransformer counterpart, so the
+Vision architectures have no tokenizer or text tower, so the
 default text phase set ({1,2,3,4}) cannot run against them. They previously opted out
 of verification entirely via ``applicable_phases = []``, which made them unverifiable
 rather than verified — Phase 1 (HF parity on pixel input) and Phase 9 (pixel
@@ -13,10 +13,7 @@ from transformer_lens.tools.model_registry.verify_models import (
     _full_and_core_phases,
     _phases_to_run,
 )
-from transformer_lens.utilities.architectures import (
-    NO_HT_COMPARISON_ARCHITECTURES,
-    classify_architecture,
-)
+from transformer_lens.utilities.architectures import classify_architecture
 
 VISION_ARCHS = [
     "ViTForImageClassification",
@@ -47,12 +44,6 @@ def test_vision_phases_survive_adapter_filter(architecture: str) -> None:
     Phase 9 bypasses the filter like 7/8 (gated by is_visual_model instead).
     """
     assert _phases_to_run(architecture, [1, 9]) == [1, 9]
-
-
-@pytest.mark.parametrize("architecture", VISION_ARCHS)
-def test_vision_skips_hooked_transformer_comparison(architecture: str) -> None:
-    """There is no HookedTransformer vision encoder to compare against."""
-    assert architecture in NO_HT_COMPARISON_ARCHITECTURES
 
 
 def test_audio_still_routes_to_phase_eight() -> None:

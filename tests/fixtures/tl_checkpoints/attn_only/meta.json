@@ -1,0 +1,13 @@
+{
+ "d_model": 32,
+ "d_head": 16,
+ "n_heads": 2,
+ "n_layers": 2,
+ "n_ctx": 8,
+ "d_vocab": 16,
+ "d_mlp": 64,
+ "act_fn": "gelu",
+ "normalization_type": "LN",
+ "seed": 0,
+ "attn_only": true
+}

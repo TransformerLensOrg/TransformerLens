@@ -18,7 +18,6 @@ class HunYuanDenseV1ArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for HunYuanDenseV1 models."""
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the HunYuanDenseV1 architecture adapter."""
         super().__init__(cfg)
 
         self._set_rms_rotary_defaults()

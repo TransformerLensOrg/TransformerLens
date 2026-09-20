@@ -198,7 +198,7 @@ class TestGraniteMoeHybridHookCoverage:
 
 
 # ---------------------------------------------------------------------------
-# Effective attention: the Phase 0 acceptance surface
+# Effective attention
 # ---------------------------------------------------------------------------
 
 
