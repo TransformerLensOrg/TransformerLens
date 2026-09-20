@@ -1,9 +1,7 @@
 # Contributing
 
 ```{warning}
-`HookedTransformer` is deprecated as of TransformerLens 3.0 and will be removed in the next major version. New code should use [`TransformerBridge`](migrating_to_v3.md) instead. Existing `HookedTransformer` code continues to work through the 3.x branch via a compatibility layer. See the [migration guide](migrating_to_v3.md) for conversion recipes.
-
-The HookedTransformer **acceptance test suite is currently quarantined** due to a CI test-pollution issue (see `tests/QUARANTINES.md` in the repo). Changes that touch HookedTransformer internals therefore land essentially untested at the acceptance level — extra manual care is required until the suite is re-enabled.
+`HookedTransformer` and the other `Hooked*` classes were **removed in TransformerLens 4.0**. Use [`TransformerBridge`](migrating_to_v4.md) instead — call `enable_compatibility_mode()` after booting for HookedTransformer-equivalent numerics. See the [4.0 migration guide](migrating_to_v4.md).
 ```
 
 ## Contributing with AI coding agents
@@ -98,7 +96,7 @@ The flaky-retry policy (`--reruns 2 --reruns-delay 5`) wraps every `make` target
 
 Some tests carry persistent `skip` / `skipif` / `xfail` markers — for optional dependencies (LIT, bitsandbytes), hardware requirements (CUDA, MPS, multi-GPU), CI cost / network budget, or upstream platform bugs. The `tests/QUARANTINES.md` file in the repo inventories every one with an "un-skip when…" line. **Before debugging a failing test, check whether it's a known quarantine.**
 
-The HookedTransformer acceptance suite (`tests/acceptance/test_hooked_transformer.py`, `test_hooked_encoder.py`, `test_hooked_encoder_decoder.py`) is currently a whole-file quarantine — see the warning at the top of this page.
+There are currently no whole-file quarantines; every remaining marker is per-test and inventoried in `tests/QUARANTINES.md`.
 
 ## Formatting
 
@@ -139,14 +137,14 @@ Use `uv` rather than `pip` or `poetry` — commands run via `uv run <cmd>` or th
 
 ## Two systems live in this repo
 
-The library is mid-transition between two parallel paths:
+TransformerLens 4.0 has a single model system:
 
 | System | Status | Lives in | Numerics | Registry |
 |---|---|---|---|---|
-| `TransformerBridge` | v3 — default for new work | `transformer_lens/model_bridge/` | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HT-equivalent — see [Compatibility Mode](compatibility_mode.md) | `transformer_lens/tools/model_registry/data/supported_models.json` |
-| `HookedTransformer` | Legacy, maintenance mode, deprecated in 3.0 | `transformer_lens/HookedTransformer.py` + `transformer_lens/components/` | Folds LayerNorm + centres weights → does NOT match HF | `transformer_lens/supported_models.py` (**HT-only**) |
+| `TransformerBridge` | The only model system in 4.0 | `transformer_lens/model_bridge/` | Raw HF weights by default; `bridge.enable_compatibility_mode()` for HookedTransformer-equivalent numerics — see [Compatibility Mode](compatibility_mode.md) | `transformer_lens/tools/model_registry/data/supported_models.json` |
+| `HookedTransformer` | Removed in 4.0 — see the [4.0 migration guide](migrating_to_v4.md) | *(deleted)* | — | — |
 
-Because the two systems are parallel implementations of the same surface, behavioural changes on one side usually need a matching change on the other. If you change a feature in `HookedTransformer` that has a counterpart in `TransformerBridge` (or vice versa), update both in the same PR — drift between them has historically been a steady source of bugs. The registries are *not* parallel, though: `supported_models.py` is HookedTransformer-only, while Bridge-only models live in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
+`HookedRootModule` and `HookPoint` remain the supported way to hook an arbitrary `nn.Module`. `transformer_lens/supported_models.py` is kept as the frozen legacy name/alias ledger; new models go in the Bridge registry data file under `transformer_lens/tools/model_registry/`.
 
 ## PR conventions
 
@@ -227,13 +225,13 @@ You can reference other parts of the codebase using
 ```reStructuredText
 :mod:transformer_lens # Function or module
 
-:const:`transformer_lens.loading_from_pretrained.OFFICIAL_MODEL_NAMES`
+:const:`transformer_lens.supported_models.OFFICIAL_MODEL_NAMES`
 
-:class:`transformer_lens.HookedTransformer`
+:class:`transformer_lens.model_bridge.TransformerBridge`
 
-:meth:`transformer_lens.HookedTransformer.from_pretrained`
+:meth:`transformer_lens.model_bridge.TransformerBridge.boot_transformers`
 
-:attr:`transformer_lens.HookedTransformer.cfg`
+:attr:`transformer_lens.model_bridge.TransformerBridge.cfg`
 ```
 
 ##### Maths
@@ -277,6 +275,7 @@ Two guides walk through the process:
 - [Architecture Unit Test Suite Guide](adapter_development/adapter-unit-test-guide.md) — what to test (and what not to) in the per-adapter unit suite, so every test guards a real, adapter-specific regression.
 - [HuggingFace Model Analysis Guide](adapter_development/hf-model-analysis-guide.md) — a reference for reading an HF model's `config.json` and source files to extract the attributes you'll set on `self.cfg`.
 - [HuggingFace Model Scraper](adapter_development/hf-scraper.md) — how to run the scraper that discovers HF models for the registry, including the per-architecture targeted-scrape mode used after merging a new adapter.
+- [Automated Adapter Builder](adapter_development/adapter-builder-tool.md) — the `devtools/adapter_builder/` agent tool that runs this whole workflow autonomously (analysis, phased implementation, review at every checkpoint, parity verification), leaving the result uncommitted in a worktree for human review.
 
 Adapters live in `transformer_lens/model_bridge/supported_architectures/<model_name>.py` and need to be registered in **four** places. Each registration site has a different consequence if you skip it, which is why the next section's invariant test is worth running before you open the PR.
 
@@ -316,7 +315,7 @@ Two test layers:
   ```
 
   If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`; otherwise leave the flag unset.
-- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
+- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge_core.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
 - **`ComponentMapping` types do not need `# type: ignore`.** If the type system disagrees, prefer `isinstance` narrowing or `typing.cast`; the project as a whole avoids `# type: ignore`.
 
 ### Verifying a new model
@@ -358,4 +357,5 @@ adapter_development/adapter-unit-test-guide
 adapter_development/hf-model-analysis-guide
 adapter_development/hf-scraper
 adapter_development/external-adapter-registration
+adapter_development/adapter-builder-tool
 ```

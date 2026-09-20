@@ -1,4 +1,4 @@
-"""init_cache_entry must use cfg.dtype, not torch.get_default_dtype() (fp16/bf16 caches were being promoted to fp32)."""
+"""Tests that KeyValueCacheEntry.init_cache_entry buffers follow cfg.dtype, not torch's global default."""
 
 import torch
 
@@ -43,13 +43,7 @@ def test_init_cache_entry_uses_cfg_dtype_bfloat16():
 
 
 def test_init_cache_entry_dtype_independent_of_global_default():
-    """Regression guard: cache dtype follows cfg.dtype, not the global default.
-
-    Also covers the fp32 case indirectly: if someone reintroduces the old
-    ``torch.get_default_dtype()`` behaviour, this test plus the fp16 /
-    bfloat16 / append / GQA tests catch it; the fp32-only baseline above
-    would not, since fp32 happens to be torch's global default.
-    """
+    """Regression guard: cache dtype follows cfg.dtype, not the global default."""
     cfg = _make_cfg(dtype=torch.float16)
     original_default = torch.get_default_dtype()
     try:

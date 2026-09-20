@@ -1,33 +1,38 @@
 """
-Integration tests for weight processing functions with HookedTransformer and transformer bridge.
+Integration tests for weight processing functions on real model weights.
 
-These tests verify that the individual math functions (fold_layer_norm_biases, 
+These tests verify that the individual math functions (fold_layer_norm_biases,
 fold_layer_norm_weights, center_attention_weights) produce consistent results
-across different model formats.
+across different model formats. Real-weight inputs come from the frozen
+HookedTransformer goldens (tests/goldens.py).
 """
 
 import pytest
 import torch
 
-from transformer_lens.HookedTransformer import HookedTransformer
+from tests import goldens
 from transformer_lens.weight_processing import ProcessWeights
+
+
+@pytest.fixture(scope="module")
+def distilgpt2_bridge_cfg_adapter():
+    """One distilgpt2 bridge boot supplying (cfg, adapter) for ProcessWeights calls."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    return bridge.cfg, bridge.adapter
+
+
+@pytest.fixture(scope="module")
+def golden_processed_state():
+    """Frozen fully-processed distilgpt2 TL-format state dict."""
+    if not goldens.goldens_available("distilgpt2", "full_defaults"):
+        pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+    return goldens.GoldenCell("distilgpt2", "full_defaults").tensors("state_dict")
 
 
 class TestWeightProcessingIntegration:
     """Integration tests for weight processing with different model formats."""
-
-    @pytest.fixture
-    def gpt2_small_model(self):
-        """Load GPT-2 Small model for testing."""
-        return HookedTransformer.from_pretrained("distilgpt2")
-
-    @pytest.fixture
-    def gpt2_small_adapter(self):
-        """Create adapter for GPT-2 Small model."""
-        from transformer_lens.model_bridge import TransformerBridge
-
-        bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
-        return bridge.adapter
 
     @pytest.fixture
     def sample_tensors(self):
@@ -182,11 +187,12 @@ class TestWeightProcessingIntegration:
         )
         torch.testing.assert_close(recentered_wq, centered_wq)
 
-    def test_extract_attention_tensors_with_hooked_transformer(self, gpt2_small_model):
-        """Test tensor extraction with HookedTransformer model."""
-        model = gpt2_small_model
-        state_dict = model.state_dict()
-        cfg = model.cfg
+    def test_extract_attention_tensors_with_hooked_transformer(
+        self, golden_processed_state, distilgpt2_bridge_cfg_adapter
+    ):
+        """Test tensor extraction from the golden TL-format state dict."""
+        state_dict = golden_processed_state
+        cfg, _ = distilgpt2_bridge_cfg_adapter
         layer = 0
 
         # Extract tensors
@@ -215,11 +221,12 @@ class TestWeightProcessingIntegration:
         assert wk_tensor is not None
         assert wv_tensor is not None
 
-    def test_full_pipeline_with_hooked_transformer(self, gpt2_small_model):
-        """Test the full pipeline with HookedTransformer model."""
-        model = gpt2_small_model
-        state_dict = model.state_dict()
-        cfg = model.cfg
+    def test_full_pipeline_with_hooked_transformer(
+        self, golden_processed_state, distilgpt2_bridge_cfg_adapter
+    ):
+        """Test the full pipeline on the golden TL-format state dict."""
+        state_dict = golden_processed_state
+        cfg, _ = distilgpt2_bridge_cfg_adapter
         layer = 0
 
         # Get parameter keys
@@ -276,135 +283,59 @@ class TestWeightProcessingIntegration:
         assert centered_wk.shape == wk_tensor.shape
         assert centered_wv.shape == wv_tensor.shape
 
-    @pytest.mark.skip(
-        reason="Weight processing format consistency failing due to architectural differences"
-    )
-    def test_consistency_between_formats(self, gpt2_small_model, gpt2_small_adapter):
-        """Test that the same mathematical operations produce consistent results across formats."""
-        model = gpt2_small_model
-        cfg = model.cfg
-        layer = 0
+    def test_adapter_none_path_reproduces_frozen_processing(self, distilgpt2_bridge_cfg_adapter):
+        """process_weights(adapter=None) must reproduce HookedTransformer's frozen output.
 
-        # Get tensors from HookedTransformer format
-        state_dict_tl = model.state_dict()
-        W_Q_key = f"blocks.{layer}.attn.W_Q"
-        W_K_key = f"blocks.{layer}.attn.W_K"
-        W_V_key = f"blocks.{layer}.attn.W_V"
-        b_Q_key = f"blocks.{layer}.attn.b_Q"
-        b_K_key = f"blocks.{layer}.attn.b_K"
-        b_V_key = f"blocks.{layer}.attn.b_V"
+        The no_processing golden is HT's post-load unprocessed TL state dict; the
+        full_defaults golden is what HT's own processing produced from it at capture
+        time. Running the shared entry point over the former must land exactly on
+        the latter — this is the executable spec for the adapter=None path.
+        """
+        if not goldens.goldens_available("distilgpt2", "no_processing"):
+            pytest.skip("TL goldens dataset unavailable (set TL_GOLDENS_DIR or enable network)")
+        cfg, _ = distilgpt2_bridge_cfg_adapter
+        unprocessed = goldens.GoldenCell("distilgpt2", "no_processing").tensors("state_dict")
+        expected = goldens.GoldenCell("distilgpt2", "full_defaults").tensors("state_dict")
 
-        tensors_tl = ProcessWeights.extract_attention_tensors_for_folding(
-            state_dict_tl, cfg, layer, None
-        )
-        wq_tl = tensors_tl["wq"]
-        wk_tl = tensors_tl["wk"]
-        wv_tl = tensors_tl["wv"]
-        bq_tl = tensors_tl["bq"]
-        bk_tl = tensors_tl["bk"]
-        bv_tl = tensors_tl["bv"]
-
-        # Convert to HuggingFace format and back
-        adapter = gpt2_small_adapter
-
-        # Convert TL tensors to HF format
-        wq_hf = ProcessWeights.convert_tensor_to_hf_format(
-            wq_tl, f"blocks.{layer}.attn.W_Q", adapter, cfg, layer
-        )
-        wk_hf = ProcessWeights.convert_tensor_to_hf_format(
-            wk_tl, f"blocks.{layer}.attn.W_K", adapter, cfg, layer
-        )
-        wv_hf = ProcessWeights.convert_tensor_to_hf_format(
-            wv_tl, f"blocks.{layer}.attn.W_V", adapter, cfg, layer
-        )
-        bq_hf = ProcessWeights.convert_tensor_to_hf_format(
-            bq_tl, f"blocks.{layer}.attn.b_Q", adapter, cfg, layer
-        )
-        bk_hf = ProcessWeights.convert_tensor_to_hf_format(
-            bk_tl, f"blocks.{layer}.attn.b_K", adapter, cfg, layer
-        )
-        bv_hf = ProcessWeights.convert_tensor_to_hf_format(
-            bv_tl, f"blocks.{layer}.attn.b_V", adapter, cfg, layer
+        processed = ProcessWeights.process_weights(
+            unprocessed,
+            cfg,
+            fold_ln=True,
+            center_writing_weights=True,
+            center_unembed=True,
+            fold_value_biases=True,
+            refactor_factored_attn_matrices=False,
+            adapter=None,
         )
 
-        # Convert back to TL format using proper HF state dict keys
-        wq_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_Q")
-        wk_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_K")
-        wv_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.W_V")
-        bq_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_Q")
-        bk_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_K")
-        bv_hf_key = adapter.translate_transformer_lens_path(f"blocks.{layer}.attn.b_V")
-
-        wq_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.W_Q", adapter, {wq_hf_key: wq_hf}, cfg, layer
-        )
-        wk_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.W_K", adapter, {wk_hf_key: wk_hf}, cfg, layer
-        )
-        wv_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.W_V", adapter, {wv_hf_key: wv_hf}, cfg, layer
-        )
-        bq_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.b_Q", adapter, {bq_hf_key: bq_hf}, cfg, layer
-        )
-        bk_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.b_K", adapter, {bk_hf_key: bk_hf}, cfg, layer
-        )
-        bv_tl_converted = ProcessWeights.convert_tensor_to_tl_format(
-            f"blocks.{layer}.attn.b_V", adapter, {bv_hf_key: bv_hf}, cfg, layer
-        )
-
-        # Test that the math functions produce the same results
-        ln_bias = torch.randn(cfg.d_model)
-        ln_weight = torch.randn(cfg.d_model)
-
-        # Apply operations to original TL tensors
-        new_bq_tl, new_bk_tl, new_bv_tl = ProcessWeights.fold_layer_norm_biases(
-            wq_tl, wk_tl, wv_tl, bq_tl, bk_tl, bv_tl, ln_bias
-        )
-        new_wq_tl, new_wk_tl, new_wv_tl = ProcessWeights.fold_layer_norm_weights(
-            wq_tl, wk_tl, wv_tl, ln_weight
-        )
-        centered_wq_tl, centered_wk_tl, centered_wv_tl = ProcessWeights.center_attention_weights(
-            wq_tl, wk_tl, wv_tl
-        )
-
-        # Apply operations to converted TL tensors
-        (
-            new_bq_converted,
-            new_bk_converted,
-            new_bv_converted,
-        ) = ProcessWeights.fold_layer_norm_biases(
-            wq_tl_converted,
-            wk_tl_converted,
-            wv_tl_converted,
-            bq_tl_converted,
-            bk_tl_converted,
-            bv_tl_converted,
-            ln_bias,
-        )
-        (
-            new_wq_converted,
-            new_wk_converted,
-            new_wv_converted,
-        ) = ProcessWeights.fold_layer_norm_weights(
-            wq_tl_converted, wk_tl_converted, wv_tl_converted, ln_weight
-        )
-        (
-            centered_wq_converted,
-            centered_wk_converted,
-            centered_wv_converted,
-        ) = ProcessWeights.center_attention_weights(
-            wq_tl_converted, wk_tl_converted, wv_tl_converted
-        )
-
-        # Verify results are consistent (within numerical precision)
-        torch.testing.assert_close(new_bq_tl, new_bq_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(new_bk_tl, new_bk_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(new_bv_tl, new_bv_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(new_wq_tl, new_wq_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(new_wk_tl, new_wk_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(new_wv_tl, new_wv_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(centered_wq_tl, centered_wq_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(centered_wk_tl, centered_wk_converted, atol=1e-6, rtol=1e-6)
-        torch.testing.assert_close(centered_wv_tl, centered_wv_converted, atol=1e-6, rtol=1e-6)
+        # HT's load drops the folded-out LN params (strict=False into LNPre modules),
+        # so the frozen dict lacks exactly those keys; process_weights leaves them as
+        # identities. Everything else must agree.
+        extra = set(processed) - set(expected)
+        is_ln = lambda k: ".ln" in k or k.startswith("ln_final.")
+        assert all(
+            is_ln(k) for k in extra
+        ), f"Unexpected non-LN extra keys: {sorted(k for k in extra if not is_ln(k))[:5]}"
+        assert (
+            set(expected) - set(processed) == set()
+        ), f"Keys missing from processed output: {sorted(set(expected) - set(processed))[:5]}"
+        for key in sorted(extra):
+            identity = (
+                torch.ones_like(processed[key])
+                if key.endswith(".w")
+                else torch.zeros_like(processed[key])
+            )
+            torch.testing.assert_close(
+                processed[key], identity, atol=1e-6, rtol=0, msg=f"{key} not folded to identity"
+            )
+        # atol 1e-5: fp64-verified noise floor. Both the golden capture and this
+        # recomputation sit ~2.5e-6 from the fp64 truth (ulp-scale summation-order
+        # noise on b_U values of magnitude ~8); their mutual diff is <4e-6.
+        for key in sorted(expected):
+            torch.testing.assert_close(
+                processed[key],
+                expected[key],
+                atol=1e-5,
+                rtol=1e-5,
+                msg=lambda m, key=key: f"{key}: {m}",
+            )

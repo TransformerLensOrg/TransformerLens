@@ -1,45 +1,22 @@
 """Ouro architecture adapter."""
 
-import sys
-from typing import Any, Optional
-
-import torch
+from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
-    GatedMLPBridge,
     LinearBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
-
-
-def _compute_default_rope_parameters(
-    config: Any,
-    device: Optional[torch.device] = None,
-    seq_len: Optional[int] = None,
-    **rope_kwargs: Any,
-) -> tuple[torch.Tensor, float]:
-    """Standard (unscaled) RoPE inverse frequencies, as transformers v4 defined them.
-
-    Transformers v5 removed the "default" entry from ROPE_INIT_FUNCTIONS (standard
-    RoPE moved to a per-model static method), but Ouro's remote code still looks it
-    up. Signature and return match the v4 contract the remote code calls with:
-    (config, device) -> (inv_freq, attention_scaling).
-    """
-    base = config.rope_theta
-    partial_rotary_factor = getattr(config, "partial_rotary_factor", None) or 1.0
-    head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
-    dim = int(head_dim * partial_rotary_factor)
-    inv_freq = 1.0 / (
-        base
-        ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim)
-    )
-    return inv_freq, 1.0
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    compute_default_rope_inv_freq,
+    force_import_remote_class,
+    iter_remote_modeling_modules,
+)
 
 
 class OuroArchitectureAdapter(ArchitectureAdapter):
@@ -86,17 +63,13 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
     ProcessWeights._safe_get_tensor() or by checking for None values.
     """
 
+    _testing_eager = None
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Ouro architecture adapter."""
         super().__init__(cfg)
 
-        # Set config variables for weight processing
-        self.cfg.normalization_type = "RMS"
-        self.cfg.positional_embedding_type = "rotary"
-        self.cfg.final_rms = True
-        self.cfg.gated_mlp = True
-        self.cfg.attn_only = False
-        self.cfg.uses_rms_norm = True
+        self._set_rms_rotary_defaults()
         # default_prepend_bos stays at the framework default: the GPT2-style BPE
         # tokenizer (bos == eos == <|endoftext|>) does not prepend BOS itself.
 
@@ -134,15 +107,7 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
-                    "mlp": GatedMLPBridge(
-                        name="mlp",
-                        config=self.cfg,
-                        submodules={
-                            "gate": LinearBridge(name="gate_proj"),
-                            "in": LinearBridge(name="up_proj"),
-                            "out": LinearBridge(name="down_proj"),
-                        },
-                    ),
+                    "mlp": self._gated_mlp(),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
@@ -171,57 +136,24 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
             model_kwargs: The kwargs dict for from_pretrained()
         """
         # Force-import the modeling module so we can patch it
-        try:
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            get_class_from_dynamic_module(
-                "modeling_ouro.OuroForCausalLM",
-                model_name,
-            )
-        except Exception:
+        if force_import_remote_class(model_name, "modeling_ouro.OuroForCausalLM") is None:
             return
 
-        # Each checkpoint revision gets its own module in sys.modules, so patch
-        # every imported Ouro modeling module (same idiom as openelm.py).
-        for key in list(sys.modules.keys()):
-            if "ouro" in key.lower() and "modeling" in key.lower():
-                module = sys.modules[key]
-                rope_functions = getattr(module, "ROPE_INIT_FUNCTIONS", None)
-                if rope_functions is not None and "default" not in rope_functions:
-                    setattr(
-                        module,
-                        "ROPE_INIT_FUNCTIONS",
-                        {**rope_functions, "default": _compute_default_rope_parameters},
-                    )
-                rope_class = getattr(module, "OuroRotaryEmbedding", None)
-                if rope_class is not None and not hasattr(
-                    rope_class, "compute_default_rope_parameters"
-                ):
-                    rope_class.compute_default_rope_parameters = staticmethod(
-                        _compute_default_rope_parameters
-                    )
-
-    def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
-        """Set up rotary embedding references for Ouro component testing.
-
-        Ouro uses RoPE (Rotary Position Embeddings) with a single shared
-        ``model.rotary_emb``. We set the rotary_emb reference on all attention
-        bridge instances for component testing.
-
-        Args:
-            hf_model: The HuggingFace Ouro model instance
-            bridge_model: The TransformerBridge model (if available, set rotary_emb on actual instances)
-        """
-        # Get rotary embedding instance from the model
-        rotary_emb = hf_model.model.rotary_emb
-
-        # Set rotary_emb on actual bridge instances in bridge_model if available
-        if bridge_model is not None and hasattr(bridge_model, "blocks"):
-            # Set on each layer's actual attention bridge instance
-            for block in bridge_model.blocks:
-                if hasattr(block, "attn"):
-                    block.attn.set_rotary_emb(rotary_emb)
-
-        # Also set on the template for get_generalized_component() calls
-        attn_bridge = self.get_generalized_component("blocks.0.attn")
-        attn_bridge.set_rotary_emb(rotary_emb)
+        # Each checkpoint revision gets its own module in sys.modules; patch all.
+        for module in iter_remote_modeling_modules("ouro"):
+            # Rebind the module-level ROPE_INIT_FUNCTIONS name to a copy with
+            # "default" restored; the shared transformers dict stays untouched.
+            rope_functions = getattr(module, "ROPE_INIT_FUNCTIONS", None)
+            if rope_functions is not None and "default" not in rope_functions:
+                setattr(
+                    module,
+                    "ROPE_INIT_FUNCTIONS",
+                    {**rope_functions, "default": compute_default_rope_inv_freq},
+                )
+            rope_class = getattr(module, "OuroRotaryEmbedding", None)
+            if rope_class is not None and not hasattr(
+                rope_class, "compute_default_rope_parameters"
+            ):
+                rope_class.compute_default_rope_parameters = staticmethod(
+                    compute_default_rope_inv_freq
+                )

@@ -370,7 +370,11 @@ def test_direct_assign_load_stays_current_after_apply(
 @pytest.mark.parametrize(
     ("case_name", "key_fragment", "expected_keys"),
     (
-        ("bert-nsp", "pooler", {"pooler.weight", "pooler.bias"}),
+        # BERT wraps the pooler module (not its inner Linear) so hook_out carries
+        # the post-tanh pooled [CLS], which nests the weights one level deeper.
+        # Still two keys, so nothing is re-expanded — only renamed. ViT wraps
+        # pooler.dense and keeps the flat names.
+        ("bert-nsp", "pooler", {"pooler.dense.weight", "pooler.dense.bias"}),
         ("vit-bare-pooler", "pooler", {"pooler.weight", "pooler.bias"}),
         (
             "ast-audio-classifier",

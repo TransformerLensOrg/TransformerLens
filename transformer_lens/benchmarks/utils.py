@@ -64,12 +64,10 @@ BRIDGE_EXPECTED_MISSING_PATTERNS = [
     "attn.hook_attn_scores",
     "attn.hook_pattern",
     # MoE per-expert hooks: Bridge uses HF's batched MoE forward pass via MoEBridge,
-    # which wraps the entire MoE module. HookedTransformer creates individual expert
+    # which wraps the entire MoE module. The legacy reference created individual expert
     # modules with per-expert hooks (e.g., blocks.0.mlp.experts.3.hook_pre).
     "mlp.experts.",
     "mlp.hook_experts",
-    "mlp.hook_expert_indices",
-    "mlp.hook_expert_weights",
     # Parallel attention+MLP architectures (GPT-J, GPT-NeoX): HF has a single
     # shared layer norm (ln_1), while HT creates a virtual ln2 that shares weights
     # with ln1. The Bridge only wraps the actual HF ln_1, so ln2 hooks don't exist.

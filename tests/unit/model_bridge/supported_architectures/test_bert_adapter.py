@@ -108,12 +108,20 @@ class TestBertComponentMapping:
 
     def test_token_type_embedding_is_cached_with_hf_output(self) -> None:
         import torch
-        from transformers import BertForMaskedLM
+        from transformers import BertConfig, BertForMaskedLM
 
         from transformer_lens.model_bridge.sources import build_bridge_from_module
 
-        hf_model = BertForMaskedLM.from_pretrained("bert-base-cased").eval()
-        input_ids = torch.tensor([[101, 7592, 102, 2088, 102]])
+        hf_config = BertConfig(
+            vocab_size=32,
+            hidden_size=16,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            intermediate_size=32,
+            max_position_embeddings=16,
+        )
+        hf_model = BertForMaskedLM(hf_config).eval()
+        input_ids = torch.tensor([[1, 2, 3, 4, 5]])
         token_type_ids = torch.tensor([[0, 0, 0, 1, 1]])
         with torch.no_grad():
             expected = hf_model.bert.embeddings.token_type_embeddings(token_type_ids).clone()
@@ -121,10 +129,10 @@ class TestBertComponentMapping:
         bridge = build_bridge_from_module(
             hf_model,
             "BertForMaskedLM",
-            hf_config=hf_model.config,
+            hf_config=hf_config,
             dtype=torch.float32,
             device="cpu",
-            model_name="bert-base-cased",
+            model_name="tiny-bert",
         )
         with torch.no_grad():
             _, cache = bridge.run_with_cache(
@@ -190,7 +198,10 @@ class TestBertTaskHeadMappings:
 
         adapter.prepare_model(hf_model)
 
-        assert adapter.components["pooler"].name == "bert.pooler.dense"
+        # The pooler module itself is wrapped so hook_out is the post-tanh
+        # pooled [CLS]; the projection stays hookable underneath.
+        assert adapter.components["pooler"].name == "bert.pooler"
+        assert adapter.components["pooler"].submodules["dense"].name == "dense"
         assert adapter.components["unembed"].name == "cls.seq_relationship"
         assert "mlm_head" not in adapter.components
         assert "ln_final" not in adapter.components
@@ -204,7 +215,10 @@ class TestBertTaskHeadMappings:
 
         adapter.prepare_model(hf_model)
 
-        assert adapter.components["pooler"].name == "bert.pooler.dense"
+        # The pooler module itself is wrapped so hook_out is the post-tanh
+        # pooled [CLS]; the projection stays hookable underneath.
+        assert adapter.components["pooler"].name == "bert.pooler"
+        assert adapter.components["pooler"].submodules["dense"].name == "dense"
         assert adapter.components["mlm_head"].name == "cls.predictions.transform.dense"
         assert adapter.components["nsp_head"].name == "cls.seq_relationship"
         assert adapter.components["unembed"].name == "cls.predictions.decoder"

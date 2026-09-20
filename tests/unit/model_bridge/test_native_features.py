@@ -173,7 +173,7 @@ def test_output_logits_soft_cap_bounds_logits():
     """Logits must be bounded by ±cap when output_logits_soft_cap > 0."""
     cap = 5.0
     cfg = _cfg(output_logits_soft_cap=cap, seed=0)
-    # tanh soft-cap bounds |logits| <= cap by construction
+    # tanh soft-cap guarantees |logits| <= cap.
     bridge = TransformerBridge.boot_native(cfg)
     logits = _forward(bridge)
     assert logits.abs().max().item() <= cap + 1e-5
@@ -327,6 +327,35 @@ def test_ln_default_uses_layernorm():
     assert isinstance(ln1_bridge, NormalizationBridge)
     assert not isinstance(ln1_bridge, RMSNormalizationBridge)
     assert isinstance(ln1_bridge.original_component, torch.nn.LayerNorm)
+
+
+def test_solu_ln_weight_processing_preserves_the_forward():
+    """fold_ln reaches the mid-MLP LayerNorm through nn.Linear's [d_model, d_mlp] W_out."""
+    bridge = TransformerBridge.boot_native(_cfg(n_layers=2, act_fn="solu_ln"))
+    bridge.eval()
+    generator = torch.Generator().manual_seed(1)
+    # Native init leaves every norm at identity, which would make the fold a no-op.
+    with torch.no_grad():
+        for module in bridge.original_model.modules():
+            if isinstance(module, torch.nn.LayerNorm):
+                module.weight.add_(torch.randn(module.weight.shape, generator=generator) * 0.5)
+                module.bias.add_(torch.randn(module.bias.shape, generator=generator) * 0.5)
+    tokens = torch.randint(0, bridge.cfg.d_vocab, (2, bridge.cfg.n_ctx), generator=generator)
+    with torch.no_grad():
+        expected = torch.log_softmax(bridge(tokens).double(), dim=-1)
+
+    bridge.process_weights()
+
+    mid_ln = bridge.blocks[0].mlp.ln
+    torch.testing.assert_close(mid_ln.weight, torch.ones_like(mid_ln.weight))
+    torch.testing.assert_close(mid_ln.bias, torch.zeros_like(mid_ln.bias))
+    # Downstream LayerNorms hide which axis W_out was centered on, so check it directly.
+    for block in bridge.blocks:
+        row_means = block.mlp.out.weight.mean(-1)
+        torch.testing.assert_close(row_means, torch.zeros_like(row_means), atol=1e-6, rtol=0)
+    with torch.no_grad():
+        actual = torch.log_softmax(bridge(tokens).double(), dim=-1)
+    torch.testing.assert_close(actual, expected, atol=1e-4, rtol=0)
 
 
 # -- GQA ----------------------------------------------------------------------

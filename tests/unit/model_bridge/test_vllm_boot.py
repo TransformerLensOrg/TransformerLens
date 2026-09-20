@@ -1,0 +1,269 @@
+"""Orchestration tests for ``boot_vllm`` — mocks the HF / vLLM boundaries.
+
+Covers locked-kwarg rejection, dtype resolution, HF_TOKEN plumbing, env-var
+override warning, plugin-config lifecycle, and the happy path. Driver-level
+behavior is covered separately in test_vllm_driver.py.
+"""
+from __future__ import annotations
+
+import os
+import sys
+import warnings
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+import torch
+
+from tests.mocks.vllm_boot import fake_collective_rpc, mocked_vllm_boot
+from transformer_lens.model_bridge.remote_bridge import RemoteBridge
+from transformer_lens.model_bridge.sources.vllm import plugin
+from transformer_lens.model_bridge.sources.vllm.source import (
+    _dtype_from_hf_config,
+    boot_vllm,
+)
+
+
+@pytest.fixture
+def mocked_boot(monkeypatch):
+    """Mock every external boundary boot_vllm crosses; yield handles for assertions.
+
+    plugin.configure() stays real (the mocked_vllm_boot default) so the
+    clear-state tests below exercise real plugin state.
+    """
+    plugin.clear_config()
+    yield mocked_vllm_boot(monkeypatch)
+    plugin.clear_config()
+
+
+def test_rejects_locked_kwarg_override():
+    """Locked kwargs fail fast — before any I/O."""
+    with pytest.raises(ValueError, match="skip_tokenizer_init"):
+        boot_vllm("any-model", skip_tokenizer_init=False)
+
+
+def test_rejects_position_interventions_with_batching():
+    """Position interventions need the compiled path's affine buffers — fails fast."""
+    with pytest.raises(ValueError, match="incompatible with enable_batching"):
+        boot_vllm("any-model", enable_position_interventions=True, enable_batching=True)
+
+
+def test_position_interventions_flag_reaches_driver(mocked_boot):
+    """boot_vllm threads enable_position_interventions through to the driver."""
+    bridge = boot_vllm("any-model", enable_position_interventions=True)
+    assert bridge._driver._enable_position_interventions is True
+    # Default stays off.
+    assert boot_vllm("any-model")._driver._enable_position_interventions is False
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (torch.float16, torch.float16),
+        (torch.bfloat16, torch.bfloat16),
+        ("bfloat16", torch.bfloat16),
+        ("nonexistent_dtype", torch.float16),
+        (None, torch.float16),
+    ],
+)
+def test_dtype_resolution(raw, expected):
+    assert _dtype_from_hf_config(SimpleNamespace(torch_dtype=raw)) == expected
+
+
+def test_dtype_resolution_missing_attr():
+    assert _dtype_from_hf_config(SimpleNamespace()) == torch.float16
+
+
+def test_happy_path_returns_remote_bridge(mocked_boot):
+    bridge = boot_vllm("any-model")
+    assert isinstance(bridge, RemoteBridge)
+
+
+def test_hf_token_passed_to_both_hf_calls(mocked_boot):
+    boot_vllm("any-model")
+    assert mocked_boot["auto_config"].call_args.kwargs["token"] == "fake-token"
+    assert mocked_boot["auto_tokenizer"].call_args.kwargs["token"] == "fake-token"
+
+
+def test_custom_tokenizer_skips_autotokenizer(mocked_boot):
+    boot_vllm("any-model", tokenizer=MagicMock(name="custom"))
+    mocked_boot["auto_tokenizer"].assert_not_called()
+
+
+def test_env_var_override_warns(mocked_boot, monkeypatch):
+    monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "1")
+    with pytest.warns(UserWarning, match="VLLM_ENABLE_V1_MULTIPROCESSING"):
+        boot_vllm("any-model")
+    assert os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+
+
+def test_env_var_zero_does_not_warn(mocked_boot, monkeypatch):
+    monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        boot_vllm("any-model")
+    assert not any("VLLM_ENABLE_V1_MULTIPROCESSING" in str(w.message) for w in caught)
+
+
+def test_plugin_config_cleared_after_boot(mocked_boot):
+    """No leak to non-TL vllm.LLM users in the same process."""
+    boot_vllm("any-model")
+    assert plugin._ENV_CONFIG_KEY not in os.environ
+
+
+def test_plugin_config_cleared_when_llm_construction_fails(mocked_boot):
+    """A failed boot (OOM, gated repo) must not leave stale specs patched in —
+    the next in-process vllm.LLM(...) would walk our dot-paths on a foreign model."""
+    mocked_boot["vllm_llm"].side_effect = RuntimeError("CUDA out of memory")
+    with pytest.raises(RuntimeError, match="CUDA out of memory"):
+        boot_vllm("any-model")
+    assert plugin._ENV_CONFIG_KEY not in os.environ
+
+
+def test_env_channel_populated_during_llm_construction(mocked_boot):
+    """Spawned workers only see the env var — it must be live while LLM(...) runs."""
+    seen: dict = {}
+
+    def _capture_env(*args, **kwargs):
+        seen["env"] = os.environ.get(plugin._ENV_CONFIG_KEY)
+        return mocked_boot["vllm_llm"].return_value
+
+    mocked_boot["vllm_llm"].side_effect = _capture_env
+    boot_vllm("any-model")
+    assert seen["env"], "env spec channel was empty during worker construction"
+    restored = plugin._deserialize_config(seen["env"])
+    assert "embed.hook_out" in restored["capture_specs"]
+
+
+def test_boot_fails_loud_when_hook_absent_on_all_ranks(mocked_boot):
+    """A spec that installed on no rank is a broken dot-path — silent zeros otherwise."""
+    fake_llm = mocked_boot["vllm_llm"].return_value
+    fake_llm.collective_rpc = fake_collective_rpc([["blocks.0.hook_out"], ["blocks.0.hook_out"]])
+    with pytest.raises(RuntimeError, match="blocks.0.hook_out"):
+        boot_vllm("any-model")
+
+
+def test_boot_accepts_per_rank_absence(mocked_boot):
+    """PP shards legally lack some layers — only absent-everywhere is an error."""
+    fake_llm = mocked_boot["vllm_llm"].return_value
+    # Disjoint per rank — union covers every spec.
+    fake_llm.collective_rpc = fake_collective_rpc([["blocks.1.hook_out"], ["blocks.0.hook_out"]])
+    assert boot_vllm("any-model") is not None
+
+
+def test_rejects_prefix_caching_override():
+    """Prefix caching breaks the row=position capture invariant — locked off."""
+    with pytest.raises(ValueError, match="enable_prefix_caching"):
+        boot_vllm("any-model", enable_prefix_caching=True)
+
+
+def test_bos_detection_written_to_config(mocked_boot):
+    """boot_vllm must probe the tokenizer like boot_transformers — the dataclass
+    default (prepends_bos=True) is wrong for Qwen-family tokenizers and shifts
+    every activation by one position."""
+    bridge = boot_vllm("any-model")
+    assert mocked_boot["configure_tok"].called
+    assert mocked_boot["cfg"].tokenizer_prepends_bos is False
+    assert mocked_boot["cfg"].tokenizer_appends_eos is True
+    assert bridge is not None
+
+
+def test_logit_reconstruction_probed_at_boot(mocked_boot):
+    """The unembedding is fetched once at boot, not re-cloned per forward."""
+    bridge = boot_vllm("any-model")
+    assert bridge._driver._unembed_probed is True
+    assert bridge._driver._unembed is not None
+
+
+def test_llm_construction_kwargs(mocked_boot):
+    """Pin the kwargs boot_vllm passes to vllm.LLM(...). Catches regressions like
+    forgetting worker_extension_cls (collective_rpc methods unreachable),
+    max_num_batched_tokens (Dynamo symbolic-shape bound mismatch with buffer),
+    or max_logprobs (driver synthesizes logits via full-vocab logprobs)."""
+    boot_vllm("any-model", max_num_batched_tokens=1024)
+    kwargs = mocked_boot["vllm_llm"].call_args.kwargs
+    assert kwargs["model"] == "any-model"
+    assert kwargs["max_num_batched_tokens"] == 1024
+    assert kwargs["worker_extension_cls"] == (
+        "transformer_lens.model_bridge.sources.vllm.worker_extension.TLWorkerExtension"
+    )
+    # Sized from the mocked hf_config.vocab_size in mocked_boot fixture.
+    assert kwargs["max_logprobs"] == mocked_boot["hf_config"].vocab_size
+    # Locked kwargs that must always reach LLM.
+    assert kwargs["tensor_parallel_size"] == 1
+    assert kwargs["pipeline_parallel_size"] == 1
+    assert kwargs["skip_tokenizer_init"] is True
+    assert kwargs["disable_log_stats"] is True
+    assert kwargs["enable_prefix_caching"] is False
+    # Always explicit — "auto" would downcast fp32 checkpoints under the buffers.
+    assert kwargs["dtype"] == "float16"
+
+
+def test_missing_vllm_raises_actionable_import_error(monkeypatch):
+    """Without vllm installed, boot_vllm must name the packaging extra — and fail
+    before any HF network I/O or plugin state mutation."""
+    monkeypatch.setitem(sys.modules, "vllm", None)  # forces ImportError on import
+    with pytest.raises(ImportError, match=r"transformer-lens\[vllm\]"):
+        boot_vllm("any-model")
+    assert plugin._ENV_CONFIG_KEY not in os.environ
+
+
+class TestParallelBoot:
+    """TP/PP plumbing: kwarg validation, LLM wiring, env handling. GPU behavior is
+    validated by tests/acceptance/model_bridge/test_vllm_multigpu*.py."""
+
+    PARALLEL_KWARGS = pytest.mark.parametrize(
+        "kwarg", ["tensor_parallel_size", "pipeline_parallel_size"]
+    )
+
+    @PARALLEL_KWARGS
+    def test_size_passed_to_llm_and_layout_unverified(self, mocked_boot, kwarg):
+        bridge = boot_vllm("any-model", **{kwarg: 2})
+        assert mocked_boot["vllm_llm"].call_args.kwargs[kwarg] == 2
+        assert bridge._driver._layout_verified is False  # first forward cross-checks
+
+    @PARALLEL_KWARGS
+    def test_default_is_single_rank(self, mocked_boot, kwarg):
+        bridge = boot_vllm("any-model")
+        assert mocked_boot["vllm_llm"].call_args.kwargs[kwarg] == 1
+        assert bridge._driver._layout_verified is True  # nothing to cross-check
+
+    @PARALLEL_KWARGS
+    def test_rejects_batching(self, kwarg):
+        with pytest.raises(ValueError, match="parallelism is unsupported"):
+            boot_vllm("any-model", enable_batching=True, **{kwarg: 2})
+
+    @PARALLEL_KWARGS
+    def test_invalid_value_rejected(self, kwarg):
+        with pytest.raises(ValueError, match="positive int"):
+            boot_vllm("any-model", **{kwarg: 0})
+
+    @PARALLEL_KWARGS
+    def test_parallel_boot_clears_stale_mp_zero(self, mocked_boot, monkeypatch, kwarg):
+        """A prior single-rank boot leaves '0' in the env; parallel boots must not
+        inherit it — it would force the uni-process executor and workers never spawn."""
+        monkeypatch.setenv("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
+        boot_vllm("any-model", **{kwarg: 2})
+        assert "VLLM_ENABLE_V1_MULTIPROCESSING" not in os.environ
+
+    def test_single_rank_still_forces_in_process(self, mocked_boot, monkeypatch):
+        monkeypatch.delenv("VLLM_ENABLE_V1_MULTIPROCESSING", raising=False)
+        boot_vllm("any-model")
+        assert os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+
+    def test_tp_and_pp_combine(self, mocked_boot):
+        bridge = boot_vllm("any-model", tensor_parallel_size=2, pipeline_parallel_size=2)
+        kwargs = mocked_boot["vllm_llm"].call_args.kwargs
+        assert kwargs["tensor_parallel_size"] == 2
+        assert kwargs["pipeline_parallel_size"] == 2
+        assert bridge._driver._tp_size == 2
+        assert bridge._driver._layout_verified is False
+
+
+def test_compile_cache_disabled_for_tl_boots(mocked_boot, monkeypatch):
+    """Hooks are traced into the compiled graph; a cross-process cached artifact
+    either crashes at AOT load (closure bytecode mismatch) or silently serves a
+    hookless graph — TL boots must never share vLLM's compile cache."""
+    monkeypatch.delenv("VLLM_DISABLE_COMPILE_CACHE", raising=False)
+    boot_vllm("any-model")
+    assert os.environ["VLLM_DISABLE_COMPILE_CACHE"] == "1"

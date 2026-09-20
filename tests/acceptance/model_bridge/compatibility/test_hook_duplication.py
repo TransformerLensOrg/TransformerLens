@@ -3,25 +3,11 @@
 import torch
 
 
-def test_TransformerBridge_compatibility_mode_calls_hooks_once(
-    gpt2_hooked_unprocessed, gpt2_bridge_compat_no_processing
-):
+def test_TransformerBridge_compatibility_mode_calls_hooks_once(gpt2_bridge_compat_no_processing):
     """Regression test: hooks fire exactly once even with aliased HookPoint names."""
-    hooked_model = gpt2_hooked_unprocessed
     bridge_model = gpt2_bridge_compat_no_processing
 
     test_input = torch.tensor([[1, 2, 3]])
-
-    hooked_call_count = 0
-
-    def count_hooked_calls(acts, hook):
-        nonlocal hooked_call_count
-        hooked_call_count += 1
-        return acts
-
-    hooked_model.blocks[0].hook_mlp_out.add_hook(count_hooked_calls, is_permanent=True)
-    _ = hooked_model(test_input)
-    hooked_model.reset_hooks()
 
     bridge_call_count = 0
 
@@ -33,10 +19,6 @@ def test_TransformerBridge_compatibility_mode_calls_hooks_once(
     bridge_model.blocks[0].mlp.hook_out.add_hook(count_bridge_calls, is_permanent=True)
     _ = bridge_model(test_input)
     bridge_model.reset_hooks()
-
-    assert (
-        hooked_call_count == 1
-    ), f"HookedTransformer should call hook once, got {hooked_call_count}"
 
     assert bridge_call_count == 1, (
         f"TransformerBridge should call hook once, got {bridge_call_count}. "
@@ -88,7 +70,7 @@ def test_stateful_hook_pattern(gpt2_bridge_compat_no_processing):
     except KeyError:
         success = False
     finally:
-        bridge_model.reset_hooks()
+        bridge_model.reset_hooks(including_permanent=True)
 
     assert success, (
         "Stateful hook pattern failed - hook was likely called multiple times, "

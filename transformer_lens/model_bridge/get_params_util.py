@@ -28,8 +28,10 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
 
     Reads the bridge components' TL-layout weight properties (``W_Q``,
     ``W_in``, ...), which already account for layout conversion and weight
-    processing. For missing weights, returns zero tensors of appropriate shape
-    instead of raising exceptions. Skips attn keys for non-attention layers, and
+    processing. For absent optional weights, returns zero tensors of appropriate
+    shape instead of raising exceptions. Real components whose weights cannot be
+    represented in the dense TL layout are omitted. Skips attn keys for
+    non-attention layers, and
     omits ``pos_embed.W_pos`` for rotary models (which have no learned position
     table), matching HookedTransformer's parameter set.
     LayerNorm params (``blocks.{i}.ln1.w`` etc.) are included when the modules
@@ -132,27 +134,22 @@ def get_bridge_params(bridge) -> Dict[str, torch.Tensor]:
         mlp = getattr(block, "mlp", None)
         w_in = _tensor_attr(mlp, "W_in")
         if w_in is None:
-            if mlp is not None:
-                # Zero-filling a real MLP silently yields wrong numbers downstream
-                # (SVD/weight analyses decompose zeros). Say so — the fill stays for
-                # architectures that genuinely have no MLP under this name.
+            if mlp is None:
+                params_dict[f"blocks.{layer_idx}.mlp.W_in"] = _zeros(cfg.d_model, d_mlp)
+                params_dict[f"blocks.{layer_idx}.mlp.W_out"] = _zeros(d_mlp, cfg.d_model)
+                params_dict[f"blocks.{layer_idx}.mlp.b_in"] = _zeros(d_mlp)
+                params_dict[f"blocks.{layer_idx}.mlp.b_out"] = _zeros(cfg.d_model)
+            else:
                 logger.warning(
-                    "Block %d MLP weights could not be extracted — emitting ZEROS "
-                    "for blocks.%d.mlp.W_in/W_out/b_in/b_out. Any weight-space "
-                    "analysis of this layer will be meaningless.",
-                    layer_idx,
+                    "Block %d MLP does not expose a single dense W_in/W_out; "
+                    "omitting its MLP parameters from the TL-style parameter dictionary.",
                     layer_idx,
                 )
-            params_dict[f"blocks.{layer_idx}.mlp.W_in"] = _zeros(cfg.d_model, d_mlp)
-            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = _zeros(d_mlp, cfg.d_model)
-            params_dict[f"blocks.{layer_idx}.mlp.b_in"] = _zeros(d_mlp)
-            params_dict[f"blocks.{layer_idx}.mlp.b_out"] = _zeros(cfg.d_model)
         else:
             params_dict[f"blocks.{layer_idx}.mlp.W_in"] = w_in
             w_out = _tensor_attr(mlp, "W_out")
-            params_dict[f"blocks.{layer_idx}.mlp.W_out"] = (
-                w_out if w_out is not None else _zeros(d_mlp, cfg.d_model)
-            )
+            if w_out is not None:
+                params_dict[f"blocks.{layer_idx}.mlp.W_out"] = w_out
             b_in = _tensor_attr(mlp, "b_in")
             params_dict[f"blocks.{layer_idx}.mlp.b_in"] = (
                 b_in if b_in is not None else _zeros(d_mlp)

@@ -822,6 +822,12 @@ class AttentionBridge(GeneralizedComponent):
         elif len(args) > 0 and isinstance(args[0], torch.Tensor):
             hooked = self.hook_in(args[0])
             args = (hooked,) + args[1:]
+        # Modules exposing the pattern seam (NativeAttention) run the pattern
+        # through hook_pattern INSIDE the computation, so hook edits re-weight
+        # the output; post-hoc firing below would be a silent no-op for writes.
+        pattern_hooked_inside = bool(getattr(self.original_component, "accepts_pattern_fn", False))
+        if pattern_hooked_inside:
+            kwargs["pattern_fn"] = self.hook_pattern
         # try/finally so the captured tensor (and its autograd graph) is
         # released even if original_component raises.
         try:
@@ -839,7 +845,8 @@ class AttentionBridge(GeneralizedComponent):
             # For T5, second element is position_bias which should be passed through
             if isinstance(second_element, torch.Tensor) and second_element.dim() == 4:
                 # This looks like attention weights [batch, heads, seq, seq]
-                second_element = self.hook_pattern(second_element)
+                if not pattern_hooked_inside:
+                    second_element = self.hook_pattern(second_element)
                 # Also store for potential hook_attn_scores (before softmax)
                 # Note: Most HF implementations return post-softmax weights
                 self.hook_attn_scores(second_element)
@@ -854,14 +861,35 @@ class AttentionBridge(GeneralizedComponent):
 
     @property
     def W_Q(self) -> torch.Tensor:
-        """Get W_Q in 3D format [n_heads, d_model, d_head]."""
+        """Get W_Q in 3D format [n_heads, d_model, d_head].
+
+        Gated query projections retain their live query-and-gate parameter;
+        this analysis view selects the query rows interleaved within each head.
+        """
         weight = require_readable_weight(
             self.q.weight, operation=f"read W_Q from {self.name}", owner=self.q
         )
         if weight.ndim == 2 and self.config is not None:
-            return self._reshape_weight_to_3d(
-                weight, self._get_n_heads(), in_out_layout=self._weight_layout_in_out(self.q)
-            )
+            n_heads = self._get_n_heads()
+            in_out_layout = self._weight_layout_in_out(self.q)
+            if getattr(self.config, "gated_q_proj", False):
+                d_head = int(self.config.d_head)
+                gated_width = n_heads * d_head * 2
+                if in_out_layout is True:
+                    output_first_weight = weight.T
+                elif in_out_layout is False or weight.shape[0] == gated_width:
+                    output_first_weight = weight
+                elif weight.shape[1] == gated_width:
+                    output_first_weight = weight.T
+                else:
+                    output_first_weight = None
+
+                if output_first_weight is not None and output_first_weight.shape[0] == gated_width:
+                    # Preserve the live query-gate projection; W_Q is an analysis-only query view.
+                    per_head_weight = output_first_weight.reshape(n_heads, d_head * 2, -1)
+                    return per_head_weight[:, :d_head, :].transpose(-1, -2)
+
+            return self._reshape_weight_to_3d(weight, n_heads, in_out_layout=in_out_layout)
         return weight
 
     @property

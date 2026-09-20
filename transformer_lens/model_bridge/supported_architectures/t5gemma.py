@@ -39,6 +39,7 @@ from transformer_lens.model_bridge.generalized_components import (
 from transformer_lens.model_bridge.generalized_components.t5gemma_decoder_block import (
     T5GemmaDecoderBlockBridge,
 )
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class T5GemmaArchitectureAdapter(ArchitectureAdapter):
@@ -277,8 +278,7 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
         encoder_rotary = hf_model.model.encoder.rotary_emb
         decoder_rotary = hf_model.model.decoder.rotary_emb
 
-        if hasattr(hf_model, "config") and hasattr(hf_model.config, "_attn_implementation"):
-            hf_model.config._attn_implementation = "eager"
+        force_eager_attention(hf_model)
 
         if bridge_model is not None:
             for block in getattr(bridge_model, "encoder_blocks", []):

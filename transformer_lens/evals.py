@@ -323,10 +323,10 @@ class IOIDataset(Dataset):
     .. code-block:: python
 
         >>> from transformer_lens.evals import ioi_eval, IOIDataset
-        >>> from transformer_lens.HookedTransformer import HookedTransformer
+        >>> from transformer_lens.model_bridge import TransformerBridge
 
-        >>> model = HookedTransformer.from_pretrained('gpt2-small')
-        Loaded pretrained model gpt2-small into HookedTransformer
+        >>> model = TransformerBridge.boot_transformers("gpt2", device="cpu")
+        >>> model.enable_compatibility_mode()
 
         >>> # Evaluate on a deterministic dataset (seed makes results reproducible)
         >>> ds = IOIDataset(tokenizer=model.tokenizer, num_samples=100, seed=42)
@@ -447,7 +447,7 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
     """Evaluate the Model on the Indirect Object Identification Task.
 
     Args:
-        model: HookedTransformer model.
+        model: A TransformerBridge model.
         dataset: PyTorch Dataset that returns a dict with keys "prompt", "IO", and "S".
         batch_size: Batch size to use.
         num_samples: Number of samples to use.
@@ -534,7 +534,7 @@ def mmlu_eval(
     Paper: https://arxiv.org/abs/2009.03300
 
     Args:
-        model: HookedTransformer model to evaluate.
+        model: A TransformerBridge model to evaluate.
         tokenizer: Tokenizer to use. If None, uses model.tokenizer.
         subjects: Subject(s) to evaluate on. Can be None (all 57 subjects), a single subject
             string, or a list of subjects. See :const:`MMLU_SUBJECTS` for valid names.
@@ -552,10 +552,11 @@ def mmlu_eval(
 
     .. code-block:: python
 
-        >>> from transformer_lens import HookedTransformer
+        >>> from transformer_lens.model_bridge import TransformerBridge
         >>> from transformer_lens.evals import mmlu_eval
 
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")  # doctest: +SKIP
+        >>> model = TransformerBridge.boot_transformers("gpt2")  # doctest: +SKIP
+        >>> model.enable_compatibility_mode()  # doctest: +SKIP
         >>> results = mmlu_eval(model, subjects="abstract_algebra", num_samples=10)  # doctest: +SKIP
         >>> print(f"Accuracy: {results['accuracy']:.2%}")  # doctest: +SKIP
     """
@@ -610,7 +611,6 @@ def mmlu_eval(
         # Tokenize the prompt
         tokens = tokenizer.encode(prompt, return_tensors="pt").to(model.cfg.device)
 
-        # Get logits
         logits = model(tokens, return_type="logits")
 
         # Get log probabilities at the last position (predicting the answer letter)
@@ -625,7 +625,6 @@ def mmlu_eval(
         # Select the choice with highest log probability
         predicted_answer = choice_log_probs.index(max(choice_log_probs))
 
-        # Check if correct
         is_correct = predicted_answer == correct_answer
         num_correct += int(is_correct)
         num_total += 1

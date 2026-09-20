@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
@@ -33,12 +34,6 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
 
         # Conversion rules for weight processing/folding
         # GPT-OSS uses MoE with batched experts, so we need special handling
-        # GPT-OSS may use GQA: K/V heads can differ from Q heads
-        n_kv_heads = (
-            self.cfg.n_key_value_heads
-            if hasattr(self.cfg, "n_key_value_heads") and self.cfg.n_key_value_heads is not None
-            else self.cfg.n_heads
-        )
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }
@@ -73,7 +68,12 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
                     ),
                     # GPT-OSS uses batched MoE experts with router scores
                     # MoEBridge handles the (hidden_states, router_scores) tuple returns
-                    "mlp": MoEBridge(name="mlp", config=self.cfg),
+                    "mlp": MoEBridge(
+                        name="mlp",
+                        config=self.cfg,
+                        submodules={"router": MoERouterBridge(name="router")},
+                        sparse_required=("router",),
+                    ),
                 },
             ),
             "ln_final": RMSNormalizationBridge(

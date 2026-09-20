@@ -2,7 +2,7 @@
 """
 Unit tests for the ProcessWeights class.
 
-Comprehensive test coverage for all weight processing functions extracted from HookedTransformer.
+Comprehensive test coverage for all weight processing functions.
 """
 
 from unittest.mock import Mock, patch
@@ -374,6 +374,7 @@ class TestProcessWeights:
         state_dict["unembed.W_U"] = torch.randn(cfg.d_model, 100)
         state_dict["unembed.b_U"] = torch.randn(100)
 
+        original = deep_copy_state_dict(state_dict)
         processed_dict = ProcessWeights.fold_layer_norm(state_dict, cfg)
 
         # Check that SoLU ln weights are replaced with identity values
@@ -388,6 +389,17 @@ class TestProcessWeights:
                 processed_dict[f"blocks.{l}.mlp.ln.b"],
                 torch.zeros_like(processed_dict[f"blocks.{l}.mlp.ln.b"]),
             )
+
+        # HookedTransformer's SoLU fold on TL-layout [d_mlp, d_model] W_out.
+        for l in range(cfg.n_layers):
+            W_out = original[f"blocks.{l}.mlp.W_out"]
+            ln_w = original[f"blocks.{l}.mlp.ln.w"]
+            ln_b = original[f"blocks.{l}.mlp.ln.b"]
+            expected_b_out = original[f"blocks.{l}.mlp.b_out"] + (W_out * ln_b[:, None]).sum(0)
+            expected_W_out = W_out * ln_w[:, None]
+            expected_W_out = expected_W_out - expected_W_out.mean(0, keepdim=True)
+            torch.testing.assert_close(processed_dict[f"blocks.{l}.mlp.b_out"], expected_b_out)
+            torch.testing.assert_close(processed_dict[f"blocks.{l}.mlp.W_out"], expected_W_out)
 
     def test_center_writing_weights(self, basic_config, basic_state_dict):
         """Test weight centering functionality."""
@@ -736,7 +748,7 @@ class TestProcessWeights:
         """Test _fold_layer function with no adapter (TransformerLens format).
 
         This test locks in the current behavior of _fold_layer when no adapter is provided,
-        ensuring that HookedTransformer models continue to work correctly.
+        ensuring that TransformerLens-format state dicts continue to work correctly.
         """
         cfg = basic_config
         cfg.n_layers = 1  # Test with single layer for simplicity

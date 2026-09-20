@@ -34,27 +34,24 @@ def snapshot_path(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def llama4mm_bridge(snapshot_path):
+def bridge(snapshot_path):
     return TransformerBridge.boot_transformers(snapshot_path, device="cpu", dtype=torch.float32)
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(llama4mm_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, llama4mm_bridge.cfg.d_vocab - 10, (1, 12))
+SAMPLE_TOKENS_LEN = 12
 
 
 class TestLlama4MultimodalBridgeCreation:
-    def test_adapter_selected(self, llama4mm_bridge):
+    def test_adapter_selected(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.llama4_multimodal import (
             Llama4MultimodalArchitectureAdapter,
         )
 
-        assert isinstance(llama4mm_bridge.adapter, Llama4MultimodalArchitectureAdapter)
+        assert isinstance(bridge.adapter, Llama4MultimodalArchitectureAdapter)
 
 
 class TestLlama4MultimodalForwardEquivalence:
-    def test_text_forward_matches_fresh_hf(self, llama4mm_bridge, snapshot_path, sample_tokens):
+    def test_text_forward_matches_fresh_hf(self, bridge, snapshot_path, sample_tokens):
         from transformers import AutoModelForImageTextToText
 
         fresh = AutoModelForImageTextToText.from_pretrained(
@@ -62,15 +59,15 @@ class TestLlama4MultimodalForwardEquivalence:
         )
         fresh.eval()
         with torch.no_grad():
-            bridge_out = llama4mm_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = fresh(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs fresh HF max diff = {max_diff}"
 
 
 class TestLlama4MultimodalHooks:
-    def test_hooks_fire(self, llama4mm_bridge, sample_tokens):
-        d_model = llama4mm_bridge.cfg.d_model
+    def test_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         seq = sample_tokens.shape[1]
         expected = {
             "blocks.0.attn.hook_out": (1, seq, d_model),
@@ -82,15 +79,13 @@ class TestLlama4MultimodalHooks:
             captured[hook.name] = tuple(tensor.shape)
 
         with torch.no_grad():
-            llama4mm_bridge.run_with_hooks(
-                sample_tokens, fwd_hooks=[(name, grab) for name in expected]
-            )
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
 
 class TestLlama4MultimodalGeneration:
-    def test_generate(self, llama4mm_bridge):
-        text = llama4mm_bridge.generate("Hello", max_new_tokens=4, do_sample=False, verbose=False)
+    def test_generate(self, bridge):
+        text = bridge.generate("Hello", max_new_tokens=4, do_sample=False, verbose=False)
         assert isinstance(text, str)
         assert text.startswith("Hello")
