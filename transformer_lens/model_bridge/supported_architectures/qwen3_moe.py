@@ -63,6 +63,9 @@ class Qwen3MoeArchitectureAdapter(ArchitectureAdapter):
         # Component mapping — PRE-NORM architecture:
         # ln1 = input_layernorm (applied BEFORE attention)
         # ln2 = post_attention_layernorm (applied BEFORE MLP)
+        # Deliberate mirror of olmoe.py / minimax_m2.py: same wiring by structural
+        # coincidence, not lineage (norm/router semantics differ per vendor),
+        # so each file keeps its mapping inline and readable.
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),

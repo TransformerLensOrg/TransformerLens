@@ -30,7 +30,7 @@ pip install transformer-lens lit-nlp
 ### In a Jupyter/Colab Notebook
 
 ```python
-from transformer_lens import HookedTransformer
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.lit import (
     HookedTransformerLIT,
     HookedTransformerLITConfig,
@@ -38,8 +38,8 @@ from transformer_lens.lit import (
     LITWidget,
 )
 
-# Load model
-model = HookedTransformer.from_pretrained("gpt2-small")
+# Load model (the LIT wrapper accepts any TransformerLens model, e.g. TransformerBridge)
+model = TransformerBridge.boot_transformers("gpt2-small")
 
 # Create LIT wrapper
 config = HookedTransformerLITConfig(
@@ -66,14 +66,14 @@ widget.render()
 ### As a Standalone Server
 
 ```python
-from transformer_lens import HookedTransformer
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.lit import (
     HookedTransformerLIT,
     SimpleTextDataset,
     serve,
 )
 
-model = HookedTransformer.from_pretrained("gpt2-small")
+model = TransformerBridge.boot_transformers("gpt2-small")
 lit_model = HookedTransformerLIT(model)
 
 serve(

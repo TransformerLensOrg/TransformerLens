@@ -74,25 +74,9 @@ nbsphinx_prolog = r"""
 
 # Functions to ignore as they're not interesting to the end user
 functions_to_ignore = [
-    # functions from load_from_pretrained.py
-    "convert_hf_model_config",
-    "convert_bert_weights",
-    "convert_gpt2_weights",
-    "convert_gptj_weights",
-    "convert_llama_weights",
-    "convert_mingpt_weights",
-    "convert_nanogpt_weights",
+    # functions relocated out of the deleted loading_from_pretrained.py
     "convert_neel_solu_old_weights",
-    "convert_neo_weights",
-    "convert_neox_weights",
-    "convert_neel_model_config",
-    "convert_opt_weights",
-    "convert_gemma_weights",
-    "fill_missing_keys",
-    "get_basic_config",
     "get_official_model_name",
-    "get_pretrained_state_dict",
-    "make_model_alias_map",
     # functions from make_docs.py
     "get_config",
     "get_property",
@@ -135,12 +119,7 @@ def run_apidoc(_app: Optional[Any] = None):
     excluded_modules = [
         "ActivationCache.py",
         "FactoredMatrix.py",
-        "HookedEncoder.py",
-        "HookedEncoderDecoder.py",
-        "HookedTransformer.py",
         "SVDInterpreter.py",
-        "BertNextSentencePrediction.py",
-        "config/HookedTransformerConfig.py",
     ]
     args = [
         "--force",  # Overwrite existing files
@@ -156,8 +135,8 @@ def run_apidoc(_app: Optional[Any] = None):
 
     # Add exclude-members for modules with separate docs
     package_excludes = {
-        "transformer_lens.rst": "ActivationCache, FactoredMatrix, HookedEncoder, HookedEncoderDecoder, HookedTransformer, SVDInterpreter, BertNextSentencePrediction, HookedTransformerConfig, EasyTransformerConfig",
-        "transformer_lens.config.rst": "HookedTransformerConfig, TransformerBridgeConfig, TransformerLensConfig",
+        "transformer_lens.rst": "ActivationCache, FactoredMatrix, SVDInterpreter, EasyTransformerConfig",
+        "transformer_lens.config.rst": "TransformerBridgeConfig, TransformerLensConfig",
         "transformer_lens.conversion_utils.rst": "HookConversionSet",
     }
 

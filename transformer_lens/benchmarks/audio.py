@@ -5,7 +5,7 @@ audio waveform inputs through forward(), run_with_cache(), and produce
 stable representations.
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import torch
 
@@ -26,6 +26,37 @@ from transformer_lens.model_bridge import TransformerBridge
 # declares them: waveform encoders (HuBERT, wav2vec2) have a conv feature
 # extractor, while spectrogram encoders (AST) patch-embed the spectrogram directly.
 _CRITICAL_AUDIO_COMPONENTS = ("audio_feature_extractor", "conv_pos_embed", "embed_ln", "embed")
+
+
+def _prepare_audio_encoder_input(
+    bridge: Any, test_audio: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    """Model-ready audio input via the bridge's feature extractor when available.
+
+    Non-wav2vec2-style architectures (e.g. AST) consume feature-extractor
+    outputs (spectrograms), not raw waveforms, and declare their own sampling
+    rate — so input prep must go through ``bridge.processor`` whenever the
+    boot attached one. Falls back to a raw 16 kHz waveform otherwise.
+    """
+    processor = getattr(bridge, "processor", None)
+    fe = getattr(processor, "feature_extractor", processor)
+    sampling_rate = int(getattr(fe, "sampling_rate", 16000) or 16000)
+
+    device = bridge.cfg.device
+    dtype = bridge.cfg.dtype
+    if test_audio is None:
+        test_audio = torch.randn(1, sampling_rate, device=device, dtype=dtype)
+
+    if fe is not None and callable(fe):
+        try:
+            waveforms = [w for w in test_audio.detach().cpu().float().numpy()]
+            out = fe(waveforms, sampling_rate=sampling_rate, return_tensors="pt")
+            prepared = out.get("input_values", out.get("input_features"))
+            if prepared is not None:
+                return prepared.to(device=device, dtype=dtype)
+        except Exception:
+            pass  # fall through to the raw waveform
+    return test_audio
 
 
 def _prepare_audio_text_inputs(bridge: TransformerBridge):

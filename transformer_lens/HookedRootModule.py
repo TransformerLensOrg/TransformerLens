@@ -1,15 +1,17 @@
 """HookedRootModule.
 
 Base class extending :class:`torch.nn.Module` with hook-based introspection
-utilities used by :class:`HookedTransformer` and friends. Lives in its own
-module so that downstream code (e.g. :class:`ActivationCache`) can type-hint
-against it without the broader ``hook_points`` import surface.
+utilities: wrap any module's tensors in :class:`HookPoint` wrappers, call ``setup()``,
+and ``run_with_hooks`` / ``run_with_cache`` work on it. This is permanent
+infrastructure — it survives the 4.0 removal of the legacy model classes and is
+the supported way to add TransformerLens-style hooks to arbitrary ``nn.Module`` objects.
+Lives in its own module so that downstream code (e.g. :class:`ActivationCache`)
+can type-hint against it without the broader ``hook_points`` import surface.
 """
 
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from functools import partial
@@ -55,13 +57,6 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
 
     def __init__(self, *args: Any):
         super().__init__()
-        if type(self) is HookedRootModule:
-            warnings.warn(
-                "HookedRootModule is deprecated and will be removed in 4.0. Use "
-                "TransformerBridge.boot_transformers(...) instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self.is_caching = False
         self.context_level = 0
 

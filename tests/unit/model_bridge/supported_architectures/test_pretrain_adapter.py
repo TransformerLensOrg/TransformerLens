@@ -48,6 +48,7 @@ class TestPretrainAdapterConstruction:
         assert adapter.cfg.final_rms is True
         assert adapter.cfg.gated_mlp is True
         assert adapter.cfg.attn_only is False
+        assert adapter.cfg.uses_rms_norm is True
 
     def test_adapter_mutates_the_passed_in_cfg_object_in_place(self) -> None:
         """Documented, intentional behavior (matches nanogpt.py's adapter
@@ -357,6 +358,42 @@ class TestPretrainAdapterBridgeConstruction:
         # Layer 0 is dense in this fixture -- same path convention applies.
         assert "blocks.0.mlp.hook_in" in cache
         assert "blocks.0.mlp.hook_out" in cache
+
+
+class OpaqueRmsNorm(torch.nn.Module):
+    """RMS norm whose class name defeats NormalizationBridge's name-based
+    introspection, forcing the cfg.uses_rms_norm fallback."""
+
+    def __init__(self, d_model: int, eps: float = 1e-5):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.ones(d_model))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
+
+
+class TestRmsSemanticsSurviveOpaqueNormNames:
+    def test_norm_hooks_do_not_mean_center_when_class_name_hides_rms(self) -> None:
+        """The wrapped protocol promises RMS norms but not any class name;
+        when introspection can't identify one, the bridge must still expose
+        RMS (uncentered) hook_normalized values via cfg.uses_rms_norm."""
+        torch.manual_seed(0)
+        cfg = _make_cfg(n_layers=1)
+        model = TinyPretrainModel(d_model=32, n_heads=4, n_layers=1, d_ff=64, vocab_size=256)
+        model.norm_f = OpaqueRmsNorm(32)
+        for block in model.blocks:
+            block.norm1 = OpaqueRmsNorm(32)
+            block.norm2 = OpaqueRmsNorm(32)
+        bridge = build_pretrain_bridge(model, cfg)
+        tokens = torch.randint(0, 256, (1, 5))
+        _, cache = bridge.run_with_cache(tokens)
+        x = cache["blocks.0.ln1.hook_in"]
+        normalized = cache["blocks.0.ln1.hook_normalized"]
+        expected = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + 1e-5)
+        assert torch.allclose(normalized, expected, atol=1e-6)
+        # A LayerNorm-style fallback would zero every per-position mean.
+        assert normalized.mean(-1).abs().max() > 1e-4
 
 
 class TestMoEConfigFieldIndependence:

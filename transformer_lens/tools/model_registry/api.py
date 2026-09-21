@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional
 
+from . import ARCHITECTURE_ALIASES
 from .exceptions import DataNotLoadedError, ModelNotFoundError
 from .schemas import (
     ArchitectureGap,
@@ -445,6 +446,9 @@ def is_architecture_supported(architecture_id: str) -> bool:
         >>> is_architecture_supported("SomeUnknownModel")  # doctest: +SKIP
         False
     """
+    # Hub configs may report an alias casing (e.g. JetMoEForCausalLM) while rows
+    # are keyed by the transformers class name; normalize before scanning.
+    architecture_id = ARCHITECTURE_ALIASES.get(architecture_id, architecture_id)
     report = _get_supported_models_report()
     return any(m.architecture_id == architecture_id for m in report.models)
 

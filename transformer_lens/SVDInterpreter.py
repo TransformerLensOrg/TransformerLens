@@ -1,29 +1,36 @@
 """SVD Interpreter.
 
 Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
-:class:`transformer_lens.HookedTransformer`.
+:class:`transformer_lens.model_bridge.TransformerBridge` (or any model exposing
+the TransformerLens weight surface).
 """
 
-from typing import Any, Optional, Union
+from typing import NoReturn, Optional, Union
 
 import torch
 from typing_extensions import Literal
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.model_protocol import TransformerLensModel
 
 OUTPUT_EMBEDDING = "unembed.W_U"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
 
 
 class SVDInterpreter:
-    def __init__(self, model: Any):
+    # Base protocol at runtime: beartype validates via getattr_static, which
+    # cannot see nn.Module instance submodules, so the WithWeights surface
+    # would spuriously reject legacy models. Everything touched here (cfg,
+    # tl_parameters/named_parameters fallback) is on the base surface.
+    def __init__(self, model: TransformerLensModel):
         self.model = model
         self.cfg = model.cfg
-        # Use tl_parameters() for TransformerBridge (returns TL-style dict)
-        # Fall back to named_parameters() for HookedTransformer
+        # Use tl_parameters() for TransformerBridge (returns TL-style dict); other
+        # nn.Module models with TL-style parameter names use named_parameters().
         if hasattr(model, "tl_parameters"):
             self.params = model.tl_parameters()
         else:
+            assert isinstance(model, torch.nn.Module)  # named_parameters() fallback
             self.params = {name: param for name, param in model.named_parameters()}
 
     def get_singular_vectors(
@@ -37,7 +44,7 @@ class SVDInterpreter:
 
         This tensor can then be plotted using Neel's PySvelte, as demonstrated in the demo for this
         feature. The demo also points out some "gotchas" in this feature - numerical instability
-        means inconsistency across devices, and the default HookedTransformer parameters don't
+        means inconsistency across devices, and default weight processing doesn't
         replicate the original SVD post very well. So I'd recommend checking out the demo if you
         want to use this!
 
@@ -45,9 +52,10 @@ class SVDInterpreter:
 
         .. code-block:: python
 
-            from transformer_lens import HookedTransformer, SVDInterpreter
+            from transformer_lens import SVDInterpreter
+            from transformer_lens.model_bridge import TransformerBridge
 
-            model = HookedTransformer.from_pretrained('gpt2-medium')
+            model = TransformerBridge.boot_transformers('gpt2-medium')
             svd_interpreter = SVDInterpreter(model)
 
             ov = svd_interpreter.get_singular_vectors('OV', layer_index=22, head_index=10)
@@ -74,6 +82,10 @@ class SVDInterpreter:
             layer_index: The index of the layer.
             num_vectors: Number of vectors.
             head_index: Index of the head.
+
+        Raises:
+            NotImplementedError: If the requested layer does not expose a single dense MLP weight,
+                such as a sparse-MoE layer that requires an expert-aware interpretation.
         """
 
         if head_index is None:
@@ -145,7 +157,10 @@ class SVDInterpreter:
             0 <= layer_index < self.cfg.n_layers
         ), f"Layer index must be between 0 and {self.cfg.n_layers-1} but got {layer_index}"
 
-        w_in = self.params[f"blocks.{layer_index}.mlp.W_in"].T
+        key = f"blocks.{layer_index}.mlp.W_in"
+        if key not in self.params:
+            self._raise_unsupported_mlp_weight("w_in", layer_index)
+        w_in = self.params[key].T
 
         if f"blocks.{layer_index}.ln2.w" in self.params:  # If fold_ln == False
             ln_2 = self.params[f"blocks.{layer_index}.ln2.w"]
@@ -160,4 +175,14 @@ class SVDInterpreter:
             0 <= layer_index < self.cfg.n_layers
         ), f"Layer index must be between 0 and {self.cfg.n_layers-1} but got {layer_index}"
 
-        return self.params[f"blocks.{layer_index}.mlp.W_out"]
+        key = f"blocks.{layer_index}.mlp.W_out"
+        if key not in self.params:
+            self._raise_unsupported_mlp_weight("w_out", layer_index)
+        return self.params[key]
+
+    def _raise_unsupported_mlp_weight(self, weight_name: str, layer_index: int) -> NoReturn:
+        raise NotImplementedError(
+            f"SVDInterpreter cannot analyze {weight_name} for layer {layer_index}: "
+            "the layer does not expose a single dense MLP weight. Sparse MoE layers "
+            "require an explicit expert-aware interpretation."
+        )

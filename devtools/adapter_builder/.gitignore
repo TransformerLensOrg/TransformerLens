@@ -1,0 +1,6 @@
+# Local configuration — contains HF_TOKEN and webhook URLs
+.env
+# Runtime output: PID files, debug logs, raw tmux dumps, wrapper scripts
+.logs/
+__pycache__/
+.DS_Store

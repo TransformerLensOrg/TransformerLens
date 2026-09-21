@@ -11,46 +11,40 @@ MODEL = "ibm-granite/granite-docling-258M"
 
 
 @pytest.fixture(scope="module")
-def idefics_bridge():
+def bridge():
     return TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
 
 
-@pytest.fixture(scope="module")
-def sample_tokens(idefics_bridge):
-    torch.manual_seed(0)
-    return torch.randint(0, idefics_bridge.cfg.d_vocab - 10, (1, 8))
-
-
 class TestIdefics3BridgeCreation:
-    def test_adapter_and_components(self, idefics_bridge):
+    def test_adapter_and_components(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.idefics3 import (
             Idefics3ArchitectureAdapter,
         )
 
-        assert isinstance(idefics_bridge.adapter, Idefics3ArchitectureAdapter)
-        assert idefics_bridge.cfg.is_multimodal is True
-        assert hasattr(idefics_bridge, "vision_encoder")
-        assert hasattr(idefics_bridge, "vision_projector")
+        assert isinstance(bridge.adapter, Idefics3ArchitectureAdapter)
+        assert bridge.cfg.is_multimodal is True
+        assert hasattr(bridge, "vision_encoder")
+        assert hasattr(bridge, "vision_projector")
 
-    def test_vision_tower_is_live(self, idefics_bridge):
-        hf_model = idefics_bridge.original_model
-        assert idefics_bridge.vision_encoder is hf_model.model.vision_model
-        assert idefics_bridge.vision_projector is hf_model.model.connector
+    def test_vision_tower_is_live(self, bridge):
+        hf_model = bridge.original_model
+        assert bridge.vision_encoder is hf_model.model.vision_model
+        assert bridge.vision_projector is hf_model.model.connector
 
 
 class TestIdefics3ForwardEquivalence:
-    def test_text_forward_matches_hf(self, idefics_bridge, sample_tokens):
-        hf_model = idefics_bridge.original_model
+    def test_text_forward_matches_hf(self, bridge, sample_tokens):
+        hf_model = bridge.original_model
         with torch.no_grad():
-            bridge_out = idefics_bridge(sample_tokens)
+            bridge_out = bridge(sample_tokens)
             hf_out = hf_model(input_ids=sample_tokens).logits
         max_diff = (bridge_out - hf_out).abs().max().item()
         assert max_diff < 1e-5, f"Bridge vs HF max diff = {max_diff}"
 
 
 class TestIdefics3Hooks:
-    def test_text_hooks_fire(self, idefics_bridge, sample_tokens):
-        d_model = idefics_bridge.cfg.d_model
+    def test_text_hooks_fire(self, bridge, sample_tokens):
+        d_model = bridge.cfg.d_model
         captured = {}
 
         def grab(tensor, hook):
@@ -58,7 +52,7 @@ class TestIdefics3Hooks:
 
         hooks = ["blocks.0.attn.hook_out", "blocks.0.mlp.hook_out"]
         with torch.no_grad():
-            idefics_bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
+            bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
         seq = sample_tokens.shape[1]
         for name in hooks:
             assert captured.get(name) == (1, seq, d_model), f"{name}: {captured.get(name)}"
@@ -73,12 +67,12 @@ class TestSiglipVisionLayerHooks:
 
     ALIASES = ("hook_attn_in", "hook_attn_out", "hook_mlp_in", "hook_mlp_out")
 
-    def test_declared_aliases_resolve_on_every_layer(self, idefics_bridge):
-        for index, layer in enumerate(idefics_bridge.vision_encoder.encoder_layers):
+    def test_declared_aliases_resolve_on_every_layer(self, bridge):
+        for index, layer in enumerate(bridge.vision_encoder.encoder_layers):
             for alias in self.ALIASES:
                 assert hasattr(layer, alias), f"layer {index} is missing {alias}"
 
-    def test_q_fires_split_by_the_vision_towers_head_count(self, idefics_bridge):
+    def test_q_fires_split_by_the_vision_towers_head_count(self, bridge):
         """The payoff, asserted on a fired tensor rather than on the config.
 
         q/k/v reshape to [batch, pos, n_heads, d_head] by ``config.n_heads``. Two
@@ -88,9 +82,9 @@ class TestSiglipVisionLayerHooks:
         hook-compatibility pass makes the hook fire flat [batch, pos, d_model].
         The text model's own count (9 over 576) is wrong here too.
         """
-        heads = idefics_bridge.cfg.vision_num_heads
-        d_head = idefics_bridge.cfg.vision_hidden_size // heads
-        assert heads != idefics_bridge.cfg.n_heads, "fixture no longer distinguishes the towers"
+        heads = bridge.cfg.vision_num_heads
+        d_head = bridge.cfg.vision_hidden_size // heads
+        assert heads != bridge.cfg.n_heads, "fixture no longer distinguishes the towers"
 
         fired: dict[str, tuple[int, ...]] = {}
 
@@ -98,14 +92,14 @@ class TestSiglipVisionLayerHooks:
             fired[name] = tuple(tensor.shape)
             return tensor
 
-        attn = idefics_bridge.vision_encoder.encoder_layers[0].attn
+        attn = bridge.vision_encoder.encoder_layers[0].attn
         for projection in ("q", "k", "v"):
             getattr(attn, projection).hook_out.add_hook(partial(record, name=projection))
 
         torch.manual_seed(0)
         with torch.no_grad():
-            idefics_bridge(
-                torch.randint(0, idefics_bridge.cfg.d_vocab - 10, (1, 8)),
+            bridge(
+                torch.randint(0, bridge.cfg.d_vocab - 10, (1, 8)),
                 pixel_values=torch.randn(1, 1, 3, 512, 512),
             )
 
@@ -124,11 +118,11 @@ class TestSiglipVisionLayerHooks:
         # the dims directly for the case the fixture cannot express behaviourally.
         config = attn.config
         assert config.n_heads == heads
-        assert config.d_model == idefics_bridge.cfg.vision_hidden_size
+        assert config.d_model == bridge.cfg.vision_hidden_size
 
-    def test_vision_hooks_fire_with_tower_shapes(self, idefics_bridge, sample_tokens):
+    def test_vision_hooks_fire_with_tower_shapes(self, bridge, sample_tokens):
         fired: dict[str, tuple[int, ...]] = {}
-        layer = idefics_bridge.vision_encoder.encoder_layers[0]
+        layer = bridge.vision_encoder.encoder_layers[0]
 
         def record(tensor, hook, name):
             fired[name] = tuple(tensor.shape)
@@ -138,7 +132,7 @@ class TestSiglipVisionLayerHooks:
             getattr(layer, alias).add_hook(partial(record, name=alias))
         torch.manual_seed(0)
         with torch.no_grad():
-            idefics_bridge(sample_tokens, pixel_values=torch.randn(1, 1, 3, 512, 512))
+            bridge(sample_tokens, pixel_values=torch.randn(1, 1, 3, 512, 512))
         for alias in self.ALIASES:
             assert alias in fired, f"{alias} never fired"
-            assert fired[alias][-1] == idefics_bridge.cfg.vision_hidden_size
+            assert fired[alias][-1] == bridge.cfg.vision_hidden_size

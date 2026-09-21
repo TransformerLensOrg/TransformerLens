@@ -117,3 +117,13 @@ class TestQwen2MoeBridge:
 
             router_scores_key = f"blocks.{layer_idx}.mlp.hook_router_scores"
             assert router_scores_key not in cache
+
+            # Routing observables mirror HookedTransformer: weights at full
+            # expert width, indices at top-k.
+            weights_key = f"blocks.{layer_idx}.mlp.gate.hook_expert_weights"
+            assert weights_key in cache, f"Missing cache key: {weights_key}"
+            assert cache[weights_key].shape == (flat_tokens, num_experts)
+
+            indices_key = f"blocks.{layer_idx}.mlp.gate.hook_expert_indices"
+            assert indices_key in cache, f"Missing cache key: {indices_key}"
+            assert cache[indices_key].shape == (flat_tokens, bridge.cfg.experts_per_token)

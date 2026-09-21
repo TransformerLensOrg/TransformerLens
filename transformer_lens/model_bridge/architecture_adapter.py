@@ -4,7 +4,6 @@ This module contains the base class for architecture adapters that map between d
 """
 from typing import Any, Dict, Optional, cast
 
-import einops
 import torch
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -14,6 +13,9 @@ from transformer_lens.conversion_utils.conversion_steps.rearrange_tensor_convers
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
@@ -22,6 +24,9 @@ from transformer_lens.model_bridge.generalized_components.gated_mlp import (
 )
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.position_embeddings_attention import (
+    PositionEmbeddingsAttentionBridge,
+)
 from transformer_lens.model_bridge.types import (
     ComponentMapping,
     RemoteComponent,
@@ -30,6 +35,7 @@ from transformer_lens.model_bridge.types import (
     TransformerLensPath,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
+from transformer_lens.utilities.attn_implementation import force_eager_attention
 
 
 class ArchitectureAdapter:
@@ -180,6 +186,46 @@ class ArchitectureAdapter:
             optional=optional,
         )
 
+    # Attention class _qkvo_attention_bridge instantiates; families with bespoke
+    # attention (BitNet, EXAONE-4) swap in a subclass.
+    _attention_bridge_cls: type[AttentionBridge] = PositionEmbeddingsAttentionBridge
+
+    def _qkvo_attention_bridge(
+        self,
+        *,
+        optional: bool = False,
+        extra_submodules: Optional[Dict[str, GeneralizedComponent]] = None,
+        requires_attention_mask: Optional[bool] = True,
+        requires_position_embeddings: Optional[bool] = True,
+    ) -> AttentionBridge:
+        """``self_attn`` bridge from ``_attention_bridge_cls`` with the standard
+        q/k/v/o LinearBridge submodules. A None flag is omitted from the
+        constructor call so the bridge class's own default applies."""
+        submodules: Dict[str, GeneralizedComponent] = {
+            "q": LinearBridge(name="q_proj"),
+            "k": LinearBridge(name="k_proj"),
+            "v": LinearBridge(name="v_proj"),
+            "o": LinearBridge(name="o_proj"),
+        }
+        if extra_submodules:
+            submodules.update(extra_submodules)
+        flags: Dict[str, Any] = {}
+        if requires_attention_mask is not None:
+            flags["requires_attention_mask"] = requires_attention_mask
+        if requires_position_embeddings is not None:
+            flags["requires_position_embeddings"] = requires_position_embeddings
+        return self._attention_bridge_cls(
+            name="self_attn",
+            config=self.cfg,
+            optional=optional,
+            submodules=submodules,
+            **flags,
+        )
+
+    def _build_attention_bridge(self) -> AttentionBridge:
+        """Attention bridge seam; subclasses swap the class or the construction."""
+        return self._qkvo_attention_bridge()
+
     def _canonical_layer_types(self, cfg: Any) -> list[str]:
         """Per-layer mixer-type list, normalized to canonical TL names
         (mamba->linear_attention, attention->full_attention; others pass through)."""
@@ -201,13 +247,14 @@ class ArchitectureAdapter:
             vision_cfg, "num_attention_heads", getattr(vision_cfg, "num_heads", None)
         )
 
-    def _set_rms_rotary_defaults(self, *, final_rms: bool = True) -> None:
+    def _set_rms_rotary_defaults(self, *, final_rms: bool = True, gated: bool = True) -> None:
         """Set the Llama-family config flags: RMS norms, rotary positions, gated MLP
-        (final_rms is per-architecture -- Mistral/Mixtral/OLMoE set False)."""
+        (final_rms is per-architecture -- Mistral/Mixtral/OLMoE set False; gated=False
+        for squared-ReLU/plain-MLP families like Gidd and NanoChat)."""
         self.cfg.normalization_type = "RMS"
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.final_rms = final_rms
-        self.cfg.gated_mlp = True
+        self.cfg.gated_mlp = gated
         self.cfg.attn_only = False
         self.cfg.uses_rms_norm = True
 
@@ -933,8 +980,7 @@ class ArchitectureAdapter:
             hf_model: The loaded HuggingFace model instance
         """
         if getattr(self.cfg, "attn_implementation", None) == "eager":
-            if hasattr(hf_model, "config"):
-                hf_model.config._attn_implementation = "eager"
+            force_eager_attention(hf_model)
 
     def create_stateful_cache(
         self,
@@ -1008,20 +1054,9 @@ class ArchitectureAdapter:
             if lm is None:
                 break
 
-        if (
-            eager is not None
-            and hasattr(hf_model, "config")
-            and hasattr(hf_model.config, "_attn_implementation")
-        ):
-            hf_model.config._attn_implementation = "eager"
-            # Nested multimodal configs carry their own attn implementation.
-            text_config = getattr(hf_model.config, "text_config", None)
-            if text_config is not None:
-                text_config._attn_implementation = "eager"
-        if eager == "layers" and lm is not None and hasattr(lm, "layers"):
-            for layer in lm.layers:
-                if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "config"):
-                    layer.self_attn.config._attn_implementation = "eager"
+        if eager is not None:
+            # eager == "layers" additionally stamps per-layer self_attn configs.
+            force_eager_attention(hf_model, per_layer=(eager == "layers"))
 
         if not wire_rotary or lm is None or not hasattr(lm, rotary_attr):
             return
@@ -1047,100 +1082,3 @@ class ArchitectureAdapter:
             template = None
         if template is not None and hasattr(template, "set_rotary_emb"):
             template.set_rotary_emb(rotary_emb)
-
-    def _enable_ht_attention(self, attn_bridge, hf_attn):
-        """Enable HT computation for attention (architecture-agnostic).
-
-        Detects the architecture by checking which weight attributes exist.
-        """
-        n_heads = getattr(
-            self.cfg,
-            "n_heads",
-            getattr(self.cfg, "n_head", getattr(self.cfg, "num_attention_heads", None)),
-        )
-        d_model = getattr(
-            self.cfg, "d_model", getattr(self.cfg, "n_embd", getattr(self.cfg, "hidden_size", None))
-        )
-        if n_heads is None or d_model is None:
-            raise RuntimeError(f"Could not determine n_heads or d_model from config: {self.cfg}")
-        d_head = d_model // n_heads
-        if hasattr(hf_attn, "c_attn"):
-            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_gpt2_style(
-                hf_attn.c_attn, n_heads, d_model, d_head
-            )
-            W_O, b_O = self._extract_output_proj(hf_attn.c_proj, n_heads, d_head, d_model)
-        elif (
-            hasattr(hf_attn, "q_proj") and hasattr(hf_attn, "k_proj") and hasattr(hf_attn, "v_proj")
-        ):
-            W_Q, b_Q = self._extract_linear_ht_format(hf_attn.q_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
-            W_K, b_K = self._extract_linear_ht_format(hf_attn.k_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
-            W_V, b_V = self._extract_linear_ht_format(hf_attn.v_proj, n_heads, d_head, d_model)  # type: ignore[attr-defined]
-            out_proj = hf_attn.out_proj if hasattr(hf_attn, "out_proj") else hf_attn.o_proj
-            W_O, b_O = self._extract_output_proj(out_proj, n_heads, d_head, d_model)
-        elif hasattr(hf_attn, "query_key_value"):
-            W_Q, W_K, W_V, b_Q, b_K, b_V = self._extract_qkv_neox_style(  # type: ignore[attr-defined]
-                hf_attn.query_key_value, n_heads, d_model, d_head
-            )
-            W_O, b_O = self._extract_output_proj(hf_attn.dense, n_heads, d_head, d_model)
-        else:
-            raise ValueError(
-                f"Unsupported attention architecture. Module has attributes: {dir(hf_attn)}"
-            )
-        attn_bridge.set_processed_weights(
-            {
-                "W_Q": W_Q,
-                "W_K": W_K,
-                "W_V": W_V,
-                "W_O": W_O,
-                "b_Q": b_Q,
-                "b_K": b_K,
-                "b_V": b_V,
-                "b_O": b_O,
-            }
-        )
-        self._disable_hook_conversions(attn_bridge)
-
-    def _extract_qkv_gpt2_style(self, c_attn, n_heads, d_model, d_head):
-        """Extract Q, K, V weights from GPT-2 style combined c_attn.
-
-        GPT-2 uses Conv1D which stores weights as [in_features, out_features] = [d_model, 3*d_model].
-        We need to split and reshape to [n_heads, d_model, d_head] format for HookedTransformer.
-        """
-        W = c_attn.weight.data
-        W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=1)
-        W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=n_heads)
-        W_K = einops.rearrange(W_K, "m (i h)->i m h", i=n_heads)
-        W_V = einops.rearrange(W_V, "m (i h)->i m h", i=n_heads)
-        qkv_bias = c_attn.bias.data
-        qkv_bias = einops.rearrange(
-            qkv_bias, "(qkv index head)->qkv index head", qkv=3, index=n_heads, head=d_head
-        )
-        b_Q = qkv_bias[0]
-        b_K = qkv_bias[1]
-        b_V = qkv_bias[2]
-        return (W_Q, W_K, W_V, b_Q, b_K, b_V)
-
-    def _extract_output_proj(self, out_proj, n_heads, d_head, d_model):
-        """Extract output projection weights in HT format.
-
-        Returns W_O in [n_heads, d_head, d_model] format for HookedTransformer compatibility.
-
-        For Conv1D (GPT-2), weight is stored as [d_model, d_model] = [nx, nf].
-        For Linear, weight is stored as [d_model, d_model] = [out_features, in_features].
-        """
-        weight = out_proj.weight.data
-        bias = out_proj.bias.data if hasattr(out_proj, "bias") else None
-        W_O = weight.view(n_heads, d_head, d_model).contiguous()
-        b_O = bias.contiguous() if bias is not None else None
-        return (W_O, b_O)
-
-    def _disable_hook_conversions(self, attn_bridge):
-        """Disable hook conversions for attention submodules.
-
-        Note: In no_processing mode, we DON'T disable conversions because Q/K/V hooks need
-        to convert from 3D [batch, seq, d_model] to 4D [batch, seq, n_heads, d_head].
-        We also preserve o.hook_in.hook_conversion (hook_z).
-
-        This method is kept for potential future use but currently does nothing in no_processing mode.
-        """
-        pass

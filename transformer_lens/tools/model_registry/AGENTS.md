@@ -47,7 +47,6 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 | `--retry-failed` | Re-test status=3 (failed) entries |
 | `--dry-run` | Print what would be tested without running |
 | `--no-hf-reference` | Skip the HF reference — Phase 1 is structural-only, never numerically compared to HF. A passing run records `status=4` (PROVISIONAL), which does **not** count as verified. Re-run without the flag to upgrade to VERIFIED. |
-| `--no-ht-reference` | Skip the HookedTransformer comparison passes (faster, lower confidence) |
 | `--quiet` | Suppress per-model logging |
 
 ---
@@ -119,9 +118,9 @@ Never edit manually.
 | 8 | Audio — Hubert (waveform) and AST (spectrogram) |
 | 9 | Vision — ViT/DeiT pixel forward, hook/cache firing, representation stability, classification decode |
 
-SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2/P3 run but skip their HookedTransformer-comparison sub-tests (SSMs have no HT), which is scored as a pass.
+SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH, GraniteMoeHybrid, Jamba, Qwen3.5/Qwen3-Next) declare `applicable_phases = [1, 2, 3, 4]` — all four apply. P2 runs bridge self-checks (hooks, cache, gradients); P3 checks processed-weight equivalence against the Phase-1 HF reference when available.
 
-**Non-text modalities.** `classify_architecture` routes audio architectures to `{1, 8}` and vision architectures (ViT/DeiT) to `{1, 9}` — vision has no tokenizer for P4, and neither modality has a HookedTransformer counterpart for P2/P3. Phases 1/8/9 build their input with `build_modality_input()` ([`benchmarks/utils.py`](../../benchmarks/utils.py)), which shapes it from the HF config: `[batch, max_length, num_mel_bins]` for spectrogram encoders, `[batch, samples]` for waveform encoders, `[batch, channels, image_size, image_size]` for vision. Add a new non-text architecture there rather than hardcoding a shape at the call site.
+**Non-text modalities.** `classify_architecture` routes audio architectures to `{1, 8}` and vision architectures (ViT/DeiT) to `{1, 9}` — vision has no tokenizer for P4, and neither modality produces the text logits/loss that P2/P3 compare. Phases 1/8/9 build their input with `build_modality_input()` ([`benchmarks/utils.py`](../../benchmarks/utils.py)), which shapes it from the HF config: `[batch, max_length, num_mel_bins]` for spectrogram encoders, `[batch, samples]` for waveform encoders, `[batch, channels, image_size, image_size]` for vision. Add a new non-text architecture there rather than hardcoding a shape at the call site.
 
 ### Phase-score thresholds
 

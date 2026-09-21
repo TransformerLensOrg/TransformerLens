@@ -4,7 +4,7 @@
 
 Most research code that was written against `HookedTransformer.from_pretrained(...)` assumes compatibility mode. Most new code that needs HF-faithful logits does not.
 
-> Source: [`transformer_lens/model_bridge/bridge.py:enable_compatibility_mode`](../../../transformer_lens/model_bridge/bridge.py).
+> Source: [`transformer_lens/model_bridge/transformer_bridge.py:enable_compatibility_mode`](../../../transformer_lens/model_bridge/transformer_bridge.py).
 
 ---
 
@@ -83,14 +83,14 @@ An adapter author for a new post-norm or MLA-style architecture must handle thes
 
 ## The four-quadrant test matrix
 
-The integration conftest at [`tests/integration/model_bridge/conftest.py`](../../../tests/integration/model_bridge/conftest.py) provides four bridge variants for every test model:
+The shared conftest at [`tests/conftest.py`](../../../tests/conftest.py) provides three bridge variants plus frozen reference goldens:
 
 | Variant | `compatibility_mode` | `no_processing` | Tests… |
 |---|---|---|---|
 | `gpt2_bridge` | off | n/a | HF-faithful numerics |
 | `gpt2_bridge_compat` | on | `False` | HT-equivalent numerics |
 | `gpt2_bridge_compat_no_processing` | on | `True` | Hook aliases without weight processing — used to bisect numerical bugs |
-| (HT side) `gpt2_hooked_processed`, `gpt2_hooked_unprocessed` | n/a | n/a | Reference HookedTransformer with/without weight processing |
+| (reference) `gpt2_goldens_processed`, `gpt2_goldens_unprocessed` | n/a | n/a | Frozen HookedTransformer outputs with/without weight processing |
 
 New integration tests should use the variant that matches the property they're testing. Tests of HF parity → `gpt2_bridge`. Tests of HT-API behaviour → `gpt2_bridge_compat`. Tests of hook semantics regardless of weights → `gpt2_bridge_compat_no_processing`.
 
@@ -101,6 +101,12 @@ New integration tests should use the variant that matches the property they're t
 - **One-shot:** calling it twice re-runs the centering subtractions. Don't.
 - **Not reversible** from within the bridge — re-boot for raw weights.
 - **`_setup_hook_compatibility` is idempotent**; only `process_weights` mutates weights.
+- **Incompatible with a CPU/disk-offloaded `device_map`** unless `no_processing=True`. Weight
+  processing (`fold_ln` etc.) reads and rewrites parameters directly across many components at
+  once, not through a single component's own `forward()` call, so it isn't covered by
+  `GeneralizedComponent`'s per-call materialization and raises immediately rather than crashing
+  mid-fold on a raw `meta` tensor. The default (non-compat-mode) forward pass works normally
+  under offload — this restriction is compat mode's weight processing specifically.
 
 ## See also
 

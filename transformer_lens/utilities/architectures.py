@@ -82,6 +82,11 @@ AUDIO_ARCHITECTURES: set[str] = {
     "HubertForCTC",
     "HubertModel",
     "HubertForSequenceClassification",
+    "Wav2Vec2ForCTC",
+    "Wav2Vec2Model",
+    # Pretraining checkpoints (facebook/wav2vec2-base/-large declare this class)
+    # load their encoder via AutoModel -> Wav2Vec2Model.
+    "Wav2Vec2ForPreTraining",
 } | AUDIO_CLASSIFICATION_ARCHITECTURES
 
 # Vision-only (non-multimodal, no text tower) encoder models. Split into the
@@ -102,21 +107,6 @@ VISION_ARCHITECTURES: set[str] = VISION_MODEL_ARCHITECTURES | VISION_CLASSIFICAT
 BASE_AUTOMODEL_ARCHITECTURES: set[str] = {
     "DreamModel",
 }
-
-# Bridge uses different hook shapes than HookedTransformer by design.
-# Phase 2/3 HT comparisons are skipped; Phase 1 (HF comparison) is the gold standard.
-NO_HT_COMPARISON_ARCHITECTURES: set[str] = (
-    MULTIMODAL_ARCHITECTURES
-    | AUDIO_ARCHITECTURES
-    # Vision encoders have no HookedTransformer counterpart.
-    | VISION_ARCHITECTURES
-    # Encoder-decoder: HookedTransformer cannot represent them (T5 repos under
-    # org-prefixed names slip past HT's legacy name guard and crash at forward).
-    | SEQ2SEQ_ARCHITECTURES
-    | {
-        "Gemma3ForCausalLM",
-    }
-)
 
 
 def classify_architecture(architecture: str) -> str:
@@ -151,7 +141,7 @@ def classify_model_config(config) -> str:
     """Classify a model by its HF config.
 
     Checks config.is_encoder_decoder first, then falls back to architecture list.
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     if getattr(config, "is_encoder_decoder", False):
         return "seq2seq"
@@ -171,7 +161,7 @@ def classify_model_name(
 
     Loads the config once, classifies from it. If token is None, reads
     HF_TOKEN from the environment automatically.
-    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "causal_lm"
+    Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
     try:
         from transformers import AutoConfig

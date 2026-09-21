@@ -85,9 +85,9 @@ class BlockBridge(GeneralizedComponent):
                 auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
         merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
 
-        # Guard the sequential-block case: attn + mlp with no ln2 would silently
-        # point hook_resid_mid at the wrong tensor. Use ParallelBlockBridge for
-        # parallel-residual architectures.
+        # Guard against the bug where a sequential block (attn + mlp) with no ln2
+        # silently points hook_resid_mid at the wrong tensor. Use
+        # ParallelBlockBridge for parallel-residual architectures.
         # Skip the check on generic-container / attn-only uses (no mlp).
         has_attn_like = submodules is not None and any(
             k in submodules for k in _VARIANT_SUBMODULE_SET
@@ -101,7 +101,6 @@ class BlockBridge(GeneralizedComponent):
                 f"parallel-residual architecture."
             )
 
-        # Call parent with merged overrides
         super().__init__(
             name,
             config,
@@ -242,6 +241,7 @@ class BlockBridge(GeneralizedComponent):
 
         self._maybe_wire_capture_hooks()
         self._clear_attention_capture()
+        args, kwargs = self._maybe_inject_start_residual(args, kwargs)
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
 
@@ -321,27 +321,40 @@ class BlockBridge(GeneralizedComponent):
         The _stop_at_layer_idx attribute is set by the bridge's forward method.
         Supports TL/GPT-2/LLaMA naming patterns for layer index extraction.
         """
-        if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
+        if getattr(self, "_stop_at_layer_idx", None) is None:
             return
-        if self.name is not None:
-            # Anchored alternation: native models name blocks top-level
-            # ("layers.0"), which the old leading-dot pattern missed entirely.
-            match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
-        else:
-            match = None
-        if match:
-            layer_idx = int(match.group(1))
-            if layer_idx == self._stop_at_layer_idx:
-                if len(args) > 0 and isinstance(args[0], torch.Tensor):
-                    input_tensor = args[0]
-                elif "hidden_states" in kwargs and isinstance(
-                    kwargs["hidden_states"], torch.Tensor
-                ):
-                    input_tensor = kwargs["hidden_states"]
-                else:
-                    raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
-                input_tensor = self.hook_in(input_tensor)
-                raise StopAtLayerException(input_tensor)
+        layer_idx = self._extract_layer_idx()
+        if layer_idx is not None and layer_idx == self._stop_at_layer_idx:
+            if len(args) > 0 and isinstance(args[0], torch.Tensor):
+                input_tensor = args[0]
+            elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+                input_tensor = kwargs["hidden_states"]
+            else:
+                raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
+            input_tensor = self.hook_in(input_tensor)
+            raise StopAtLayerException(input_tensor)
+
+    def _maybe_inject_start_residual(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+        """If this is the start_at_layer block, swap in the caller's residual.
+
+        Mirror of ``_check_stop_at_layer``: the bridge's forward stashes the
+        residual-stream input on the block via ``_start_residual`` and sets
+        ``_start_at_layer_idx``. This block replaces its incoming hidden states
+        with that residual; ``_hook_input_hidden_states`` then fires ``hook_in``
+        on it, so ``hook_resid_pre`` reflects the injected value.
+        """
+        if getattr(self, "_start_at_layer_idx", None) is None:
+            return args, kwargs
+        if self._extract_layer_idx() != self._start_at_layer_idx:
+            return args, kwargs
+        residual = getattr(self, "_start_residual", None)
+        if residual is None:
+            return args, kwargs
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            args = (residual,) + args[1:]
+        elif "hidden_states" in kwargs:
+            kwargs = {**kwargs, "hidden_states": residual}
+        return args, kwargs
 
     def _hook_input_hidden_states(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
         """Apply hook_in to the hidden_states input, whether in args or kwargs."""

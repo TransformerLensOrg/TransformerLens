@@ -30,11 +30,9 @@ def collect_all_submodules_of_component(
         if component_submodule.name is not None:
             submodules[block_prefix + component_submodule.name] = component_submodule
 
-        # If the component is a list item, we need to collect all submodules of the block bridge
         if component_submodule.is_list_item:
             submodules = collect_components_of_block_bridge(model, component_submodule, submodules)
 
-        # If the component has submodules, we need to collect them recursively
         if component_submodule.submodules:
             submodules = collect_all_submodules_of_component(
                 model, component_submodule, submodules, block_prefix

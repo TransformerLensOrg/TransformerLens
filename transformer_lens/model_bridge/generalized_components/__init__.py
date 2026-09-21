@@ -74,6 +74,9 @@ from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.pooler import (
+    BertPoolerBridge,
+)
 from transformer_lens.model_bridge.generalized_components.moe import (
     MoEBridge,
     MoERouterBridge,
@@ -186,6 +189,7 @@ __all__ = [
     "GatedRMSNormBridge",
     "MoEBridge",
     "MoERouterBridge",
+    "BertPoolerBridge",
     "PositionEmbeddingsAttentionBridge",
     "Qwen3_5VisionBlockBridge",
     "Qwen3_5VisionEncoderBridge",

@@ -22,7 +22,7 @@ manifest, and set of estimator options.
 ```python
 import torch
 
-from transformer_lens import TransformerBridge
+from transformer_lens.model_bridge import TransformerBridge
 
 model = TransformerBridge.boot_transformers(
     "openai-community/gpt2",
@@ -73,7 +73,7 @@ from pathlib import Path
 
 import torch
 
-from transformer_lens import TransformerBridge
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis import JacobianLens
 
 
@@ -185,7 +185,7 @@ publishing:
 ```python
 import torch
 
-from transformer_lens import TransformerBridge
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis import JacobianLens
 
 model = TransformerBridge.boot_transformers(

@@ -69,9 +69,9 @@ def test_component_harness_feeds_ints_to_embedding_tables(bert) -> None:
 
 
 def test_phase2_never_grades_against_a_causal_reference() -> None:
-    """A masked LM loaded into HookedTransformer runs bidirectional weights under
-    a causal mask — every comparison against it is noise. Phase 2 must skip that
-    reference; numerical checks fall back to the Phase 1 HF logits."""
+    """A masked LM graded against a causal reference is noise: bidirectional
+    weights run under a causal mask. Phase 2 grades against the HF model itself,
+    so a masked LM must clear it."""
     from transformer_lens.benchmarks.main_benchmark import run_benchmark_suite
     from transformer_lens.benchmarks.utils import BenchmarkSeverity
 
@@ -80,7 +80,6 @@ def test_phase2_never_grades_against_a_causal_reference() -> None:
         device="cpu",
         phases=[1, 2],
         use_hf_reference=True,
-        use_ht_reference=True,
         enable_compatibility_mode=False,
         verbose=False,
         track_memory=False,

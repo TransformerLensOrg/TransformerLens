@@ -17,24 +17,28 @@ def bridge_compat(distilgpt2_bridge_compat):
     return distilgpt2_bridge_compat
 
 
-@pytest.fixture()
-def reference_ht(distilgpt2_hooked_processed):
-    """Alias session fixture for backward compatibility with test signatures."""
-    return distilgpt2_hooked_processed
+@pytest.fixture(scope="module")
+def golden_activations(distilgpt2_goldens_processed):
+    """Frozen HT run_with_cache snapshot for the golden short prompt."""
+    return distilgpt2_goldens_processed.tensors("activations")
+
+
+@pytest.fixture(scope="module")
+def golden_prompt(distilgpt2_goldens_processed):
+    return distilgpt2_goldens_processed.scalars["short_prompt"]
 
 
 class TestReshapeBiasIntegration:
     """Verify reshaped biases produce correct attention computation on a real model."""
 
-    def test_reshaped_b_Q_produces_matching_hook_q(self, bridge_compat, reference_ht):
-        """b_Q reshaped via _reshape_bias should produce hook_q values matching HookedTransformer."""
-        text = "The quick brown fox"
-
+    def test_reshaped_b_Q_produces_matching_hook_q(
+        self, bridge_compat, golden_activations, golden_prompt
+    ):
+        """b_Q reshaped via _reshape_bias should produce hook_q values matching the golden."""
         with torch.no_grad():
-            _, ht_cache = reference_ht.run_with_cache(text)
-            _, br_cache = bridge_compat.run_with_cache(text)
+            _, br_cache = bridge_compat.run_with_cache(golden_prompt)
 
-        ht_q = ht_cache["blocks.0.attn.hook_q"]
+        ht_q = golden_activations["blocks.0.attn.hook_q"]
         br_q = br_cache["blocks.0.attn.hook_q"]
 
         assert ht_q.shape == br_q.shape, f"hook_q shapes differ: {ht_q.shape} vs {br_q.shape}"
@@ -43,15 +47,14 @@ class TestReshapeBiasIntegration:
             f"hook_q values differ by {max_diff:.6f} — " f"bias reshaping may be incorrect"
         )
 
-    def test_reshaped_b_V_produces_matching_hook_v(self, bridge_compat, reference_ht):
-        """b_V reshaped via _reshape_bias should produce hook_v values matching HookedTransformer."""
-        text = "The quick brown fox"
-
+    def test_reshaped_b_V_produces_matching_hook_v(
+        self, bridge_compat, golden_activations, golden_prompt
+    ):
+        """b_V reshaped via _reshape_bias should produce hook_v values matching the golden."""
         with torch.no_grad():
-            _, ht_cache = reference_ht.run_with_cache(text)
-            _, br_cache = bridge_compat.run_with_cache(text)
+            _, br_cache = bridge_compat.run_with_cache(golden_prompt)
 
-        ht_v = ht_cache["blocks.0.attn.hook_v"]
+        ht_v = golden_activations["blocks.0.attn.hook_v"]
         br_v = br_cache["blocks.0.attn.hook_v"]
 
         assert ht_v.shape == br_v.shape, f"hook_v shapes differ: {ht_v.shape} vs {br_v.shape}"
