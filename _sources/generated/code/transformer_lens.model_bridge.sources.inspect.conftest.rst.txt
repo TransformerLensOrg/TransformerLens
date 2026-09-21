@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.inspect.conftest module
+===============================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.inspect.conftest
+   :members:
+   :undoc-members:
+   :show-inheritance:

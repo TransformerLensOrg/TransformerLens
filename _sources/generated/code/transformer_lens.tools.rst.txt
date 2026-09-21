@@ -10,6 +10,14 @@ Subpackages
    transformer_lens.tools.analysis
    transformer_lens.tools.model_registry
 
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.tools.training
+
 Module contents
 ---------------
 

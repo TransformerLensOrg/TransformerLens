@@ -12,6 +12,7 @@ Submodules
    transformer_lens.utilities.aliases
    transformer_lens.utilities.architectures
    transformer_lens.utilities.attention
+   transformer_lens.utilities.attn_implementation
    transformer_lens.utilities.attribute_utils
    transformer_lens.utilities.bridge_components
    transformer_lens.utilities.cache
@@ -32,6 +33,7 @@ Submodules
    transformer_lens.utilities.quantization
    transformer_lens.utilities.slice
    transformer_lens.utilities.tensors
+   transformer_lens.utilities.tl_checkpoint_conversion
    transformer_lens.utilities.tokenize_utils
    transformer_lens.utilities.tracr
    transformer_lens.utilities.typed_module_list

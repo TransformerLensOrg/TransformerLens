@@ -1,7 +1,0 @@
-transformer\_lens.benchmarks.hook\_structure module
-===================================================
-
-.. automodule:: transformer_lens.benchmarks.hook_structure
-   :members:
-   :undoc-members:
-   :show-inheritance:

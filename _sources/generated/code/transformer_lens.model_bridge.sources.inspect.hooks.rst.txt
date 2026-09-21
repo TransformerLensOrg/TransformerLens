@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.inspect.hooks module
+============================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.inspect.hooks
+   :members:
+   :undoc-members:
+   :show-inheritance:

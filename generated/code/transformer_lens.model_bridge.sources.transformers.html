@@ -3,10 +3,10 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.model_bridge.supported_architectures package" href="transformer_lens.model_bridge.supported_architectures.html" /><link rel="prev" title="transformer_lens.model_bridge.sources.native.model module" href="transformer_lens.model_bridge.sources.native.model.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.model_bridge.sources.transformers.helpers module" href="transformer_lens.model_bridge.sources.transformers.helpers.html" /><link rel="prev" title="transformer_lens.model_bridge.sources.native.model module" href="transformer_lens.model_bridge.sources.native.model.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
-        <title>transformer_lens.model_bridge.sources.transformers module - TransformerLens Documentation</title>
+        <title>transformer_lens.model_bridge.sources.transformers package - TransformerLens Documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=135e06be" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=36a5483c" />
@@ -166,14 +166,18 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">News</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../content/news/release-3.0.html">TransformerLens 3.0</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../content/news/release-2.0.html">TransformerLens 2.0</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/news/release-4.0.html">TransformerLens 4.0</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/news/past_releases.html">Past Major Releases</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of Past Major Releases</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../content/news/release-3.0.html">TransformerLens 3.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/news/release-2.0.html">TransformerLens 2.0</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Documentation</span></p>
 <ul class="current">
-<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of transformer_lens</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
-<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of transformer_lens package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.benchmarks.html">transformer_lens.benchmarks package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of transformer_lens.benchmarks package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of transformer_lens</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of transformer_lens package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.benchmarks.html">transformer_lens.benchmarks package</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of transformer_lens.benchmarks package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.activation_cache.html">transformer_lens.benchmarks.activation_cache module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.audio.html">transformer_lens.benchmarks.audio module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.backward_gradients.html">transformer_lens.benchmarks.backward_gradients module</a></li>
@@ -182,9 +186,7 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.encoder_common.html">transformer_lens.benchmarks.encoder_common module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.forward_pass.html">transformer_lens.benchmarks.forward_pass module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.generation.html">transformer_lens.benchmarks.generation module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.granular_weight_processing.html">transformer_lens.benchmarks.granular_weight_processing module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.hook_registration.html">transformer_lens.benchmarks.hook_registration module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.hook_structure.html">transformer_lens.benchmarks.hook_structure module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.main_benchmark.html">transformer_lens.benchmarks.main_benchmark module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.multimodal.html">transformer_lens.benchmarks.multimodal module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.text_quality.html">transformer_lens.benchmarks.text_quality module</a></li>
@@ -194,35 +196,12 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.benchmarks.weight_processing.html">transformer_lens.benchmarks.weight_processing module</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.cache.html">transformer_lens.cache package</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of transformer_lens.cache package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.cache.html">transformer_lens.cache package</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of transformer_lens.cache package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.cache.key_value_cache.html">transformer_lens.cache.key_value_cache module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.cache.key_value_cache_entry.html">transformer_lens.cache.key_value_cache_entry module</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components package</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of transformer_lens.components package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.abstract_attention.html">transformer_lens.components.abstract_attention module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.attention.html">transformer_lens.components.attention module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_block.html">transformer_lens.components.bert_block module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_embed.html">transformer_lens.components.bert_embed module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_mlm_head.html">transformer_lens.components.bert_mlm_head module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_nsp_head.html">transformer_lens.components.bert_nsp_head module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_pooler.html">transformer_lens.components.bert_pooler module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.embed.html">transformer_lens.components.embed module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.grouped_query_attention.html">transformer_lens.components.grouped_query_attention module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm.html">transformer_lens.components.layer_norm module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm_pre.html">transformer_lens.components.layer_norm_pre module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.pos_embed.html">transformer_lens.components.pos_embed module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.rms_norm.html">transformer_lens.components.rms_norm module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.rms_norm_pre.html">transformer_lens.components.rms_norm_pre module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.t5_attention.html">transformer_lens.components.t5_attention module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.t5_block.html">transformer_lens.components.t5_block module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.token_typed_embed.html">transformer_lens.components.token_typed_embed module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.transformer_block.html">transformer_lens.components.transformer_block module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.unembed.html">transformer_lens.components.unembed module</a></li>
-</ul>
-</li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.config.html">transformer_lens.config package</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of transformer_lens.config package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.hooked_transformer_config.html">transformer_lens.config.hooked_transformer_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.transformer_bridge_config.html">transformer_lens.config.transformer_bridge_config module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.config.transformer_lens_config.html">transformer_lens.config.transformer_lens_config module</a></li>
 </ul>
@@ -255,7 +234,6 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.factories.html">transformer_lens.factories package</a><input class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><div class="visually-hidden">Toggle navigation of transformer_lens.factories package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.factories.activation_function_factory.html">transformer_lens.factories.activation_function_factory module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.factories.architecture_adapter_factory.html">transformer_lens.factories.architecture_adapter_factory module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.factories.mlp_factory.html">transformer_lens.factories.mlp_factory module</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.lit.html">transformer_lens.lit package</a><input class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><div class="visually-hidden">Toggle navigation of transformer_lens.lit package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -298,6 +276,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.mpt_alibi_attention.html">transformer_lens.model_bridge.generalized_components.mpt_alibi_attention module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.normalization.html">transformer_lens.model_bridge.generalized_components.normalization module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.opaque_block.html">transformer_lens.model_bridge.generalized_components.opaque_block module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.pooler.html">transformer_lens.model_bridge.generalized_components.pooler module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.pos_embed.html">transformer_lens.model_bridge.generalized_components.pos_embed module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin.html">transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.generalized_components.position_embeddings_attention.html">transformer_lens.model_bridge.generalized_components.position_embeddings_attention module</a></li>
@@ -321,15 +300,48 @@
 </ul>
 </li>
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.html">transformer_lens.model_bridge.sources package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
-<li class="toctree-l5 has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.native.html">transformer_lens.model_bridge.sources.native package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources.native package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5 has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.html">transformer_lens.model_bridge.sources.inspect package</a><input class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources.inspect package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.conftest.html">transformer_lens.model_bridge.sources.inspect.conftest module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.driver.html">transformer_lens.model_bridge.sources.inspect.driver module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.eval.html">transformer_lens.model_bridge.sources.inspect.eval module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.hooks.html">transformer_lens.model_bridge.sources.inspect.hooks module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.intervention.html">transformer_lens.model_bridge.sources.inspect.intervention module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.profiles.html">transformer_lens.model_bridge.sources.inspect.profiles module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.source.html">transformer_lens.model_bridge.sources.inspect.source module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.transformers_provider.html">transformer_lens.model_bridge.sources.inspect.transformers_provider module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.vllm_provider.html">transformer_lens.model_bridge.sources.inspect.vllm_provider module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.inspect.wire.html">transformer_lens.model_bridge.sources.inspect.wire module</a></li>
+</ul>
+</li>
+<li class="toctree-l5 has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.native.html">transformer_lens.model_bridge.sources.native package</a><input class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources.native package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.native.init.html">transformer_lens.model_bridge.sources.native.init module</a></li>
 <li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.native.model.html">transformer_lens.model_bridge.sources.native.model module</a></li>
 </ul>
 </li>
-<li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.model_bridge.sources.transformers module</a></li>
+<li class="toctree-l5 current has-children current-page"><a class="current reference internal" href="#">transformer_lens.model_bridge.sources.transformers package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources.transformers package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.helpers.html">transformer_lens.model_bridge.sources.transformers.helpers module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.source.html">transformer_lens.model_bridge.sources.transformers.source module</a></li>
 </ul>
 </li>
-<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l5 has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.html">transformer_lens.model_bridge.sources.vllm package</a><input class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources.vllm package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l6 has-children"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.overlays.html">transformer_lens.model_bridge.sources.vllm.overlays package</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.sources.vllm.overlays package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l7"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.overlays.base.html">transformer_lens.model_bridge.sources.vllm.overlays.base module</a></li>
+<li class="toctree-l7"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.overlays.decoder_only.html">transformer_lens.model_bridge.sources.vllm.overlays.decoder_only module</a></li>
+</ul>
+</li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.driver.html">transformer_lens.model_bridge.sources.vllm.driver module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.internals.html">transformer_lens.model_bridge.sources.vllm.internals module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.intervention_specs.html">transformer_lens.model_bridge.sources.vllm.intervention_specs module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.plugin.html">transformer_lens.model_bridge.sources.vllm.plugin module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.source.html">transformer_lens.model_bridge.sources.vllm.source module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="transformer_lens.model_bridge.sources.vllm.worker_extension.html">transformer_lens.model_bridge.sources.vllm.worker_extension module</a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.sources.tl_legacy.html">transformer_lens.model_bridge.sources.tl_legacy module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers_driver.html">transformer_lens.model_bridge.sources.transformers_driver module</a></li>
+</ul>
+</li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.html">transformer_lens.model_bridge.supported_architectures package</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.model_bridge.supported_architectures package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.afmoe.html">transformer_lens.model_bridge.supported_architectures.afmoe module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.apertus.html">transformer_lens.model_bridge.supported_architectures.apertus module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.arcee.html">transformer_lens.model_bridge.supported_architectures.arcee module</a></li>
@@ -467,6 +479,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.t5gemma2.html">transformer_lens.model_bridge.supported_architectures.t5gemma2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -474,51 +487,21 @@
 </li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html">transformer_lens.model_bridge.architecture_adapter module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.bridge.html">transformer_lens.model_bridge.bridge module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.bridge_core.html">transformer_lens.model_bridge.bridge_core module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.buffer_restore.html">transformer_lens.model_bridge.buffer_restore module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.compat.html">transformer_lens.model_bridge.compat module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.component_setup.html">transformer_lens.model_bridge.component_setup module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.composition_scores.html">transformer_lens.model_bridge.composition_scores module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.driver_protocol.html">transformer_lens.model_bridge.driver_protocol module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.exceptions.html">transformer_lens.model_bridge.exceptions module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.get_params_util.html">transformer_lens.model_bridge.get_params_util module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.remote_bridge.html">transformer_lens.model_bridge.remote_bridge module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.transformer_bridge.html">transformer_lens.model_bridge.transformer_bridge module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.model_bridge.types.html">transformer_lens.model_bridge.types module</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.pretrained.html">transformer_lens.pretrained package</a><input class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><div class="visually-hidden">Toggle navigation of transformer_lens.pretrained package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.html">transformer_lens.pretrained.weight_conversions package</a><input class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><div class="visually-hidden">Toggle navigation of transformer_lens.pretrained.weight_conversions package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.apertus.html">transformer_lens.pretrained.weight_conversions.apertus module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.bert.html">transformer_lens.pretrained.weight_conversions.bert module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.bloom.html">transformer_lens.pretrained.weight_conversions.bloom module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.coder.html">transformer_lens.pretrained.weight_conversions.coder module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gemma.html">transformer_lens.pretrained.weight_conversions.gemma module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gpt2.html">transformer_lens.pretrained.weight_conversions.gpt2 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.gptj.html">transformer_lens.pretrained.weight_conversions.gptj module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.hubert.html">transformer_lens.pretrained.weight_conversions.hubert module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.llama.html">transformer_lens.pretrained.weight_conversions.llama module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mingpt.html">transformer_lens.pretrained.weight_conversions.mingpt module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mistral.html">transformer_lens.pretrained.weight_conversions.mistral module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.mixtral.html">transformer_lens.pretrained.weight_conversions.mixtral module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.nanogpt.html">transformer_lens.pretrained.weight_conversions.nanogpt module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neel_solu_old.html">transformer_lens.pretrained.weight_conversions.neel_solu_old module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neo.html">transformer_lens.pretrained.weight_conversions.neo module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.neox.html">transformer_lens.pretrained.weight_conversions.neox module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmo.html">transformer_lens.pretrained.weight_conversions.olmo module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmo2.html">transformer_lens.pretrained.weight_conversions.olmo2 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmo3.html">transformer_lens.pretrained.weight_conversions.olmo3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.olmoe.html">transformer_lens.pretrained.weight_conversions.olmoe module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.openai.html">transformer_lens.pretrained.weight_conversions.openai module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.opt.html">transformer_lens.pretrained.weight_conversions.opt module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.phi.html">transformer_lens.pretrained.weight_conversions.phi module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.phi3.html">transformer_lens.pretrained.weight_conversions.phi3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen.html">transformer_lens.pretrained.weight_conversions.qwen module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen2.html">transformer_lens.pretrained.weight_conversions.qwen2 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.qwen3.html">transformer_lens.pretrained.weight_conversions.qwen3 module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.pretrained.weight_conversions.t5.html">transformer_lens.pretrained.weight_conversions.t5 module</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
@@ -530,9 +513,10 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
-<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.alias_drift.html">transformer_lens.tools.model_registry.alias_drift module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.api.html">transformer_lens.tools.model_registry.api module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.checkpoints.html">transformer_lens.tools.model_registry.checkpoints module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.discover_architectures.html">transformer_lens.tools.model_registry.discover_architectures module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.exceptions.html">transformer_lens.tools.model_registry.exceptions module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.generate_report.html">transformer_lens.tools.model_registry.generate_report module</a></li>
@@ -545,14 +529,16 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.model_registry.verify_models.html">transformer_lens.tools.model_registry.verify_models module</a></li>
 </ul>
 </li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.tools.training.html">transformer_lens.tools.training module</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.utilities package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><div class="visually-hidden">Toggle navigation of transformer_lens.utilities package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.activation_functions.html">transformer_lens.utilities.activation_functions module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.addmm.html">transformer_lens.utilities.addmm module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.aliases.html">transformer_lens.utilities.aliases module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.architectures.html">transformer_lens.utilities.architectures module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.attention.html">transformer_lens.utilities.attention module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.attn_implementation.html">transformer_lens.utilities.attn_implementation module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.attribute_utils.html">transformer_lens.utilities.attribute_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.bridge_components.html">transformer_lens.utilities.bridge_components module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.cache.html">transformer_lens.utilities.cache module</a></li>
@@ -573,28 +559,26 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.quantization.html">transformer_lens.utilities.quantization module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.slice.html">transformer_lens.utilities.slice module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tensors.html">transformer_lens.utilities.tensors module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tl_checkpoint_conversion.html">transformer_lens.utilities.tl_checkpoint_conversion module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tokenize_utils.html">transformer_lens.utilities.tokenize_utils module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.tracr.html">transformer_lens.utilities.tracr module</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.typed_module_list.html">transformer_lens.utilities.typed_module_list module</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedAudioEncoder.html">transformer_lens.HookedAudioEncoder module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedRootModule.html">transformer_lens.HookedRootModule module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_protocol.html">transformer_lens.model_protocol module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.supported_models.html">transformer_lens.supported_models module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.weight_processing.html">transformer_lens.weight_processing module</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/model_tables.html">Model Tables</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of Model Tables</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l2"><a class="reference internal" href="../model_properties_table.html">HookedTransformer Model Properties</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/model_tables.html">Model Tables</a><input class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><div class="visually-hidden">Toggle navigation of Model Tables</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../content/hooked_transformer_model_properties.html">HookedTransformer Model Properties</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../transformer_bridge_models.html">TransformerBridge Models</a></li>
 </ul>
 </li>
@@ -602,18 +586,22 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Resources</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/migrating_to_v4.html">Migrating to TransformerLens 4.0</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/migrating_to_v3.html">Migrating to TransformerLens 3</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/analysis_tools.html">Choosing an analysis tool</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-unit-test-guide.html">Architecture Unit Test Suite Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-scraper.html">HuggingFace Model Scraper</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-builder-tool.html">Automated Adapter Builder</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/hook_system.html">The Hook System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/drivers.html">Execution Backends (the Driver System)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/compatibility_mode.html">TransformerBridge Compatibility Mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/ssm_interpretability.html">SSM / Recurrent-Model Interpretability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
@@ -630,12 +618,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Development</span></p>
 <ul>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../content/contributing.html">Contributing</a><input class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><div class="visually-hidden">Toggle navigation of Contributing</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-creation-guide.html">Architecture Adapter Creation Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-unit-test-guide.html">Architecture Unit Test Suite Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-model-analysis-guide.html">HuggingFace Model Analysis Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/hf-scraper.html">HuggingFace Model Scraper</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/external-adapter-registration.html">External Architecture Adapter Registration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../content/adapter_development/adapter-builder-tool.html">Automated Adapter Builder</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference external" href="https://transformerlensorg.github.io/TransformerLens/_static/coverage/">Code Coverage</a></li>
@@ -674,14 +663,577 @@
           </label>
         </div>
         <article role="main">
-          <section id="module-transformer_lens.model_bridge.sources.transformers">
-<span id="transformer-lens-model-bridge-sources-transformers-module"></span><h1>transformer_lens.model_bridge.sources.transformers module<a class="headerlink" href="#module-transformer_lens.model_bridge.sources.transformers" title="Link to this heading">¶</a></h1>
-<p>Transformers module for TransformerLens.</p>
-<p>This module provides functionality to load and convert models from HuggingFace to TransformerLens format.</p>
+          <section id="transformer-lens-model-bridge-sources-transformers-package">
+<h1>transformer_lens.model_bridge.sources.transformers package<a class="headerlink" href="#transformer-lens-model-bridge-sources-transformers-package" title="Link to this heading">¶</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.helpers.html">transformer_lens.model_bridge.sources.transformers.helpers module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.helpers.html#transformer_lens.model_bridge.sources.transformers.helpers.check_model_support"><code class="docutils literal notranslate"><span class="pre">check_model_support()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.helpers.html#transformer_lens.model_bridge.sources.transformers.helpers.get_hf_model_class_for_architecture"><code class="docutils literal notranslate"><span class="pre">get_hf_model_class_for_architecture()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.helpers.html#transformer_lens.model_bridge.sources.transformers.helpers.list_supported_models"><code class="docutils literal notranslate"><span class="pre">list_supported_models()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.helpers.html#transformer_lens.model_bridge.sources.transformers.helpers.load_modality_processor"><code class="docutils literal notranslate"><span class="pre">load_modality_processor()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.source.html">transformer_lens.model_bridge.sources.transformers.source module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.sources.transformers.source.html#transformer_lens.model_bridge.sources.transformers.source.boot"><code class="docutils literal notranslate"><span class="pre">boot()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="module-transformer_lens.model_bridge.sources.transformers">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-transformer_lens.model_bridge.sources.transformers" title="Link to this heading">¶</a></h2>
+<p>HuggingFace <code class="docutils literal notranslate"><span class="pre">transformers</span></code> source for TransformerBridge.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">AutoConfig</span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>This is a generic configuration class that will be instantiated as one of the configuration classes of the library
+when created with the [<cite>~AutoConfig.from_pretrained</cite>] class method.</p>
+<p>This class cannot be instantiated directly using <cite>__init__()</cite> (throws an error).</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoConfig.for_model">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">for_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">PreTrainedConfig</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig.for_model" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoConfig.from_pretrained">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*args:</span> <span class="pre">~typing.Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_orig:</span> <span class="pre">~typing.Any</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">AutoConfig.from_pretrained&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**kwargs:</span> <span class="pre">~typing.Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig.from_pretrained" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoConfig.register">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exist_ok</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig.register" title="Link to this definition">¶</a></dt>
+<dd><p>Register a new configuration for this class.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_type</strong> (<cite>str</cite>) – The model type like “bert” or “gpt”.</p></li>
+<li><p><strong>config</strong> ([<cite>PreTrainedConfig</cite>]) – The config to register.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">AutoModelForCausalLM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_BaseAutoModelClass</span></code></p>
+<p>This is a generic model class that will be instantiated as one of the model classes of the library (with a causal language modeling head) when created
+with the [<cite>~AutoModelForCausalLM.from_pretrained</cite>] class method or the [<cite>~AutoModelForCausalLM.from_config</cite>] class
+method.</p>
+<p>This class cannot be instantiated directly using <cite>__init__()</cite> (throws an error).</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM.from_config">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM.from_config" title="Link to this definition">¶</a></dt>
+<dd><p>Instantiates one of the model classes of the library (with a causal language modeling head) from a configuration.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Loading a model from its configuration file does <strong>not</strong> load the model weights. It only affects the
+model’s configuration. Use [<cite>~AutoModelForCausalLM.from_pretrained</cite>] to load the model weights.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> ([<cite>PreTrainedConfig</cite>]) – <p>The model class to instantiate is selected based on the configuration class:</p>
+<ul>
+<li><p>[<cite>AfmoeConfig</cite>] configuration class: [<cite>AfmoeForCausalLM</cite>] (AfmoeConfig model)</p></li>
+<li><p>[<cite>ApertusConfig</cite>] configuration class: [<cite>ApertusForCausalLM</cite>] (ApertusConfig model)</p></li>
+<li><p>[<cite>ArceeConfig</cite>] configuration class: [<cite>ArceeForCausalLM</cite>] (ArceeConfig model)</p></li>
+<li><p>[<cite>AriaTextConfig</cite>] configuration class: [<cite>AriaTextForCausalLM</cite>] (AriaTextConfig model)</p></li>
+<li><p>[<cite>BambaConfig</cite>] configuration class: [<cite>BambaForCausalLM</cite>] (BambaConfig model)</p></li>
+<li><p>[<cite>BartConfig</cite>] configuration class: [<cite>BartForCausalLM</cite>] (BartConfig model)</p></li>
+<li><p>[<cite>BertConfig</cite>] configuration class: [<cite>BertLMHeadModel</cite>] (BertConfig model)</p></li>
+<li><p>[<cite>BertGenerationConfig</cite>] configuration class: [<cite>BertGenerationDecoder</cite>] (BertGenerationConfig model)</p></li>
+<li><p>[<cite>BigBirdConfig</cite>] configuration class: [<cite>BigBirdForCausalLM</cite>] (BigBirdConfig model)</p></li>
+<li><p>[<cite>BigBirdPegasusConfig</cite>] configuration class: [<cite>BigBirdPegasusForCausalLM</cite>] (BigBirdPegasusConfig model)</p></li>
+<li><p>[<cite>BioGptConfig</cite>] configuration class: [<cite>BioGptForCausalLM</cite>] (BioGptConfig model)</p></li>
+<li><p>[<cite>BitNetConfig</cite>] configuration class: [<cite>BitNetForCausalLM</cite>] (BitNetConfig model)</p></li>
+<li><p>[<cite>BlenderbotConfig</cite>] configuration class: [<cite>BlenderbotForCausalLM</cite>] (BlenderbotConfig model)</p></li>
+<li><p>[<cite>BlenderbotSmallConfig</cite>] configuration class: [<cite>BlenderbotSmallForCausalLM</cite>] (BlenderbotSmallConfig model)</p></li>
+<li><p>[<cite>BloomConfig</cite>] configuration class: [<cite>BloomForCausalLM</cite>] (BloomConfig model)</p></li>
+<li><p>[<cite>BltConfig</cite>] configuration class: [<cite>BltForCausalLM</cite>] (BltConfig model)</p></li>
+<li><p>[<cite>CTRLConfig</cite>] configuration class: [<cite>CTRLLMHeadModel</cite>] (CTRLConfig model)</p></li>
+<li><p>[<cite>CamembertConfig</cite>] configuration class: [<cite>CamembertForCausalLM</cite>] (CamembertConfig model)</p></li>
+<li><p>[<cite>CodeGenConfig</cite>] configuration class: [<cite>CodeGenForCausalLM</cite>] (CodeGenConfig model)</p></li>
+<li><p>[<cite>Cohere2Config</cite>] configuration class: [<cite>Cohere2ForCausalLM</cite>] (Cohere2Config model)</p></li>
+<li><p>[<cite>Cohere2MoeConfig</cite>] configuration class: [<cite>Cohere2MoeForCausalLM</cite>] (Cohere2MoeConfig model)</p></li>
+<li><p>[<cite>CohereConfig</cite>] configuration class: [<cite>CohereForCausalLM</cite>] (CohereConfig model)</p></li>
+<li><p>[<cite>CpmAntConfig</cite>] configuration class: [<cite>CpmAntForCausalLM</cite>] (CpmAntConfig model)</p></li>
+<li><p>[<cite>CwmConfig</cite>] configuration class: [<cite>CwmForCausalLM</cite>] (CwmConfig model)</p></li>
+<li><p>[<cite>Data2VecTextConfig</cite>] configuration class: [<cite>Data2VecTextForCausalLM</cite>] (Data2VecTextConfig model)</p></li>
+<li><p>[<cite>DbrxConfig</cite>] configuration class: [<cite>DbrxForCausalLM</cite>] (DbrxConfig model)</p></li>
+<li><p>[<cite>DeepseekV2Config</cite>] configuration class: [<cite>DeepseekV2ForCausalLM</cite>] (DeepseekV2Config model)</p></li>
+<li><p>[<cite>DeepseekV32Config</cite>] configuration class: [<cite>DeepseekV32ForCausalLM</cite>] (DeepseekV32Config model)</p></li>
+<li><p>[<cite>DeepseekV3Config</cite>] configuration class: [<cite>DeepseekV3ForCausalLM</cite>] (DeepseekV3Config model)</p></li>
+<li><p>[<cite>DeepseekV4Config</cite>] configuration class: [<cite>DeepseekV4ForCausalLM</cite>] (DeepseekV4Config model)</p></li>
+<li><p>[<cite>DiffLlamaConfig</cite>] configuration class: [<cite>DiffLlamaForCausalLM</cite>] (DiffLlamaConfig model)</p></li>
+<li><p>[<cite>DogeConfig</cite>] configuration class: [<cite>DogeForCausalLM</cite>] (DogeConfig model)</p></li>
+<li><p>[<cite>Dots1Config</cite>] configuration class: [<cite>Dots1ForCausalLM</cite>] (Dots1Config model)</p></li>
+<li><p>[<cite>ElectraConfig</cite>] configuration class: [<cite>ElectraForCausalLM</cite>] (ElectraConfig model)</p></li>
+<li><p>[<cite>Emu3Config</cite>] configuration class: [<cite>Emu3ForCausalLM</cite>] (Emu3Config model)</p></li>
+<li><p>[<cite>Ernie4_5Config</cite>] configuration class: [<cite>Ernie4_5ForCausalLM</cite>] (Ernie4_5Config model)</p></li>
+<li><p>[<cite>Ernie4_5_MoeConfig</cite>] configuration class: [<cite>Ernie4_5_MoeForCausalLM</cite>] (Ernie4_5_MoeConfig model)</p></li>
+<li><p>[<cite>ErnieConfig</cite>] configuration class: [<cite>ErnieForCausalLM</cite>] (ErnieConfig model)</p></li>
+<li><p>[<cite>Exaone4Config</cite>] configuration class: [<cite>Exaone4ForCausalLM</cite>] (Exaone4Config model)</p></li>
+<li><p>[<cite>ExaoneMoeConfig</cite>] configuration class: [<cite>ExaoneMoeForCausalLM</cite>] (ExaoneMoeConfig model)</p></li>
+<li><p>[<cite>FalconConfig</cite>] configuration class: [<cite>FalconForCausalLM</cite>] (FalconConfig model)</p></li>
+<li><p>[<cite>FalconH1Config</cite>] configuration class: [<cite>FalconH1ForCausalLM</cite>] (FalconH1Config model)</p></li>
+<li><p>[<cite>FalconMambaConfig</cite>] configuration class: [<cite>FalconMambaForCausalLM</cite>] (FalconMambaConfig model)</p></li>
+<li><p>[<cite>FlexOlmoConfig</cite>] configuration class: [<cite>FlexOlmoForCausalLM</cite>] (FlexOlmoConfig model)</p></li>
+<li><p>[<cite>FuyuConfig</cite>] configuration class: [<cite>FuyuForCausalLM</cite>] (FuyuConfig model)</p></li>
+<li><p>[<cite>GPT2Config</cite>] configuration class: [<cite>GPT2LMHeadModel</cite>] (GPT2Config model)</p></li>
+<li><p>[<cite>GPTBigCodeConfig</cite>] configuration class: [<cite>GPTBigCodeForCausalLM</cite>] (GPTBigCodeConfig model)</p></li>
+<li><p>[<cite>GPTJConfig</cite>] configuration class: [<cite>GPTJForCausalLM</cite>] (GPTJConfig model)</p></li>
+<li><p>[<cite>GPTNeoConfig</cite>] configuration class: [<cite>GPTNeoForCausalLM</cite>] (GPTNeoConfig model)</p></li>
+<li><p>[<cite>GPTNeoXConfig</cite>] configuration class: [<cite>GPTNeoXForCausalLM</cite>] (GPTNeoXConfig model)</p></li>
+<li><p>[<cite>GPTNeoXJapaneseConfig</cite>] configuration class: [<cite>GPTNeoXJapaneseForCausalLM</cite>] (GPTNeoXJapaneseConfig model)</p></li>
+<li><p>[<cite>Gemma2Config</cite>] configuration class: [<cite>Gemma2ForCausalLM</cite>] (Gemma2Config model)</p></li>
+<li><p>[<cite>Gemma3Config</cite>] configuration class: [<cite>Gemma3ForConditionalGeneration</cite>] (Gemma3Config model)</p></li>
+<li><p>[<cite>Gemma3TextConfig</cite>] configuration class: [<cite>Gemma3ForCausalLM</cite>] (Gemma3TextConfig model)</p></li>
+<li><p>[<cite>Gemma3nConfig</cite>] configuration class: [<cite>Gemma3nForConditionalGeneration</cite>] (Gemma3nConfig model)</p></li>
+<li><p>[<cite>Gemma3nTextConfig</cite>] configuration class: [<cite>Gemma3nForCausalLM</cite>] (Gemma3nTextConfig model)</p></li>
+<li><p>[<cite>Gemma4AssistantConfig</cite>] configuration class: [<cite>Gemma4AssistantForCausalLM</cite>] (Gemma4AssistantConfig model)</p></li>
+<li><p>[<cite>Gemma4Config</cite>] configuration class: [<cite>Gemma4ForConditionalGeneration</cite>] (Gemma4Config model)</p></li>
+<li><p>[<cite>Gemma4TextConfig</cite>] configuration class: [<cite>Gemma4ForCausalLM</cite>] (Gemma4TextConfig model)</p></li>
+<li><p>[<cite>Gemma4UnifiedAssistantConfig</cite>] configuration class: [<cite>Gemma4UnifiedAssistantForCausalLM</cite>] (Gemma4UnifiedAssistantConfig model)</p></li>
+<li><p>[<cite>Gemma4UnifiedConfig</cite>] configuration class: [<cite>Gemma4UnifiedForConditionalGeneration</cite>] (Gemma4UnifiedConfig model)</p></li>
+<li><p>[<cite>Gemma4UnifiedTextConfig</cite>] configuration class: [<cite>Gemma4UnifiedForCausalLM</cite>] (Gemma4UnifiedTextConfig model)</p></li>
+<li><p>[<cite>GemmaConfig</cite>] configuration class: [<cite>GemmaForCausalLM</cite>] (GemmaConfig model)</p></li>
+<li><p>[<cite>GitConfig</cite>] configuration class: [<cite>GitForCausalLM</cite>] (GitConfig model)</p></li>
+<li><p>[<cite>Glm4Config</cite>] configuration class: [<cite>Glm4ForCausalLM</cite>] (Glm4Config model)</p></li>
+<li><p>[<cite>Glm4MoeConfig</cite>] configuration class: [<cite>Glm4MoeForCausalLM</cite>] (Glm4MoeConfig model)</p></li>
+<li><p>[<cite>Glm4MoeLiteConfig</cite>] configuration class: [<cite>Glm4MoeLiteForCausalLM</cite>] (Glm4MoeLiteConfig model)</p></li>
+<li><p>[<cite>GlmConfig</cite>] configuration class: [<cite>GlmForCausalLM</cite>] (GlmConfig model)</p></li>
+<li><p>[<cite>GlmMoeDsaConfig</cite>] configuration class: [<cite>GlmMoeDsaForCausalLM</cite>] (GlmMoeDsaConfig model)</p></li>
+<li><p>[<cite>GotOcr2Config</cite>] configuration class: [<cite>GotOcr2ForConditionalGeneration</cite>] (GotOcr2Config model)</p></li>
+<li><p>[<cite>GptOssConfig</cite>] configuration class: [<cite>GptOssForCausalLM</cite>] (GptOssConfig model)</p></li>
+<li><p>[<cite>GraniteConfig</cite>] configuration class: [<cite>GraniteForCausalLM</cite>] (GraniteConfig model)</p></li>
+<li><p>[<cite>GraniteMoeConfig</cite>] configuration class: [<cite>GraniteMoeForCausalLM</cite>] (GraniteMoeConfig model)</p></li>
+<li><p>[<cite>GraniteMoeHybridConfig</cite>] configuration class: [<cite>GraniteMoeHybridForCausalLM</cite>] (GraniteMoeHybridConfig model)</p></li>
+<li><p>[<cite>GraniteMoeSharedConfig</cite>] configuration class: [<cite>GraniteMoeSharedForCausalLM</cite>] (GraniteMoeSharedConfig model)</p></li>
+<li><p>[<cite>HYV3Config</cite>] configuration class: [<cite>HYV3ForCausalLM</cite>] (HYV3Config model)</p></li>
+<li><p>[<cite>HeliumConfig</cite>] configuration class: [<cite>HeliumForCausalLM</cite>] (HeliumConfig model)</p></li>
+<li><p>[<cite>HrmTextConfig</cite>] configuration class: [<cite>HrmTextForCausalLM</cite>] (HrmTextConfig model)</p></li>
+<li><p>[<cite>HunYuanDenseV1Config</cite>] configuration class: [<cite>HunYuanDenseV1ForCausalLM</cite>] (HunYuanDenseV1Config model)</p></li>
+<li><p>[<cite>HunYuanMoEV1Config</cite>] configuration class: [<cite>HunYuanMoEV1ForCausalLM</cite>] (HunYuanMoEV1Config model)</p></li>
+<li><p>[<cite>HyperCLOVAXConfig</cite>] configuration class: [<cite>HyperCLOVAXForCausalLM</cite>] (HyperCLOVAXConfig model)</p></li>
+<li><p>[<cite>Jais2Config</cite>] configuration class: [<cite>Jais2ForCausalLM</cite>] (Jais2Config model)</p></li>
+<li><p>[<cite>JambaConfig</cite>] configuration class: [<cite>JambaForCausalLM</cite>] (JambaConfig model)</p></li>
+<li><p>[<cite>JetMoeConfig</cite>] configuration class: [<cite>JetMoeForCausalLM</cite>] (JetMoeConfig model)</p></li>
+<li><p>[<cite>LagunaConfig</cite>] configuration class: [<cite>LagunaForCausalLM</cite>] (LagunaConfig model)</p></li>
+<li><p>[<cite>Lfm2Config</cite>] configuration class: [<cite>Lfm2ForCausalLM</cite>] (Lfm2Config model)</p></li>
+<li><p>[<cite>Lfm2MoeConfig</cite>] configuration class: [<cite>Lfm2MoeForCausalLM</cite>] (Lfm2MoeConfig model)</p></li>
+<li><p>[<cite>Llama4Config</cite>] configuration class: [<cite>Llama4ForCausalLM</cite>] (Llama4Config model)</p></li>
+<li><p>[<cite>Llama4TextConfig</cite>] configuration class: [<cite>Llama4ForCausalLM</cite>] (Llama4TextConfig model)</p></li>
+<li><p>[<cite>LlamaConfig</cite>] configuration class: [<cite>LlamaForCausalLM</cite>] (LlamaConfig model)</p></li>
+<li><p>[<cite>LongcatFlashConfig</cite>] configuration class: [<cite>LongcatFlashForCausalLM</cite>] (LongcatFlashConfig model)</p></li>
+<li><p>[<cite>MBartConfig</cite>] configuration class: [<cite>MBartForCausalLM</cite>] (MBartConfig model)</p></li>
+<li><p>[<cite>Mamba2Config</cite>] configuration class: [<cite>Mamba2ForCausalLM</cite>] (Mamba2Config model)</p></li>
+<li><p>[<cite>MambaConfig</cite>] configuration class: [<cite>MambaForCausalLM</cite>] (MambaConfig model)</p></li>
+<li><p>[<cite>MarianConfig</cite>] configuration class: [<cite>MarianForCausalLM</cite>] (MarianConfig model)</p></li>
+<li><p>[<cite>MegatronBertConfig</cite>] configuration class: [<cite>MegatronBertForCausalLM</cite>] (MegatronBertConfig model)</p></li>
+<li><p>[<cite>MellumConfig</cite>] configuration class: [<cite>MellumForCausalLM</cite>] (MellumConfig model)</p></li>
+<li><p>[<cite>MiMoV2FlashConfig</cite>] configuration class: [<cite>MiMoV2FlashForCausalLM</cite>] (MiMoV2FlashConfig model)</p></li>
+<li><p>[<cite>MiniCPM3Config</cite>] configuration class: [<cite>MiniCPM3ForCausalLM</cite>] (MiniCPM3Config model)</p></li>
+<li><p>[<cite>MiniMaxConfig</cite>] configuration class: [<cite>MiniMaxForCausalLM</cite>] (MiniMaxConfig model)</p></li>
+<li><p>[<cite>MiniMaxM2Config</cite>] configuration class: [<cite>MiniMaxM2ForCausalLM</cite>] (MiniMaxM2Config model)</p></li>
+<li><p>[<cite>MiniMaxM3VLTextConfig</cite>] configuration class: [<cite>MiniMaxM3VLForCausalLM</cite>] (MiniMaxM3VLTextConfig model)</p></li>
+<li><p>[<cite>Ministral3Config</cite>] configuration class: [<cite>Ministral3ForCausalLM</cite>] (Ministral3Config model)</p></li>
+<li><p>[<cite>MinistralConfig</cite>] configuration class: [<cite>MinistralForCausalLM</cite>] (MinistralConfig model)</p></li>
+<li><p>[<cite>MistralConfig</cite>] configuration class: [<cite>MistralForCausalLM</cite>] (MistralConfig model)</p></li>
+<li><p>[<cite>MixtralConfig</cite>] configuration class: [<cite>MixtralForCausalLM</cite>] (MixtralConfig model)</p></li>
+<li><p>[<cite>MllamaConfig</cite>] configuration class: [<cite>MllamaForCausalLM</cite>] (MllamaConfig model)</p></li>
+<li><p>[<cite>ModernBertDecoderConfig</cite>] configuration class: [<cite>ModernBertDecoderForCausalLM</cite>] (ModernBertDecoderConfig model)</p></li>
+<li><p>[<cite>MoshiConfig</cite>] configuration class: [<cite>MoshiForCausalLM</cite>] (MoshiConfig model)</p></li>
+<li><p>[<cite>MptConfig</cite>] configuration class: [<cite>MptForCausalLM</cite>] (MptConfig model)</p></li>
+<li><p>[<cite>MusicgenConfig</cite>] configuration class: [<cite>MusicgenForCausalLM</cite>] (MusicgenConfig model)</p></li>
+<li><p>[<cite>MusicgenMelodyConfig</cite>] configuration class: [<cite>MusicgenMelodyForCausalLM</cite>] (MusicgenMelodyConfig model)</p></li>
+<li><p>[<cite>MvpConfig</cite>] configuration class: [<cite>MvpForCausalLM</cite>] (MvpConfig model)</p></li>
+<li><p>[<cite>NanoChatConfig</cite>] configuration class: [<cite>NanoChatForCausalLM</cite>] (NanoChatConfig model)</p></li>
+<li><p>[<cite>NemotronConfig</cite>] configuration class: [<cite>NemotronForCausalLM</cite>] (NemotronConfig model)</p></li>
+<li><p>[<cite>NemotronHConfig</cite>] configuration class: [<cite>NemotronHForCausalLM</cite>] (NemotronHConfig model)</p></li>
+<li><p>[<cite>OPTConfig</cite>] configuration class: [<cite>OPTForCausalLM</cite>] (OPTConfig model)</p></li>
+<li><p>[<cite>Olmo2Config</cite>] configuration class: [<cite>Olmo2ForCausalLM</cite>] (Olmo2Config model)</p></li>
+<li><p>[<cite>Olmo3Config</cite>] configuration class: [<cite>Olmo3ForCausalLM</cite>] (Olmo3Config model)</p></li>
+<li><p>[<cite>OlmoConfig</cite>] configuration class: [<cite>OlmoForCausalLM</cite>] (OlmoConfig model)</p></li>
+<li><p>[<cite>OlmoHybridConfig</cite>] configuration class: [<cite>OlmoHybridForCausalLM</cite>] (OlmoHybridConfig model)</p></li>
+<li><p>[<cite>OlmoeConfig</cite>] configuration class: [<cite>OlmoeForCausalLM</cite>] (OlmoeConfig model)</p></li>
+<li><p>[<cite>OpenAIGPTConfig</cite>] configuration class: [<cite>OpenAIGPTLMHeadModel</cite>] (OpenAIGPTConfig model)</p></li>
+<li><p>[<cite>PLBartConfig</cite>] configuration class: [<cite>PLBartForCausalLM</cite>] (PLBartConfig model)</p></li>
+<li><p>[<cite>PegasusConfig</cite>] configuration class: [<cite>PegasusForCausalLM</cite>] (PegasusConfig model)</p></li>
+<li><p>[<cite>PersimmonConfig</cite>] configuration class: [<cite>PersimmonForCausalLM</cite>] (PersimmonConfig model)</p></li>
+<li><p>[<cite>Phi3Config</cite>] configuration class: [<cite>Phi3ForCausalLM</cite>] (Phi3Config model)</p></li>
+<li><p>[<cite>Phi4MultimodalConfig</cite>] configuration class: [<cite>Phi4MultimodalForCausalLM</cite>] (Phi4MultimodalConfig model)</p></li>
+<li><p>[<cite>PhiConfig</cite>] configuration class: [<cite>PhiForCausalLM</cite>] (PhiConfig model)</p></li>
+<li><p>[<cite>PhimoeConfig</cite>] configuration class: [<cite>PhimoeForCausalLM</cite>] (PhimoeConfig model)</p></li>
+<li><p>[<cite>ProphetNetConfig</cite>] configuration class: [<cite>ProphetNetForCausalLM</cite>] (ProphetNetConfig model)</p></li>
+<li><p>[<cite>Qwen2Config</cite>] configuration class: [<cite>Qwen2ForCausalLM</cite>] (Qwen2Config model)</p></li>
+<li><p>[<cite>Qwen2MoeConfig</cite>] configuration class: [<cite>Qwen2MoeForCausalLM</cite>] (Qwen2MoeConfig model)</p></li>
+<li><p>[<cite>Qwen3Config</cite>] configuration class: [<cite>Qwen3ForCausalLM</cite>] (Qwen3Config model)</p></li>
+<li><p>[<cite>Qwen3MoeConfig</cite>] configuration class: [<cite>Qwen3MoeForCausalLM</cite>] (Qwen3MoeConfig model)</p></li>
+<li><p>[<cite>Qwen3NextConfig</cite>] configuration class: [<cite>Qwen3NextForCausalLM</cite>] (Qwen3NextConfig model)</p></li>
+<li><p>[<cite>Qwen3_5Config</cite>] configuration class: [<cite>Qwen3_5ForCausalLM</cite>] (Qwen3_5Config model)</p></li>
+<li><p>[<cite>Qwen3_5MoeConfig</cite>] configuration class: [<cite>Qwen3_5MoeForCausalLM</cite>] (Qwen3_5MoeConfig model)</p></li>
+<li><p>[<cite>Qwen3_5MoeTextConfig</cite>] configuration class: [<cite>Qwen3_5MoeForCausalLM</cite>] (Qwen3_5MoeTextConfig model)</p></li>
+<li><p>[<cite>Qwen3_5TextConfig</cite>] configuration class: [<cite>Qwen3_5ForCausalLM</cite>] (Qwen3_5TextConfig model)</p></li>
+<li><p>[<cite>RecurrentGemmaConfig</cite>] configuration class: [<cite>RecurrentGemmaForCausalLM</cite>] (RecurrentGemmaConfig model)</p></li>
+<li><p>[<cite>ReformerConfig</cite>] configuration class: [<cite>ReformerModelWithLMHead</cite>] (ReformerConfig model)</p></li>
+<li><p>[<cite>RemBertConfig</cite>] configuration class: [<cite>RemBertForCausalLM</cite>] (RemBertConfig model)</p></li>
+<li><p>[<cite>RoCBertConfig</cite>] configuration class: [<cite>RoCBertForCausalLM</cite>] (RoCBertConfig model)</p></li>
+<li><p>[<cite>RoFormerConfig</cite>] configuration class: [<cite>RoFormerForCausalLM</cite>] (RoFormerConfig model)</p></li>
+<li><p>[<cite>RobertaConfig</cite>] configuration class: [<cite>RobertaForCausalLM</cite>] (RobertaConfig model)</p></li>
+<li><p>[<cite>RobertaPreLayerNormConfig</cite>] configuration class: [<cite>RobertaPreLayerNormForCausalLM</cite>] (RobertaPreLayerNormConfig model)</p></li>
+<li><p>[<cite>RwkvConfig</cite>] configuration class: [<cite>RwkvForCausalLM</cite>] (RwkvConfig model)</p></li>
+<li><p>[<cite>SeedOssConfig</cite>] configuration class: [<cite>SeedOssForCausalLM</cite>] (SeedOssConfig model)</p></li>
+<li><p>[<cite>SmolLM3Config</cite>] configuration class: [<cite>SmolLM3ForCausalLM</cite>] (SmolLM3Config model)</p></li>
+<li><p>[<cite>SolarOpenConfig</cite>] configuration class: [<cite>SolarOpenForCausalLM</cite>] (SolarOpenConfig model)</p></li>
+<li><p>[<cite>StableLmConfig</cite>] configuration class: [<cite>StableLmForCausalLM</cite>] (StableLmConfig model)</p></li>
+<li><p>[<cite>Starcoder2Config</cite>] configuration class: [<cite>Starcoder2ForCausalLM</cite>] (Starcoder2Config model)</p></li>
+<li><p>[<cite>TrOCRConfig</cite>] configuration class: [<cite>TrOCRForCausalLM</cite>] (TrOCRConfig model)</p></li>
+<li><p>[<cite>VaultGemmaConfig</cite>] configuration class: [<cite>VaultGemmaForCausalLM</cite>] (VaultGemmaConfig model)</p></li>
+<li><p>[<cite>WhisperConfig</cite>] configuration class: [<cite>WhisperForCausalLM</cite>] (WhisperConfig model)</p></li>
+<li><p>[<cite>XGLMConfig</cite>] configuration class: [<cite>XGLMForCausalLM</cite>] (XGLMConfig model)</p></li>
+<li><p>[<cite>XLMConfig</cite>] configuration class: [<cite>XLMWithLMHeadModel</cite>] (XLMConfig model)</p></li>
+<li><p>[<cite>XLMRobertaConfig</cite>] configuration class: [<cite>XLMRobertaForCausalLM</cite>] (XLMRobertaConfig model)</p></li>
+<li><p>[<cite>XLMRobertaXLConfig</cite>] configuration class: [<cite>XLMRobertaXLForCausalLM</cite>] (XLMRobertaXLConfig model)</p></li>
+<li><p>[<cite>XLNetConfig</cite>] configuration class: [<cite>XLNetLMHeadModel</cite>] (XLNetConfig model)</p></li>
+<li><p>[<cite>XmodConfig</cite>] configuration class: [<cite>XmodForCausalLM</cite>] (XmodConfig model)</p></li>
+<li><p>[<cite>YoutuConfig</cite>] configuration class: [<cite>YoutuForCausalLM</cite>] (YoutuConfig model)</p></li>
+<li><p>[<cite>Zamba2Config</cite>] configuration class: [<cite>Zamba2ForCausalLM</cite>] (Zamba2Config model)</p></li>
+<li><p>[<cite>ZambaConfig</cite>] configuration class: [<cite>ZambaForCausalLM</cite>] (ZambaConfig model)</p></li>
+<li><p>[<cite>ZayaConfig</cite>] configuration class: [<cite>ZayaForCausalLM</cite>] (ZayaConfig model)</p></li>
+<li><p>[<cite>xLSTMConfig</cite>] configuration class: [<cite>xLSTMForCausalLM</cite>] (xLSTMConfig model)</p></li>
+</ul>
+</p></li>
+<li><p><strong>attn_implementation</strong> (<cite>str</cite>, <em>optional</em>) – The attention implementation to use in the model (if relevant). Can be any of <cite>“eager”</cite> (manual implementation of the attention), <cite>“sdpa”</cite> (using [<cite>F.scaled_dot_product_attention</cite>](<a class="reference external" href="https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention.html">https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention.html</a>)), <cite>“flash_attention_2”</cite> (using [Dao-AILab/flash-attention](<a class="reference external" href="https://github.com/Dao-AILab/flash-attention">https://github.com/Dao-AILab/flash-attention</a>)), or <cite>“flash_attention_3”</cite> (using [Dao-AILab/flash-attention/hopper](<a class="reference external" href="https://github.com/Dao-AILab/flash-attention/tree/main/hopper">https://github.com/Dao-AILab/flash-attention/tree/main/hopper</a>)). By default, if available, SDPA will be used for torch&gt;=2.1.1. The default is otherwise the manual <cite>“eager”</cite> implementation.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Examples:</p>
+<p><a href="#id1"><span class="problematic" id="id2">``</span></a><a href="#id3"><span class="problematic" id="id4">`</span></a>python
+&gt;&gt;&gt; from transformers import AutoConfig, AutoModelForCausalLM</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Download configuration from huggingface.co and cache.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">config</span> <span class="o">=</span> <span class="n">AutoConfig</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;google-bert/bert-base-cased&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="o">.</span><span class="n">from_config</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+<span class="go">```</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM.from_pretrained">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">model_args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM.from_pretrained" title="Link to this definition">¶</a></dt>
+<dd><p>Instantiate one of the model classes of the library (with a causal language modeling head) from a pretrained model.</p>
+<p>The model class to instantiate is selected based on the <cite>model_type</cite> property of the config object (either
+passed as an argument or loaded from <cite>pretrained_model_name_or_path</cite> if possible), or when it’s missing, by
+falling back to using pattern matching on <cite>pretrained_model_name_or_path</cite>:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><strong>afmoe</strong> – [<cite>AfmoeForCausalLM</cite>] (AfmoeConfig model)</p></li>
+<li><p><strong>apertus</strong> – [<cite>ApertusForCausalLM</cite>] (ApertusConfig model)</p></li>
+<li><p><strong>arcee</strong> – [<cite>ArceeForCausalLM</cite>] (ArceeConfig model)</p></li>
+<li><p><strong>aria_text</strong> – [<cite>AriaTextForCausalLM</cite>] (AriaTextConfig model)</p></li>
+<li><p><strong>bamba</strong> – [<cite>BambaForCausalLM</cite>] (BambaConfig model)</p></li>
+<li><p><strong>bart</strong> – [<cite>BartForCausalLM</cite>] (BartConfig model)</p></li>
+<li><p><strong>bert</strong> – [<cite>BertLMHeadModel</cite>] (BertConfig model)</p></li>
+<li><p><strong>bert-generation</strong> – [<cite>BertGenerationDecoder</cite>] (BertGenerationConfig model)</p></li>
+<li><p><strong>big_bird</strong> – [<cite>BigBirdForCausalLM</cite>] (BigBirdConfig model)</p></li>
+<li><p><strong>bigbird_pegasus</strong> – [<cite>BigBirdPegasusForCausalLM</cite>] (BigBirdPegasusConfig model)</p></li>
+<li><p><strong>biogpt</strong> – [<cite>BioGptForCausalLM</cite>] (BioGptConfig model)</p></li>
+<li><p><strong>bitnet</strong> – [<cite>BitNetForCausalLM</cite>] (BitNetConfig model)</p></li>
+<li><p><strong>blenderbot</strong> – [<cite>BlenderbotForCausalLM</cite>] (BlenderbotConfig model)</p></li>
+<li><p><strong>blenderbot-small</strong> – [<cite>BlenderbotSmallForCausalLM</cite>] (BlenderbotSmallConfig model)</p></li>
+<li><p><strong>bloom</strong> – [<cite>BloomForCausalLM</cite>] (BloomConfig model)</p></li>
+<li><p><strong>blt</strong> – [<cite>BltForCausalLM</cite>] (BltConfig model)</p></li>
+<li><p><strong>camembert</strong> – [<cite>CamembertForCausalLM</cite>] (CamembertConfig model)</p></li>
+<li><p><strong>codegen</strong> – [<cite>CodeGenForCausalLM</cite>] (CodeGenConfig model)</p></li>
+<li><p><strong>cohere</strong> – [<cite>CohereForCausalLM</cite>] (CohereConfig model)</p></li>
+<li><p><strong>cohere2</strong> – [<cite>Cohere2ForCausalLM</cite>] (Cohere2Config model)</p></li>
+<li><p><strong>cohere2_moe</strong> – [<cite>Cohere2MoeForCausalLM</cite>] (Cohere2MoeConfig model)</p></li>
+<li><p><strong>cpmant</strong> – [<cite>CpmAntForCausalLM</cite>] (CpmAntConfig model)</p></li>
+<li><p><strong>ctrl</strong> – [<cite>CTRLLMHeadModel</cite>] (CTRLConfig model)</p></li>
+<li><p><strong>cwm</strong> – [<cite>CwmForCausalLM</cite>] (CwmConfig model)</p></li>
+<li><p><strong>data2vec-text</strong> – [<cite>Data2VecTextForCausalLM</cite>] (Data2VecTextConfig model)</p></li>
+<li><p><strong>dbrx</strong> – [<cite>DbrxForCausalLM</cite>] (DbrxConfig model)</p></li>
+<li><p><strong>deepseek_v2</strong> – [<cite>DeepseekV2ForCausalLM</cite>] (DeepseekV2Config model)</p></li>
+<li><p><strong>deepseek_v3</strong> – [<cite>DeepseekV3ForCausalLM</cite>] (DeepseekV3Config model)</p></li>
+<li><p><strong>deepseek_v32</strong> – [<cite>DeepseekV32ForCausalLM</cite>] (DeepseekV32Config model)</p></li>
+<li><p><strong>deepseek_v4</strong> – [<cite>DeepseekV4ForCausalLM</cite>] (DeepseekV4Config model)</p></li>
+<li><p><strong>diffllama</strong> – [<cite>DiffLlamaForCausalLM</cite>] (DiffLlamaConfig model)</p></li>
+<li><p><strong>doge</strong> – [<cite>DogeForCausalLM</cite>] (DogeConfig model)</p></li>
+<li><p><strong>dots1</strong> – [<cite>Dots1ForCausalLM</cite>] (Dots1Config model)</p></li>
+<li><p><strong>electra</strong> – [<cite>ElectraForCausalLM</cite>] (ElectraConfig model)</p></li>
+<li><p><strong>emu3</strong> – [<cite>Emu3ForCausalLM</cite>] (Emu3Config model)</p></li>
+<li><p><strong>ernie</strong> – [<cite>ErnieForCausalLM</cite>] (ErnieConfig model)</p></li>
+<li><p><strong>ernie4_5</strong> – [<cite>Ernie4_5ForCausalLM</cite>] (Ernie4_5Config model)</p></li>
+<li><p><strong>ernie4_5_moe</strong> – [<cite>Ernie4_5_MoeForCausalLM</cite>] (Ernie4_5_MoeConfig model)</p></li>
+<li><p><strong>exaone4</strong> – [<cite>Exaone4ForCausalLM</cite>] (Exaone4Config model)</p></li>
+<li><p><strong>exaone_moe</strong> – [<cite>ExaoneMoeForCausalLM</cite>] (ExaoneMoeConfig model)</p></li>
+<li><p><strong>falcon</strong> – [<cite>FalconForCausalLM</cite>] (FalconConfig model)</p></li>
+<li><p><strong>falcon_h1</strong> – [<cite>FalconH1ForCausalLM</cite>] (FalconH1Config model)</p></li>
+<li><p><strong>falcon_mamba</strong> – [<cite>FalconMambaForCausalLM</cite>] (FalconMambaConfig model)</p></li>
+<li><p><strong>flex_olmo</strong> – [<cite>FlexOlmoForCausalLM</cite>] (FlexOlmoConfig model)</p></li>
+<li><p><strong>fuyu</strong> – [<cite>FuyuForCausalLM</cite>] (FuyuConfig model)</p></li>
+<li><p><strong>gemma</strong> – [<cite>GemmaForCausalLM</cite>] (GemmaConfig model)</p></li>
+<li><p><strong>gemma2</strong> – [<cite>Gemma2ForCausalLM</cite>] (Gemma2Config model)</p></li>
+<li><p><strong>gemma3</strong> – [<cite>Gemma3ForConditionalGeneration</cite>] (Gemma3Config model)</p></li>
+<li><p><strong>gemma3_text</strong> – [<cite>Gemma3ForCausalLM</cite>] (Gemma3TextConfig model)</p></li>
+<li><p><strong>gemma3n</strong> – [<cite>Gemma3nForConditionalGeneration</cite>] (Gemma3nConfig model)</p></li>
+<li><p><strong>gemma3n_text</strong> – [<cite>Gemma3nForCausalLM</cite>] (Gemma3nTextConfig model)</p></li>
+<li><p><strong>gemma4</strong> – [<cite>Gemma4ForConditionalGeneration</cite>] (Gemma4Config model)</p></li>
+<li><p><strong>gemma4_assistant</strong> – [<cite>Gemma4AssistantForCausalLM</cite>] (Gemma4AssistantConfig model)</p></li>
+<li><p><strong>gemma4_text</strong> – [<cite>Gemma4ForCausalLM</cite>] (Gemma4TextConfig model)</p></li>
+<li><p><strong>gemma4_unified</strong> – [<cite>Gemma4UnifiedForConditionalGeneration</cite>] (Gemma4UnifiedConfig model)</p></li>
+<li><p><strong>gemma4_unified_assistant</strong> – [<cite>Gemma4UnifiedAssistantForCausalLM</cite>] (Gemma4UnifiedAssistantConfig model)</p></li>
+<li><p><strong>gemma4_unified_text</strong> – [<cite>Gemma4UnifiedForCausalLM</cite>] (Gemma4UnifiedTextConfig model)</p></li>
+<li><p><strong>git</strong> – [<cite>GitForCausalLM</cite>] (GitConfig model)</p></li>
+<li><p><strong>glm</strong> – [<cite>GlmForCausalLM</cite>] (GlmConfig model)</p></li>
+<li><p><strong>glm4</strong> – [<cite>Glm4ForCausalLM</cite>] (Glm4Config model)</p></li>
+<li><p><strong>glm4_moe</strong> – [<cite>Glm4MoeForCausalLM</cite>] (Glm4MoeConfig model)</p></li>
+<li><p><strong>glm4_moe_lite</strong> – [<cite>Glm4MoeLiteForCausalLM</cite>] (Glm4MoeLiteConfig model)</p></li>
+<li><p><strong>glm_moe_dsa</strong> – [<cite>GlmMoeDsaForCausalLM</cite>] (GlmMoeDsaConfig model)</p></li>
+<li><p><strong>got_ocr2</strong> – [<cite>GotOcr2ForConditionalGeneration</cite>] (GotOcr2Config model)</p></li>
+<li><p><strong>gpt-sw3</strong> – [<cite>GPT2LMHeadModel</cite>] (GPT2Config model)</p></li>
+<li><p><strong>gpt2</strong> – [<cite>GPT2LMHeadModel</cite>] (GPT2Config model)</p></li>
+<li><p><strong>gpt_bigcode</strong> – [<cite>GPTBigCodeForCausalLM</cite>] (GPTBigCodeConfig model)</p></li>
+<li><p><strong>gpt_neo</strong> – [<cite>GPTNeoForCausalLM</cite>] (GPTNeoConfig model)</p></li>
+<li><p><strong>gpt_neox</strong> – [<cite>GPTNeoXForCausalLM</cite>] (GPTNeoXConfig model)</p></li>
+<li><p><strong>gpt_neox_japanese</strong> – [<cite>GPTNeoXJapaneseForCausalLM</cite>] (GPTNeoXJapaneseConfig model)</p></li>
+<li><p><strong>gpt_oss</strong> – [<cite>GptOssForCausalLM</cite>] (GptOssConfig model)</p></li>
+<li><p><strong>gptj</strong> – [<cite>GPTJForCausalLM</cite>] (GPTJConfig model)</p></li>
+<li><p><strong>granite</strong> – [<cite>GraniteForCausalLM</cite>] (GraniteConfig model)</p></li>
+<li><p><strong>granitemoe</strong> – [<cite>GraniteMoeForCausalLM</cite>] (GraniteMoeConfig model)</p></li>
+<li><p><strong>granitemoehybrid</strong> – [<cite>GraniteMoeHybridForCausalLM</cite>] (GraniteMoeHybridConfig model)</p></li>
+<li><p><strong>granitemoeshared</strong> – [<cite>GraniteMoeSharedForCausalLM</cite>] (GraniteMoeSharedConfig model)</p></li>
+<li><p><strong>helium</strong> – [<cite>HeliumForCausalLM</cite>] (HeliumConfig model)</p></li>
+<li><p><strong>hrm_text</strong> – [<cite>HrmTextForCausalLM</cite>] (HrmTextConfig model)</p></li>
+<li><p><strong>hunyuan_v1_dense</strong> – [<cite>HunYuanDenseV1ForCausalLM</cite>] (HunYuanDenseV1Config model)</p></li>
+<li><p><strong>hunyuan_v1_moe</strong> – [<cite>HunYuanMoEV1ForCausalLM</cite>] (HunYuanMoEV1Config model)</p></li>
+<li><p><strong>hy_v3</strong> – [<cite>HYV3ForCausalLM</cite>] (HYV3Config model)</p></li>
+<li><p><strong>hyperclovax</strong> – [<cite>HyperCLOVAXForCausalLM</cite>] (HyperCLOVAXConfig model)</p></li>
+<li><p><strong>jais2</strong> – [<cite>Jais2ForCausalLM</cite>] (Jais2Config model)</p></li>
+<li><p><strong>jamba</strong> – [<cite>JambaForCausalLM</cite>] (JambaConfig model)</p></li>
+<li><p><strong>jetmoe</strong> – [<cite>JetMoeForCausalLM</cite>] (JetMoeConfig model)</p></li>
+<li><p><strong>laguna</strong> – [<cite>LagunaForCausalLM</cite>] (LagunaConfig model)</p></li>
+<li><p><strong>lfm2</strong> – [<cite>Lfm2ForCausalLM</cite>] (Lfm2Config model)</p></li>
+<li><p><strong>lfm2_moe</strong> – [<cite>Lfm2MoeForCausalLM</cite>] (Lfm2MoeConfig model)</p></li>
+<li><p><strong>llama</strong> – [<cite>LlamaForCausalLM</cite>] (LlamaConfig model)</p></li>
+<li><p><strong>llama4</strong> – [<cite>Llama4ForCausalLM</cite>] (Llama4Config model)</p></li>
+<li><p><strong>llama4_text</strong> – [<cite>Llama4ForCausalLM</cite>] (Llama4TextConfig model)</p></li>
+<li><p><strong>longcat_flash</strong> – [<cite>LongcatFlashForCausalLM</cite>] (LongcatFlashConfig model)</p></li>
+<li><p><strong>mamba</strong> – [<cite>MambaForCausalLM</cite>] (MambaConfig model)</p></li>
+<li><p><strong>mamba2</strong> – [<cite>Mamba2ForCausalLM</cite>] (Mamba2Config model)</p></li>
+<li><p><strong>marian</strong> – [<cite>MarianForCausalLM</cite>] (MarianConfig model)</p></li>
+<li><p><strong>mbart</strong> – [<cite>MBartForCausalLM</cite>] (MBartConfig model)</p></li>
+<li><p><strong>megatron-bert</strong> – [<cite>MegatronBertForCausalLM</cite>] (MegatronBertConfig model)</p></li>
+<li><p><strong>mellum</strong> – [<cite>MellumForCausalLM</cite>] (MellumConfig model)</p></li>
+<li><p><strong>mimo_v2_flash</strong> – [<cite>MiMoV2FlashForCausalLM</cite>] (MiMoV2FlashConfig model)</p></li>
+<li><p><strong>minicpm3</strong> – [<cite>MiniCPM3ForCausalLM</cite>] (MiniCPM3Config model)</p></li>
+<li><p><strong>minimax</strong> – [<cite>MiniMaxForCausalLM</cite>] (MiniMaxConfig model)</p></li>
+<li><p><strong>minimax_m2</strong> – [<cite>MiniMaxM2ForCausalLM</cite>] (MiniMaxM2Config model)</p></li>
+<li><p><strong>minimax_m3_vl_text</strong> – [<cite>MiniMaxM3VLForCausalLM</cite>] (MiniMaxM3VLTextConfig model)</p></li>
+<li><p><strong>ministral</strong> – [<cite>MinistralForCausalLM</cite>] (MinistralConfig model)</p></li>
+<li><p><strong>ministral3</strong> – [<cite>Ministral3ForCausalLM</cite>] (Ministral3Config model)</p></li>
+<li><p><strong>mistral</strong> – [<cite>MistralForCausalLM</cite>] (MistralConfig model)</p></li>
+<li><p><strong>mixtral</strong> – [<cite>MixtralForCausalLM</cite>] (MixtralConfig model)</p></li>
+<li><p><strong>mllama</strong> – [<cite>MllamaForCausalLM</cite>] (MllamaConfig model)</p></li>
+<li><p><strong>modernbert-decoder</strong> – [<cite>ModernBertDecoderForCausalLM</cite>] (ModernBertDecoderConfig model)</p></li>
+<li><p><strong>moshi</strong> – [<cite>MoshiForCausalLM</cite>] (MoshiConfig model)</p></li>
+<li><p><strong>mpt</strong> – [<cite>MptForCausalLM</cite>] (MptConfig model)</p></li>
+<li><p><strong>musicgen</strong> – [<cite>MusicgenForCausalLM</cite>] (MusicgenConfig model)</p></li>
+<li><p><strong>musicgen_melody</strong> – [<cite>MusicgenMelodyForCausalLM</cite>] (MusicgenMelodyConfig model)</p></li>
+<li><p><strong>mvp</strong> – [<cite>MvpForCausalLM</cite>] (MvpConfig model)</p></li>
+<li><p><strong>nanochat</strong> – [<cite>NanoChatForCausalLM</cite>] (NanoChatConfig model)</p></li>
+<li><p><strong>nemotron</strong> – [<cite>NemotronForCausalLM</cite>] (NemotronConfig model)</p></li>
+<li><p><strong>nemotron_h</strong> – [<cite>NemotronHForCausalLM</cite>] (NemotronHConfig model)</p></li>
+<li><p><strong>olmo</strong> – [<cite>OlmoForCausalLM</cite>] (OlmoConfig model)</p></li>
+<li><p><strong>olmo2</strong> – [<cite>Olmo2ForCausalLM</cite>] (Olmo2Config model)</p></li>
+<li><p><strong>olmo3</strong> – [<cite>Olmo3ForCausalLM</cite>] (Olmo3Config model)</p></li>
+<li><p><strong>olmo_hybrid</strong> – [<cite>OlmoHybridForCausalLM</cite>] (OlmoHybridConfig model)</p></li>
+<li><p><strong>olmoe</strong> – [<cite>OlmoeForCausalLM</cite>] (OlmoeConfig model)</p></li>
+<li><p><strong>openai-gpt</strong> – [<cite>OpenAIGPTLMHeadModel</cite>] (OpenAIGPTConfig model)</p></li>
+<li><p><strong>opt</strong> – [<cite>OPTForCausalLM</cite>] (OPTConfig model)</p></li>
+<li><p><strong>pegasus</strong> – [<cite>PegasusForCausalLM</cite>] (PegasusConfig model)</p></li>
+<li><p><strong>persimmon</strong> – [<cite>PersimmonForCausalLM</cite>] (PersimmonConfig model)</p></li>
+<li><p><strong>phi</strong> – [<cite>PhiForCausalLM</cite>] (PhiConfig model)</p></li>
+<li><p><strong>phi3</strong> – [<cite>Phi3ForCausalLM</cite>] (Phi3Config model)</p></li>
+<li><p><strong>phi4_multimodal</strong> – [<cite>Phi4MultimodalForCausalLM</cite>] (Phi4MultimodalConfig model)</p></li>
+<li><p><strong>phimoe</strong> – [<cite>PhimoeForCausalLM</cite>] (PhimoeConfig model)</p></li>
+<li><p><strong>plbart</strong> – [<cite>PLBartForCausalLM</cite>] (PLBartConfig model)</p></li>
+<li><p><strong>prophetnet</strong> – [<cite>ProphetNetForCausalLM</cite>] (ProphetNetConfig model)</p></li>
+<li><p><strong>qwen2</strong> – [<cite>Qwen2ForCausalLM</cite>] (Qwen2Config model)</p></li>
+<li><p><strong>qwen2_moe</strong> – [<cite>Qwen2MoeForCausalLM</cite>] (Qwen2MoeConfig model)</p></li>
+<li><p><strong>qwen3</strong> – [<cite>Qwen3ForCausalLM</cite>] (Qwen3Config model)</p></li>
+<li><p><strong>qwen3_5</strong> – [<cite>Qwen3_5ForCausalLM</cite>] (Qwen3_5Config model)</p></li>
+<li><p><strong>qwen3_5_moe</strong> – [<cite>Qwen3_5MoeForCausalLM</cite>] (Qwen3_5MoeConfig model)</p></li>
+<li><p><strong>qwen3_5_moe_text</strong> – [<cite>Qwen3_5MoeForCausalLM</cite>] (Qwen3_5MoeTextConfig model)</p></li>
+<li><p><strong>qwen3_5_text</strong> – [<cite>Qwen3_5ForCausalLM</cite>] (Qwen3_5TextConfig model)</p></li>
+<li><p><strong>qwen3_moe</strong> – [<cite>Qwen3MoeForCausalLM</cite>] (Qwen3MoeConfig model)</p></li>
+<li><p><strong>qwen3_next</strong> – [<cite>Qwen3NextForCausalLM</cite>] (Qwen3NextConfig model)</p></li>
+<li><p><strong>recurrent_gemma</strong> – [<cite>RecurrentGemmaForCausalLM</cite>] (RecurrentGemmaConfig model)</p></li>
+<li><p><strong>reformer</strong> – [<cite>ReformerModelWithLMHead</cite>] (ReformerConfig model)</p></li>
+<li><p><strong>rembert</strong> – [<cite>RemBertForCausalLM</cite>] (RemBertConfig model)</p></li>
+<li><p><strong>roberta</strong> – [<cite>RobertaForCausalLM</cite>] (RobertaConfig model)</p></li>
+<li><p><strong>roberta-prelayernorm</strong> – [<cite>RobertaPreLayerNormForCausalLM</cite>] (RobertaPreLayerNormConfig model)</p></li>
+<li><p><strong>roc_bert</strong> – [<cite>RoCBertForCausalLM</cite>] (RoCBertConfig model)</p></li>
+<li><p><strong>roformer</strong> – [<cite>RoFormerForCausalLM</cite>] (RoFormerConfig model)</p></li>
+<li><p><strong>rwkv</strong> – [<cite>RwkvForCausalLM</cite>] (RwkvConfig model)</p></li>
+<li><p><strong>seed_oss</strong> – [<cite>SeedOssForCausalLM</cite>] (SeedOssConfig model)</p></li>
+<li><p><strong>smollm3</strong> – [<cite>SmolLM3ForCausalLM</cite>] (SmolLM3Config model)</p></li>
+<li><p><strong>solar_open</strong> – [<cite>SolarOpenForCausalLM</cite>] (SolarOpenConfig model)</p></li>
+<li><p><strong>stablelm</strong> – [<cite>StableLmForCausalLM</cite>] (StableLmConfig model)</p></li>
+<li><p><strong>starcoder2</strong> – [<cite>Starcoder2ForCausalLM</cite>] (Starcoder2Config model)</p></li>
+<li><p><strong>trocr</strong> – [<cite>TrOCRForCausalLM</cite>] (TrOCRConfig model)</p></li>
+<li><p><strong>vaultgemma</strong> – [<cite>VaultGemmaForCausalLM</cite>] (VaultGemmaConfig model)</p></li>
+<li><p><strong>whisper</strong> – [<cite>WhisperForCausalLM</cite>] (WhisperConfig model)</p></li>
+<li><p><strong>xglm</strong> – [<cite>XGLMForCausalLM</cite>] (XGLMConfig model)</p></li>
+<li><p><strong>xlm</strong> – [<cite>XLMWithLMHeadModel</cite>] (XLMConfig model)</p></li>
+<li><p><strong>xlm-roberta</strong> – [<cite>XLMRobertaForCausalLM</cite>] (XLMRobertaConfig model)</p></li>
+<li><p><strong>xlm-roberta-xl</strong> – [<cite>XLMRobertaXLForCausalLM</cite>] (XLMRobertaXLConfig model)</p></li>
+<li><p><strong>xlnet</strong> – [<cite>XLNetLMHeadModel</cite>] (XLNetConfig model)</p></li>
+<li><p><strong>xlstm</strong> – [<cite>xLSTMForCausalLM</cite>] (xLSTMConfig model)</p></li>
+<li><p><strong>xmod</strong> – [<cite>XmodForCausalLM</cite>] (XmodConfig model)</p></li>
+<li><p><strong>youtu</strong> – [<cite>YoutuForCausalLM</cite>] (YoutuConfig model)</p></li>
+<li><p><strong>zamba</strong> – [<cite>ZambaForCausalLM</cite>] (ZambaConfig model)</p></li>
+<li><p><strong>zamba2</strong> – [<cite>Zamba2ForCausalLM</cite>] (Zamba2Config model)</p></li>
+<li><p><strong>zaya</strong> – [<cite>ZayaForCausalLM</cite>] (ZayaConfig model)</p></li>
+</ul>
+</div></blockquote>
+<p>The model is set in evaluation mode by default using <cite>model.eval()</cite> (so for instance, dropout modules are
+deactivated). To train the model, you should first set it back in training mode with <cite>model.train()</cite></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pretrained_model_name_or_path</strong> (<cite>str</cite> or <cite>os.PathLike</cite>) – <p>Can be either:</p>
+<blockquote>
+<div><ul>
+<li><p>A string, the <em>model id</em> of a pretrained model hosted inside a model repo on huggingface.co.</p></li>
+<li><p>A path to a <em>directory</em> containing model weights saved using
+[<cite>~PreTrainedModel.save_pretrained</cite>], e.g., <cite>./my_model_directory/</cite>.</p></li>
+</ul>
+</div></blockquote>
+</p></li>
+<li><p><strong>model_args</strong> (additional positional arguments, <em>optional</em>) – Will be passed along to the underlying model <cite>__init__()</cite> method.</p></li>
+<li><p><strong>config</strong> ([<cite>PreTrainedConfig</cite>], <em>optional</em>) – <p>Configuration for the model to use instead of an automatically loaded configuration. Configuration can
+be automatically loaded when:</p>
+<blockquote>
+<div><ul>
+<li><p>The model is a model provided by the library (loaded with the <em>model id</em> string of a pretrained
+model).</p></li>
+<li><p>The model was saved using [<cite>~PreTrainedModel.save_pretrained</cite>] and is reloaded by supplying the
+save directory.</p></li>
+<li><p>The model is loaded by supplying a local directory as <cite>pretrained_model_name_or_path</cite> and a
+configuration JSON file named <em>config.json</em> is found in the directory.</p></li>
+</ul>
+</div></blockquote>
+</p></li>
+<li><p><strong>state_dict</strong> (<em>dict[str, torch.Tensor]</em>, <em>optional</em>) – <p>A state dictionary to use instead of a state dictionary loaded from saved weights file.</p>
+<p>This option can be used if you want to create a model from a pretrained configuration but load your own
+weights. In this case though, you should check if using [<cite>~PreTrainedModel.save_pretrained</cite>] and
+[<cite>~PreTrainedModel.from_pretrained</cite>] is not a simpler option.</p>
+</p></li>
+<li><p><strong>cache_dir</strong> (<cite>str</cite> or <cite>os.PathLike</cite>, <em>optional</em>) – Path to a directory in which a downloaded pretrained model configuration should be cached if the
+standard cache should not be used.</p></li>
+<li><p><strong>force_download</strong> (<cite>bool</cite>, <em>optional</em>, defaults to <cite>False</cite>) – Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+cached versions if they exist.</p></li>
+<li><p><strong>proxies</strong> (<cite>dict[str, str]</cite>, <em>optional</em>) – A dictionary of proxy servers to use by protocol or endpoint, e.g., <cite>{‘http’: ‘foo.bar:3128’,
+‘http://hostname’: ‘foo.bar:4012’}</cite>. The proxies are used on each request.</p></li>
+<li><p><strong>output_loading_info</strong> (<cite>bool</cite>, <em>optional</em>, defaults to <cite>False</cite>) – Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.</p></li>
+<li><p><strong>local_files_only</strong> (<cite>bool</cite>, <em>optional</em>, defaults to <cite>False</cite>) – Whether or not to only look at local files (e.g., not try downloading the model).</p></li>
+<li><p><strong>revision</strong> (<cite>str</cite>, <em>optional</em>, defaults to <cite>“main”</cite>) – The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+git-based system for storing models and other artifacts on huggingface.co, so <cite>revision</cite> can be any
+identifier allowed by git.</p></li>
+<li><p><strong>trust_remote_code</strong> (<cite>bool</cite>, <em>optional</em>, defaults to <cite>False</cite>) – Whether or not to allow for custom models defined on the Hub in their own modeling files. This option
+should only be set to <cite>True</cite> for repositories you trust and in which you have read the code, as it will
+execute code present on the Hub on your local machine.</p></li>
+<li><p><strong>code_revision</strong> (<cite>str</cite>, <em>optional</em>, defaults to <cite>“main”</cite>) – The specific revision to use for the code on the Hub, if the code leaves in a different repository than
+the rest of the model. It can be a branch name, a tag name, or a commit id, since we use a git-based
+system for storing models and other artifacts on huggingface.co, so <cite>revision</cite> can be any identifier
+allowed by git.</p></li>
+<li><p><strong>kwargs</strong> (additional keyword arguments, <em>optional</em>) – <p>Can be used to update the configuration object (after it being loaded) and initiate the model (e.g.,
+<cite>output_attentions=True</cite>). Behaves differently depending on whether a <cite>config</cite> is provided or
+automatically loaded:</p>
+<blockquote>
+<div><ul>
+<li><p>If a configuration is provided with <cite>config</cite>, <cite>**kwargs</cite> will be directly passed to the
+underlying model’s <cite>__init__</cite> method (we assume all relevant updates to the configuration have
+already been done)</p></li>
+<li><p>If a configuration is not provided, <cite>kwargs</cite> will be first passed to the configuration class
+initialization function ([<cite>~PreTrainedConfig.from_pretrained</cite>]). Each key of <cite>kwargs</cite> that
+corresponds to a configuration attribute will be used to override said attribute with the
+supplied <cite>kwargs</cite> value. Remaining keys that do not correspond to any configuration attribute
+will be passed to the underlying model’s <cite>__init__</cite> function.</p></li>
+</ul>
+</div></blockquote>
+</p></li>
+</ul>
+</dd>
+</dl>
+<p>Examples:</p>
+<p><a href="#id5"><span class="problematic" id="id6">``</span></a><a href="#id7"><span class="problematic" id="id8">`</span></a>python
+&gt;&gt;&gt; from transformers import AutoConfig, AutoModelForCausalLM</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Download model and configuration from huggingface.co and cache.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;google-bert/bert-base-cased&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Update configuration during loading</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;google-bert/bert-base-cased&quot;</span><span class="p">,</span> <span class="n">output_attentions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">output_attentions</span>
+<span class="go">True</span>
+<span class="go">```</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoTokenizer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">AutoTokenizer</span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoTokenizer" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>This is a generic tokenizer class that will be instantiated as one of the tokenizer classes of the library when
+created with the [<cite>AutoTokenizer.from_pretrained</cite>] class method.</p>
+<p>This class cannot be instantiated directly using <cite>__init__()</cite> (throws an error).</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoTokenizer.from_pretrained">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*args:</span> <span class="pre">~typing.Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_orig:</span> <span class="pre">~typing.Any</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">AutoTokenizer.from_pretrained&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**kwargs:</span> <span class="pre">~typing.Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoTokenizer.from_pretrained" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.AutoTokenizer.register">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">register</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_class</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer_class</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slow_tokenizer_class</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fast_tokenizer_class</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exist_ok</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.AutoTokenizer.register" title="Link to this definition">¶</a></dt>
+<dd><p>Register a new tokenizer in this mapping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config_class</strong> ([<cite>PreTrainedConfig</cite>]) – The configuration corresponding to the model to register.</p></li>
+<li><p><strong>tokenizer_class</strong> – The tokenizer class to register (V5 - preferred parameter).</p></li>
+<li><p><strong>slow_tokenizer_class</strong> – (Deprecated) The slow tokenizer to register.</p></li>
+<li><p><strong>fast_tokenizer_class</strong> – (Deprecated) The fast tokenizer to register.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.boot">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">boot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_config_overrides</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">device</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PreTrainedTokenizerBase</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trust_remote_code</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_class</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_map</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_memory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.TransformerBridge" title="transformer_lens.model_bridge.bridge.TransformerBridge"><span class="pre">TransformerBridge</span></a></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.boot" title="Link to this definition">¶</a></dt>
-<dd><p>Boot a model from HuggingFace.</p>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">boot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_config_overrides</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">device</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">PreTrainedTokenizerBase</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trust_remote_code</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_class</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_map</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_memory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offload_folder</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.model_bridge.transformer_bridge.html#transformer_lens.model_bridge.transformer_bridge.TransformerBridge" title="transformer_lens.model_bridge.transformer_bridge.TransformerBridge"><span class="pre">TransformerBridge</span></a></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.boot" title="Link to this definition">¶</a></dt>
+<dd><p>Boot a model from HuggingFace (exposed as <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers</span></code>).</p>
+<p>Returns raw HF weights by default — logits/activations match HF, <em>not</em>
+legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> (which folds LayerNorm + centers weights).
+Call <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> on the result for HookedTransformer-
+equivalent numerics. Generation, argmax, and CE loss are unaffected.</p>
+<p>Attention implementation is forced to <code class="docutils literal notranslate"><span class="pre">&quot;eager&quot;</span></code> so hooks can capture scores
+and patterns. For an apples-to-apples HF comparison, load the HF model with
+<code class="docutils literal notranslate"><span class="pre">attn_implementation=&quot;eager&quot;</span></code> too; comparing against the default <code class="docutils literal notranslate"><span class="pre">&quot;sdpa&quot;</span></code>
+shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -699,12 +1251,20 @@ adapter is selected automatically (e.g., BertForNextSentencePrediction).</p></li
 models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
 When provided, load_weights is ignored.</p></li>
 <li><p><strong>device_map</strong> – HuggingFace-style device map (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;balanced&quot;</span></code>, dict, etc.) for
-dispatched inference. Explicit maps may include CPU targets; disk / meta offload
-targets are still rejected because Bridge component wrappers need additional
-offload-hook routing work. Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">device</span></code>.</p></li>
+dispatched inference. Explicit maps may include CPU and disk targets; meta targets
+are still rejected when <code class="docutils literal notranslate"><span class="pre">load_weights=True</span></code> (meta has no real data to offload from,
+unlike disk/cpu). Mixed CPU/disk + GPU maps are rejected too, not because they’re
+known to be broken but because CPU/disk offload has only been verified on CPU-only
+hardware — no GPU to mix in. <code class="docutils literal notranslate"><span class="pre">bridge.enable_compatibility_mode()</span></code> (with weight
+processing, i.e. not <code class="docutils literal notranslate"><span class="pre">no_processing=True</span></code>) is unsupported on a CPU/disk-offloaded
+bridge and raises immediately rather than mid-fold; the default (non-compat-mode)
+forward pass, <code class="docutils literal notranslate"><span class="pre">run_with_cache</span></code>, and hooks all work normally under offload. Mutually
+exclusive with <code class="docutils literal notranslate"><span class="pre">device</span></code>.</p></li>
 <li><p><strong>n_devices</strong> – Convenience: split the model across this many CUDA devices (translated to a
 <code class="docutils literal notranslate"><span class="pre">max_memory</span></code> dict internally). Requires CUDA with at least this many visible devices.</p></li>
 <li><p><strong>max_memory</strong> – Optional per-device memory budget for HF’s dispatcher.</p></li>
+<li><p><strong>offload_folder</strong> – Directory for disk-offloaded weight shards when <code class="docutils literal notranslate"><span class="pre">device_map</span></code> includes
+a <code class="docutils literal notranslate"><span class="pre">&quot;disk&quot;</span></code> target. Defaults to a temporary directory (HF’s own default) if omitted.</p></li>
 <li><p><strong>n_ctx</strong> – Optional context length override. The bridge normally uses the model’s documented
 max context from the HF config. Setting this writes to whichever HF field the model
 uses (n_positions / max_position_embeddings / etc.), so callers don’t need to know
@@ -715,7 +1275,7 @@ config, model, and tokenizer loading.
 Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">checkpoint_index</span></code> and <code class="docutils literal notranslate"><span class="pre">checkpoint_value</span></code>.</p></li>
 <li><p><strong>checkpoint_index</strong> – Index into the available training checkpoints for the model family.
 Convenience over <code class="docutils literal notranslate"><span class="pre">revision</span></code> for checkpointed models like EleutherAI/pythia* and
-stanford-crfm/<a href="#id1"><span class="problematic" id="id2">*</span></a>. Resolved to a revision string via the known per-family naming
+stanford-crfm/<a href="#id9"><span class="problematic" id="id10">*</span></a>. Resolved to a revision string via the known per-family naming
 conventions (<code class="docutils literal notranslate"><span class="pre">step{value}</span></code> for Pythia, <code class="docutils literal notranslate"><span class="pre">checkpoint-{value}</span></code> for stanford-crfm).</p></li>
 <li><p><strong>checkpoint_value</strong> – Training step or token count of the desired checkpoint. Alternative to
 <code class="docutils literal notranslate"><span class="pre">checkpoint_index</span></code>; must be one of the labels returned by <code class="docutils literal notranslate"><span class="pre">get_checkpoint_labels</span></code>.</p></li>
@@ -730,33 +1290,7 @@ conventions (<code class="docutils literal notranslate"><span class="pre">step{v
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.check_model_support">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">check_model_support</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.check_model_support" title="Link to this definition">¶</a></dt>
-<dd><p>Check if a model is supported and get detailed support info.</p>
-<p>This function provides detailed information about a model’s compatibility
-with TransformerLens, including architecture type and verification status.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model_id</strong> – The HuggingFace model ID to check (e.g., “gpt2”)</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><ul class="simple">
-<li><p>is_supported: bool - Whether the model is supported</p></li>
-<li><p>architecture_id: str | None - The architecture type if supported</p></li>
-<li><p>verified: bool - Whether the model has been verified to work</p></li>
-<li><p>suggestion: str | None - Suggested alternative if not supported</p></li>
-</ul>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Dictionary with support information</p>
-</dd>
-</dl>
-<p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.model_bridge.sources.transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_model_support</span>  
-<span class="gp">&gt;&gt;&gt; </span><span class="n">info</span> <span class="o">=</span> <span class="n">check_model_support</span><span class="p">(</span><span class="s2">&quot;openai-community/gpt2&quot;</span><span class="p">)</span>  
-<span class="gp">&gt;&gt;&gt; </span><span class="n">info</span><span class="p">[</span><span class="s2">&quot;is_supported&quot;</span><span class="p">]</span>  
-<span class="go">True</span>
-</pre></div>
-</div>
+<dd><p>Detailed support info for a model: <code class="docutils literal notranslate"><span class="pre">is_supported</span></code>, <code class="docutils literal notranslate"><span class="pre">architecture_id</span></code>, <code class="docutils literal notranslate"><span class="pre">verified</span></code>, <code class="docutils literal notranslate"><span class="pre">suggestion</span></code>.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -764,70 +1298,49 @@ with TransformerLens, including architecture type and verification status.</p>
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">determine_architecture_from_hf_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.determine_architecture_from_hf_config" title="Link to this definition">¶</a></dt>
 <dd><p>Determine the architecture name from HuggingFace config.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>hf_config</strong> – The HuggingFace config object</p>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The architecture name (e.g., “GPT2LMHeadModel”, “LlamaForCausalLM”)</p>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The architecture name (e.g., “GPT2LMHeadModel”, “LlamaForCausalLM”)</p>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
 </dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>str</p>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If architecture cannot be determined</p>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If architecture cannot be determined</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.get_effective_text_config">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">get_effective_text_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.get_effective_text_config" title="Link to this definition">¶</a></dt>
-<dd><p>Return the config that owns the language-model forward path.</p>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.get_hf_model_class_for_architecture">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">get_hf_model_class_for_architecture</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">architecture</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.get_hf_model_class_for_architecture" title="Link to this definition">¶</a></dt>
-<dd><p>Determine the correct HuggingFace AutoModel class for loading.</p>
-<p>Uses centralized architecture sets from utilities.architectures.</p>
+<dd><p>Pick the correct HuggingFace <code class="docutils literal notranslate"><span class="pre">AutoModel*</span></code> class for the architecture.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.list_supported_models">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">list_supported_models</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">architecture</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verified_only</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.list_supported_models" title="Link to this definition">¶</a></dt>
 <dd><p>List all models supported by TransformerLens.</p>
-<p>This function provides convenient access to the model registry API
-for discovering which HuggingFace models can be loaded.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>architecture</strong> – Filter by architecture ID (e.g., “GPT2LMHeadModel”).
-If None, returns all supported models.</p></li>
-<li><p><strong>verified_only</strong> – If True, only return models that have been verified
-to work with TransformerLens.</p></li>
+<li><p><strong>architecture</strong> – Filter by architecture ID (e.g., “GPT2LMHeadModel”).</p></li>
+<li><p><strong>verified_only</strong> – If True, only return verified-to-work models.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>List of model IDs (e.g., [“gpt2”, “gpt2-medium”, …])</p>
+<dd class="field-even"><p>List of model IDs.</p>
 </dd>
 </dl>
-<p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.model_bridge.sources.transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">list_supported_models</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">models</span> <span class="o">=</span> <span class="n">list_supported_models</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">gpt2_models</span> <span class="o">=</span> <span class="n">list_supported_models</span><span class="p">(</span><span class="n">architecture</span><span class="o">=</span><span class="s2">&quot;GPT2LMHeadModel&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.map_default_transformer_lens_config">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">map_default_transformer_lens_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.map_default_transformer_lens_config" title="Link to this definition">¶</a></dt>
 <dd><p>Map HuggingFace config fields to TransformerLens config format.</p>
-<p>This function provides a standardized mapping from various HuggingFace config
-field names to the consistent TransformerLens naming convention.</p>
-<p>For multimodal models (LLaVA, Gemma3ForConditionalGeneration), the language
-model dimensions are nested under text_config. We extract from text_config
-first, then apply the standard mapping.</p>
+<p>Standardized mapping from various HuggingFace config field names to the
+consistent TransformerLens naming convention. For multimodal models (LLaVA,
+Gemma3ForConditionalGeneration), the language model dimensions are nested
+under <code class="docutils literal notranslate"><span class="pre">text_config</span></code>; we extract from there first.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>hf_config</strong> – The HuggingFace config object</p>
@@ -841,17 +1354,18 @@ first, then apply the standard mapping.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.sources.transformers.setup_tokenizer">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.sources.transformers.</span></span><span class="sig-name descname"><span class="pre">setup_tokenizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_padding_side</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.sources.transformers.setup_tokenizer" title="Link to this definition">¶</a></dt>
-<dd><p>Set’s up the tokenizer.</p>
+<dd><p>Normalize a HuggingFace tokenizer for use with the bridge.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em>) – a pretrained HuggingFace tokenizer.</p></li>
-<li><p><strong>default_padding_side</strong> (<em>str</em>) – “right” or “left”, which side to pad on.</p></li>
+<li><p><strong>tokenizer</strong> – A <code class="docutils literal notranslate"><span class="pre">PreTrainedTokenizer</span></code> or <code class="docutils literal notranslate"><span class="pre">PreTrainedTokenizerFast</span></code>.</p></li>
+<li><p><strong>default_padding_side</strong> – <code class="docutils literal notranslate"><span class="pre">&quot;right&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;left&quot;</span></code>; sets <code class="docutils literal notranslate"><span class="pre">tokenizer.padding_side</span></code>.</p></li>
 </ul>
 </dd>
 </dl>
 </dd></dl>
 
+</section>
 </section>
 
         </article>
@@ -859,12 +1373,12 @@ first, then apply the standard mapping.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.model_bridge.supported_architectures.html">
+          <a class="next-page" href="transformer_lens.model_bridge.sources.transformers.helpers.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.model_bridge.supported_architectures package</div>
+                <div class="title">transformer_lens.model_bridge.sources.transformers.helpers module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -909,15 +1423,34 @@ first, then apply the standard mapping.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">transformer_lens.model_bridge.sources.transformers module</a><ul>
+<li><a class="reference internal" href="#">transformer_lens.model_bridge.sources.transformers package</a><ul>
+<li><a class="reference internal" href="#submodules">Submodules</a></li>
+<li><a class="reference internal" href="#module-transformer_lens.model_bridge.sources.transformers">Module contents</a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig"><code class="docutils literal notranslate"><span class="pre">AutoConfig</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig.for_model"><code class="docutils literal notranslate"><span class="pre">AutoConfig.for_model()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig.from_pretrained"><code class="docutils literal notranslate"><span class="pre">AutoConfig.from_pretrained()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoConfig.register"><code class="docutils literal notranslate"><span class="pre">AutoConfig.register()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM"><code class="docutils literal notranslate"><span class="pre">AutoModelForCausalLM</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM.from_config"><code class="docutils literal notranslate"><span class="pre">AutoModelForCausalLM.from_config()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoModelForCausalLM.from_pretrained"><code class="docutils literal notranslate"><span class="pre">AutoModelForCausalLM.from_pretrained()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoTokenizer"><code class="docutils literal notranslate"><span class="pre">AutoTokenizer</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoTokenizer.from_pretrained"><code class="docutils literal notranslate"><span class="pre">AutoTokenizer.from_pretrained()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.AutoTokenizer.register"><code class="docutils literal notranslate"><span class="pre">AutoTokenizer.register()</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.boot"><code class="docutils literal notranslate"><span class="pre">boot()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.check_model_support"><code class="docutils literal notranslate"><span class="pre">check_model_support()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.determine_architecture_from_hf_config"><code class="docutils literal notranslate"><span class="pre">determine_architecture_from_hf_config()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.get_effective_text_config"><code class="docutils literal notranslate"><span class="pre">get_effective_text_config()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.get_hf_model_class_for_architecture"><code class="docutils literal notranslate"><span class="pre">get_hf_model_class_for_architecture()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.list_supported_models"><code class="docutils literal notranslate"><span class="pre">list_supported_models()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.map_default_transformer_lens_config"><code class="docutils literal notranslate"><span class="pre">map_default_transformer_lens_config()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.sources.transformers.setup_tokenizer"><code class="docutils literal notranslate"><span class="pre">setup_tokenizer()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

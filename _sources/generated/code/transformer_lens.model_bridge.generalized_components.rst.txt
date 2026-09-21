@@ -38,6 +38,7 @@ Submodules
    transformer_lens.model_bridge.generalized_components.mpt_alibi_attention
    transformer_lens.model_bridge.generalized_components.normalization
    transformer_lens.model_bridge.generalized_components.opaque_block
+   transformer_lens.model_bridge.generalized_components.pooler
    transformer_lens.model_bridge.generalized_components.pos_embed
    transformer_lens.model_bridge.generalized_components.position_embedding_hooks_mixin
    transformer_lens.model_bridge.generalized_components.position_embeddings_attention

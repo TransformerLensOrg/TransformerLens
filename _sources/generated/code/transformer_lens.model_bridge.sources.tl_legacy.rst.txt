@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.tl\_legacy module
+=========================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.tl_legacy
+   :members:
+   :undoc-members:
+   :show-inheritance:

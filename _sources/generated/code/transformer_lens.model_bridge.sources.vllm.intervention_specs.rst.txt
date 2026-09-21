@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.vllm.intervention\_specs module
+=======================================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.vllm.intervention_specs
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/utilities/hf_utils.py: 73%</title>
+    <title>Coverage for transformer_lens/utilities/hf_utils.py: 71%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/utilities/hf_utils.py</b>:
-            <span class="pc_cov">73%</span>
+            <span class="pc_cov">71%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,8 +56,8 @@
         </aside>
         <h2>
             <span class="text">216 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">167<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">49<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">161<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">55<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">6<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">11<span class="text"> partial</span></button>
         </h2>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_b2114f845e0399b7_initialization_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -266,8 +266,8 @@
     <p class="run run2"><span class="n"><a id="t182" href="#t182">182</a></span><span class="t">        <span class="op">**</span><span class="nam">select_compatible_kwargs</span><span class="op">(</span><span class="nam">kwargs</span><span class="op">,</span> <span class="nam">hf_hub_download</span><span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t183" href="#t183">183</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t184" href="#t184">184</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t185" href="#t185">185</a></span><span class="t">    <span class="key">if</span> <span class="nam">file_path</span><span class="op">.</span><span class="nam">endswith</span><span class="op">(</span><span class="str">".pth"</span><span class="op">)</span> <span class="key">or</span> <span class="nam">force_is_torch</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t186" href="#t186">186</a></span><span class="t">        <span class="key">return</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">load</span><span class="op">(</span><span class="nam">file_path</span><span class="op">,</span> <span class="nam">map_location</span><span class="op">=</span><span class="str">"cpu"</span><span class="op">,</span> <span class="nam">weights_only</span><span class="op">=</span><span class="key">False</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="par run show_par"><span class="n"><a id="t185" href="#t185">185</a></span><span class="t">    <span class="key">if</span> <span class="nam">file_path</span><span class="op">.</span><span class="nam">endswith</span><span class="op">(</span><span class="str">".pth"</span><span class="op">)</span> <span class="key">or</span> <span class="nam">force_is_torch</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">185&#x202F;&#x219B;&#x202F;186</span><span class="annotate long">line 185 didn't jump to line 186 because the condition on line 185 was never true</span></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t186" href="#t186">186</a></span><span class="t">        <span class="key">return</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">load</span><span class="op">(</span><span class="nam">file_path</span><span class="op">,</span> <span class="nam">map_location</span><span class="op">=</span><span class="str">"cpu"</span><span class="op">,</span> <span class="nam">weights_only</span><span class="op">=</span><span class="key">False</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t187" href="#t187">187</a></span><span class="t">    <span class="key">elif</span> <span class="nam">file_path</span><span class="op">.</span><span class="nam">endswith</span><span class="op">(</span><span class="str">".json"</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">187&#x202F;&#x219B;&#x202F;190</span><span class="annotate long">line 187 didn't jump to line 190 because the condition on line 187 was always true</span></span></p>
     <p class="run"><span class="n"><a id="t188" href="#t188">188</a></span><span class="t">        <span class="key">return</span> <span class="nam">json</span><span class="op">.</span><span class="nam">load</span><span class="op">(</span><span class="nam">open</span><span class="op">(</span><span class="nam">file_path</span><span class="op">,</span> <span class="str">"r"</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t189" href="#t189">189</a></span><span class="t">    <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -281,14 +281,14 @@
     <p class="pln"><span class="n"><a id="t197" href="#t197">197</a></span><span class="t"><span class="str">    Safe to call under parallel test execution (handles concurrent-delete races).</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t198" href="#t198">198</a></span><span class="t"><span class="str">    """</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t199" href="#t199">199</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t">    <span class="nam">print</span><span class="op">(</span><span class="str">"Deleting Hugging Face cache directory and all its contents."</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t200" href="#t200">200</a></span><span class="t">    <span class="nam">print</span><span class="op">(</span><span class="str">"Deleting Hugging Face cache directory and all its contents."</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t201" href="#t201">201</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">    <span class="key">if</span> <span class="key">not</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">exists</span><span class="op">(</span><span class="nam">CACHE_DIR</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">202&#x202F;&#x219B;&#x202F;203</span><span class="annotate long">line 202 didn't jump to line 203 because the condition on line 202 was never true</span></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t202" href="#t202">202</a></span><span class="t">    <span class="key">if</span> <span class="key">not</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">exists</span><span class="op">(</span><span class="nam">CACHE_DIR</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t203" href="#t203">203</a></span><span class="t">        <span class="key">return</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t204" href="#t204">204</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t205" href="#t205">205</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t205" href="#t205">205</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t206" href="#t206">206</a></span><span class="t">        <span class="com"># Use a custom error handler that only ignores specific race condition errors</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t207" href="#t207">207</a></span><span class="t">        <span class="key">def</span> <span class="nam">handle_remove_readonly</span><span class="op">(</span><span class="nam">func</span><span class="op">,</span> <span class="nam">path</span><span class="op">,</span> <span class="nam">exc_info</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t207" href="#t207">207</a></span><span class="t">        <span class="key">def</span> <span class="nam">handle_remove_readonly</span><span class="op">(</span><span class="nam">func</span><span class="op">,</span> <span class="nam">path</span><span class="op">,</span> <span class="nam">exc_info</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t208" href="#t208">208</a></span><span class="t">            <span class="str">"""Error handler for Windows readonly files and race conditions."""</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t209" href="#t209">209</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t210" href="#t210">210</a></span><span class="t">            <span class="nam">excvalue</span> <span class="op">=</span> <span class="nam">exc_info</span><span class="op">[</span><span class="num">1</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -311,7 +311,7 @@
     <p class="pln"><span class="n"><a id="t227" href="#t227">227</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t228" href="#t228">228</a></span><span class="t">                <span class="key">raise</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t230" href="#t230">230</a></span><span class="t">        <span class="nam">shutil</span><span class="op">.</span><span class="nam">rmtree</span><span class="op">(</span><span class="nam">CACHE_DIR</span><span class="op">,</span> <span class="nam">onerror</span><span class="op">=</span><span class="nam">handle_remove_readonly</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t230" href="#t230">230</a></span><span class="t">        <span class="nam">shutil</span><span class="op">.</span><span class="nam">rmtree</span><span class="op">(</span><span class="nam">CACHE_DIR</span><span class="op">,</span> <span class="nam">onerror</span><span class="op">=</span><span class="nam">handle_remove_readonly</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t231" href="#t231">231</a></span><span class="t">    <span class="key">except</span> <span class="nam">FileNotFoundError</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t232" href="#t232">232</a></span><span class="t">        <span class="com"># Directory was deleted by another process - that's fine</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t233" href="#t233">233</a></span><span class="t">        <span class="key">pass</span>&nbsp;</span><span class="r"></span></p>
@@ -552,7 +552,7 @@
             <a class="nav" href="z_b2114f845e0399b7_initialization_utils_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
     </div>
 </footer>

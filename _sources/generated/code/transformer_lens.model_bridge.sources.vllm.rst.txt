@@ -1,0 +1,31 @@
+transformer\_lens.model\_bridge.sources.vllm package
+====================================================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.sources.vllm.overlays
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.sources.vllm.driver
+   transformer_lens.model_bridge.sources.vllm.internals
+   transformer_lens.model_bridge.sources.vllm.intervention_specs
+   transformer_lens.model_bridge.sources.vllm.plugin
+   transformer_lens.model_bridge.sources.vllm.source
+   transformer_lens.model_bridge.sources.vllm.worker_extension
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge.sources.vllm
+   :members:
+   :undoc-members:
+   :show-inheritance:

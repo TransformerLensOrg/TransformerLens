@@ -62,12 +62,12 @@
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">2<span class="text"> partial</span></button>
         </h2>
         <p class="text">
-            <a id="prevFileLink" class="nav" href="z_65d4430f90bfb219_mlp_factory_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a id="prevFileLink" class="nav" href="z_65d4430f90bfb219_architecture_adapter_factory_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="z_af97b5493da09a14_hook_points_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -96,7 +96,7 @@
     <p class="run"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t"><span class="key">from</span> <span class="nam">typing_extensions</span> <span class="key">import</span> <span class="nam">Literal</span><span class="op">,</span> <span class="nam">get_args</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">ActivationCache</span> <span class="key">import</span> <span class="nam">ActivationCache</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">HookedTransformer</span> <span class="key">import</span> <span class="nam">HookedTransformer</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">model_protocol</span> <span class="key">import</span> <span class="nam">TransformerLensModel</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utilities</span> <span class="key">import</span> <span class="nam">is_lower_triangular</span><span class="op">,</span> <span class="nam">is_square</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t"><span class="nam">HeadName</span> <span class="op">=</span> <span class="nam">Literal</span><span class="op">[</span><span class="str">"previous_token_head"</span><span class="op">,</span> <span class="str">"duplicate_token_head"</span><span class="op">,</span> <span class="str">"induction_head"</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -122,7 +122,7 @@
     <p class="pln"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t39" href="#t39">39</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t40" href="#t40">40</a></span><span class="t"><span class="key">def</span> <span class="nam">detect_head</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t41" href="#t41">41</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">HookedTransformer</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t41" href="#t41">41</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">TransformerLensModel</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t42" href="#t42">42</a></span><span class="t">    <span class="nam">seq</span><span class="op">:</span> <span class="nam">Union</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">List</span><span class="op">[</span><span class="nam">str</span><span class="op">]</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t43" href="#t43">43</a></span><span class="t">    <span class="nam">detection_pattern</span><span class="op">:</span> <span class="nam">Union</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="nam">HeadName</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t">    <span class="nam">heads</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span><span class="nam">Union</span><span class="op">[</span><span class="nam">List</span><span class="op">[</span><span class="nam">LayerHeadTuple</span><span class="op">]</span><span class="op">,</span> <span class="nam">LayerToHead</span><span class="op">]</span><span class="op">]</span> <span class="op">=</span> <span class="key">None</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -384,12 +384,12 @@
 <footer>
     <div class="content">
         <p>
-            <a class="nav" href="z_65d4430f90bfb219_mlp_factory_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a class="nav" href="z_65d4430f90bfb219_architecture_adapter_factory_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a class="nav" href="z_af97b5493da09a14_hook_points_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
     </div>
 </footer>

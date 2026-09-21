@@ -9,7 +9,6 @@ Submodules
 
    transformer_lens.factories.activation_function_factory
    transformer_lens.factories.architecture_adapter_factory
-   transformer_lens.factories.mlp_factory
 
 Module contents
 ---------------

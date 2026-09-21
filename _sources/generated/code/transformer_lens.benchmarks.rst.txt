@@ -15,9 +15,7 @@ Submodules
    transformer_lens.benchmarks.encoder_common
    transformer_lens.benchmarks.forward_pass
    transformer_lens.benchmarks.generation
-   transformer_lens.benchmarks.granular_weight_processing
    transformer_lens.benchmarks.hook_registration
-   transformer_lens.benchmarks.hook_structure
    transformer_lens.benchmarks.main_benchmark
    transformer_lens.benchmarks.multimodal
    transformer_lens.benchmarks.text_quality

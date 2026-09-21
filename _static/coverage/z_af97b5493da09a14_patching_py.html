@@ -62,12 +62,12 @@
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">6<span class="text"> partial</span></button>
         </h2>
         <p class="text">
-            <a id="prevFileLink" class="nav" href="z_1d599f999bbb9d44_types_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a id="prevFileLink" class="nav" href="z_af97b5493da09a14_model_protocol_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a id="nextFileLink" class="nav" href="z_712808f24eb400fe___init___py.html">&#xbb; next</a>
+            <a id="nextFileLink" class="nav" href="z_af97b5493da09a14_supported_models_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -146,7 +146,7 @@
     <p class="pln"><span class="n"><a id="t62" href="#t62">62</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t63" href="#t63">63</a></span><span class="t"><span class="key">import</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utilities</span> <span class="key">as</span> <span class="nam">utils</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t64" href="#t64">64</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">ActivationCache</span> <span class="key">import</span> <span class="nam">ActivationCache</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">HookedTransformer</span> <span class="key">import</span> <span class="nam">HookedTransformer</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t65" href="#t65">65</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">model_protocol</span> <span class="key">import</span> <span class="nam">TransformerLensModel</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t66" href="#t66">66</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t67" href="#t67">67</a></span><span class="t"><span class="com"># %%</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t68" href="#t68">68</a></span><span class="t"><span class="nam">Logits</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span>&nbsp;</span><span class="r"></span></p>
@@ -174,7 +174,7 @@
     <p class="pln"><span class="n"><a id="t90" href="#t90">90</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t91" href="#t91">91</a></span><span class="t"><span class="op">@</span><span class="nam">overload</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t92" href="#t92">92</a></span><span class="t"><span class="key">def</span> <span class="nam">generic_activation_patch</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="exc show_exc"><span class="n"><a id="t93" href="#t93">93</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">HookedTransformer</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t93" href="#t93">93</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">TransformerLensModel</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t94" href="#t94">94</a></span><span class="t">    <span class="nam">corrupted_tokens</span><span class="op">:</span> <span class="nam">Int</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t95" href="#t95">95</a></span><span class="t">    <span class="nam">clean_cache</span><span class="op">:</span> <span class="nam">ActivationCache</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t96" href="#t96">96</a></span><span class="t">    <span class="nam">patching_metric</span><span class="op">:</span> <span class="nam">Callable</span><span class="op">[</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_vocab"</span><span class="op">]</span><span class="op">]</span><span class="op">,</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">""</span><span class="op">]</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -191,7 +191,7 @@
     <p class="exc show_exc"><span class="n"><a id="t107" href="#t107">107</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t108" href="#t108">108</a></span><span class="t"><span class="op">@</span><span class="nam">overload</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t109" href="#t109">109</a></span><span class="t"><span class="key">def</span> <span class="nam">generic_activation_patch</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="exc show_exc"><span class="n"><a id="t110" href="#t110">110</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">HookedTransformer</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t110" href="#t110">110</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">TransformerLensModel</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t111" href="#t111">111</a></span><span class="t">    <span class="nam">corrupted_tokens</span><span class="op">:</span> <span class="nam">Int</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t112" href="#t112">112</a></span><span class="t">    <span class="nam">clean_cache</span><span class="op">:</span> <span class="nam">ActivationCache</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t113" href="#t113">113</a></span><span class="t">    <span class="nam">patching_metric</span><span class="op">:</span> <span class="nam">Callable</span><span class="op">[</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_vocab"</span><span class="op">]</span><span class="op">]</span><span class="op">,</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">""</span><span class="op">]</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -207,7 +207,7 @@
     <p class="exc show_exc"><span class="n"><a id="t123" href="#t123">123</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="exc show_exc"><span class="n"><a id="t124" href="#t124">124</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t125" href="#t125">125</a></span><span class="t"><span class="key">def</span> <span class="nam">generic_activation_patch</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t126" href="#t126">126</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">HookedTransformer</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t126" href="#t126">126</a></span><span class="t">    <span class="nam">model</span><span class="op">:</span> <span class="nam">TransformerLensModel</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t127" href="#t127">127</a></span><span class="t">    <span class="nam">corrupted_tokens</span><span class="op">:</span> <span class="nam">Int</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t128" href="#t128">128</a></span><span class="t">    <span class="nam">clean_cache</span><span class="op">:</span> <span class="nam">ActivationCache</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t129" href="#t129">129</a></span><span class="t">    <span class="nam">patching_metric</span><span class="op">:</span> <span class="nam">Callable</span><span class="op">[</span><span class="op">[</span><span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_vocab"</span><span class="op">]</span><span class="op">]</span><span class="op">,</span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">""</span><span class="op">]</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -840,12 +840,12 @@
 <footer>
     <div class="content">
         <p>
-            <a class="nav" href="z_1d599f999bbb9d44_types_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a class="nav" href="z_af97b5493da09a14_model_protocol_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a class="nav" href="z_712808f24eb400fe___init___py.html">&#xbb; next</a>
+            <a class="nav" href="z_af97b5493da09a14_supported_models_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
     </div>
 </footer>

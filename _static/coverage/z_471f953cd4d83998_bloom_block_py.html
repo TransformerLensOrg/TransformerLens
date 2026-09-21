@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_471f953cd4d83998_bloom_mlp_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -212,12 +212,11 @@
     <p class="mis show_mis"><span class="n"><a id="t128" href="#t128">128</a></span><span class="t">            <span class="nam">alibi</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">build_alibi_tensor</span><span class="op">(</span><span class="nam">attention_mask_2d</span><span class="op">,</span> <span class="nam">num_heads</span><span class="op">,</span> <span class="nam">dtype</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t129" href="#t129">129</a></span><span class="t">            <span class="nam">alibi</span> <span class="op">=</span> <span class="nam">alibi</span><span class="op">.</span><span class="nam">reshape</span><span class="op">(</span><span class="nam">batch_size</span> <span class="op">*</span> <span class="nam">num_heads</span><span class="op">,</span> <span class="num">1</span><span class="op">,</span> <span class="nam">seq_length</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t130" href="#t130">130</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t">            <span class="com"># Add alibi to kwargs</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t132" href="#t132">132</a></span><span class="t">            <span class="nam">kwargs</span><span class="op">[</span><span class="str">"alibi"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">alibi</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t133" href="#t133">133</a></span><span class="t">        <span class="com"># else: alibi is already present from HF, don't overwrite it!</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t134" href="#t134">134</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t135" href="#t135">135</a></span><span class="t">        <span class="nam">output</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">original_component</span><span class="op">(</span><span class="op">*</span><span class="nam">args</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t136" href="#t136">136</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_apply_output_hook</span><span class="op">(</span><span class="nam">output</span><span class="op">,</span> <span class="nam">wrap_single_element</span><span class="op">=</span><span class="key">False</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t">            <span class="nam">kwargs</span><span class="op">[</span><span class="str">"alibi"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">alibi</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t132" href="#t132">132</a></span><span class="t">        <span class="com"># else: alibi is already present from HF, don't overwrite it!</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t133" href="#t133">133</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t134" href="#t134">134</a></span><span class="t">        <span class="nam">output</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">original_component</span><span class="op">(</span><span class="op">*</span><span class="nam">args</span><span class="op">,</span> <span class="op">**</span><span class="nam">kwargs</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t135" href="#t135">135</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_apply_output_hook</span><span class="op">(</span><span class="nam">output</span><span class="op">,</span> <span class="nam">wrap_single_element</span><span class="op">=</span><span class="key">False</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -227,7 +226,7 @@
             <a class="nav" href="z_471f953cd4d83998_bloom_mlp_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
     </div>
 </footer>

@@ -1,7 +1,0 @@
-transformer\_lens.benchmarks.granular\_weight\_processing module
-================================================================
-
-.. automodule:: transformer_lens.benchmarks.granular_weight_processing
-   :members:
-   :undoc-members:
-   :show-inheritance:

@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.vllm.source module
+==========================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.vllm.source
+   :members:
+   :undoc-members:
+   :show-inheritance:

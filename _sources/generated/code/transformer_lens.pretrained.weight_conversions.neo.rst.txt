@@ -1,7 +1,0 @@
-transformer\_lens.pretrained.weight\_conversions.neo module
-===========================================================
-
-.. automodule:: transformer_lens.pretrained.weight_conversions.neo
-   :members:
-   :undoc-members:
-   :show-inheritance:

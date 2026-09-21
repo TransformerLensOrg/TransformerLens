@@ -1,7 +1,0 @@
-transformer\_lens.train module
-==============================
-
-.. automodule:: transformer_lens.train
-   :members:
-   :undoc-members:
-   :show-inheritance:

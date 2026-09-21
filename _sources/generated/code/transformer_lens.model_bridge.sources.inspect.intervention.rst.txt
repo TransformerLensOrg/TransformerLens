@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.inspect.intervention module
+===================================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.inspect.intervention
+   :members:
+   :undoc-members:
+   :show-inheritance:

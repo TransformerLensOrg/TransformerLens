@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_5f277a34beacd39d_model_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -186,8 +186,8 @@
     <p class="run"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t">        <span class="nam">std</span> <span class="op">=</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">initializer_range</span> <span class="key">if</span> <span class="nam">cfg</span><span class="op">.</span><span class="nam">initializer_range</span> <span class="op">></span> <span class="num">0</span> <span class="key">else</span> <span class="num">0.8</span> <span class="op">/</span> <span class="nam">math</span><span class="op">.</span><span class="nam">sqrt</span><span class="op">(</span><span class="nam">cfg</span><span class="op">.</span><span class="nam">d_model</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t">        <span class="com"># NOTE: this residual output scaling (1/sqrt(2*n_layers), applied only</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t">        <span class="com"># to output projections below) is NOT present in HookedTransformer's</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t106" href="#t106">106</a></span><span class="t">        <span class="com"># _init_weights_gpt2 (see transformer_lens/HookedTransformer.py).</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t">        <span class="com"># to output projections below) was NOT present in the legacy</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t106" href="#t106">106</a></span><span class="t">        <span class="com"># HookedTransformer._init_weights_gpt2 (removed in 4.0).</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t107" href="#t107">107</a></span><span class="t">        <span class="com"># Intentional delta for NativeModel: kept because it follows the</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t108" href="#t108">108</a></span><span class="t">        <span class="com"># original GPT-2 paper's residual-scaling convention and improves</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t109" href="#t109">109</a></span><span class="t">        <span class="com"># training stability at init for deeper models. Flagged in issue #1568</span>&nbsp;</span><span class="r"></span></p>
@@ -318,7 +318,7 @@
             <a class="nav" href="z_5f277a34beacd39d_model_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-12 00:48 +0000
+            created at 2026-09-21 14:43 +0000
         </p>
     </div>
 </footer>

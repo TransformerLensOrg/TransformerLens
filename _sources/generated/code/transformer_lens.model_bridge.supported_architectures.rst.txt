@@ -144,6 +144,7 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.t5gemma2
    transformer_lens.model_bridge.supported_architectures.vaultgemma
    transformer_lens.model_bridge.supported_architectures.vit
+   transformer_lens.model_bridge.supported_architectures.wav2vec2
    transformer_lens.model_bridge.supported_architectures.xglm
    transformer_lens.model_bridge.supported_architectures.youtu
    transformer_lens.model_bridge.supported_architectures.zamba2

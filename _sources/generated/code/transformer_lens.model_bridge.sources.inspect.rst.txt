@@ -1,0 +1,27 @@
+transformer\_lens.model\_bridge.sources.inspect package
+=======================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.sources.inspect.conftest
+   transformer_lens.model_bridge.sources.inspect.driver
+   transformer_lens.model_bridge.sources.inspect.eval
+   transformer_lens.model_bridge.sources.inspect.hooks
+   transformer_lens.model_bridge.sources.inspect.intervention
+   transformer_lens.model_bridge.sources.inspect.profiles
+   transformer_lens.model_bridge.sources.inspect.source
+   transformer_lens.model_bridge.sources.inspect.transformers_provider
+   transformer_lens.model_bridge.sources.inspect.vllm_provider
+   transformer_lens.model_bridge.sources.inspect.wire
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge.sources.inspect
+   :members:
+   :undoc-members:
+   :show-inheritance:

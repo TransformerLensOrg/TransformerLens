@@ -1,7 +1,0 @@
-transformer\_lens.pretrained.weight\_conversions.mingpt module
-==============================================================
-
-.. automodule:: transformer_lens.pretrained.weight_conversions.mingpt
-   :members:
-   :undoc-members:
-   :show-inheritance:

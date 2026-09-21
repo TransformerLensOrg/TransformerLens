@@ -1,0 +1,19 @@
+transformer\_lens.model\_bridge.sources.vllm.overlays package
+=============================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.model_bridge.sources.vllm.overlays.base
+   transformer_lens.model_bridge.sources.vllm.overlays.decoder_only
+
+Module contents
+---------------
+
+.. automodule:: transformer_lens.model_bridge.sources.vllm.overlays
+   :members:
+   :undoc-members:
+   :show-inheritance:

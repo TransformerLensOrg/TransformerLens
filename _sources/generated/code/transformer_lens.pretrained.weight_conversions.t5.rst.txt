@@ -1,7 +1,0 @@
-transformer\_lens.pretrained.weight\_conversions.t5 module
-==========================================================
-
-.. automodule:: transformer_lens.pretrained.weight_conversions.t5
-   :members:
-   :undoc-members:
-   :show-inheritance:

@@ -1,7 +1,0 @@
-transformer\_lens.pretrained.weight\_conversions.bloom module
-=============================================================
-
-.. automodule:: transformer_lens.pretrained.weight_conversions.bloom
-   :members:
-   :undoc-members:
-   :show-inheritance:

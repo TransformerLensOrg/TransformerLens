@@ -7,7 +7,10 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   transformer_lens.model_bridge.sources.inspect
    transformer_lens.model_bridge.sources.native
+   transformer_lens.model_bridge.sources.transformers
+   transformer_lens.model_bridge.sources.vllm
 
 Submodules
 ----------
@@ -15,7 +18,8 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   transformer_lens.model_bridge.sources.transformers
+   transformer_lens.model_bridge.sources.tl_legacy
+   transformer_lens.model_bridge.sources.transformers_driver
 
 Module contents
 ---------------

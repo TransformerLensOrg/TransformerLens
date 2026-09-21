@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.remote\_bridge module
+=====================================================
+
+.. automodule:: transformer_lens.model_bridge.remote_bridge
+   :members:
+   :undoc-members:
+   :show-inheritance:

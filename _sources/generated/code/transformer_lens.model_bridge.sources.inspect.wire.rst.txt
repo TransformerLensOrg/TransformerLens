@@ -1,0 +1,7 @@
+transformer\_lens.model\_bridge.sources.inspect.wire module
+===========================================================
+
+.. automodule:: transformer_lens.model_bridge.sources.inspect.wire
+   :members:
+   :undoc-members:
+   :show-inheritance:
