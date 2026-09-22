@@ -71,6 +71,8 @@ Enforces the ≤7B verification rule from [`agents/programmer.md`](../agents/pro
 1. The model is not registered in `transformer_lens/tools/model_registry/data/supported_models.json`. The error message tells the agent to run [`scan-hf-architecture.py`](../scripts/scan-hf-architecture.py) + [`port-arch-models.py`](../scripts/port-arch-models.py) first.
 2. The registered `metadata.total_params` exceeds `MAX_VERIFY_PARAMS` (default 7.5B — a small buffer above "7B" models like Mistral-7B at 7.24B; blocks Llama-3-8B and anything larger).
 
+**Also blocks**, regardless of `--model`: any invocation carrying `--no-hf-reference` — it downgrades verification to structural-only (status 4, provisional), which never counts as verified.
+
 **Tunables:** `MAX_VERIFY_PARAMS` (default `7500000000`). Exported from the session environment.
 
 ## gate-reviewer-writes-file.sh
@@ -123,7 +125,7 @@ Never blocks — this is a side-effect hook. Finds `scripts/notify.sh` via `TL_A
     "SubagentStop":  [{ "hooks": [{ "command": "<timeline>" }, { "command": "<gate-reviewer-writes-file>" }] }],
     "PreToolUse": [
       { "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [{ "command": "<guard-ht>" }, { "command": "<guard-review-rounds>" }] },
+        "hooks": [{ "command": "<guard-review-rounds>" }] },
       { "matcher": "Bash",
         "hooks": [{ "command": "<guard-git>" }, { "command": "<guard-verify-models>" }] },
       { "matcher": "",

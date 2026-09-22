@@ -37,7 +37,7 @@ Full reference: [tools/model_registry/AGENTS.md §Flag reference](../../transfor
 - `--max-memory <gb>` — skip if param estimate exceeds; e.g. `16` on a 24 GB GPU leaves headroom for activations
 - `--phases 1 2 3` — restrict (P4 is slowest; restrict when debugging P1 forward parity)
 - `--dry-run` — see above; always first
-- `--no-hf-reference` / `--no-ht-reference` — skip HF / HT comparison (faster, lower confidence)
+- `--no-hf-reference` — skip the HF reference comparison (faster, lower confidence; the run can only reach `STATUS_PROVISIONAL`, never verified)
 - `--reverify` — re-test `status==1`
 - `--retry-failed` — re-test `status==3` (read existing `note` first)
 
@@ -52,9 +52,10 @@ Hard thresholds (`_MIN_PHASE_SCORES` in `verify_models.py`):
 | 1 | 100% | — | `STATUS_FAILED` |
 | 2 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
 | 3 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
-| 4 | 50% | — | **Non-gating** — adds `"low text quality"` to `note`; never fails. |
+| 4 | ~54.5% (`p4_pass_threshold()`, derived from the judge bake-off noise floor — not a fixed number) | — | **Non-gating** — adds `"low text quality"` to `note`; never fails. |
 | 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL = fail. |
-| 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL = fail. |
+| 8 | 75% | `audio_forward`, `audio_text_forward` | `STATUS_FAILED`. NULL = fail. |
+| 9 | 75% | `vision_forward`, `vision_cache` | `STATUS_FAILED`. NULL = fail. |
 
 `STATUS_VERIFIED` means hard gates passed. `note` carries quality flags or failure details.
 

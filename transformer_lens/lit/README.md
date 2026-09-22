@@ -32,22 +32,22 @@ pip install transformer-lens lit-nlp
 ```python
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.lit import (
-    HookedTransformerLIT,
-    HookedTransformerLITConfig,
+    TransformerLensLIT,
+    TransformerLensLITConfig,
     SimpleTextDataset,
     LITWidget,
 )
 
 # Load model (the LIT wrapper accepts any TransformerLens model, e.g. TransformerBridge)
-model = TransformerBridge.boot_transformers("gpt2-small")
+model = TransformerBridge.boot_transformers("gpt2")
 
 # Create LIT wrapper
-config = HookedTransformerLITConfig(
+config = TransformerLensLITConfig(
     max_seq_length=256,
     compute_gradients=True,
     output_attention=True,
 )
-lit_model = HookedTransformerLIT(model, config=config)
+lit_model = TransformerLensLIT(model, config=config)
 
 # Create dataset
 dataset = SimpleTextDataset.from_strings([
@@ -68,13 +68,13 @@ widget.render()
 ```python
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.lit import (
-    HookedTransformerLIT,
+    TransformerLensLIT,
     SimpleTextDataset,
     serve,
 )
 
-model = TransformerBridge.boot_transformers("gpt2-small")
-lit_model = HookedTransformerLIT(model)
+model = TransformerBridge.boot_transformers("gpt2")
+lit_model = TransformerLensLIT(model)
 
 serve(
     models={"gpt2": lit_model},
@@ -86,7 +86,7 @@ serve(
 
 ## Configuration
 
-### HookedTransformerLITConfig
+### TransformerLensLITConfig
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -97,6 +97,7 @@ serve(
 | `output_attention` | bool | True | Output attention patterns |
 | `output_embeddings` | bool | True | Output embeddings |
 | `output_all_layers` | bool | False | Output all layer embeddings |
+| `embedding_layers` | list[int] | None | Layers to include for embeddings (None = all) |
 | `prepend_bos` | bool | True | Prepend BOS token |
 | `device` | str | None | Device (auto-detected if None) |
 
@@ -150,7 +151,6 @@ The wrapper produces these outputs for LIT:
 | Field | Type | Description |
 |-------|------|-------------|
 | `tokens` | Tokens | Tokenized input |
-| `probabilities` | MulticlassPreds | Token probabilities |
 | `top_k_tokens` | TokenTopKPreds | Top-K predictions per position |
 | `cls_embedding` | Embeddings | First token embedding |
 | `mean_embedding` | Embeddings | Mean-pooled embedding |
@@ -211,14 +211,16 @@ for token, score in zip(outputs["tokens"], salience):
 
 ### Classes
 
-- `HookedTransformerLIT`: Main LIT model wrapper
-- `HookedTransformerLITBatched`: Batched inference wrapper
-- `HookedTransformerLITConfig`: Configuration dataclass
+- `TransformerLensLIT`: Main LIT model wrapper
+- `TransformerLensLITBatched`: Batched inference wrapper (defined only when `lit-nlp` is installed)
+- `TransformerLensLITConfig`: Configuration dataclass
 - `SimpleTextDataset`: Basic text dataset
 - `PromptCompletionDataset`: Prompt-completion pairs
 - `IOIDataset`: IOI benchmark dataset
 - `InductionDataset`: Induction head dataset
 - `LITWidget`: Jupyter/Colab widget
+
+`HookedTransformerLIT` and `HookedTransformerLITConfig` still import as deprecated aliases of the `TransformerLensLIT*` names.
 
 ### Functions
 
@@ -241,7 +243,7 @@ Install LIT: `pip install lit-nlp`
 Reduce batch size or use a smaller model:
 
 ```python
-config = HookedTransformerLITConfig(batch_size=1)
+config = TransformerLensLITConfig(batch_size=1)
 ```
 
 ### Widget not rendering
@@ -250,7 +252,7 @@ Make sure you're in a Jupyter/Colab environment with JavaScript enabled.
 
 ## Contributing
 
-See the main TransformerLens [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines.
+See the main TransformerLens [contributing guide](../../docs/source/content/contributing.md) for guidelines.
 
 ## References
 

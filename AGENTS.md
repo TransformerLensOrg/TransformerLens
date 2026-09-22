@@ -58,7 +58,7 @@ make unit-test          # fast, no model loads
 make integration-test   # cross-component
 make acceptance-test    # end-to-end
 make docstring-test     # doctest + doctest-plus
-make notebook-test      # slow; subset run in CI
+make notebook-test      # slow, local-only; CI runs its own per-notebook matrix (notebook-checks in checks.yml), not this target
 make test-pr            # unit + docstring + acceptance + integration (PR-review surface)
 make test               # everything (long; includes benchmarks + notebooks)
 
@@ -213,9 +213,9 @@ Load-bearing pins live in [pyproject.toml](pyproject.toml):
 
 | Pin | Where | Why it matters |
 |---|---|---|
-| `transformers>=5.4.0` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. |
+| `transformers>=5.9.0` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. |
 | `torch>=2.6` | `[project] dependencies` | Hook system relies on PyTorch's forward / backward hook semantics; major torch bumps occasionally change ordering. |
-| `accelerate>=0.23.0` | `[project] dependencies` | Required for Llama-family loading. |
+| `accelerate>=1.1.0` | `[project] dependencies` | Required for Llama-family loading and `device_map` disk offload (`align_module_device`). |
 | `numpy>=1.24` / `>=1.26` | `[project] dependencies` (python-version-conditional) | Doctest float formatting can drift across NumPy versions. |
 | `isort==5.8.0` | `[dependency-groups] dev` (exact) | Format check pins to exactly this version; a bump flips the formatting of every file. |
 
