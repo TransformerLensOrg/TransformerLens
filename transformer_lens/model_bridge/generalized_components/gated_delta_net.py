@@ -4,6 +4,7 @@ Reimplements forward (prefill only) to expose mech-interp-relevant intermediate
 states. Falls back to HF native forward during autoregressive generation where
 cache state management is required.
 """
+import sys
 from typing import Any, Dict, Optional
 
 import torch
@@ -177,8 +178,10 @@ class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
 
         # --- Causal Convolution ---
         mixed_qkv = torch.cat((query, key, value), dim=-1).transpose(1, 2)
-        if hf.causal_conv1d_fn is not None:
-            mixed_qkv = hf.causal_conv1d_fn(
+        # transformers >= 5.15 dropped the per-instance kernel attributes.
+        causal_conv1d_fn = getattr(hf, "causal_conv1d_fn", None)
+        if causal_conv1d_fn is not None:
+            mixed_qkv = causal_conv1d_fn(
                 x=mixed_qkv,
                 weight=hf.conv1d.weight.squeeze(1),
                 bias=hf.conv1d.bias,
@@ -225,7 +228,13 @@ class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
             _, core_out = self._gated_delta_scan(query, key, value, g, beta, fire_hook=True)
             core_out = core_out.to(value.dtype)
         else:
-            core_out, _ = hf.chunk_gated_delta_rule(
+            chunk_gated_delta_rule = getattr(hf, "chunk_gated_delta_rule", None)
+            if chunk_gated_delta_rule is None:
+                # transformers >= 5.15: module-level function in the HF modeling file
+                chunk_gated_delta_rule = sys.modules[
+                    type(hf).__module__
+                ].torch_chunk_gated_delta_rule
+            core_out, _ = chunk_gated_delta_rule(
                 query,
                 key,
                 value,

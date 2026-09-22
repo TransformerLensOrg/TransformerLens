@@ -63,6 +63,39 @@ def test_gated_delta_net_hooked_forward_is_bit_exact() -> None:
         torch.testing.assert_close(_first(bridge(x)), _first(reference(x)), rtol=0.0, atol=0.0)
 
 
+def test_gated_delta_net_hooked_forward_without_instance_kernel_attrs() -> None:
+    """transformers >= 5.15 no longer sets causal_conv1d_fn / chunk_gated_delta_rule
+    on the GatedDeltaNet instance; the hooked forward must not depend on them."""
+    from transformers.models.qwen3_next.configuration_qwen3_next import Qwen3NextConfig
+    from transformers.models.qwen3_next.modeling_qwen3_next import (
+        Qwen3NextGatedDeltaNet,
+    )
+
+    torch.manual_seed(0)
+    cfg = Qwen3NextConfig(
+        hidden_size=32,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        linear_num_value_heads=4,
+        linear_num_key_heads=2,
+        linear_key_head_dim=8,
+        linear_value_head_dim=8,
+        linear_conv_kernel_dim=4,
+        num_hidden_layers=2,
+        vocab_size=64,
+        intermediate_size=64,
+    )
+    hf_module = Qwen3NextGatedDeltaNet(cfg, layer_idx=0).eval()
+    reference = copy.deepcopy(hf_module)
+    for attr in ("causal_conv1d_fn", "chunk_gated_delta_rule"):
+        hf_module.__dict__.pop(attr, None)
+    bridge = _wire("Qwen3NextForCausalLM", "linear_attn", hf_module)
+
+    x = torch.randn(2, 7, 32)
+    with torch.no_grad():
+        torch.testing.assert_close(_first(bridge(x)), _first(reference(x)), rtol=0.0, atol=0.0)
+
+
 def test_ssm2_mixer_hooked_forward_is_bit_exact() -> None:
     from transformers.models.nemotron_h.configuration_nemotron_h import NemotronHConfig
     from transformers.models.nemotron_h.modeling_nemotron_h import NemotronHMamba2Mixer
