@@ -49,14 +49,23 @@ def _tiny_gemma3_bridge():
 
 
 def test_rotary_hook_fires_without_patching_hf_eager_attention():
+    import transformers.models.gemma2.modeling_gemma2 as gemma2_module
+    import transformers.models.gemma3.modeling_gemma3 as gemma3_module
+
+    # Capture the exact function objects before any bridge is built. Identity (not
+    # __module__/__qualname__, which functools.wraps can forge) is what proves the
+    # module attribute was never swapped for a wrapper.
+    original_gemma2 = gemma2_module.eager_attention_forward
+    original_gemma3 = gemma3_module.eager_attention_forward
+
     bridge = _tiny_gemma3_bridge()
     tokens = torch.randint(3, 200, (1, 6))
     _, cache = bridge.run_with_cache(tokens)
 
+    # The deleted wrapper fired both rotary hooks; the bridge's own forward must
+    # keep both, so assert both (hook_rot_q alone would miss a dropped hook_rot_k).
     assert "blocks.0.attn.hook_rot_q" in cache
+    assert "blocks.0.attn.hook_rot_k" in cache
 
-    import transformers.models.gemma2.modeling_gemma2 as gemma2_module
-    import transformers.models.gemma3.modeling_gemma3 as gemma3_module
-
-    assert gemma2_module.eager_attention_forward.__module__.startswith("transformers.")
-    assert gemma3_module.eager_attention_forward.__module__.startswith("transformers.")
+    assert gemma2_module.eager_attention_forward is original_gemma2
+    assert gemma3_module.eager_attention_forward is original_gemma3
