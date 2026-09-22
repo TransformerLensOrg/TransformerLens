@@ -71,56 +71,58 @@ def _setup_eager_attention_hook_wrapper() -> None:
 
     This is safe to call multiple times - it will only wrap once.
     """
-    global _EAGER_ATTENTION_WRAPPED, _ORIGINAL_EAGER_ATTENTION_FORWARD
+    global _EAGER_ATTENTION_WRAPPED
 
     if _EAGER_ATTENTION_WRAPPED:
         return
 
-    _ORIGINAL_EAGER_ATTENTION_FORWARD = gemma2_module.eager_attention_forward
+    import functools
 
-    def hooked_eager_attention_forward(
-        module: torch.nn.Module,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attention_mask: Optional[torch.Tensor],
-        **kwargs: Any,
-    ) -> tuple:
-        """Wrapped eager_attention_forward that fires rotary hooks.
+    def create_wrapper(original_forward):
+        @functools.wraps(original_forward)
+        def hooked_eager_attention_forward(
+            module: torch.nn.Module,
+            query: torch.Tensor,
+            key: torch.Tensor,
+            value: torch.Tensor,
+            attention_mask: Optional[torch.Tensor],
+            **kwargs: Any,
+        ) -> tuple:
+            """Wrapped eager_attention_forward that fires rotary hooks.
 
-        Args:
-            module: The HF attention module (used to look up the bridge)
-            query: Query tensor AFTER rotary embeddings applied
-            key: Key tensor AFTER rotary embeddings applied
-            value: Value tensor
-            attention_mask: Attention mask
-            **kwargs: Additional arguments (dropout, scaling, etc.)
+            Args:
+                module: The HF attention module (used to look up the bridge)
+                query: Query tensor AFTER rotary embeddings applied
+                key: Key tensor AFTER rotary embeddings applied
+                value: Value tensor
+                attention_mask: Attention mask
+                **kwargs: Additional arguments (dropout, scaling, etc.)
 
-        Returns:
-            Tuple of (attn_output, attn_weights)
-        """
-        # Look up the bridge instance for this attention module
-        bridge = _ATTENTION_BRIDGE_REGISTRY.get(id(module))
+            Returns:
+                Tuple of (attn_output, attn_weights)
+            """
+            # Look up the bridge instance for this attention module
+            bridge = _ATTENTION_BRIDGE_REGISTRY.get(id(module))
 
-        if bridge is not None:
-            # Fire hook_rot_q and hook_rot_k with the post-rotary Q/K
-            if hasattr(bridge, "hook_rot_q"):
-                query = bridge.hook_rot_q(query)
-            if hasattr(bridge, "hook_rot_k"):
-                key = bridge.hook_rot_k(key)
+            if bridge is not None:
+                # Fire hook_rot_q and hook_rot_k with the post-rotary Q/K
+                if hasattr(bridge, "hook_rot_q"):
+                    query = bridge.hook_rot_q(query)
+                if hasattr(bridge, "hook_rot_k"):
+                    key = bridge.hook_rot_k(key)
 
-        assert _ORIGINAL_EAGER_ATTENTION_FORWARD is not None
-        return _ORIGINAL_EAGER_ATTENTION_FORWARD(
-            module, query, key, value, attention_mask, **kwargs
-        )
+            return original_forward(
+                module, query, key, value, attention_mask, **kwargs
+            )
+        return hooked_eager_attention_forward
 
     # Replace the module-level function for both Gemma 2 and Gemma 3
-    gemma2_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
+    gemma2_module.eager_attention_forward = create_wrapper(gemma2_module.eager_attention_forward)  # type: ignore[assignment]
 
     try:
         import transformers.models.gemma3.modeling_gemma3 as gemma3_module
 
-        gemma3_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
+        gemma3_module.eager_attention_forward = create_wrapper(gemma3_module.eager_attention_forward)  # type: ignore[assignment]
     except ImportError:
         pass  # Gemma 3 not available in this transformers version
 
