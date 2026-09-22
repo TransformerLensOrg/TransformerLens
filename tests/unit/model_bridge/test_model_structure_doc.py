@@ -21,7 +21,8 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_from_module,
 )
 
-DOC = Path(__file__).resolve().parents[3] / "docs" / "source" / "content" / "model_structure.md"
+DOCS_DIR = Path(__file__).resolve().parents[3] / "docs" / "source" / "content"
+DOC = DOCS_DIR / "model_structure.md"
 FENCED_BLOCK = re.compile(r"```.*?```", re.S)
 # No newlines inside a token: a stray fence would otherwise flip open/close parity.
 BACKTICKED = re.compile(r"`([^`\n]+)`")
@@ -120,17 +121,39 @@ def test_alias_table_rows_resolve_on_both_bridges(bridges, doc_text):
             ), f"{name}: {legacy} resolves to {alias_map[legacy_0]}, doc says {sorted(accepted)}"
 
 
+def _unknown_hook_names(text: str, known: set[str]) -> list[str]:
+    return sorted(
+        {
+            token
+            for token in BACKTICKED.findall(FENCED_BLOCK.sub("", text))
+            if QUALIFIED_HOOK.match(token) and token.replace("{i}", "0") not in known
+        }
+    )
+
+
 def test_every_qualified_hook_name_on_the_page_exists(bridges, doc_text):
     known: set[str] = set()
     for bridge in bridges.values():
         known |= set(bridge.hook_dict.keys())
-    missing = sorted(
-        {
-            token
-            for token in BACKTICKED.findall(FENCED_BLOCK.sub("", doc_text))
-            if QUALIFIED_HOOK.match(token) and token.replace("{i}", "0") not in known
-        }
-    )
+    missing = _unknown_hook_names(doc_text, known)
+    assert not missing, f"documented hooks that no tiny bridge exposes: {missing}"
+
+
+def test_every_qualified_hook_name_across_docs_exists(bridges):
+    """Other pages name hooks too; family-specific components the tiny bridges lack are skipped."""
+    known: set[str] = set()
+    for bridge in bridges.values():
+        known |= set(bridge.hook_dict.keys())
+    other_families = (".mixer.", ".self_attn.", ".cross_attn.", "hook_expert_")
+    missing = {}
+    for page in sorted(DOCS_DIR.rglob("*.md")):
+        unknown = [
+            n
+            for n in _unknown_hook_names(page.read_text(), known)
+            if not any(marker in n for marker in other_families)
+        ]
+        if unknown:
+            missing[page.relative_to(DOCS_DIR).as_posix()] = unknown
     assert not missing, f"documented hooks that no tiny bridge exposes: {missing}"
 
 

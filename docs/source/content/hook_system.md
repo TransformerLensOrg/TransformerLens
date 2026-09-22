@@ -122,12 +122,11 @@ Stable strings; differ between HookedTransformer and TransformerBridge:
 | System | Style | Example |
 |---|---|---|
 | `HookedTransformer` (legacy) | Uniform across architectures | `blocks.5.attn.hook_q`, `blocks.5.hook_resid_post`, `hook_embed` |
-| `TransformerBridge` (default) | Architecture-native | `blocks.5.attn.q.hook_out`, `blocks.5.hook_out`, `embed.hook_out` |
-| `TransformerBridge` + compatibility mode | Bridge-native AND HT-style aliases | Above + `blocks.5.attn.hook_q` etc. |
+| `TransformerBridge` | Architecture-native canonical names, plus the HT-style names as aliases of the same hook points | `blocks.5.attn.q.hook_out` / `blocks.5.attn.hook_q`, `blocks.5.hook_out` / `blocks.5.hook_resid_post`, `embed.hook_out` / `hook_embed` |
 
 Full catalogue: [Main Demo](../generated/demos/Main_Demo), [Exploratory Analysis Demo](../generated/demos/Exploratory_Analysis_Demo). Architecture diagram: [TransformerLens_Diagram.svg](../_static/TransformerLens_Diagram.svg).
 
-Porting HT code to Bridge: `bridge.enable_compatibility_mode()` (see [Compatibility Mode](compatibility_mode.md)) registers HT aliases so existing names resolve.
+Porting HT code to Bridge: the HT-style names already resolve on every bridge (see [Model Structure](model_structure.md) for the alias table and the hooks that are *not* aliases). Enable `bridge.enable_compatibility_mode()` (see [Compatibility Mode](compatibility_mode.md)) when the analysis needs HookedTransformer's processed-weight numerics, not for the names.
 
 ---
 
@@ -193,7 +192,7 @@ model.run_with_hooks(
 
 ## See also
 
-- [Compatibility Mode](compatibility_mode.md) — when to enable HT-style hook aliases on a Bridge model.
+- [Compatibility Mode](compatibility_mode.md) — when a Bridge model needs HookedTransformer-equivalent numerics.
 - [Migrating to TransformerLens 3](migrating_to_v3.md) — porting HookedTransformer hook patterns to TransformerBridge.
 - [Main Demo](../generated/demos/Main_Demo) — end-to-end walkthrough using the hook system.
 - [`transformer_lens/hook_points.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/hook_points.py), [`transformer_lens/ActivationCache.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py), [`transformer_lens/patching.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/patching.py) — source.
