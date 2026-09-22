@@ -31,8 +31,16 @@ from .SVDInterpreter import SVDInterpreter
 
 # Removed in 4.0: directed messages so `from transformer_lens import HookedTransformer`
 # (and the other deleted top-level names) fail with a migration pointer instead of a
-# bare AttributeError. Submodule-path imports (`from transformer_lens.HookedTransformer
-# import ...`) raise ModuleNotFoundError before this hook runs and can't be intercepted here.
+# bare error. We raise ImportError, not AttributeError: the from-import machinery calls
+# getattr and, on AttributeError, discards it and raises its own unchained "cannot import
+# name" ImportError, so our pointer would be lost for exactly the spelling downstream
+# packages use. ImportError reaches both `import transformer_lens; transformer_lens.X` and
+# `from transformer_lens import X`. Trade-off: `hasattr(transformer_lens, "X")` now raises
+# instead of returning False (hasattr only swallows AttributeError) — intended, so
+# version-detection code gets the migration pointer too. A subclass of both is impossible:
+# ImportError's C layout conflicts with AttributeError's. Submodule-path imports
+# (`from transformer_lens.HookedTransformer import ...`) raise ModuleNotFoundError before
+# this hook runs and can't be intercepted here.
 _REMOVED_IN_4_0 = {
     "HookedTransformer": "Use TransformerBridge.boot_transformers(name), then "
     "enable_compatibility_mode() for HookedTransformer-equivalent numerics.",
@@ -61,9 +69,10 @@ def __getattr__(name: str):
 
         return TransformerBridge
     if name in _REMOVED_IN_4_0:
-        raise AttributeError(
+        raise ImportError(
             f"{name!r} was removed in TransformerLens 4.0. {_REMOVED_IN_4_0[name]} "
-            "See docs/source/content/migrating_to_v4.md."
+            "See docs/source/content/migrating_to_v4.md.",
+            name=name,
         )
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
