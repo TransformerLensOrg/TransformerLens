@@ -105,7 +105,7 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 ## 5. Hook naming — HT vs Bridge
 
 - **HT canonical**: uniform across architectures — `hook_embed`, `blocks.{i}.hook_resid_pre`, `blocks.{i}.attn.hook_q`, `blocks.{i}.hook_resid_post`.
-- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases registered via `build_alias_to_canonical_map()` in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py).
+- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases come from the `hook_aliases` dicts on the generalized components and `BridgeCore`, registered at boot (not only in compat mode); `build_alias_to_canonical_map()` in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py) reads them.
 
 Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against `boot_transformers` must match its load configuration (fp32, eager attention) and probe for optional features like `resid_mid` rather than assume.
 
