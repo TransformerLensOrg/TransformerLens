@@ -14,7 +14,7 @@ Most research code that was written against `HookedTransformer.from_pretrained(.
 |---|---|---|
 | Logit lens / direct logit attribution | **Yes** | These analyses reason in the post-fold-LN coordinate system; raw HF weights produce different (wrong) attributions. |
 | Residual-stream norm analysis | **Yes** | Centered weights give the residual a meaningful zero. |
-| Circuit analysis using HT-style hook names (`blocks.{i}.attn.hook_q`, `hook_resid_pre`, etc.) | **Yes** | Legacy aliases register only after compat mode. |
+| Circuit analysis using HT-style hook names (`blocks.{i}.attn.hook_q`, `hook_resid_pre`, etc.) | **Yes** | Legacy hook names resolve on every bridge (see [model structure](model_structure.md)); compat mode makes the cached values match HookedTransformer's processed-weight numerics. |
 | Logit parity against HuggingFace | **No** | Folding changes weights; logits will not match HF. |
 | Generation / inference vs HF baseline | **No** | Same reason. |
 | Verifying a new adapter's forward pass | **No (initially)** | Use `enable_compatibility_mode(no_processing=True)` to get hook aliases without weight processing — isolates forward-pass bugs from weight-processing bugs. |

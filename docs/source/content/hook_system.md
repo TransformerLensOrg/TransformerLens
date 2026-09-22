@@ -25,7 +25,7 @@ The simplest workflow: run a forward pass and get back both the logits and a dic
 logits, cache = model.run_with_cache("Hello, world")
 cache["blocks.0.attn.hook_q"]           # Q tensor at layer 0
 cache["blocks.5.hook_resid_post"]       # residual stream after block 5
-cache["ln_final.hook_normalized"]       # post-final-norm activations
+cache["ln_final.hook_normalized"]       # final norm output before its learned gain
 ```
 
 `cache` is an `ActivationCache` — a dict-like with conveniences (`cache.decompose_resid()`, `cache.apply_ln_to_stack(...)`, etc.). See [`transformer_lens/ActivationCache.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py).

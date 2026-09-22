@@ -77,8 +77,6 @@ def _expected_shape_for_name(
         return (batch, pos, d_model)
     if name.endswith("attn.hook_hidden_states"):
         return (batch, pos, d_model)
-    if name.endswith("attn.hook_attention_weights") and n_heads is not None:
-        return (batch, n_heads, pos, pos)
     if name.endswith("attn.hook_attn_scores") and n_heads is not None:
         return (batch, n_heads, pos, pos)
     if name.endswith("attn.hook_pattern") and n_heads is not None:
