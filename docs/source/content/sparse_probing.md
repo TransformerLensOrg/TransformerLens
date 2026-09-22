@@ -84,15 +84,21 @@ Accuracy, precision, recall, F1, and all four confusion counts are returned; pre
 zero when its denominator is zero. F1 is the primary sparse-probing metric.
 
 Feature-score reductions use float64 for float64 inputs and float32 otherwise. Selected matrices
-move to CPU float64 for deterministic LBFGS fitting. All result tensors are detached CPU tensors.
-The fit raises when output is non-finite or the final objective-gradient infinity norm exceeds
-`gradient_tolerance` times `max(1, k * max|X_train|)`, a bound scaled to the magnitude of the
-selected training features rather than to how strongly they correlate with the label.
-`gradient_tolerance` must lie in `(0, 1)`.
-Results retain the requested `k`, `max_iter`, and `gradient_tolerance` alongside the realized
-objective, gradient norm, iteration count, function-evaluation count, and stop reason
-(`"tolerance_grad"`, `"max_iter"`, or `"max_eval"`). There is no
-convergence flag: a fit that misses the acceptance threshold raises instead of returning.
+move to CPU float64, where LBFGS (at most `max_iter` iterations, with a fixed internal gradient
+stop) is followed by up to `max_refinement_steps` damped Newton steps on the `(k+1)`-square
+Hessian of the objective. A fit is accepted only when the Newton decrement $\tfrac{1}{2}
+g^\top H^{-1} g$, an estimate of the objective gap to the optimum in nats, is at most
+`decrement_tolerance` (default `1e-12`, which must lie in `(0, 1)`); the decrement is checked
+before the first refinement step, so a budget of zero only checks. The fit raises when that
+tolerance is not met within the budget, when the Hessian cannot be factorised, or when any
+output is non-finite. All result tensors are detached CPU tensors.
+Results retain the requested `k`, `max_iter`, `max_refinement_steps`, and `decrement_tolerance`
+alongside the realized objective, the Newton decrement, the refinement-step count, the
+objective-gradient infinity norm after refinement (a diagnostic, not the acceptance rule), the
+LBFGS iteration and function-evaluation counts, and the LBFGS stop reason: `"tolerance_grad"`,
+`"max_iter"`, `"max_eval"`, or `"line_search"` when the strong-Wolfe search made no progress.
+There is no convergence flag: a fit that misses the acceptance threshold raises instead of
+returning.
 
 ## Sweep and controls
 

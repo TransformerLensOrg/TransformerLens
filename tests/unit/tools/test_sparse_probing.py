@@ -1,5 +1,6 @@
 """Unit tests for leakage-safe model-free sparse probing."""
 
+import math
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -119,7 +120,8 @@ def test_fit_recovers_exact_train_only_mean_difference_and_planted_feature():
     assert result.metrics.accuracy > 0.98
     assert result.k == 1
     assert result.max_iter == 200
-    assert result.gradient_tolerance == 1e-7
+    assert result.max_refinement_steps == 25
+    assert result.decrement_tolerance == 1e-12
 
 
 def test_positive_label_controls_score_sign_and_class_metadata():
@@ -215,7 +217,6 @@ def test_lbfgs_matches_independent_newton_solution_and_gradient():
         labels,
         k=4,
         l2_strength=l2_strength,
-        gradient_tolerance=1e-7,
         seed=3,
     )
     train_features = features[result.train_indices][:, result.selected_features].double()
@@ -234,6 +235,7 @@ def test_lbfgs_matches_independent_newton_solution_and_gradient():
     assert result.intercept.item() == pytest.approx(expected[-1].item(), abs=2e-6)
     assert float(gradient.abs().max()) == pytest.approx(result.gradient_inf_norm, abs=1e-12)
     assert result.gradient_inf_norm <= 1e-7
+    assert result.newton_decrement <= result.decrement_tolerance
 
 
 @pytest.mark.parametrize("preprocess", ["none", "standardize"])
@@ -357,16 +359,15 @@ def test_forced_nonconvergence_raises():
             labels,
             k=3,
             max_iter=1,
-            gradient_tolerance=1e-12,
+            max_refinement_steps=0,
         )
 
 
 def _large_scale_data(
     *, n_examples: int = 1000, n_features: int = 768, seed: int = 0
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    # Raw (unstandardized) activations with a per-coordinate std in the thousands leave a
-    # sizable objective gradient at the default max_iter, large enough to clear the bare
-    # absolute floor while still landing under the feature-magnitude-scaled bound.
+    # Raw (unstandardized) activations with a per-coordinate std in the thousands stall LBFGS
+    # short of the optimum within its budget, so acceptance hinges on the Newton refinement.
     generator = torch.Generator().manual_seed(seed)
     labels = torch.arange(n_examples) % 2
     features = 8000.0 * torch.randn(n_examples, n_features, generator=generator)
@@ -382,15 +383,15 @@ def test_default_tolerance_accepts_large_scale_activations():
 
     assert isinstance(result, SparseProbeResult)
     assert result.selected_features.numel() == 4
-    # The achieved gradient must exercise the relative bound: strictly above the bare
-    # absolute floor (gradient_tolerance) yet within the feature-magnitude-scaled bound.
-    # Both sides are recomputed here so the test fails if the bound regresses to absolute
-    # or if the fixture regresses to a too-easy, fully-converged solve.
-    max_abs_train = features[result.train_indices][:, result.selected_features].abs().max()
-    assert result.gradient_inf_norm > result.gradient_tolerance
-    assert result.gradient_inf_norm <= result.gradient_tolerance * max(
-        1.0, result.selected_features.numel() * float(max_abs_train)
-    )
+    # LBFGS stalls here, so the decision is made by the refinement: accepted at the default
+    # tolerance only after Newton steps, and rejected when the budget cannot close the gap.
+    # Bracketing the accept-or-raise decision this way fails if the criterion loosens by
+    # orders of magnitude, which no assertion on the reported gradient can detect.
+    assert result.refinement_steps >= 1
+    assert result.newton_decrement <= result.decrement_tolerance
+    for budget in (0, 1):
+        with pytest.raises(RuntimeError, match="did not converge"):
+            fit_sparse_probe(features, labels, k=4, seed=1, max_refinement_steps=budget)
 
 
 def test_sweep_controls_accept_activation_scale_fits():
@@ -414,30 +415,83 @@ def test_sweep_controls_accept_activation_scale_fits():
 
 
 def test_stop_reason_distinguishes_converged_from_capped_fits():
-    # A converged fit meets its gradient tolerance; a fit truncated by an iteration or
-    # evaluation cap still passes acceptance but reports which cap stopped it, so a caller
-    # can tell an off-optimum solve from one that actually reached tolerance_grad.
+    # stop_reason reports why LBFGS stopped, before refinement, so a caller can tell a fit
+    # that reached the solver's own gradient stop from one a cap truncated and Newton finished.
     features, labels = _planted_data()
 
     converged = fit_sparse_probe(features, labels, k=4, seed=3)
     assert converged.stop_reason == "tolerance_grad"
-    assert converged.gradient_inf_norm <= converged.gradient_tolerance
+    assert converged.iterations < converged.max_iter
+    assert converged.newton_decrement <= converged.decrement_tolerance
 
-    # A larger gradient_tolerance widens the acceptance bound so a deliberately
-    # iteration-capped fit clears acceptance while still missing tolerance_grad.
-    capped_by_iter = fit_sparse_probe(
-        features, labels, k=4, seed=3, max_iter=6, gradient_tolerance=1e-3
-    )
+    capped_by_iter = fit_sparse_probe(features, labels, k=4, seed=3, max_iter=6)
     assert capped_by_iter.stop_reason == "max_iter"
     assert capped_by_iter.iterations == capped_by_iter.max_iter
-    assert capped_by_iter.gradient_inf_norm > capped_by_iter.gradient_tolerance
+    assert capped_by_iter.refinement_steps >= 1
 
     # Large-scale activations make the strong-Wolfe line search exhaust the evaluation
     # budget before the iteration cap, so the same truncation surfaces as max_eval.
     large_features, large_labels = _large_scale_data()
     capped_by_eval = fit_sparse_probe(large_features, large_labels, k=4, seed=1)
     assert capped_by_eval.stop_reason == "max_eval"
-    assert capped_by_eval.gradient_inf_norm > capped_by_eval.gradient_tolerance
+    assert capped_by_eval.refinement_steps >= 1
+
+
+def test_stop_reason_reports_a_stalled_line_search():
+    # With tolerance_change at 0.0 the only LBFGS exit besides the caps and its gradient stop
+    # is a strong-Wolfe search that returns a zero step; that exit is common on raw
+    # activations and must keep its own label, or callers cannot tell it from convergence.
+    features, labels = _large_scale_data()
+
+    result = fit_sparse_probe(features, labels, k=4, seed=0)
+
+    assert result.stop_reason == "line_search"
+    assert result.iterations < result.max_iter
+    assert result.function_evaluations < result.max_iter * 5 // 4
+    assert result.gradient_inf_norm > 1e-7
+    assert result.newton_decrement <= result.decrement_tolerance
+
+
+def test_loose_tolerance_does_not_stop_the_solver_early():
+    # The acceptance tolerance must not reach LBFGS: if it did, a tolerance above the initial
+    # gradient would return the untrained all-zero probe as a converged fit. Noise features
+    # start with a small gradient, so a loose tolerance is exactly the case that exposes it.
+    generator = torch.Generator().manual_seed(3)
+    features = torch.randn(400, 64, generator=generator)
+    labels = torch.arange(400) % 2
+
+    result = fit_sparse_probe(features, labels, k=2, seed=0, decrement_tolerance=0.1)
+
+    assert result.iterations > 0
+    assert not bool(torch.all(result.coefficients == 0))
+    assert result.objective < math.log(2)
+
+
+def test_zero_refinement_budget_only_checks_a_converged_fit():
+    # The decrement is evaluated before the first Newton step, so a budget of zero accepts a
+    # fit LBFGS already converged and rejects nothing on its own.
+    features, labels = _planted_data()
+
+    result = fit_sparse_probe(features, labels, k=4, seed=3, max_refinement_steps=0)
+
+    assert result.refinement_steps == 0
+    assert result.stop_reason == "tolerance_grad"
+    assert result.newton_decrement <= result.decrement_tolerance
+
+
+@pytest.mark.parametrize("scale", [1e6, 1e9])
+def test_saturated_design_refines_without_factorization_failure(scale):
+    # Huge feature scales saturate the sigmoid, zeroing the unregularised intercept curvature;
+    # the equilibrated, ridged solve must still factorise and accept the converged fit.
+    generator = torch.Generator().manual_seed(0)
+    labels = torch.arange(300) % 2
+    features = scale * torch.randn(300, 16, generator=generator)
+    features[:, 3] += 4.0 * scale * (2 * labels - 1)
+
+    result = fit_sparse_probe(features, labels, k=2, seed=0)
+
+    assert result.newton_decrement <= result.decrement_tolerance
+    assert torch.isfinite(result.coefficients).all()
 
 
 def test_binary_metrics_zero_division_policy():
@@ -477,20 +531,32 @@ def test_binary_metrics_zero_division_policy():
         (
             torch.ones(4, 2),
             torch.tensor([0, 1, 0, 1]),
-            {"gradient_tolerance": 0},
-            "gradient_tolerance",
+            {"decrement_tolerance": 0},
+            "decrement_tolerance",
         ),
         (
             torch.ones(4, 2),
             torch.tensor([0, 1, 0, 1]),
-            {"gradient_tolerance": 1},
-            "gradient_tolerance",
+            {"decrement_tolerance": 1},
+            "decrement_tolerance",
         ),
         (
             torch.ones(4, 2),
             torch.tensor([0, 1, 0, 1]),
-            {"gradient_tolerance": 2},
-            "gradient_tolerance",
+            {"decrement_tolerance": 2},
+            "decrement_tolerance",
+        ),
+        (
+            torch.ones(4, 2),
+            torch.tensor([0, 1, 0, 1]),
+            {"max_refinement_steps": -1},
+            "max_refinement_steps",
+        ),
+        (
+            torch.ones(4, 2),
+            torch.tensor([0, 1, 0, 1]),
+            {"max_refinement_steps": True},
+            "max_refinement_steps",
         ),
     ],
 )
@@ -652,7 +718,8 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         l2_strength=1e-2,
         seed=seed,
         max_iter=200,
-        gradient_tolerance=1e-7,
+        max_refinement_steps=25,
+        decrement_tolerance=1e-12,
     )
     generator = torch.Generator(device="cpu").manual_seed(seed)
     train_indices, test_indices = _stratified_split(
@@ -676,7 +743,8 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         class_weight=validated.class_weight,
         l2_strength=validated.l2_strength,
         max_iter=validated.max_iter,
-        gradient_tolerance=validated.gradient_tolerance,
+        max_refinement_steps=validated.max_refinement_steps,
+        decrement_tolerance=validated.decrement_tolerance,
     )
     true_test_labels = validated.canonical_labels[test_indices]
     logits = test_features @ fit.coefficients + fit.intercept

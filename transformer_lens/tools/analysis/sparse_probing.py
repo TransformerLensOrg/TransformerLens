@@ -71,9 +71,12 @@ class SparseProbeResult:
     seed: int
     k: int
     max_iter: int
-    gradient_tolerance: float
+    max_refinement_steps: int
+    decrement_tolerance: float
     objective: float
     gradient_inf_norm: float
+    newton_decrement: float
+    refinement_steps: int
     iterations: int
     function_evaluations: int
     stop_reason: str
@@ -114,7 +117,8 @@ class _ValidatedInputs:
     l2_strength: float
     seed: int
     max_iter: int
-    gradient_tolerance: float
+    max_refinement_steps: int
+    decrement_tolerance: float
 
 
 @dataclass(frozen=True)
@@ -123,6 +127,8 @@ class _FitOutcome:
     intercept: torch.Tensor
     objective: float
     gradient_inf_norm: float
+    newton_decrement: float
+    refinement_steps: int
     iterations: int
     function_evaluations: int
     stop_reason: str
@@ -155,7 +161,8 @@ def _validate_inputs(
     l2_strength: int | float,
     seed: int,
     max_iter: int,
-    gradient_tolerance: int | float,
+    max_refinement_steps: int,
+    decrement_tolerance: int | float,
 ) -> _ValidatedInputs:
     if not isinstance(features, torch.Tensor):
         raise ValueError(f"features must be a torch.Tensor, got {type(features).__name__}")
@@ -218,10 +225,11 @@ def _validate_inputs(
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed < 2**63:
         raise ValueError(f"seed must be an integer in [0, 2**63), got {seed!r}")
     validated_max_iter = _positive_integer(max_iter, "max_iter")
-    validated_tolerance = _finite_positive_real(gradient_tolerance, "gradient_tolerance")
+    validated_refinement_steps = _nonnegative_integer(max_refinement_steps, "max_refinement_steps")
+    validated_tolerance = _finite_positive_real(decrement_tolerance, "decrement_tolerance")
     if validated_tolerance >= 1:
         raise ValueError(
-            "gradient_tolerance must be a finite real in (0, 1), " f"got {gradient_tolerance!r}"
+            "decrement_tolerance must be a finite real in (0, 1), " f"got {decrement_tolerance!r}"
         )
     return _ValidatedInputs(
         features=features.detach(),
@@ -235,7 +243,8 @@ def _validate_inputs(
         l2_strength=validated_l2,
         seed=seed,
         max_iter=validated_max_iter,
-        gradient_tolerance=validated_tolerance,
+        max_refinement_steps=validated_refinement_steps,
+        decrement_tolerance=validated_tolerance,
     )
 
 
@@ -342,6 +351,97 @@ def _objective_gradient(
     )
 
 
+_LBFGS_TOLERANCE_GRAD = 1e-7
+_NEWTON_RIDGE = 1e-12
+_ARMIJO_SLOPE = 1e-4
+_MAX_BACKTRACKS = 60
+
+
+def _newton_direction(
+    features: torch.Tensor,
+    labels: torch.Tensor,
+    parameters: torch.Tensor,
+    sample_weights: torch.Tensor,
+    l2_strength: float,
+) -> tuple[torch.Tensor, torch.Tensor, float]:
+    """Return the gradient, the Newton direction ``H^-1 g``, and the decrement ``g^T H^-1 g / 2``."""
+    count = labels.numel()
+    design = torch.cat((features, torch.ones(count, 1, dtype=torch.float64)), dim=1)
+    probabilities = torch.sigmoid(design @ parameters)
+    gradient = _objective_gradient(features, labels, parameters, sample_weights, l2_strength)
+    curvature = sample_weights * probabilities * (1.0 - probabilities) / count
+    hessian = (design * curvature[:, None]).T @ design
+    hessian.diagonal()[: features.shape[1]] += l2_strength
+    # Saturated sigmoids zero the (unregularised) intercept curvature, so the solve is done on
+    # the Jacobi-equilibrated matrix with a ridge relative to each pivot; a raw factorisation
+    # fails on converged fits there.
+    diagonal = hessian.diagonal()
+    scale = torch.where(diagonal > 0, diagonal.rsqrt(), torch.ones_like(diagonal))
+    scaled = scale[:, None] * hessian * scale[None, :]
+    scaled.diagonal().add_(_NEWTON_RIDGE)
+    factor, info = torch.linalg.cholesky_ex(scaled)
+    if int(info.item()) != 0:
+        raise RuntimeError(
+            "sparse probe optimizer did not converge: "
+            "Hessian factorization failed during Newton refinement"
+        )
+    direction = scale * torch.cholesky_solve((scale * gradient)[:, None], factor)[:, 0]
+    decrement = 0.5 * float((gradient @ direction).item())
+    if not math.isfinite(decrement) or decrement < 0.0:
+        raise RuntimeError(
+            "sparse probe optimizer did not converge: "
+            f"Newton decrement {decrement!r} is not a finite nonnegative number"
+        )
+    return gradient, direction, decrement
+
+
+def _refine_with_newton(
+    features: torch.Tensor,
+    labels: torch.Tensor,
+    parameters: torch.Tensor,
+    sample_weights: torch.Tensor,
+    l2_strength: float,
+    *,
+    max_refinement_steps: int,
+    decrement_tolerance: float,
+) -> tuple[torch.Tensor, float, int]:
+    """Damped Newton steps until the decrement meets the tolerance; the check precedes any step."""
+    current = parameters
+    value = float(_objective(features, labels, current, sample_weights, l2_strength).item())
+    steps = 0
+    while True:
+        gradient, direction, decrement = _newton_direction(
+            features, labels, current, sample_weights, l2_strength
+        )
+        if decrement <= decrement_tolerance:
+            return current, decrement, steps
+        if steps >= max_refinement_steps:
+            raise RuntimeError(
+                "sparse probe optimizer did not converge: "
+                f"Newton decrement {decrement:.6g} exceeds {decrement_tolerance:.6g} "
+                f"after {steps} refinement steps"
+            )
+        slope = float((gradient @ direction).item())
+        step = 1.0
+        for _ in range(_MAX_BACKTRACKS):
+            candidate = current - step * direction
+            candidate_value = float(
+                _objective(features, labels, candidate, sample_weights, l2_strength).item()
+            )
+            if math.isfinite(candidate_value) and (
+                candidate_value <= value - _ARMIJO_SLOPE * step * slope
+            ):
+                break
+            step *= 0.5
+        else:
+            raise RuntimeError(
+                "sparse probe optimizer did not converge: "
+                "Newton refinement line search found no descent step"
+            )
+        current, value = candidate, candidate_value
+        steps += 1
+
+
 def _fit_logistic(
     features: torch.Tensor,
     labels: torch.Tensor,
@@ -349,17 +449,20 @@ def _fit_logistic(
     class_weight: ClassWeightMode,
     l2_strength: float,
     max_iter: int,
-    gradient_tolerance: float,
+    max_refinement_steps: int,
+    decrement_tolerance: float,
 ) -> _FitOutcome:
     labels = labels.to(dtype=torch.float64)
     sample_weights = _sample_weights(labels, class_weight)
     parameters = torch.zeros(features.shape[1] + 1, dtype=torch.float64, requires_grad=True)
     max_eval = max_iter * 5 // 4
+    # The solver's own stop is fixed so that no user argument can end the solve early;
+    # acceptance is decided afterwards by the Newton decrement.
     optimizer = torch.optim.LBFGS(
         [parameters],
         max_iter=max_iter,
         max_eval=max_eval,
-        tolerance_grad=gradient_tolerance,
+        tolerance_grad=_LBFGS_TOLERANCE_GRAD,
         tolerance_change=0.0,
         line_search_fn="strong_wolfe",
     )
@@ -375,40 +478,44 @@ def _fit_logistic(
     except RuntimeError as error:
         raise RuntimeError("sparse probe optimizer failed") from error
     detached = parameters.detach()
-    objective = float(
-        _objective(features, labels, detached, sample_weights, l2_strength).detach().item()
-    )
-    gradient = _objective_gradient(features, labels, detached, sample_weights, l2_strength)
-    gradient_inf_norm = float(gradient.abs().max().item())
-    if not math.isfinite(objective) or not math.isfinite(gradient_inf_norm):
+    lbfgs_gradient = _objective_gradient(features, labels, detached, sample_weights, l2_strength)
+    lbfgs_gradient_inf_norm = float(lbfgs_gradient.abs().max().item())
+    if not math.isfinite(lbfgs_gradient_inf_norm):
         raise RuntimeError("sparse probe optimizer produced non-finite output")
-    acceptance_threshold = gradient_tolerance * max(
-        1.0, features.shape[1] * float(features.abs().max().item())
-    )
-    if gradient_inf_norm > acceptance_threshold:
-        raise RuntimeError(
-            "sparse probe optimizer did not converge: "
-            f"gradient infinity norm {gradient_inf_norm:.6g} exceeds {acceptance_threshold:.6g}"
-        )
     state = optimizer.state[parameters]
     iterations = int(state.get("n_iter", 0))
     function_evaluations = int(state.get("func_evals", 0))
-    if gradient_inf_norm <= gradient_tolerance:
-        stop_reason = "tolerance_grad"
-    elif iterations >= max_iter:
+    # Same order LBFGS tests its exits; with tolerance_change at 0.0 the only exit left after
+    # the caps and the gradient stop is a strong-Wolfe search that made no progress.
+    if iterations >= max_iter:
         stop_reason = "max_iter"
     elif function_evaluations >= max_eval:
         stop_reason = "max_eval"
+    elif lbfgs_gradient_inf_norm <= _LBFGS_TOLERANCE_GRAD:
+        stop_reason = "tolerance_grad"
     else:
-        # tolerance_change is disabled (set to 0.0), so this covers only the remaining
-        # LBFGS stop paths and should be unreachable in practice. Keeping it total avoids
-        # raising on an unanticipated optimizer internal.
-        stop_reason = "tolerance_change"
+        stop_reason = "line_search"
+    refined, decrement, refinement_steps = _refine_with_newton(
+        features,
+        labels,
+        detached,
+        sample_weights,
+        l2_strength,
+        max_refinement_steps=max_refinement_steps,
+        decrement_tolerance=decrement_tolerance,
+    )
+    objective = float(_objective(features, labels, refined, sample_weights, l2_strength).item())
+    gradient = _objective_gradient(features, labels, refined, sample_weights, l2_strength)
+    gradient_inf_norm = float(gradient.abs().max().item())
+    if not math.isfinite(objective) or not math.isfinite(gradient_inf_norm):
+        raise RuntimeError("sparse probe optimizer produced non-finite output")
     return _FitOutcome(
-        coefficients=detached[:-1].clone(),
-        intercept=detached[-1].clone(),
+        coefficients=refined[:-1].clone(),
+        intercept=refined[-1].clone(),
         objective=objective,
         gradient_inf_norm=gradient_inf_norm,
+        newton_decrement=decrement,
+        refinement_steps=refinement_steps,
         iterations=iterations,
         function_evaluations=function_evaluations,
         stop_reason=stop_reason,
@@ -464,7 +571,8 @@ def _fit_result(
         class_weight=validated.class_weight,
         l2_strength=validated.l2_strength,
         max_iter=validated.max_iter,
-        gradient_tolerance=validated.gradient_tolerance,
+        max_refinement_steps=validated.max_refinement_steps,
+        decrement_tolerance=validated.decrement_tolerance,
     )
     test_labels = validated.canonical_labels[test_indices]
     metrics = _binary_metrics(test_features @ fit.coefficients + fit.intercept, test_labels)
@@ -492,9 +600,12 @@ def _fit_result(
         seed=validated.seed,
         k=k,
         max_iter=validated.max_iter,
-        gradient_tolerance=validated.gradient_tolerance,
+        max_refinement_steps=validated.max_refinement_steps,
+        decrement_tolerance=validated.decrement_tolerance,
         objective=fit.objective,
         gradient_inf_norm=fit.gradient_inf_norm,
+        newton_decrement=fit.newton_decrement,
+        refinement_steps=fit.refinement_steps,
         iterations=fit.iterations,
         function_evaluations=fit.function_evaluations,
         stop_reason=fit.stop_reason,
@@ -521,7 +632,8 @@ def _fit_control(
         class_weight=validated.class_weight,
         l2_strength=validated.l2_strength,
         max_iter=validated.max_iter,
-        gradient_tolerance=validated.gradient_tolerance,
+        max_refinement_steps=validated.max_refinement_steps,
+        decrement_tolerance=validated.decrement_tolerance,
     )
     test_labels = validated.canonical_labels[test_indices]
     return _binary_metrics(test_features @ fit.coefficients + fit.intercept, test_labels)
@@ -566,7 +678,8 @@ def fit_sparse_probe(
     l2_strength: int | float = 1e-2,
     seed: int = 0,
     max_iter: int = 200,
-    gradient_tolerance: int | float = 1e-7,
+    max_refinement_steps: int = 25,
+    decrement_tolerance: int | float = 1e-12,
 ) -> SparseProbeResult:
     """Fit a train-only-selected k-sparse binary logistic probe.
 
@@ -584,10 +697,10 @@ def fit_sparse_probe(
         class_weight: ``"balanced"`` or ``None`` for unweighted BCE.
         l2_strength: Positive coefficient penalty in the logistic objective.
         seed: Local CPU-generator seed used only for the stratified split.
-        max_iter: Maximum LBFGS iterations.
-        gradient_tolerance: Acceptance strictness. The fit is accepted only when the
-            final objective-gradient infinity norm is at most
-            ``gradient_tolerance * max(1.0, k * max abs(selected training features))``.
+        max_iter: Maximum LBFGS iterations before Newton refinement.
+        max_refinement_steps: Maximum damped Newton steps after LBFGS; zero only checks.
+        decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2``, an
+            estimate of the objective gap to the optimum in nats; a larger gap raises.
 
     Returns:
         Selected support, fitted parameters, split/preprocessing metadata, metrics,
@@ -608,7 +721,8 @@ def fit_sparse_probe(
         l2_strength=l2_strength,
         seed=seed,
         max_iter=max_iter,
-        gradient_tolerance=gradient_tolerance,
+        max_refinement_steps=max_refinement_steps,
+        decrement_tolerance=decrement_tolerance,
     )
     generator = torch.Generator(device="cpu").manual_seed(validated.seed)
     train_indices, test_indices = _stratified_split(
@@ -644,7 +758,8 @@ def sweep_sparse_probe(
     n_label_shuffles: int = 0,
     seed: int = 0,
     max_iter: int = 200,
-    gradient_tolerance: int | float = 1e-7,
+    max_refinement_steps: int = 25,
+    decrement_tolerance: int | float = 1e-12,
 ) -> SparseProbeSweep:
     """Fit sparse probes and optional controls over one fixed train/test split.
 
@@ -667,10 +782,10 @@ def sweep_sparse_probe(
         n_random_subsets: Random-coordinate control fits per sparsity level.
         n_label_shuffles: Shuffled-training-label control fits per sparsity level.
         seed: Local CPU-generator seed for splitting and controls.
-        max_iter: Maximum LBFGS iterations per fit.
-        gradient_tolerance: Acceptance strictness. The fit is accepted only when the
-            final objective-gradient infinity norm is at most
-            ``gradient_tolerance * max(1.0, k * max abs(selected training features))``.
+        max_iter: Maximum LBFGS iterations per fit before Newton refinement.
+        max_refinement_steps: Maximum damped Newton steps per fit; zero only checks.
+        decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2`` per fit,
+            an estimate of the objective gap to the optimum in nats; a larger gap raises.
 
     Returns:
         Main probe results plus aligned raw control distributions.
@@ -701,7 +816,8 @@ def sweep_sparse_probe(
         l2_strength=l2_strength,
         seed=seed,
         max_iter=max_iter,
-        gradient_tolerance=gradient_tolerance,
+        max_refinement_steps=max_refinement_steps,
+        decrement_tolerance=decrement_tolerance,
     )
     generator = torch.Generator(device="cpu").manual_seed(validated.seed)
     train_indices, test_indices = _stratified_split(
