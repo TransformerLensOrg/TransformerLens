@@ -36,8 +36,9 @@ from .SVDInterpreter import SVDInterpreter
 # name" ImportError, so our pointer would be lost for exactly the spelling downstream
 # packages use. ImportError reaches both `import transformer_lens; transformer_lens.X` and
 # `from transformer_lens import X`. Trade-off: `hasattr(transformer_lens, "X")` now raises
-# instead of returning False (hasattr only swallows AttributeError) — intended, so
-# version-detection code gets the migration pointer too. A subclass of both is impossible:
+# instead of returning False, and `getattr(transformer_lens, "X", default)` raises instead
+# of returning the default (both only swallow AttributeError) — intended, so feature-
+# detection code gets the migration pointer too. A subclass of both is impossible:
 # ImportError's C layout conflicts with AttributeError's. Submodule-path imports
 # (`from transformer_lens.HookedTransformer import ...`) raise ModuleNotFoundError before
 # this hook runs and can't be intercepted here.

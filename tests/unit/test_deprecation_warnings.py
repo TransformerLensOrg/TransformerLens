@@ -71,3 +71,15 @@ def test_removed_name_carries_migration_pointer_via_from_import(name):
     accepted so this pins the reach-the-pointer property, not the resolution."""
     with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
         exec(f"from transformer_lens import {name}")
+
+
+def test_removed_hook_points_reexport_carries_pointer_via_attribute():
+    import transformer_lens.hook_points as hook_points
+
+    with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
+        getattr(hook_points, "HookedRootModule")
+
+
+def test_removed_hook_points_reexport_carries_pointer_via_from_import():
+    with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
+        exec("from transformer_lens.hook_points import HookedRootModule")
