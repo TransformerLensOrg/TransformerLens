@@ -77,8 +77,11 @@ _SIGMA_FLOOR = 1e-12
 _DEFAULT_BASELINE_SEED = 0
 
 # Number of random in-span control subspaces the gate averages its baseline delta over,
-# so one lucky or unlucky draw does not decide the gate.
-_DEFAULT_N_BASELINE = 8
+# so one lucky or unlucky draw does not decide the gate. The per-draw magnitudes are
+# heavy-tailed, so the averaged threshold still varies with the seed and a direction whose
+# delta sits near it can gate either way; pass an explicit rng and raise n_baseline when
+# the verdict is close to the threshold.
+_DEFAULT_N_BASELINE = 32
 
 
 class DegenerateDirectionError(ValueError):
@@ -865,8 +868,9 @@ def patch_along_directions(
     of it), so a moved metric is compared against the effect of an arbitrary
     subspace of this head's output of the same width. The per-draw control delta magnitudes
     are averaged over ``n_baseline`` draws so one lucky or unlucky draw does not decide the
-    gate, and so controls that mix sign do not cancel into a smaller threshold. Restores
-    the model's prior ``use_attn_result`` setting afterward.
+    gate, and so controls that mix sign do not cancel into a smaller threshold. Averaging
+    narrows but does not remove the seed dependence of the threshold; see the ``n_baseline``
+    entry below. Restores the model's prior ``use_attn_result`` setting afterward.
 
     The gate's success condition depends on the mode the caller expressed, because
     ``keep=S`` and ``ablate=complement(S)`` resolve to the same retained set and a single
@@ -887,7 +891,11 @@ def patch_along_directions(
             Defaults to a generator seeded with ``_DEFAULT_BASELINE_SEED`` so a bare
             call is reproducible rather than drawing from the global RNG.
         n_baseline: Number of random in-span control subspaces to average the baseline
-            delta over. Must be at least 1.
+            delta over. Must be at least 1. The per-draw control magnitudes are
+            heavy-tailed, so the averaged threshold still varies with the seed and a
+            direction whose delta sits near it can gate either way; pass an explicit
+            ``rng`` for a reproducible verdict and raise ``n_baseline`` when the verdict
+            is close to the threshold. Each draw costs one forward pass.
 
     Returns:
         A :class:`PatchResult` describing the patched, baseline, and original metrics.
