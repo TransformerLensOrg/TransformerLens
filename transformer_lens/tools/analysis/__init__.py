@@ -22,8 +22,8 @@ Tools:
       anchored coordinate patching (offline and dynamic/hooked).
     - jacobian_lens_causal_swap_benchmark: A causal coordinate-swap benchmark for
       ``coordinate_patch_hooks``, with baseline-capability filtering,
-      displacement-matched random-atom controls, bootstrap confidence intervals, and a
-      versioned, fingerprinted JSON artifact schema.
+      displacement-matched random-atom controls, exact Clopper-Pearson confidence
+      intervals, and a versioned, fingerprinted JSON artifact schema.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
 """
@@ -59,10 +59,10 @@ from transformer_lens.tools.analysis.jacobian_lens import (
 from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
     BenchmarkCorpus,
     FunctionSpec,
-    bootstrap_success_rate_ci,
     load_artifact,
     run_causal_swap_benchmark,
     select_displacement_matched_control_token,
+    success_rate_ci,
 )
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
@@ -118,7 +118,6 @@ __all__ = [
     "WeightLayout",
     "attention_head_subspace_affinity",
     "attribution_patch",
-    "bootstrap_success_rate_ci",
     "direct_logit_attribution",
     "estimate_occupancy",
     "get_act_patch_direct_path",
@@ -132,4 +131,5 @@ __all__ = [
     "select_displacement_matched_control_token",
     "solve_coordinate_patch",
     "solve_coordinate_patch_positions",
+    "success_rate_ci",
 ]

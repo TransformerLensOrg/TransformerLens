@@ -4,16 +4,16 @@ Measures whether an anchored J-space coordinate edit installed live inside a for
 via ``coordinate_patch_hooks`` causes a directional change in model output, under three
 controls: baseline-capability filtering (only intervene on prompts the model already
 answers correctly), displacement-matched random-atom controls (isolate "this concept
-mattered" from "any edit of similar magnitude would have mattered"), and bootstrap
-uncertainty on every reported rate. Each trial draws its control arm under several seeds
-and records every draw, so the control arm's own spread is visible rather than folded
-into a single number.
+mattered" from "any edit of similar magnitude would have mattered"), and exact
+Clopper-Pearson uncertainty on every reported rate. Each trial draws its control arm under
+several seeds and records every draw, so the control arm's own spread is visible rather
+than folded into a single number.
 
 This module is layered bottom-up: the model-free prompt corpus and rank/margin metric,
 baseline-capability filtering, displacement-matched control-token selection, a per-trial
 runner that wires the first three together with real ``coordinate_patch_hooks`` calls
-against a live model, and bootstrap confidence intervals plus a versioned, fingerprinted
-JSON artifact schema. Running this module as a script (``python -m
+against a live model, and exact Clopper-Pearson confidence intervals plus a versioned,
+fingerprinted JSON artifact schema. Running this module as a script (``python -m
 transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark``) generates the frozen
 artifact consumed by ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb``; see
 ``main()`` below for the exact invocation.
@@ -39,7 +39,6 @@ from typing import (
     Tuple,
 )
 
-import numpy as np
 import torch
 
 from transformer_lens.tools.analysis.jacobian_lens import DEFAULT_K, JacobianLens
@@ -536,50 +535,110 @@ def run_causal_swap_benchmark(
 
 
 @dataclass(frozen=True)
-class BootstrapResult:
-    """A percentile-bootstrap confidence interval around a success rate."""
+class SuccessRateInterval:
+    """An exact Clopper-Pearson confidence interval around a success rate.
+
+    ``n_trials`` and ``n_successes`` are the counts the interval was computed from, so a
+    reader can see the denominator behind the bounds rather than inferring it.
+    """
 
     point_estimate: float
     ci_low: float
     ci_high: float
-    n_resamples: int
+    n_trials: int
+    n_successes: int
     confidence: float
 
 
-def bootstrap_success_rate_ci(
+# Bisection depth for the Clopper-Pearson bounds. Each step halves the bracket, so 200 steps
+# resolve the bound far below the precision any reported rate needs.
+_CLOPPER_PEARSON_STEPS = 200
+
+
+def _binomial_cdf(k: int, n: int, p: float) -> float:
+    """Exact ``P(X <= k)`` for ``X ~ Binomial(n, p)``.
+
+    Accumulates the pmf by recurrence (``term_{i} = term_{i-1} * (n - i + 1) / i * p / (1 - p)``)
+    rather than forming ``comb(n, i)`` and ``p ** i`` separately, which overflow for the
+    trial counts this benchmark reports.
+    """
+    if k < 0:
+        return 0.0
+    if k >= n:
+        return 1.0
+    if p <= 0.0:
+        return 1.0
+    if p >= 1.0:
+        return 0.0
+    term = (1.0 - p) ** n
+    total = term
+    odds = p / (1.0 - p)
+    for i in range(1, k + 1):
+        term *= (n - i + 1) / i * odds
+        total += term
+    return total
+
+
+def _clopper_pearson_bound(n_successes: int, n_trials: int, tail: float, *, upper: bool) -> float:
+    """Solves one Clopper-Pearson bound by bisecting the exact binomial CDF.
+
+    The lower bound solves ``P(X >= k) = tail`` and the upper bound solves ``P(X <= k) =
+    tail``. ``P(X >= k)`` rises with ``p`` while ``P(X <= k)`` falls, so the two bounds
+    bracket from opposite sides; reversing that collapses every interval to ``[0, 1]``.
+    """
+    if upper and n_successes == n_trials:
+        return 1.0
+    if not upper and n_successes == 0:
+        return 0.0
+    low, high = 0.0, 1.0
+    for _ in range(_CLOPPER_PEARSON_STEPS):
+        midpoint = (low + high) / 2.0
+        if upper:
+            # P(X <= k) decreases in p, so a probability above the tail puts the bound below
+            # the midpoint.
+            if _binomial_cdf(n_successes, n_trials, midpoint) > tail:
+                low = midpoint
+            else:
+                high = midpoint
+        else:
+            # P(X >= k) increases in p, so a probability above the tail puts the bound above
+            # the midpoint.
+            if 1.0 - _binomial_cdf(n_successes - 1, n_trials, midpoint) > tail:
+                high = midpoint
+            else:
+                low = midpoint
+    return (low + high) / 2.0
+
+
+def success_rate_ci(
     successes: Sequence[bool],
     *,
-    n_resamples: int = 10_000,
     confidence: float = 0.95,
-    seed: int = 0,
-) -> BootstrapResult:
-    """Computes a seeded percentile-bootstrap confidence interval for a success rate.
+) -> SuccessRateInterval:
+    """Computes an exact Clopper-Pearson confidence interval for a success rate.
 
-    Resamples trial indices with replacement ``n_resamples`` times using
-    ``numpy.random.default_rng(seed)`` (the reproducibility convention
-    :func:`~transformer_lens.tools.analysis.jacobian_lens_decomposition.estimate_occupancy`
-    already uses for its own random controls), and reports the ``confidence`` central
-    interval of the resampled success rates around the observed point estimate.
+    A percentile bootstrap cannot express uncertainty about an all-failure or all-success
+    sample: every resample of an all-zero vector is all zeros, so the interval collapses to
+    ``[0, 0]`` and reports the same certainty for one trial as for a thousand. The exact
+    interval instead widens as the trial count shrinks, giving ``[0.0, 0.459]`` for zero
+    successes out of six.
+
+    Deterministic by construction: there is no resampling and no seed.
 
     Raises:
         ValueError: If ``successes`` is empty.
     """
     if len(successes) == 0:
         raise ValueError("successes must be a non-empty sequence")
-    values = np.asarray([bool(success) for success in successes], dtype=np.float64)
-    n = values.shape[0]
-    point_estimate = float(values.mean())
-    rng = np.random.default_rng(seed)
-    resample_indices = rng.integers(0, n, size=(n_resamples, n))
-    resample_rates = values[resample_indices].mean(axis=1)
+    n_trials = len(successes)
+    n_successes = sum(1 for success in successes if success)
     tail = (1.0 - confidence) / 2.0
-    ci_low = float(np.quantile(resample_rates, tail))
-    ci_high = float(np.quantile(resample_rates, 1.0 - tail))
-    return BootstrapResult(
-        point_estimate=point_estimate,
-        ci_low=ci_low,
-        ci_high=ci_high,
-        n_resamples=n_resamples,
+    return SuccessRateInterval(
+        point_estimate=n_successes / n_trials,
+        ci_low=_clopper_pearson_bound(n_successes, n_trials, tail, upper=False),
+        ci_high=_clopper_pearson_bound(n_successes, n_trials, tail, upper=True),
+        n_trials=n_trials,
+        n_successes=n_successes,
         confidence=confidence,
     )
 
@@ -632,10 +691,15 @@ def serialize_artifact(
     manifest: Dict[str, Any],
     trials: Sequence[TrialResult],
     excluded_baselines: Sequence[BaselineRecord],
-    real_ci: BootstrapResult,
-    control_ci: BootstrapResult,
+    real_ci: SuccessRateInterval,
+    control_ci: SuccessRateInterval,
 ) -> Dict[str, Any]:
-    """Assembles a JSON-serializable artifact dict from a benchmark run's results."""
+    """Assembles a JSON-serializable artifact dict from a benchmark run's results.
+
+    ``n_independent_prompts`` records how many distinct ``(function, source)`` prompts the
+    pooled rate rests on. Pooling trials as independent draws overstates the evidence when
+    several trials share one prompt, so the count travels with the rate.
+    """
     return {
         "schema_version": SCHEMA_VERSION,
         "protocol_manifest": manifest,
@@ -644,6 +708,9 @@ def serialize_artifact(
         "excluded_baselines": [asdict(record) for record in excluded_baselines],
         "real_success_ci": asdict(real_ci),
         "control_success_ci": asdict(control_ci),
+        "n_independent_prompts": len(
+            {(trial.function, trial.source) for trial in trials if trial.status == "ok"}
+        ),
     }
 
 
@@ -655,6 +722,7 @@ _REQUIRED_ARTIFACT_FIELDS = (
     "excluded_baselines",
     "real_success_ci",
     "control_success_ci",
+    "n_independent_prompts",
 )
 
 
@@ -821,18 +889,19 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         baseline_definition="source answer token id equals deterministic argmax token id",
         rank_definition="1 + count(logits strictly greater than target logit)",
     )
-    real_ci = bootstrap_success_rate_ci(real_successes)
-    control_ci = bootstrap_success_rate_ci(control_successes)
+    real_ci = success_rate_ci(real_successes)
+    control_ci = success_rate_ci(control_successes)
     artifact = serialize_artifact(manifest, trials, excluded, real_ci, control_ci)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n")
     inactive = sum(1 for trial in trials if trial.status == "skipped_source_inactive")
     no_control = sum(1 for trial in trials if trial.status == "skipped_no_control_token")
+    n_prompts = artifact["n_independent_prompts"]
     print(
-        f"wrote {len(trials)} trials ({len(ok_trials)} ok, {inactive} source-inactive, "
-        f"{no_control} no-control-token, {len(excluded)} excluded prompts) "
-        f"to {args.output}"
+        f"wrote {len(trials)} trials ({len(ok_trials)} ok over {n_prompts} independent "
+        f"prompt(s), {inactive} source-inactive, {no_control} no-control-token, "
+        f"{len(excluded)} excluded prompts) to {args.output}"
     )
 
 

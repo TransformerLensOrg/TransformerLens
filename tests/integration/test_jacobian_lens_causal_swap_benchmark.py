@@ -13,10 +13,10 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     SCHEMA_VERSION,
     BenchmarkCorpus,
     FunctionSpec,
-    bootstrap_success_rate_ci,
     build_protocol_manifest,
     run_causal_swap_benchmark,
     serialize_artifact,
+    success_rate_ci,
 )
 
 LENS_REPO = "neuronpedia/jacobian-lens"
@@ -93,10 +93,8 @@ def test_causal_swap_benchmark_gpt2_smoke(published_gpt2_lens, gpt2_bridge) -> N
         baseline_definition="source answer token id equals deterministic argmax token id",
         rank_definition="1 + count(logits strictly greater than target logit)",
     )
-    real_ci = bootstrap_success_rate_ci(
-        [t.real_target_metrics.target_is_top1 for t in ok_trials] or [False]
-    )
-    control_ci = bootstrap_success_rate_ci(
+    real_ci = success_rate_ci([t.real_target_metrics.target_is_top1 for t in ok_trials] or [False])
+    control_ci = success_rate_ci(
         [t.control_target_metrics.target_is_top1 for t in ok_trials] or [False]
     )
     artifact = serialize_artifact(manifest, trials, excluded, real_ci, control_ci)

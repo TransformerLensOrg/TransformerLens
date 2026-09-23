@@ -408,14 +408,20 @@ per pair, exactly as they would from an offline `coordinate_patch` call on that 
 
 `transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark` measures whether
 `coordinate_patch_hooks` causes a directional change in model output, under baseline-capability
-filtering, a displacement-matched random-atom control, and bootstrap confidence intervals on
-every reported rate. The control matches the real edit's magnitude: the perturbation is
-`c_src * (a_target - a_source)`, so a candidate atom qualifies when its distance from
-`a_source` matches the target's within a fixed relative tolerance. Each trial draws the control
-arm under several seeds and records every draw, because a single draw leaves the control arm's
-own variance unmeasured. Each trial installs the hook at exactly one layer and the final prompt
-position; a trial whose source concept is not active in that layer's support, or whose layer
-admits no displacement-matched control, is recorded as skipped, not silently dropped.
+filtering, a displacement-matched random-atom control, and exact Clopper-Pearson confidence
+intervals on every reported rate. The control matches the real edit's magnitude: the
+perturbation is `c_src * (a_target - a_source)`, so a candidate atom qualifies when its
+distance from `a_source` matches the target's within a fixed relative tolerance. Each trial
+draws the control arm under several seeds and records every draw, because a single draw leaves
+the control arm's own variance unmeasured. Each trial installs the hook at exactly one layer
+and the final prompt position; a trial whose source concept is not active in that layer's
+support, or whose layer admits no displacement-matched control, is recorded as skipped, not
+silently dropped.
+
+The interval is exact rather than bootstrapped: a percentile bootstrap cannot express
+uncertainty about an all-failure sample, collapsing to `[0, 0]` whether the run had one trial
+or a thousand. The artifact also records how many independent prompts the pooled rate rests on,
+since several trials can share one prompt.
 
 A generation script (`python -m
 transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark`, no `HF_TOKEN` required)

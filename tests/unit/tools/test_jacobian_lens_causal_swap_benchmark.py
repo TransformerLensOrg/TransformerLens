@@ -22,7 +22,6 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     TrialResult,
     _control_generator,
     _parse_seed_list,
-    bootstrap_success_rate_ci,
     build_protocol_manifest,
     compute_answer_metrics,
     filter_baseline_capable,
@@ -31,6 +30,7 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     load_artifact,
     select_displacement_matched_control_token,
     serialize_artifact,
+    success_rate_ci,
 )
 
 
@@ -314,24 +314,58 @@ def test_select_displacement_matched_control_token_is_device_independent() -> No
     assert device_choice == cpu_choice
 
 
-def test_bootstrap_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval() -> None:
+def test_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval() -> None:
     successes = [True, True, False, True, False, True, True, False]
-    result = bootstrap_success_rate_ci(successes, n_resamples=2000, seed=0)
+    result = success_rate_ci(successes)
     assert result.ci_low <= result.point_estimate <= result.ci_high
     assert 0.0 <= result.ci_low and result.ci_high <= 1.0
     assert result.point_estimate == pytest.approx(sum(successes) / len(successes))
 
 
-def test_bootstrap_success_rate_ci_is_deterministic_given_seed() -> None:
+def test_success_rate_ci_pins_zero_of_six_upper_bound() -> None:
+    # The exact interval must widen for an all-failure sample. A percentile bootstrap returns
+    # [0, 0] here by construction, asserting a certainty the data does not support.
+    result = success_rate_ci([False] * 6)
+    assert result.ci_low == 0.0
+    assert result.ci_high == pytest.approx(0.4592581, abs=1e-6)
+
+
+def test_success_rate_ci_pins_all_success_lower_bound() -> None:
+    result = success_rate_ci([True] * 6)
+    assert result.ci_high == 1.0
+    assert result.ci_low == pytest.approx(0.5407419, abs=1e-6)
+
+
+def test_success_rate_ci_matches_closed_form_at_the_boundaries() -> None:
+    # At k=0 and k=n the Clopper-Pearson bounds reduce to closed forms, which pins the
+    # bisection direction independently of the interior values. Reversing it collapses every
+    # interval to [0, 1].
+    assert success_rate_ci([False] * 6).ci_high == pytest.approx(1 - 0.025 ** (1 / 6))
+    assert success_rate_ci([True] * 6).ci_low == pytest.approx(0.025 ** (1 / 6))
+
+
+def test_success_rate_ci_narrows_as_the_trial_count_grows() -> None:
+    # The whole point of the change: the same observed rate carries less uncertainty with
+    # more trials. A degenerate interval would not move.
+    small = success_rate_ci([False] * 6)
+    large = success_rate_ci([False] * 600)
+    assert large.ci_high < small.ci_high
+
+
+def test_success_rate_ci_records_trial_and_success_counts() -> None:
+    result = success_rate_ci([True, False, True])
+    assert result.n_trials == 3
+    assert result.n_successes == 2
+
+
+def test_success_rate_ci_is_deterministic() -> None:
     successes = [True, False, True]
-    first = bootstrap_success_rate_ci(successes, seed=3)
-    second = bootstrap_success_rate_ci(successes, seed=3)
-    assert first == second
+    assert success_rate_ci(successes) == success_rate_ci(successes)
 
 
-def test_bootstrap_success_rate_ci_rejects_empty_input() -> None:
+def test_success_rate_ci_rejects_empty_input() -> None:
     with pytest.raises(ValueError, match="empty"):
-        bootstrap_success_rate_ci([])
+        success_rate_ci([])
 
 
 def test_fingerprint_manifest_matches_the_notebook_recipe() -> None:
@@ -372,8 +406,8 @@ def test_serialize_then_load_artifact_round_trips(tmp_path) -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields())
     trials: List[TrialResult] = []
     excluded: List[BaselineRecord] = []
-    real_ci = bootstrap_success_rate_ci([True, False])
-    control_ci = bootstrap_success_rate_ci([False, False])
+    real_ci = success_rate_ci([True, False])
+    control_ci = success_rate_ci([False, False])
     artifact = serialize_artifact(manifest, trials, excluded, real_ci, control_ci)
     path = tmp_path / "artifact.json"
     path.write_text(json.dumps(artifact))
@@ -402,8 +436,8 @@ def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> 
     excluded = [
         BaselineRecord("currency", "Egypt", "prompt", AnswerMetrics(9, 4, False, False, -3.0))
     ]
-    real_ci = bootstrap_success_rate_ci([True])
-    control_ci = bootstrap_success_rate_ci([False])
+    real_ci = success_rate_ci([True])
+    control_ci = success_rate_ci([False])
     artifact = serialize_artifact(manifest, [trial], excluded, real_ci, control_ci)
     path = tmp_path / "artifact.json"
     path.write_text(json.dumps(artifact))
@@ -415,7 +449,7 @@ def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> 
 def test_load_artifact_rejects_tampered_fingerprint(tmp_path) -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields(layers=[1]))
     artifact = serialize_artifact(
-        manifest, [], [], bootstrap_success_rate_ci([True]), bootstrap_success_rate_ci([False])
+        manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
     )
     artifact["protocol_manifest"]["layers"] = [2]
     path = tmp_path / "bad.json"
@@ -427,7 +461,7 @@ def test_load_artifact_rejects_tampered_fingerprint(tmp_path) -> None:
 def test_load_artifact_rejects_wrong_schema_version(tmp_path) -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields())
     artifact = serialize_artifact(
-        manifest, [], [], bootstrap_success_rate_ci([True]), bootstrap_success_rate_ci([False])
+        manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
     )
     artifact["schema_version"] = SCHEMA_VERSION + 1
     artifact["protocol_fingerprint"] = fingerprint_manifest(artifact["protocol_manifest"])
@@ -440,10 +474,59 @@ def test_load_artifact_rejects_wrong_schema_version(tmp_path) -> None:
 def test_load_artifact_rejects_missing_required_key(tmp_path) -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields())
     artifact = serialize_artifact(
-        manifest, [], [], bootstrap_success_rate_ci([True]), bootstrap_success_rate_ci([False])
+        manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
     )
     del artifact["excluded_baselines"]
     path = tmp_path / "bad_missing.json"
     path.write_text(json.dumps(artifact))
     with pytest.raises(ValueError, match="excluded_baselines"):
         load_artifact(path)
+
+
+def test_serialize_artifact_counts_independent_prompts(tmp_path) -> None:
+    # Several trials can share one prompt, so the pooled rate rests on fewer independent
+    # prompts than trials. The count must travel with the rate.
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    metrics = AnswerMetrics(0, 1, True, False, 2.0)
+    trials = [
+        TrialResult(
+            function="continent",
+            source="Egypt",
+            target=target,
+            layer=layer,
+            status="ok",
+            baseline=metrics,
+            real_target_metrics=metrics,
+            control_token_id=1,
+            control_target_metrics=metrics,
+            control_draws=[ControlDraw(seed=0, token_id=1, metrics=metrics)],
+            error=None,
+        )
+        for target, layer in (("France", 9), ("France", 10), ("China", 9))
+    ]
+    artifact = serialize_artifact(
+        manifest, trials, [], success_rate_ci([True]), success_rate_ci([False])
+    )
+    assert artifact["n_independent_prompts"] == 1
+
+
+def test_serialize_artifact_ignores_skipped_trials_when_counting_prompts() -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    metrics = AnswerMetrics(0, 1, True, False, 2.0)
+    skipped = TrialResult(
+        function="capital",
+        source="France",
+        target="China",
+        layer=6,
+        status="skipped_source_inactive",
+        baseline=metrics,
+        real_target_metrics=None,
+        control_token_id=None,
+        control_target_metrics=None,
+        control_draws=[],
+        error="inactive",
+    )
+    artifact = serialize_artifact(
+        manifest, [skipped], [], success_rate_ci([True]), success_rate_ci([False])
+    )
+    assert artifact["n_independent_prompts"] == 0
