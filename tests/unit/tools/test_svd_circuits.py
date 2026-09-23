@@ -823,17 +823,23 @@ def test_project_activations_caches_only_the_read_hook(tiny_bridge, monkeypatch)
     assert not names_filter(f"blocks.{layer}.attn.hook_z")
 
 
-def test_project_activations_rejects_batched_tensor_before_forward(tiny_bridge):
-    """A batched token tensor is refused before the forward pass, not after caching it.
+@pytest.mark.parametrize(
+    "shape",
+    [(2, 4), (), (1, 1, 4)],
+    ids=["batched_2d", "zero_dim", "three_dim"],
+)
+def test_project_activations_rejects_non_single_prompt_before_forward(tiny_bridge, shape):
+    """Any token tensor that is not a single prompt is refused before the forward pass.
 
     The ids are out of vocab range, so a check that ran only after the forward would surface
-    the embedding's IndexError instead of this refusal; catching the batch dimension first both
-    saves the forward and gives the caller the actionable message.
+    the embedding's IndexError instead of this refusal. A 0-D tensor additionally pins that
+    the guard raises ValueError rather than the bare IndexError a shape probe would give,
+    and a [1, 1, pos] tensor pins that the rank check survives alongside the batch check.
     """
     ov = decompose_head(tiny_bridge, 0, 0, which=("OV",)).OV
-    batched = torch.full((2, 4), 10**6, dtype=torch.long)
+    bad = torch.full(shape, 10**6, dtype=torch.long)
     with pytest.raises(ValueError, match="single prompt"):
-        project_activations(tiny_bridge, ov, batched)
+        project_activations(tiny_bridge, ov, bad)
 
 
 def test_project_activations_accepts_1d_prompt(tiny_bridge):

@@ -680,7 +680,8 @@ def project_activations(
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
             a different folded-LayerNorm state than ``model`` now has, or if ``prompt``
-            is a batched token tensor (leading dimension greater than one).
+            is not a single prompt (a tensor that is not 1-D, or is 2-D with a leading
+            dimension greater than one).
         NotImplementedError: If the model's attention adapter exposes no per-head result,
             so ``set_use_attn_result(True)`` cannot fork the attention output.
     """
@@ -689,14 +690,16 @@ def project_activations(
             f"project_activations requires an OV HeadSVD, got which={head_svd.which!r}"
         )
     _validate_decomposition_matches_model(model, head_svd)
-    # A batched token tensor carries a leading batch dimension larger than one, so reject it
-    # before the forward instead of running the model on every row only to discard the result.
-    # A 1-D [pos] tensor has no batch axis and runs as a single prompt, matching what
-    # patch_along_directions accepts. A list of prompt strings only reveals its batch size once
-    # tokenized, so the post-cache check below still guards that path.
-    if isinstance(prompt, torch.Tensor) and prompt.ndim >= 2 and prompt.shape[0] > 1:
+    # A single prompt is a string or a 1-D [pos] / 2-D [1, pos] token tensor. Reject any
+    # other rank here, before the forward: a 0-D tensor would raise a bare IndexError from
+    # the shape probe below, and a [1, 1, pos] tensor would slip past a leading-dimension
+    # test and only fail after the forward. A list of prompt strings reveals its batch size
+    # only once tokenized, so the post-cache check below still guards that path.
+    if isinstance(prompt, torch.Tensor) and (
+        prompt.ndim not in (1, 2) or (prompt.ndim == 2 and prompt.shape[0] > 1)
+    ):
         raise ValueError(
-            "project_activations requires a single prompt, got a batched token tensor of shape "
+            "project_activations requires a single prompt, got a token tensor of shape "
             f"{tuple(prompt.shape)}; pass a [pos] or [1, pos] tensor, or a single string."
         )
     # Cache only the one hook this reads. run_with_cache otherwise retains every hook point of
