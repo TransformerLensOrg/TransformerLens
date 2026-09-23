@@ -582,20 +582,22 @@ def test_vocab_readout_matches_svd_interpreter_through_public_api():
 
 
 # --------------------------------------------------------------------------- #
-# Compatibility-mode binding: a decomposition is tied to the state it was built under
+# Folded-LayerNorm binding: a decomposition is tied to the state it was built under
 # --------------------------------------------------------------------------- #
-def test_decompose_head_records_compatibility_mode():
-    """Each HeadSVD records the model's compatibility-mode state at decomposition time,
-    for both maps and both toggle values."""
+def test_decompose_head_records_folded_ln_state():
+    """Each HeadSVD records whether the model's weights carried a folded final LayerNorm
+    at decomposition time, for both maps and both toggle values. A fresh bridge has not
+    processed its weights, so the state is off; ``enable_compatibility_mode()`` is what
+    turns it on."""
     off = decompose_head(_make_tiny_bridge(), 0, 0, which=("QK", "OV"))
-    assert off.OV.compatibility_mode is False
-    assert off.QK.compatibility_mode is False
+    assert off.OV.folded_ln is False
+    assert off.QK.folded_ln is False
 
     on_model = _make_tiny_bridge()
     on_model.enable_compatibility_mode()
     on = decompose_head(on_model, 0, 0, which=("QK", "OV"))
-    assert on.OV.compatibility_mode is True
-    assert on.QK.compatibility_mode is True
+    assert on.OV.folded_ln is True
+    assert on.QK.folded_ln is True
 
 
 @pytest.mark.parametrize(
@@ -610,10 +612,10 @@ def test_decompose_head_records_compatibility_mode():
     ],
     ids=["vocab_readout", "logit_signature", "project_activations", "patch_along_directions"],
 )
-def test_consumers_reject_stale_compatibility_state(call_consumer):
+def test_consumers_reject_stale_folded_ln_state(call_consumer):
     """A HeadSVD decomposed before enable_compatibility_mode() describes the pre-folding OV
-    map, so every consumer refuses it once the model's state has changed and points the
-    caller back at decompose_head. The refusal fires before any forward pass runs."""
+    map, so every consumer refuses it once the model's weights have been folded and points
+    the caller back at decompose_head. The refusal fires before any forward pass runs."""
     bridge = _make_tiny_bridge()
     stale = decompose_head(bridge, 0, 0, which=("OV",)).OV
     bridge.enable_compatibility_mode()
@@ -710,7 +712,7 @@ def _ov_headsvd_in_dtype(dtype):
         rank_report=base.rank_report,
         eps=base.eps,
         null_rtol=base.null_rtol,
-        compatibility_mode=False,
+        folded_ln=False,
     )
 
 

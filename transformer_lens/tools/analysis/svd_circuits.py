@@ -137,11 +137,11 @@ class HeadSVD:
             boundary sits at a gap of at least ``eps``.
         null_rtol: Relative-to-top-singular-value tolerance below which a direction
             is numerically null.
-        compatibility_mode: The model's compatibility-mode state at the time this was
-            decomposed. ``enable_compatibility_mode`` folds ``ln1`` into ``W_V`` and
-            centres ``W_O``/``W_U``, so a decomposition describes the OV map only under
-            the state it was built in; the readout and patch consumers refuse a
-            decomposition whose state no longer matches the model.
+        folded_ln: Whether the model's weights carried a folded final LayerNorm when
+            this was decomposed. ``enable_compatibility_mode`` folds ``ln1`` into
+            ``W_V`` and centres ``W_O``/``W_U``, so a decomposition describes the OV
+            map only under the state it was built in; the readout and patch consumers
+            refuse a decomposition whose state no longer matches the model.
     """
 
     which: Which
@@ -153,7 +153,7 @@ class HeadSVD:
     rank_report: List[RankReportRow]
     eps: float
     null_rtol: float
-    compatibility_mode: bool = False
+    folded_ln: bool = False
 
     def is_degenerate(self, i: int) -> bool:
         """Whether direction ``i`` is refused: rotation-ambiguous inside a block, or null."""
@@ -335,7 +335,7 @@ def _factored_head_svd(
     head: int,
     eps: float,
     null_rtol: Optional[float] = None,
-    compatibility_mode: bool = False,
+    folded_ln: bool = False,
 ) -> HeadSVD:
     """Decompose the factored map ``A @ B`` for one head into a :class:`HeadSVD`.
 
@@ -349,8 +349,9 @@ def _factored_head_svd(
     for a square ``d_model x d_model`` map, so the null cutoff tracks the
     decomposition's own numerical rank rather than a hand-tuned constant.
 
-    ``compatibility_mode`` is the model's compatibility-mode state, recorded on the
-    result so the consumers can refuse a decomposition taken under a different state.
+    ``folded_ln`` is whether the model's weights carried a folded final LayerNorm,
+    recorded on the result so the consumers can refuse a decomposition taken under a
+    different state.
     """
     U, S, V = FactoredMatrix(A, B).svd()
     d_model = U.shape[0]
@@ -367,7 +368,7 @@ def _factored_head_svd(
         rank_report=rank_report,
         eps=eps,
         null_rtol=resolved_null_rtol,
-        compatibility_mode=compatibility_mode,
+        folded_ln=folded_ln,
     )
 
 
@@ -384,9 +385,10 @@ def decompose_head(
 
     Weight-space only: this reads the head's per-block weights via the bridge's
     ``model.blocks[layer].attn`` accessors and needs no forward pass and no
-    compatibility mode. The returned factors are detached from the model. The model's
-    compatibility-mode state is recorded on each returned :class:`HeadSVD` so the readout
-    and patch consumers can refuse a decomposition taken under a different state.
+    compatibility mode. The returned factors are detached from the model. Whether the
+    model's weights carry a folded final LayerNorm is recorded on each returned
+    :class:`HeadSVD` so the readout and patch consumers can refuse a decomposition
+    taken under a different state.
 
     Args:
         model: A ``TransformerBridge``.
@@ -425,7 +427,7 @@ def decompose_head(
         raise ValueError(f"which entries must be in {_VALID_WHICH}, got {invalid!r}")
 
     W_Q_h, W_K_h, W_V_h, W_O_h = _head_weights(model, layer, head)
-    compatibility_mode = getattr(model, "compatibility_mode", False)
+    folded_ln = _folded_ln_state(model)
     qk = None
     ov = None
     if "QK" in requested:
@@ -437,7 +439,7 @@ def decompose_head(
             head=head,
             eps=eps,
             null_rtol=null_rtol,
-            compatibility_mode=compatibility_mode,
+            folded_ln=folded_ln,
         )
     if "OV" in requested:
         ov = _factored_head_svd(
@@ -448,7 +450,7 @@ def decompose_head(
             head=head,
             eps=eps,
             null_rtol=null_rtol,
-            compatibility_mode=compatibility_mode,
+            folded_ln=folded_ln,
         )
     return HeadDecomposition(layer=layer, head=head, QK=qk, OV=ov)
 
@@ -505,23 +507,22 @@ def _validate_bridge_compatibility(model) -> None:
 
 
 def _validate_decomposition_matches_model(model, head_svd: HeadSVD) -> None:
-    """Refuse a decomposition built under a different compatibility-mode state than the model.
+    """Refuse a decomposition built under a different folded-LayerNorm state than the model.
 
     ``enable_compatibility_mode`` folds ``ln1`` into ``W_V`` and centres ``W_O``/``W_U``,
     so a :class:`HeadSVD` decomposed before the call describes a different OV map than the
     model now computes: the cached ``U``/``S``/``V`` are stale, and the returned readout or
     patch would be silently wrong rather than raise a shape error. This guard is orthogonal
-    to :func:`_validate_bridge_compatibility` (which checks that the bridge actually folded
-    LayerNorm into ``W_U`` via its recorded processing state): here the model may be in
-    either state, only mismatched from the decomposition's.
+    to :func:`_validate_bridge_compatibility` (which requires the fold to be present): here
+    the model may be in either state, only mismatched from the decomposition's.
     """
-    current = getattr(model, "compatibility_mode", False)
-    if current != head_svd.compatibility_mode:
+    current = _folded_ln_state(model)
+    if current != head_svd.folded_ln:
         raise ValueError(
-            f"This HeadSVD was decomposed with compatibility_mode="
-            f"{head_svd.compatibility_mode} but the model now has compatibility_mode="
-            f"{current}; the cached singular vectors describe a different OV map. "
-            f"Re-run decompose_head under the current state, then retry."
+            f"This HeadSVD was decomposed with folded_ln={head_svd.folded_ln} but the "
+            f"model's weights now have folded_ln={current}; the cached singular vectors "
+            f"describe a different OV map. Re-run decompose_head under the current state, "
+            f"then retry."
         )
 
 
@@ -529,8 +530,9 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
     """Project the top-k OV output directions through the unembedding.
 
     Requires ``head_svd.which == "OV"``: QK produces no write direction to project
-    (see the module docstring). On a ``TransformerBridge``, compatibility mode must
-    be enabled so ``W_U`` carries the folded final LayerNorm weights.
+    (see the module docstring). On a ``TransformerBridge``, the final LayerNorm must
+    be folded into ``W_U``, which requires the bridge to have processed its weights
+    with ``fold_ln`` enabled on an adapter that supports folding.
 
     Does not call ``head_svd.require_isolated``: a degenerate direction's vocab
     readout is still a well-defined projection, unlike a per-direction causal claim,
@@ -538,8 +540,8 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
     passing causal patch is enforced by :func:`patch_along_directions`.
 
     Args:
-        model: A ``TransformerBridge`` with compatibility mode enabled; only its
-            ``W_U`` is read.
+        model: A ``TransformerBridge`` with the final LayerNorm folded into ``W_U``;
+            only its ``W_U`` is read.
         head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
         k: Number of top singular directions to project.
 
@@ -550,8 +552,9 @@ def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tenso
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``k`` is not in
             ``(0, rank]``, if ``head_svd`` was decomposed under a different
-            compatibility-mode state than ``model`` now has, or if ``model`` is a
-            ``TransformerBridge`` without compatibility mode enabled.
+            folded-LayerNorm state than ``model`` now has, or if ``model`` is a
+            ``TransformerBridge`` whose weights do not carry a folded final
+            LayerNorm.
     """
     if head_svd.which != "OV":
         raise ValueError(f"vocab_readout requires an OV HeadSVD, got which={head_svd.which!r}")
@@ -593,8 +596,8 @@ def logit_signature(
     no forward pass and builds no cache.
 
     Args:
-        model: A ``TransformerBridge`` with compatibility mode enabled; only its
-            ``W_U`` is read.
+        model: A ``TransformerBridge`` with the final LayerNorm folded into ``W_U``;
+            only its ``W_U`` is read.
         head_svd: An OV :class:`HeadSVD` from :func:`decompose_head`.
         direction: Column index of the singular direction to reconstruct.
         tokens: Token id(s) to read the logit effect for.
@@ -605,8 +608,9 @@ def logit_signature(
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``direction`` is not in
             ``[0, rank)``, if ``head_svd`` was decomposed under a different
-            compatibility-mode state than ``model`` now has, or if ``model`` is a
-            ``TransformerBridge`` without compatibility mode enabled.
+            folded-LayerNorm state than ``model`` now has, or if ``model`` is a
+            ``TransformerBridge`` whose weights do not carry a folded final
+            LayerNorm.
         DegenerateDirectionError: If ``direction`` is not attributable alone (see
             :meth:`HeadSVD.require_isolated`).
     """
@@ -675,7 +679,7 @@ def project_activations(
 
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
-            a different compatibility-mode state than ``model`` now has, or if ``prompt``
+            a different folded-LayerNorm state than ``model`` now has, or if ``prompt``
             is a batched token tensor (leading dimension greater than one).
         NotImplementedError: If the model's attention adapter exposes no per-head result,
             so ``set_use_attn_result(True)`` cannot fork the attention output.
@@ -887,7 +891,7 @@ def patch_along_directions(
 
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under a
-            different compatibility-mode state than ``model`` now has, if ``keep``/``ablate``
+            different folded-LayerNorm state than ``model`` now has, if ``keep``/``ablate``
             are both given or both omitted, if any index is out of ``[0, rank)``, if the
             retained set is empty (``keep=[]`` or ``ablate`` over the full rank) or spans the
             full rank (``keep`` over every direction) and no explicit ``threshold`` is
