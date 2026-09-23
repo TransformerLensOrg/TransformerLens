@@ -453,6 +453,24 @@ def decompose_head(
     return HeadDecomposition(layer=layer, head=head, QK=qk, OV=ov)
 
 
+def _folded_ln_state(model) -> bool:
+    """Whether the model's weights currently carry a folded final LayerNorm.
+
+    ``enable_compatibility_mode`` sets ``compatibility_mode`` before it processes
+    weights and skips processing entirely under ``no_processing``, so the flag alone
+    does not imply a fold. The fold happens only when the bridge has processed its
+    weights with ``fold_ln`` enabled *and* the adapter supports folding: adapters that
+    declare ``supports_fold_ln = False`` have ``fold_ln`` downgraded to ``False``
+    inside ``ProcessWeights``, leaving ``_fold_ln_requested`` set while the norms stay
+    unfolded.
+    """
+    processed = getattr(model, "_weights_processed", False)
+    adapter = getattr(model, "adapter", None)
+    fold_ln_requested = getattr(adapter, "_fold_ln_requested", True)
+    supports_fold_ln = getattr(adapter, "supports_fold_ln", True)
+    return bool(processed and fold_ln_requested and supports_fold_ln)
+
+
 def _validate_bridge_compatibility(model) -> None:
     """Reject a ``TransformerBridge`` whose ``W_U`` would give a silently wrong projection.
 
@@ -463,8 +481,11 @@ def _validate_bridge_compatibility(model) -> None:
     flag. ``enable_compatibility_mode`` sets that flag before it processes weights and
     skips processing entirely under ``no_processing``, so the flag can be ``True`` while
     ``W_U`` is still unfolded. The fold only happens once the bridge processes its
-    weights with ``fold_ln`` enabled, which is what ``_weights_processed`` and the
-    adapter's ``_fold_ln_requested`` record. No hybrid-architecture restriction applies:
+    weights with ``fold_ln`` enabled, which is what ``_weights_processed``, the
+    adapter's ``_fold_ln_requested``, and the adapter's ``supports_fold_ln`` record:
+    adapters that declare no fold support have ``fold_ln`` downgraded to ``False``
+    inside ``ProcessWeights``, so their norms stay unfolded even though the bridge
+    reports processed weights. No hybrid-architecture restriction applies:
     projecting a rank-1 OV direction through ``W_U`` does not depend on the block-layout
     assumptions that check exists for elsewhere.
     """
@@ -473,9 +494,7 @@ def _validate_bridge_compatibility(model) -> None:
 
     if not isinstance(model, TransformerBridge):
         return
-    processed = getattr(model, "_weights_processed", False)
-    fold_ln_requested = getattr(getattr(model, "adapter", None), "_fold_ln_requested", True)
-    if not (processed and fold_ln_requested):
+    if not _folded_ln_state(model):
         raise ValueError(
             "Projecting an OV direction through W_U on a TransformerBridge requires the "
             "final LayerNorm folded into W_U, which only happens once the bridge has "
