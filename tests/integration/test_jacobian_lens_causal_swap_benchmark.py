@@ -61,7 +61,7 @@ def test_causal_swap_benchmark_gpt2_smoke(published_gpt2_lens, gpt2_bridge) -> N
         gpt2_bridge,
         corpus,
         layers=[6],
-        control_seed=0,
+        control_seeds=(0, 1),
     )
     assert len(trials) + len(excluded) >= 1
 
@@ -88,7 +88,7 @@ def test_causal_swap_benchmark_gpt2_smoke(published_gpt2_lens, gpt2_bridge) -> N
         alpha=1.0,
         k=8,
         control_tolerance=0.1,
-        control_seed=0,
+        control_seeds=[0, 1],
         success_definition="target token id equals deterministic argmax token id",
         baseline_definition="source answer token id equals deterministic argmax token id",
         rank_definition="1 + count(logits strictly greater than target logit)",

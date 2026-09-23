@@ -17,9 +17,11 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     AnswerMetrics,
     BaselineRecord,
     BenchmarkCorpus,
+    ControlDraw,
     FunctionSpec,
     TrialResult,
     _control_generator,
+    _parse_seed_list,
     bootstrap_success_rate_ci,
     build_protocol_manifest,
     compute_answer_metrics,
@@ -266,6 +268,16 @@ def test_control_generator_is_always_cpu() -> None:
     assert _control_generator(0).device == torch.device("cpu")
 
 
+def test_parse_seed_list_accepts_comma_separated_seeds() -> None:
+    assert _parse_seed_list("0,1,2") == (0, 1, 2)
+    assert _parse_seed_list(" 3 , 4 ") == (3, 4)
+
+
+def test_parse_seed_list_rejects_an_empty_list() -> None:
+    with pytest.raises(ValueError, match="at least one control seed"):
+        _parse_seed_list(",")
+
+
 def _accelerator_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
@@ -347,7 +359,7 @@ def _full_manifest_fields(**overrides: Any) -> Dict[str, Any]:
         alpha=1.0,
         k=8,
         control_tolerance=0.1,
-        control_seed=0,
+        control_seeds=[0],
         success_definition="target token id equals deterministic argmax token id",
         baseline_definition="source answer token id equals deterministic argmax token id",
         rank_definition="1 + count(logits strictly greater than target logit)",
@@ -382,6 +394,9 @@ def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> 
         real_target_metrics=AnswerMetrics(1, 1, True, False, 0.5),
         control_token_id=42,
         control_target_metrics=AnswerMetrics(2, 3, False, False, -0.1),
+        control_draws=[
+            ControlDraw(seed=0, token_id=42, metrics=AnswerMetrics(2, 3, False, False, -0.1))
+        ],
         error=None,
     )
     excluded = [

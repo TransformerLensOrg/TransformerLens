@@ -5,7 +5,9 @@ via ``coordinate_patch_hooks`` causes a directional change in model output, unde
 controls: baseline-capability filtering (only intervene on prompts the model already
 answers correctly), displacement-matched random-atom controls (isolate "this concept
 mattered" from "any edit of similar magnitude would have mattered"), and bootstrap
-uncertainty on every reported rate.
+uncertainty on every reported rate. Each trial draws its control arm under several seeds
+and records every draw, so the control arm's own spread is visible rather than folded
+into a single number.
 
 This module is layered bottom-up: the model-free prompt corpus and rank/margin metric,
 baseline-capability filtering, displacement-matched control-token selection, a per-trial
@@ -255,8 +257,22 @@ def _resolve_answer_token_id(model: Any, word: str) -> int:
 
 
 @dataclass(frozen=True)
+class ControlDraw:
+    """One seeded control-arm draw: the token it selected and how that condition scored."""
+
+    seed: int
+    token_id: int
+    metrics: AnswerMetrics
+
+
+@dataclass(frozen=True)
 class TrialResult:
-    """One ``(function, source, target, layer)`` causal-swap trial's full record."""
+    """One ``(function, source, target, layer)`` causal-swap trial's full record.
+
+    ``control_token_id`` and ``control_target_metrics`` mirror the first entry of
+    ``control_draws`` so a single-draw reader sees the same fields it always did. The full
+    list carries the control arm's own spread across seeds, which one draw cannot measure.
+    """
 
     function: str
     source: str
@@ -267,6 +283,7 @@ class TrialResult:
     real_target_metrics: Optional[AnswerMetrics]
     control_token_id: Optional[int]
     control_target_metrics: Optional[AnswerMetrics]
+    control_draws: List[ControlDraw]
     error: Optional[str]
 
 
@@ -278,7 +295,7 @@ def run_causal_swap_trial(
     *,
     decomposition_cache: Optional[MutableMapping[Tuple[int, int, int], JSpaceDecomposition]] = None,
     control_tolerance: float = 0.1,
-    control_seed: int = 0,
+    control_seeds: Sequence[int] = (0,),
     alpha: float = 1.0,
     k: int = DEFAULT_K,
 ) -> TrialResult:
@@ -293,6 +310,11 @@ def run_causal_swap_trial(
     decomposition; both are scored against the target's own answer token, so a real-vs-control
     gap isolates "swapping toward this concept mattered" from "any edit of this magnitude
     would have mattered."
+
+    The control arm is drawn once per entry in ``control_seeds``. A single draw leaves the
+    control arm's own variance unmeasured, so a reader cannot tell a real-vs-control gap from
+    draw variation; the per-seed results are carried on ``control_draws``. Every draw reuses
+    the same ``decomposition_cache``, so only the first pays the vocabulary-scale solve.
 
     Two conditions produce a skip rather than a result. When the source is not in the layer's
     active support, the trial is recorded with ``status="skipped_source_inactive"``. When no
@@ -317,7 +339,9 @@ def run_causal_swap_trial(
         decomposition_cache: Shared cache passed to both the real and control
             ``coordinate_patch_hooks`` calls. A fresh cache is used if omitted.
         control_tolerance: Relative tolerance for the displacement-matched control token.
-        control_seed: Seed for the control token's deterministic selection.
+        control_seeds: Seeds to draw the control arm under. Each seed selects its own
+            control token and contributes one :class:`ControlDraw`; the first seed's draw
+            is mirrored onto ``control_token_id`` and ``control_target_metrics``.
         alpha: Interpolation strength forwarded to ``coordinate_patch_hooks``.
         k: Sparse-solver upper bound forwarded to ``coordinate_patch_hooks``.
 
@@ -326,10 +350,13 @@ def run_causal_swap_trial(
 
     Raises:
         ValueError: If the source and target concepts resolve to the same token id, which
-            would make the coordinate patch a silent no-op.
+            would make the coordinate patch a silent no-op, or if ``control_seeds`` is
+            empty.
     """
     if decomposition_cache is None:
         decomposition_cache = {}
+    if not control_seeds:
+        raise ValueError("control_seeds must contain at least one seed")
     tokens = model.to_tokens(trial_spec.prompt)
     source_id = _resolve_answer_token_id(model, trial_spec.source)
     target_id = _resolve_answer_token_id(model, trial_spec.target)
@@ -362,36 +389,41 @@ def run_causal_swap_trial(
             real_target_metrics=None,
             control_token_id=None,
             control_target_metrics=None,
+            control_draws=[],
             error=(
                 f"source token id {source_id} is not in layer {layer}'s active support "
                 f"for this prompt"
             ),
         )
-    control_token_id = select_displacement_matched_control_token(
-        dictionary,
-        source_id,
-        target_id,
-        excluded_ids={source_answer_id, target_answer_id},
-        active_support=decomposition.support,
-        tolerance=control_tolerance,
-        seed=control_seed,
-    )
-    if control_token_id is None:
-        return TrialResult(
-            function=trial_spec.function,
-            source=trial_spec.source,
-            target=trial_spec.target,
-            layer=layer,
-            status="skipped_no_control_token",
-            baseline=baseline_metrics,
-            real_target_metrics=None,
-            control_token_id=None,
-            control_target_metrics=None,
-            error=(
-                "no displacement-matched control token within relative tolerance "
-                f"{control_tolerance} of ||a_target - a_source||"
-            ),
+    control_token_ids: List[int] = []
+    for seed in control_seeds:
+        token_id = select_displacement_matched_control_token(
+            dictionary,
+            source_id,
+            target_id,
+            excluded_ids={source_answer_id, target_answer_id},
+            active_support=decomposition.support,
+            tolerance=control_tolerance,
+            seed=seed,
         )
+        if token_id is None:
+            return TrialResult(
+                function=trial_spec.function,
+                source=trial_spec.source,
+                target=trial_spec.target,
+                layer=layer,
+                status="skipped_no_control_token",
+                baseline=baseline_metrics,
+                real_target_metrics=None,
+                control_token_id=None,
+                control_target_metrics=None,
+                control_draws=[],
+                error=(
+                    "no displacement-matched control token within relative tolerance "
+                    f"{control_tolerance} of ||a_target - a_source|| for seed {seed}"
+                ),
+            )
+        control_token_ids.append(token_id)
 
     def _condition_metrics(condition_target_id: int) -> AnswerMetrics:
         hooks = lens.coordinate_patch_hooks(
@@ -409,7 +441,14 @@ def run_causal_swap_trial(
         return compute_answer_metrics(condition_logits, target_answer_id)
 
     real_metrics = _condition_metrics(target_id)
-    control_metrics = _condition_metrics(control_token_id)
+    control_draws = [
+        ControlDraw(
+            seed=seed,
+            token_id=token_id,
+            metrics=_condition_metrics(token_id),
+        )
+        for seed, token_id in zip(control_seeds, control_token_ids)
+    ]
 
     return TrialResult(
         function=trial_spec.function,
@@ -419,8 +458,9 @@ def run_causal_swap_trial(
         status="ok",
         baseline=baseline_metrics,
         real_target_metrics=real_metrics,
-        control_token_id=control_token_id,
-        control_target_metrics=control_metrics,
+        control_token_id=control_draws[0].token_id,
+        control_target_metrics=control_draws[0].metrics,
+        control_draws=control_draws,
         error=None,
     )
 
@@ -447,7 +487,7 @@ def run_causal_swap_benchmark(
         corpus: The prompt corpus to sweep.
         layers: Layers to sweep as an independent trial dimension.
         **trial_kwargs: Forwarded to :func:`run_causal_swap_trial` (``control_tolerance``,
-            ``control_seed``, ``alpha``, ``k``; ``decomposition_cache`` is not accepted here
+            ``control_seeds``, ``alpha``, ``k``; ``decomposition_cache`` is not accepted here
             since each trial always uses its own).
 
     Returns:
@@ -555,7 +595,7 @@ _REQUIRED_MANIFEST_FIELDS = (
     "alpha",
     "k",
     "control_tolerance",
-    "control_seed",
+    "control_seeds",
     "success_definition",
     "baseline_definition",
     "rank_definition",
@@ -682,12 +722,21 @@ _COUNTRY_CORPUS = BenchmarkCorpus(
 _GPT2_LENS_REPO = "neuronpedia/jacobian-lens"
 _GPT2_LENS_FILE = "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"
 _GPT2_LENS_REVISION = "a4114d7752d11eb546e6cf372213d7e75526d3a1"
+_DEFAULT_CONTROL_SEEDS = (0, 1, 2, 3, 4)
 _DEFAULT_ARTIFACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "demos"
     / "data"
     / "jacobian_lens_causal_swap_benchmark_gpt2.json"
 )
+
+
+def _parse_seed_list(value: str) -> Tuple[int, ...]:
+    """Parses a comma-separated seed list for ``--control-seeds``."""
+    seeds = tuple(int(part) for part in value.split(",") if part.strip())
+    if not seeds:
+        raise ValueError("at least one control seed is required")
+    return seeds
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
@@ -711,7 +760,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--output", type=Path, default=_DEFAULT_ARTIFACT_PATH)
     parser.add_argument("--control-tolerance", type=float, default=0.1)
-    parser.add_argument("--control-seed", type=int, default=0)
+    parser.add_argument(
+        "--control-seeds",
+        type=_parse_seed_list,
+        default=_DEFAULT_CONTROL_SEEDS,
+        help="comma-separated seeds to draw the control arm under (default: %(default)s)",
+    )
     parser.add_argument("--alpha", type=float, default=1.0)
     parser.add_argument("--k", type=int, default=DEFAULT_K)
     args = parser.parse_args(argv)
@@ -732,7 +786,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         _COUNTRY_CORPUS,
         layers,
         control_tolerance=args.control_tolerance,
-        control_seed=args.control_seed,
+        control_seeds=args.control_seeds,
         alpha=args.alpha,
         k=args.k,
     )
@@ -762,7 +816,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         alpha=args.alpha,
         k=args.k,
         control_tolerance=args.control_tolerance,
-        control_seed=args.control_seed,
+        control_seeds=list(args.control_seeds),
         success_definition="target token id equals deterministic argmax token id",
         baseline_definition="source answer token id equals deterministic argmax token id",
         rank_definition="1 + count(logits strictly greater than target logit)",

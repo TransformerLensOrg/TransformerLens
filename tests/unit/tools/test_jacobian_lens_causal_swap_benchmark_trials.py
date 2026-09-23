@@ -234,6 +234,103 @@ def test_run_causal_swap_trial_propagates_same_id_source_and_target(
         )
 
 
+def test_run_causal_swap_trial_records_one_control_draw_per_seed(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    cache: Dict[Tuple[int, int, int], JSpaceDecomposition] = {}
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=1,
+        decomposition_cache=cache,
+        control_tolerance=CONTROL_TOLERANCE,
+        control_seeds=(0, 1, 2),
+        k=SOLVE_K,
+    )
+    assert result.status == "ok"
+    assert [draw.seed for draw in result.control_draws] == [0, 1, 2]
+    # Every draw reuses the one seeded decomposition, so the extra draws add forward passes
+    # but no vocabulary-scale solves.
+    assert len(cache) == 1
+
+
+def test_run_causal_swap_trial_primary_control_mirrors_the_first_seed(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=1,
+        control_tolerance=CONTROL_TOLERANCE,
+        control_seeds=(3, 4),
+        k=SOLVE_K,
+    )
+    assert result.status == "ok"
+    assert result.control_draws[0].seed == 3
+    assert result.control_token_id == result.control_draws[0].token_id
+    assert result.control_target_metrics == result.control_draws[0].metrics
+
+
+def test_run_causal_swap_trial_control_draws_can_differ_across_seeds(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    # The point of drawing several seeds is that the control arm has its own spread. If every
+    # seed collapsed to one token the spread would be unmeasurable and this test would fail.
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=1,
+        control_tolerance=CONTROL_TOLERANCE,
+        control_seeds=tuple(range(8)),
+        k=SOLVE_K,
+    )
+    assert result.status == "ok"
+    assert len({draw.token_id for draw in result.control_draws}) > 1
+
+
+def test_run_causal_swap_trial_skips_when_a_seed_lacks_a_control(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    # A zero tolerance empties the pool for every seed, so the trial skips rather than
+    # reporting a partial set of draws.
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=1,
+        control_tolerance=0.0,
+        control_seeds=(0, 1),
+        k=SOLVE_K,
+    )
+    assert result.status == "skipped_no_control_token"
+    assert result.control_draws == []
+
+
+def test_run_causal_swap_trial_rejects_an_empty_seed_list(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    # Without a seed there is no control arm at all, so the trial cannot report a
+    # real-vs-control gap. Fail loudly rather than indexing an empty draw list.
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    with pytest.raises(ValueError, match="at least one seed"):
+        run_causal_swap_trial(
+            toy_lens,
+            toy_bridge,
+            spec,
+            layer=1,
+            control_tolerance=CONTROL_TOLERANCE,
+            control_seeds=(),
+            k=SOLVE_K,
+        )
+
+
 def _rigged_corpus(model: _ToyBridge) -> BenchmarkCorpus:
     """One function, two concepts: "correct"'s own baseline answer is rigged to be the model's
     actual top1 (baseline-capable); "wrong"'s is rigged to not be (baseline-incapable)."""
@@ -291,7 +388,7 @@ def test_run_causal_swap_benchmark_is_deterministic_given_seed(
         corpus,
         layers=[1],
         control_tolerance=CONTROL_TOLERANCE,
-        control_seed=7,
+        control_seeds=(7, 8),
         k=SOLVE_K,
     )
     second, second_excluded = run_causal_swap_benchmark(
@@ -300,7 +397,7 @@ def test_run_causal_swap_benchmark_is_deterministic_given_seed(
         corpus,
         layers=[1],
         control_tolerance=CONTROL_TOLERANCE,
-        control_seed=7,
+        control_seeds=(7, 8),
         k=SOLVE_K,
     )
     assert first == second
