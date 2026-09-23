@@ -19,6 +19,7 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     BenchmarkCorpus,
     FunctionSpec,
     TrialResult,
+    _control_generator,
     bootstrap_success_rate_ci,
     build_protocol_manifest,
     compute_answer_metrics,
@@ -26,7 +27,7 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     fingerprint_manifest,
     iter_prompt_trials,
     load_artifact,
-    select_norm_matched_control_token,
+    select_displacement_matched_control_token,
     serialize_artifact,
 )
 
@@ -116,52 +117,167 @@ def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> 
     assert records == original
 
 
-def test_select_norm_matched_control_token_is_deterministic_given_seed() -> None:
+def test_select_displacement_matched_control_token_is_deterministic_given_seed() -> None:
     torch.manual_seed(0)
     dictionary = torch.randn(20, 4)
-    first = select_norm_matched_control_token(
-        dictionary, target_token_id=5, excluded_ids=set(), seed=1
+    first = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=5,
+        excluded_ids=set(),
+        active_support=set(),
+        seed=1,
     )
-    second = select_norm_matched_control_token(
-        dictionary, target_token_id=5, excluded_ids=set(), seed=1
+    second = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=5,
+        excluded_ids=set(),
+        active_support=set(),
+        seed=1,
     )
     assert first == second
 
 
-def test_select_norm_matched_control_token_respects_tolerance_and_exclusions() -> None:
+def test_select_displacement_matched_control_token_respects_tolerance_and_exclusions() -> None:
     dictionary = torch.zeros(5, 3)
-    dictionary[0] = torch.tensor([1.0, 0.0, 0.0])  # norm 1, target
-    dictionary[1] = torch.tensor([1.05, 0.0, 0.0])  # norm 1.05, within 10%
-    dictionary[2] = torch.tensor([2.0, 0.0, 0.0])  # norm 2, outside tolerance
-    dictionary[3] = torch.tensor([0.98, 0.0, 0.0])  # norm 0.98, within 10%, but excluded
-    dictionary[4] = torch.tensor([5.0, 0.0, 0.0])  # far outside tolerance
-    chosen = select_norm_matched_control_token(
-        dictionary, target_token_id=0, excluded_ids={3}, tolerance=0.1, seed=0
+    dictionary[0] = torch.tensor([1.0, 0.0, 0.0])  # source
+    dictionary[1] = torch.tensor([2.0, 0.0, 0.0])  # target, displacement 1.0
+    dictionary[2] = torch.tensor([2.04, 0.0, 0.0])  # displacement 1.04, within 10%
+    dictionary[3] = torch.tensor([2.005, 0.0, 0.0])  # displacement 1.005, within 10%, but excluded
+    dictionary[4] = torch.tensor([5.0, 0.0, 0.0])  # displacement 4.0, far outside tolerance
+    chosen = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=1,
+        excluded_ids={3},
+        active_support=set(),
+        tolerance=0.1,
+        seed=0,
     )
-    assert chosen == 1
+    assert chosen == 2
 
 
-def test_select_norm_matched_control_token_raises_when_no_candidate_survives() -> None:
+def test_select_displacement_matched_control_token_matches_displacement_not_atom_norm() -> None:
+    # Atom 2 shares the target's atom norm but sits at a different distance from the source;
+    # atom 3 has a different norm but the target's exact displacement. A norm-matching
+    # selector would accept atom 2 and reject atom 3, so this pins the criterion change.
+    dictionary = torch.zeros(4, 2)
+    dictionary[0] = torch.tensor([1.0, 0.0])  # source
+    dictionary[1] = torch.tensor([3.0, 0.0])  # target: norm 3, displacement 2.0
+    dictionary[2] = torch.tensor([0.0, 3.0])  # norm 3, displacement sqrt(10) ~ 3.162
+    dictionary[3] = torch.tensor([-1.0, 0.0])  # norm 1, displacement 2.0
+    chosen = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=1,
+        excluded_ids=set(),
+        active_support=set(),
+        tolerance=0.1,
+        seed=0,
+    )
+    assert chosen == 3
+
+
+def test_select_displacement_matched_control_token_excludes_active_support() -> None:
+    dictionary = torch.zeros(4, 2)
+    dictionary[0] = torch.tensor([0.0, 0.0])  # source
+    dictionary[1] = torch.tensor([1.0, 0.0])  # target, displacement 1.0
+    dictionary[2] = torch.tensor([1.0, 0.0])  # displacement 1.0, but in the active support
+    dictionary[3] = torch.tensor([1.02, 0.0])  # displacement 1.02, within 10%
+    chosen = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=1,
+        excluded_ids=set(),
+        active_support={2},
+        tolerance=0.1,
+        seed=0,
+    )
+    assert chosen == 3
+
+
+def test_select_displacement_matched_control_token_returns_none_on_empty_pool() -> None:
     dictionary = torch.eye(3) * torch.tensor([1.0, 10.0, 100.0]).unsqueeze(1)
-    with pytest.raises(ValueError, match="no candidate token"):
-        select_norm_matched_control_token(
-            dictionary, target_token_id=0, excluded_ids=set(), tolerance=0.01, seed=0
-        )
+    chosen = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=1,
+        excluded_ids=set(),
+        active_support=set(),
+        tolerance=0.01,
+        seed=0,
+    )
+    assert chosen is None
 
 
-def test_select_norm_matched_control_token_always_excludes_the_target_itself() -> None:
+def test_select_displacement_matched_control_token_always_excludes_the_target_itself() -> None:
     dictionary = torch.ones(
         3, 2
-    )  # every atom has an identical norm -- target would trivially "match" itself
-    chosen = select_norm_matched_control_token(
-        dictionary, target_token_id=1, excluded_ids=set(), seed=0
+    )  # every atom has an identical displacement -- target would trivially "match" itself
+    chosen = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=1,
+        excluded_ids=set(),
+        active_support=set(),
+        seed=0,
     )
     assert chosen != 1
 
 
-def test_select_norm_matched_control_token_rejects_non_2d_dictionary() -> None:
+def test_select_displacement_matched_control_token_rejects_non_2d_dictionary() -> None:
     with pytest.raises(ValueError, match="2-D"):
-        select_norm_matched_control_token(torch.ones(3), target_token_id=0, excluded_ids=set())
+        select_displacement_matched_control_token(
+            torch.ones(3),
+            source_token_id=0,
+            target_token_id=1,
+            excluded_ids=set(),
+            active_support=set(),
+        )
+
+
+def test_control_generator_is_always_cpu() -> None:
+    # The generator must not follow the dictionary's device: torch.randint infers its output
+    # device from the generator, so a device-local generator would select a different control
+    # token per device and break artifact reproducibility.
+    assert _control_generator(0).device == torch.device("cpu")
+
+
+def _accelerator_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return ""
+
+
+@pytest.mark.skipif(not _accelerator_device(), reason="no CUDA or MPS device available")
+def test_select_displacement_matched_control_token_is_device_independent() -> None:
+    # A device-local generator raises on accelerators (torch.randint allocates on CPU while
+    # the generator expects its own device), and drawing on the dictionary's device would
+    # make the same seed pick a different token per device. Selection must agree with CPU.
+    torch.manual_seed(0)
+    dictionary = torch.randn(20, 4)
+    cpu_choice = select_displacement_matched_control_token(
+        dictionary,
+        source_token_id=0,
+        target_token_id=5,
+        excluded_ids=set(),
+        active_support=set(),
+        seed=1,
+    )
+    device = _accelerator_device()
+    moved = dictionary.to(device)
+    device_choice = select_displacement_matched_control_token(
+        moved,
+        source_token_id=0,
+        target_token_id=5,
+        excluded_ids=set(),
+        active_support=set(),
+        seed=1,
+    )
+    assert device_choice == cpu_choice
 
 
 def test_bootstrap_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval() -> None:

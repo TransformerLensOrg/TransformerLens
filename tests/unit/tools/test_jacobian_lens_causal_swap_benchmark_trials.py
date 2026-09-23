@@ -118,6 +118,11 @@ def test_run_causal_swap_trial_shares_decomposition_cache_between_real_and_contr
     )
     assert result.status == "ok"
     assert len(cache) == 1  # one (layer, batch, position) key, reused by the control call
+    # The runner seeds the cache under the hook's own key before installing hooks, so the
+    # first firing is a hit rather than a second vocabulary-scale solve. Pin the key format:
+    # a mismatch would silently double the solve cost without failing any other assertion.
+    seq_len = toy_bridge.to_tokens(spec.prompt).shape[1]
+    assert set(cache) == {(1, 0, seq_len - 1)}
 
 
 def test_run_causal_swap_trial_records_skip_without_raising_on_inactive_source(
@@ -133,6 +138,28 @@ def test_run_causal_swap_trial_records_skip_without_raising_on_inactive_source(
         k=SOLVE_K,
     )
     assert result.status == "skipped_source_inactive"
+    assert result.real_target_metrics is None
+    assert result.control_target_metrics is None
+    assert result.error is not None
+
+
+def test_run_causal_swap_trial_records_skip_when_no_control_token_matches(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    # A zero tolerance admits only atoms at the target's exact displacement from the source,
+    # which the toy dictionary does not contain, so the pool is empty. The trial must record
+    # its own skip status rather than raising or falling back to the nearest atom.
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=1,
+        control_tolerance=0.0,
+        k=SOLVE_K,
+    )
+    assert result.status == "skipped_no_control_token"
+    assert result.control_token_id is None
     assert result.real_target_metrics is None
     assert result.control_target_metrics is None
     assert result.error is not None

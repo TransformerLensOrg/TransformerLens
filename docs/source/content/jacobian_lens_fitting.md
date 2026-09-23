@@ -408,10 +408,13 @@ per pair, exactly as they would from an offline `coordinate_patch` call on that 
 
 `transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark` measures whether
 `coordinate_patch_hooks` causes a directional change in model output, under baseline-capability
-filtering, a norm-matched random-atom control, and bootstrap confidence intervals on every
-reported rate. Each trial installs the hook at exactly one layer and the final prompt position;
-a trial whose source concept is not active in that layer's support is recorded as skipped, not
-silently dropped.
+filtering, a displacement-matched random-atom control, and bootstrap confidence intervals on
+every reported rate. The control matches the real edit's magnitude: the perturbation is
+`c_src * (a_target - a_source)`, so a candidate atom qualifies when its distance from
+`a_source` matches the target's within a fixed relative tolerance. Each trial installs the hook
+at exactly one layer and the final prompt position; a trial whose source concept is not active
+in that layer's support, or whose layer admits no displacement-matched control, is recorded as
+skipped, not silently dropped.
 
 A generation script (`python -m
 transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark`, no `HF_TOKEN` required)

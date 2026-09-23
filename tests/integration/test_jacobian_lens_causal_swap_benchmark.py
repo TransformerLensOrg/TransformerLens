@@ -68,10 +68,14 @@ def test_causal_swap_benchmark_gpt2_smoke(published_gpt2_lens, gpt2_bridge) -> N
     ok_trials = [t for t in trials if t.status == "ok"]
     dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, 6)
     for trial in ok_trials:
+        source_id = gpt2_bridge.to_single_token(f" {trial.source}")
         target_id = gpt2_bridge.to_single_token(f" {trial.target}")
-        control_norm = dictionary[trial.control_token_id].norm()
-        target_norm = dictionary[target_id].norm()
-        assert (control_norm - target_norm).abs() <= 0.1 * target_norm + 1e-6
+        source_atom = dictionary[source_id].float()
+        target_displacement = (dictionary[target_id].float() - source_atom).norm()
+        control_displacement = (dictionary[trial.control_token_id].float() - source_atom).norm()
+        assert (control_displacement - target_displacement).abs() <= (
+            0.1 * target_displacement + 1e-6
+        )
 
     manifest = build_protocol_manifest(
         model_id="gpt2",

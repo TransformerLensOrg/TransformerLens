@@ -3,15 +3,15 @@
 Measures whether an anchored J-space coordinate edit installed live inside a forward pass
 via ``coordinate_patch_hooks`` causes a directional change in model output, under three
 controls: baseline-capability filtering (only intervene on prompts the model already
-answers correctly), norm-matched random-atom controls (isolate "this concept mattered"
-from "any edit of similar magnitude would have mattered"), and bootstrap uncertainty on
-every reported rate.
+answers correctly), displacement-matched random-atom controls (isolate "this concept
+mattered" from "any edit of similar magnitude would have mattered"), and bootstrap
+uncertainty on every reported rate.
 
 This module is layered bottom-up: the model-free prompt corpus and rank/margin metric,
-baseline-capability filtering, norm-matched control-token selection, a per-trial runner that
-wires the first three together with real ``coordinate_patch_hooks`` calls against a live model,
-and bootstrap confidence intervals plus a versioned, fingerprinted JSON artifact schema. Running
-this module as a script (``python -m
+baseline-capability filtering, displacement-matched control-token selection, a per-trial
+runner that wires the first three together with real ``coordinate_patch_hooks`` calls
+against a live model, and bootstrap confidence intervals plus a versioned, fingerprinted
+JSON artifact schema. Running this module as a script (``python -m
 transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark``) generates the frozen
 artifact consumed by ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb``; see
 ``main()`` below for the exact invocation.
@@ -165,44 +165,70 @@ def filter_baseline_capable(
     return capable, excluded
 
 
-def select_norm_matched_control_token(
+def _control_generator(seed: int) -> torch.Generator:
+    """Builds the CPU generator used to pick a control token.
+
+    The generator is pinned to CPU rather than the dictionary's device. ``torch.randint``
+    infers its output device from the generator, so a device-local generator would make the
+    same seed select a different control token per device and the frozen artifact would stop
+    being reproducible. A CPU generator also avoids the device mismatch that raises on
+    accelerators, where ``torch.randint`` allocates on CPU while a device-local generator
+    expects its own device.
+    """
+    return torch.Generator(device="cpu").manual_seed(seed)
+
+
+def select_displacement_matched_control_token(
     dictionary: torch.Tensor,
+    source_token_id: int,
     target_token_id: int,
     excluded_ids: Container[int],
+    active_support: Container[int],
     *,
     tolerance: float = 0.1,
     seed: int = 0,
-) -> int:
-    """Deterministically selects a norm-matched control token id.
+) -> Optional[int]:
+    """Deterministically selects a displacement-matched control token id.
 
-    A candidate token id ``t`` qualifies when its ``dictionary`` atom norm is within
-    ``tolerance`` (relative to the target token's atom norm) and ``t`` is neither
-    ``target_token_id`` nor a member of ``excluded_ids``. One qualifying candidate is picked
-    with a seeded ``torch.Generator`` so the same ``seed`` always yields the same control
-    token. Raises ``ValueError`` if no candidate qualifies; the tolerance is never silently
-    widened and selection never falls back to the globally nearest atom.
+    The real condition perturbs the activation by ``c_src * (a_target - a_source)``, so the
+    edit's size is set by ``||a_target - a_source||``. Matching atom norms leaves that size
+    free: two atoms of equal norm can sit at very different distances from ``a_source``, and
+    the control edit then runs at a different magnitude from the real one. A candidate token
+    id ``t`` therefore qualifies when
+    ``abs(||a_t - a_source|| - ||a_target - a_source||) <= tolerance * ||a_target - a_source||``
+    and ``t`` is not ``source_token_id``, not ``target_token_id``, not a member of
+    ``excluded_ids``, and not a member of ``active_support`` -- an atom already carrying the
+    source coordinate is not a clean control.
+
+    One qualifying candidate is picked with a seeded CPU ``torch.Generator`` so the same
+    ``seed`` always yields the same control token on every device. Returns ``None`` when no
+    candidate qualifies; the tolerance is never silently widened and selection never falls
+    back to the globally nearest atom. Returning ``None`` rather than raising lets the caller
+    record an empty pool as its own skip status instead of aborting the sweep.
     """
     if dictionary.ndim != 2:
         raise ValueError(
             f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
         )
-    atom_norms = dictionary.float().norm(dim=1)
-    target_norm = atom_norms[target_token_id]
-    within_tolerance = (atom_norms - target_norm).abs() <= tolerance * target_norm
+    atoms = dictionary.float()
+    source_atom = atoms[source_token_id]
+    target_displacement = float((atoms[target_token_id] - source_atom).norm())
+    displacements = (atoms - source_atom).norm(dim=1)
+    within_tolerance = (displacements - target_displacement).abs() <= (
+        tolerance * target_displacement
+    )
     candidates = [
         token_id
         for token_id in range(dictionary.shape[0])
-        if token_id != target_token_id
+        if token_id != source_token_id
+        and token_id != target_token_id
         and token_id not in excluded_ids
+        and token_id not in active_support
         and bool(within_tolerance[token_id])
     ]
     if not candidates:
-        raise ValueError(
-            "no candidate token within relative tolerance "
-            f"{tolerance} of target_token_id={target_token_id}'s atom norm "
-            f"({float(target_norm):.4f})"
-        )
-    generator = torch.Generator(device=dictionary.device).manual_seed(seed)
+        return None
+    generator = _control_generator(seed)
     pick = int(torch.randint(len(candidates), (1,), generator=generator).item())
     return candidates[pick]
 
@@ -225,7 +251,7 @@ class TrialResult:
     source: str
     target: str
     layer: int
-    status: Literal["ok", "skipped_source_inactive"]
+    status: Literal["ok", "skipped_source_inactive", "skipped_no_control_token"]
     baseline: AnswerMetrics
     real_target_metrics: Optional[AnswerMetrics]
     control_token_id: Optional[int]
@@ -248,21 +274,22 @@ def run_causal_swap_trial(
     """Runs one causal-swap trial: baseline, then real and control coordinate-patch conditions.
 
     A baseline forward pass scores the prompt's own (unperturbed) source answer. A
-    norm-matched control token is then selected from ``layer``'s lens-vector dictionary,
-    excluding the source token, the real target token, and both prompts' answer tokens. The
-    real and control conditions each install ``coordinate_patch_hooks`` at ``layer`` and
-    position ``-1``, sharing one ``decomposition_cache`` so only the first of the two performs
-    the vocabulary-scale decomposition; both are scored against the target's own answer token,
-    so a real-vs-control gap isolates "swapping toward this concept mattered" from "any
-    edit of this magnitude would have mattered."
+    displacement-matched control token is then selected from ``layer``'s lens-vector
+    dictionary, excluding the source token, the real target token, both prompts' answer
+    tokens, and every atom in the layer's active support. The real and control conditions
+    each install ``coordinate_patch_hooks`` at ``layer`` and position ``-1``, sharing one
+    ``decomposition_cache`` so only the first of the two performs the vocabulary-scale
+    decomposition; both are scored against the target's own answer token, so a real-vs-control
+    gap isolates "swapping toward this concept mattered" from "any edit of this magnitude
+    would have mattered."
 
-    If either condition's ``coordinate_patch_hooks`` call raises ``ValueError`` (the source is
-    not in the active support at this layer), the trial is recorded with
-    ``status="skipped_source_inactive"`` and the caught message in ``error``, rather than
-    propagating the exception -- ``coordinate_patch_hooks`` itself stays fail-fast; only this
-    harness catches the failure. ``coordinate_patch_hooks``'s own ``UserWarning``s (both the
-    per-call install notice and any solver-side conditioning warning) are not suppressed here
-    and propagate to the caller unchanged.
+    Two conditions produce a skip rather than a result. When no displacement-matched control
+    token survives the exclusions, the trial is recorded with
+    ``status="skipped_no_control_token"``. When the source is not in the layer's active
+    support, the trial is recorded with ``status="skipped_source_inactive"``. Both carry a
+    diagnostic message in ``error``. ``coordinate_patch_hooks``'s own ``UserWarning``s (both
+    the per-call install notice and any solver-side conditioning warning) are not suppressed
+    here and propagate to the caller unchanged.
 
     Args:
         lens: The fitted lens.
@@ -271,7 +298,7 @@ def run_causal_swap_trial(
         layer: The single layer to patch at.
         decomposition_cache: Shared cache passed to both the real and control
             ``coordinate_patch_hooks`` calls. A fresh cache is used if omitted.
-        control_tolerance: Relative tolerance for the norm-matched control token.
+        control_tolerance: Relative tolerance for the displacement-matched control token.
         control_seed: Seed for the control token's deterministic selection.
         alpha: Interpolation strength forwarded to ``coordinate_patch_hooks``.
         k: Sparse-solver upper bound forwarded to ``coordinate_patch_hooks``.
@@ -292,13 +319,36 @@ def run_causal_swap_trial(
     baseline_metrics = compute_answer_metrics(baseline_logits, source_answer_id)
 
     dictionary = lens.lens_vector_dictionary(model, layer)
-    control_token_id = select_norm_matched_control_token(
+    decomposition = lens.decompose(model, trial_spec.prompt, layer=layer, position=-1, k=k)
+    # Seed the shared cache under the hook's own key so the first firing is a cache hit and
+    # the up-front solve is not repeated. The hook normalizes -1 against the activation's
+    # sequence length, which equals the tokenized prompt length for a single-example pass.
+    decomposition_cache[(layer, 0, tokens.shape[1] - 1)] = decomposition
+    control_token_id = select_displacement_matched_control_token(
         dictionary,
+        source_id,
         target_id,
-        excluded_ids={source_id, source_answer_id, target_answer_id},
+        excluded_ids={source_answer_id, target_answer_id},
+        active_support=decomposition.support,
         tolerance=control_tolerance,
         seed=control_seed,
     )
+    if control_token_id is None:
+        return TrialResult(
+            function=trial_spec.function,
+            source=trial_spec.source,
+            target=trial_spec.target,
+            layer=layer,
+            status="skipped_no_control_token",
+            baseline=baseline_metrics,
+            real_target_metrics=None,
+            control_token_id=None,
+            control_target_metrics=None,
+            error=(
+                "no displacement-matched control token within relative tolerance "
+                f"{control_tolerance} of ||a_target - a_source||"
+            ),
+        )
 
     def _condition_metrics(condition_target_id: int) -> AnswerMetrics:
         hooks = lens.coordinate_patch_hooks(
@@ -691,8 +741,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n")
+    inactive = sum(1 for trial in trials if trial.status == "skipped_source_inactive")
+    no_control = sum(1 for trial in trials if trial.status == "skipped_no_control_token")
     print(
-        f"wrote {len(trials)} trials ({len(ok_trials)} ok, {len(excluded)} excluded prompts) "
+        f"wrote {len(trials)} trials ({len(ok_trials)} ok, {inactive} source-inactive, "
+        f"{no_control} no-control-token, {len(excluded)} excluded prompts) "
         f"to {args.output}"
     )
 
