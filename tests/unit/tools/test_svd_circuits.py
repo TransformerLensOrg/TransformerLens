@@ -645,11 +645,37 @@ def test_vocab_readout_shape_and_which_guard():
         vocab_readout(model, ov, k=D_HEAD + 1)
 
 
-def test_vocab_readout_raises_without_compatibility_mode(tiny_bridge):
-    """A TransformerBridge without compatibility mode enabled refuses to project through W_U."""
-    decomposition = decompose_head(tiny_bridge, layer=0, head=0, which=("OV",))
-    with pytest.raises(ValueError, match="enable_compatibility_mode"):
-        vocab_readout(tiny_bridge, decomposition.OV)
+@pytest.mark.parametrize(
+    "setup, expect_folded",
+    [
+        (lambda bridge: bridge.enable_compatibility_mode(no_processing=True), False),
+        (lambda bridge: bridge.enable_compatibility_mode(fold_ln=False), False),
+        (lambda bridge: bridge.process_weights(fold_ln=True), True),
+    ],
+    ids=["no_processing", "fold_ln_disabled", "processed_without_flag"],
+)
+def test_vocab_readout_requires_folded_ln(setup, expect_folded):
+    """vocab_readout requires the final LayerNorm folded into W_U, which the
+    compatibility_mode flag alone does not imply.
+
+    Each case separates the flag from the fold: ``no_processing`` and ``fold_ln=False``
+    leave the flag set while the norms stay unfolded, and ``process_weights(fold_ln=True)``
+    folds them with the flag still off. The decomposition is taken after the state change
+    so a refusal comes from the readout guard rather than the staleness guard.
+    """
+    bridge = _make_tiny_bridge()
+    setup(bridge)
+    ov = decompose_head(bridge, 0, 0, which=("OV",)).OV
+
+    if expect_folded:
+        readout = vocab_readout(bridge, ov, k=3)
+        assert readout.shape == (bridge.cfg.d_vocab, 3)
+        assert torch.isfinite(readout).all()
+    else:
+        with pytest.raises(ValueError, match="fold_ln") as excinfo:
+            vocab_readout(bridge, ov, k=3)
+        # The readout guard fired, not the staleness guard.
+        assert "decompose_head" not in str(excinfo.value)
 
 
 def test_logit_signature_matches_manual_projection():
