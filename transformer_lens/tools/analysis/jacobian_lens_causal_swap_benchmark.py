@@ -155,13 +155,24 @@ def filter_baseline_capable(
     """Splits baseline records into (capable, excluded) prompts.
 
     A prompt is baseline-capable when the model's own deterministic argmax already matches
-    the source's answer (``metrics.target_is_top1``); only such prompts are eligible for
-    later intervention trials, so an edit's effect is never measured against a prompt the
-    unperturbed model already gets wrong. Order-preserving in both outputs; never mutates
-    ``baselines``.
+    the source's answer (``metrics.target_is_top1``) and that answer is not tied for the
+    maximum (``metrics.target_tied_for_top``); only such prompts are eligible for later
+    intervention trials, so an edit's effect is never measured against a prompt the
+    unperturbed model already gets wrong. A tied-for-top baseline is treated as not capable:
+    ``argmax`` returns the lowest index on an exact tie, so admitting ties would let token-id
+    order decide whether a prompt enters the trial set. Order-preserving in both outputs;
+    never mutates ``baselines``.
     """
-    capable = [record for record in baselines if record.metrics.target_is_top1]
-    excluded = [record for record in baselines if not record.metrics.target_is_top1]
+    capable = [
+        record
+        for record in baselines
+        if record.metrics.target_is_top1 and not record.metrics.target_tied_for_top
+    ]
+    excluded = [
+        record
+        for record in baselines
+        if not record.metrics.target_is_top1 or record.metrics.target_tied_for_top
+    ]
     return capable, excluded
 
 
@@ -283,13 +294,20 @@ def run_causal_swap_trial(
     gap isolates "swapping toward this concept mattered" from "any edit of this magnitude
     would have mattered."
 
-    Two conditions produce a skip rather than a result. When no displacement-matched control
-    token survives the exclusions, the trial is recorded with
-    ``status="skipped_no_control_token"``. When the source is not in the layer's active
-    support, the trial is recorded with ``status="skipped_source_inactive"``. Both carry a
-    diagnostic message in ``error``. ``coordinate_patch_hooks``'s own ``UserWarning``s (both
-    the per-call install notice and any solver-side conditioning warning) are not suppressed
-    here and propagate to the caller unchanged.
+    Two conditions produce a skip rather than a result. When the source is not in the layer's
+    active support, the trial is recorded with ``status="skipped_source_inactive"``. When no
+    displacement-matched control token survives the exclusions, the trial is recorded with
+    ``status="skipped_no_control_token"``. Both carry a diagnostic message in ``error``.
+
+    The active-support precondition is checked up front, against the same decomposition the
+    hooks consume, rather than inferred from a caught exception. ``coordinate_patch_hooks``
+    raises plain ``ValueError`` for several unrelated protocol faults (a same-id source and
+    target, an out-of-vocabulary answer, non-finite logits) and defines no narrower subclass
+    to discriminate on, so catching ``ValueError`` would file those as skips and drop them
+    from both denominators. Every other error therefore propagates unchanged.
+    ``coordinate_patch_hooks``'s own ``UserWarning``s (both the per-call install notice and
+    any solver-side conditioning warning) are not suppressed here and propagate to the caller
+    unchanged.
 
     Args:
         lens: The fitted lens.
@@ -305,6 +323,10 @@ def run_causal_swap_trial(
 
     Returns:
         The trial's :class:`TrialResult`.
+
+    Raises:
+        ValueError: If the source and target concepts resolve to the same token id, which
+            would make the coordinate patch a silent no-op.
     """
     if decomposition_cache is None:
         decomposition_cache = {}
@@ -313,6 +335,11 @@ def run_causal_swap_trial(
     target_id = _resolve_answer_token_id(model, trial_spec.target)
     source_answer_id = _resolve_answer_token_id(model, trial_spec.source_answer)
     target_answer_id = _resolve_answer_token_id(model, trial_spec.target_answer)
+    if source_id == target_id:
+        raise ValueError(
+            f"source and target resolve to the same token id {source_id}; a coordinate "
+            "patch would be a silent no-op"
+        )
 
     with torch.no_grad():
         baseline_logits = model(tokens)[0, -1].float()
@@ -324,6 +351,22 @@ def run_causal_swap_trial(
     # the up-front solve is not repeated. The hook normalizes -1 against the activation's
     # sequence length, which equals the tokenized prompt length for a single-example pass.
     decomposition_cache[(layer, 0, tokens.shape[1] - 1)] = decomposition
+    if source_id not in decomposition.support.tolist():
+        return TrialResult(
+            function=trial_spec.function,
+            source=trial_spec.source,
+            target=trial_spec.target,
+            layer=layer,
+            status="skipped_source_inactive",
+            baseline=baseline_metrics,
+            real_target_metrics=None,
+            control_token_id=None,
+            control_target_metrics=None,
+            error=(
+                f"source token id {source_id} is not in layer {layer}'s active support "
+                f"for this prompt"
+            ),
+        )
     control_token_id = select_displacement_matched_control_token(
         dictionary,
         source_id,
@@ -365,22 +408,8 @@ def run_causal_swap_trial(
             condition_logits = model(tokens)[0, -1].float()
         return compute_answer_metrics(condition_logits, target_answer_id)
 
-    try:
-        real_metrics = _condition_metrics(target_id)
-        control_metrics = _condition_metrics(control_token_id)
-    except ValueError as exc:
-        return TrialResult(
-            function=trial_spec.function,
-            source=trial_spec.source,
-            target=trial_spec.target,
-            layer=layer,
-            status="skipped_source_inactive",
-            baseline=baseline_metrics,
-            real_target_metrics=None,
-            control_token_id=control_token_id,
-            control_target_metrics=None,
-            error=str(exc),
-        )
+    real_metrics = _condition_metrics(target_id)
+    control_metrics = _condition_metrics(control_token_id)
 
     return TrialResult(
         function=trial_spec.function,
@@ -709,7 +738,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     )
     ok_trials = [trial for trial in trials if trial.status == "ok"]
     if not ok_trials:
-        raise RuntimeError("no trial survived baseline filtering and the active-support check")
+        raise RuntimeError(
+            "no trial survived baseline filtering, the active-support check, and "
+            "control-token selection"
+        )
 
     real_successes: List[bool] = []
     control_successes: List[bool] = []

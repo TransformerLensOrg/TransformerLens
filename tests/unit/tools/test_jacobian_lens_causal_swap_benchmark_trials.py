@@ -182,6 +182,58 @@ def test_run_causal_swap_trial_populates_baseline_regardless_of_status(
     assert result.baseline is not None
 
 
+def test_run_causal_swap_trial_skips_before_installing_hooks(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Deciding the skip up front means the hooks are never built for an inactive source. If
+    # the status instead came from catching a ValueError raised inside the hooked forward
+    # pass, this stub would be reached and the test would fail. The cache is already seeded
+    # by the up-front check, so the early return leaves it populated.
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise AssertionError("coordinate_patch_hooks must not run for an inactive source")
+
+    monkeypatch.setattr(toy_lens, "coordinate_patch_hooks", _boom)
+    spec = _spec_with_inactive_source(toy_lens, toy_bridge, layer=2)
+    cache: Dict[Tuple[int, int, int], JSpaceDecomposition] = {}
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=2,
+        decomposition_cache=cache,
+        control_tolerance=CONTROL_TOLERANCE,
+        k=SOLVE_K,
+    )
+    assert result.status == "skipped_source_inactive"
+    seq_len = toy_bridge.to_tokens(spec.prompt).shape[1]
+    assert set(cache) == {(2, 0, seq_len - 1)}
+
+
+def test_run_causal_swap_trial_propagates_same_id_source_and_target(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    # A same-id source and target is a protocol error, not a per-trial skip. Filing it as a
+    # skip would drop it from both denominators and hide the mistake.
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    same_id_spec = PromptTrialSpec(
+        function=spec.function,
+        source=spec.source,
+        target=spec.source,
+        prompt=spec.prompt,
+        source_answer=spec.source_answer,
+        target_answer=spec.target_answer,
+    )
+    with pytest.raises(ValueError, match="same token id"):
+        run_causal_swap_trial(
+            toy_lens,
+            toy_bridge,
+            same_id_spec,
+            layer=1,
+            control_tolerance=CONTROL_TOLERANCE,
+            k=SOLVE_K,
+        )
+
+
 def _rigged_corpus(model: _ToyBridge) -> BenchmarkCorpus:
     """One function, two concepts: "correct"'s own baseline answer is rigged to be the model's
     actual top1 (baseline-capable); "wrong"'s is rigged to not be (baseline-incapable)."""

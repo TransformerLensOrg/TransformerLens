@@ -117,6 +117,28 @@ def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> 
     assert records == original
 
 
+def test_filter_baseline_capable_treats_tied_for_top_as_incapable() -> None:
+    # argmax returns the lowest index on an exact tie, so admitting a tied-for-top baseline
+    # would let token-id order decide whether a prompt enters the trial set.
+    tied = BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, True, 0.0))
+    capable, excluded = filter_baseline_capable([tied])
+    assert capable == []
+    assert excluded == [tied]
+
+
+def test_filter_baseline_capable_partitions_every_record_exactly_once() -> None:
+    records = [
+        BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, False, 2.0)),
+        BaselineRecord("f", "B", "p2", AnswerMetrics(0, 1, True, True, 0.0)),
+        BaselineRecord("f", "C", "p3", AnswerMetrics(3, 5, False, False, -1.0)),
+        BaselineRecord("f", "D", "p4", AnswerMetrics(4, 2, False, True, -0.5)),
+    ]
+    capable, excluded = filter_baseline_capable(records)
+    assert [r.source for r in capable] == ["A"]
+    assert [r.source for r in excluded] == ["B", "C", "D"]
+    assert len(capable) + len(excluded) == len(records)
+
+
 def test_select_displacement_matched_control_token_is_deterministic_given_seed() -> None:
     torch.manual_seed(0)
     dictionary = torch.randn(20, 4)
