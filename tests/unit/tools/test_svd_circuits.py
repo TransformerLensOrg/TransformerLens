@@ -883,6 +883,46 @@ def test_project_activations_accepts_1d_prompt(tiny_bridge):
     )
 
 
+def test_project_activations_requires_eval_mode(monkeypatch):
+    """A model left in training mode is refused before any forward pass runs.
+
+    Dropout would perturb each forward independently, so the cached activation would not
+    describe the model the caller thinks it is reading. The guard must fire before the
+    forward, so run_with_cache is patched to fail loudly if it is reached.
+    """
+    bridge = _make_tiny_bridge()
+    ov = decompose_head(bridge, 0, 0, which=("OV",)).OV
+    bridge.train()
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("run_with_cache ran before the eval-mode guard")
+
+    monkeypatch.setattr(bridge, "run_with_cache", _fail)
+    with pytest.raises(ValueError, match="evaluation mode"):
+        project_activations(bridge, ov, torch.tensor([[5, 63, 7, 9]]))
+
+
+def test_patch_along_directions_requires_eval_mode(monkeypatch):
+    """A model left in training mode is refused before any forward pass runs.
+
+    The control draws and the patched run must be comparable, so dropout perturbing each
+    pass independently would gate noise rather than a verdict. The guard must fire before
+    the first forward, so run_with_hooks is patched to fail loudly if it is reached.
+    """
+    bridge = _make_tiny_bridge()
+    ov = decompose_head(bridge, 0, 0, which=("OV",)).OV
+    bridge.train()
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("run_with_hooks ran before the eval-mode guard")
+
+    monkeypatch.setattr(bridge, "run_with_hooks", _fail)
+    with pytest.raises(ValueError, match="evaluation mode"):
+        patch_along_directions(
+            bridge, ov, torch.tensor([[5, 63, 7, 9]]), lambda logits: float(logits.sum()), keep=[0]
+        )
+
+
 @pytest.mark.parametrize("head", [0, 1])
 def test_subspace_hook_leaves_sibling_head_untouched(tiny_bridge, head):
     """The patch hook rewrites only its own head's slice of the [batch, pos, head, d_model]

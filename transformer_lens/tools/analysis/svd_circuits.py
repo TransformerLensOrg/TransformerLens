@@ -58,6 +58,7 @@ import torch
 from jaxtyping import Float
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 
 # Which of a head's two maps to decompose: the query-key map or the output-value map.
 Which = Literal["QK", "OV"]
@@ -682,9 +683,9 @@ def project_activations(
 
     Raises:
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
-            a different folded-LayerNorm state than ``model`` now has, or if ``prompt``
+            a different folded-LayerNorm state than ``model`` now has, if ``prompt``
             is not a single prompt (a tensor that is not 1-D, or is 2-D with a leading
-            dimension greater than one).
+            dimension greater than one), or if the model is in training mode.
         NotImplementedError: If the model's attention adapter exposes no per-head result,
             so ``set_use_attn_result(True)`` cannot fork the attention output.
     """
@@ -705,6 +706,7 @@ def project_activations(
             "project_activations requires a single prompt, got a token tensor of shape "
             f"{tuple(prompt.shape)}; pass a [pos] or [1, pos] tensor, or a single string."
         )
+    require_eval_mode(model, operation="project_activations()")
     # Cache only the one hook this reads. run_with_cache otherwise retains every hook point of
     # the forward pass (about 1 GB against 19 MB on a 512-token gpt2-small prompt) to read a
     # single head's output.
@@ -906,7 +908,7 @@ def patch_along_directions(
             are both given or both omitted, if any index is out of ``[0, rank)``, if the
             retained set is empty (``keep=[]`` or ``ablate`` over the full rank) or spans the
             full rank (``keep`` over every direction) and no explicit ``threshold`` is
-            supplied, or if ``n_baseline < 1``.
+            supplied, if ``n_baseline < 1``, or if the model is in training mode.
         NotImplementedError: If the model's attention adapter exposes no per-head result,
             so ``set_use_attn_result(True)`` cannot fork the attention output.
         DegenerateDirectionError: If the retained directions split a degenerate block
@@ -938,6 +940,8 @@ def patch_along_directions(
             "reconstruction's kept projector coincides with the random control projector "
             "and their deltas tie by construction; pass an explicit threshold to gate this."
         )
+
+    require_eval_mode(model, operation="patch_along_directions()")
 
     if rng is None:
         rng = torch.Generator().manual_seed(_DEFAULT_BASELINE_SEED)
