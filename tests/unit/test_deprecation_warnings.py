@@ -11,6 +11,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+import transformer_lens
+from transformer_lens import _REMOVED_IN_4_0
+
 PROJECT_ROOT = Path(__file__).parents[2]
 
 
@@ -49,3 +54,32 @@ def test_hooked_root_module_is_not_deprecated():
         w.simplefilter("always")
         HookedRootModule()
     assert not [x for x in caught if issubclass(x.category, DeprecationWarning)]
+
+
+@pytest.mark.parametrize("name", sorted(_REMOVED_IN_4_0))
+def test_removed_name_carries_migration_pointer_via_attribute(name):
+    with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
+        getattr(transformer_lens, name)
+
+
+@pytest.mark.parametrize("name", sorted(_REMOVED_IN_4_0))
+def test_removed_name_carries_migration_pointer_via_from_import(name):
+    """`from transformer_lens import X` is the spelling downstream packages use.
+    CPython's from-import machinery discards an AttributeError from __getattr__ and
+    raises its own unchained "cannot import name" ImportError, dropping the pointer;
+    it only survives if __getattr__ raises ImportError. Both exception types are
+    accepted so this pins the reach-the-pointer property, not the resolution."""
+    with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
+        exec(f"from transformer_lens import {name}")
+
+
+def test_removed_hook_points_reexport_carries_pointer_via_attribute():
+    import transformer_lens.hook_points as hook_points
+
+    with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
+        getattr(hook_points, "HookedRootModule")
+
+
+def test_removed_hook_points_reexport_carries_pointer_via_from_import():
+    with pytest.raises((AttributeError, ImportError), match="removed in TransformerLens 4.0"):
+        exec("from transformer_lens.hook_points import HookedRootModule")
