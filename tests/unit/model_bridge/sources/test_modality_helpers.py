@@ -42,7 +42,11 @@ def _patch_loader(monkeypatch, class_name, calls, fail=0):
 
     loader = MagicMock(name=class_name)
     loader.from_pretrained = MagicMock(side_effect=from_pretrained)
-    monkeypatch.setattr(f"transformers.{class_name}", loader)
+    # Patch the `transformers` object helpers.py bound at import (getattr reads it),
+    # not sys.modules["transformers"]: transformers rebinds that entry to a second
+    # lazy module on its first deep import, so on macOS the two can differ and the
+    # patch would miss the object the consumer reads.
+    monkeypatch.setattr(f"{_HELPERS}.transformers.{class_name}", loader)
     return loader
 
 

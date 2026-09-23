@@ -22,6 +22,8 @@ Tools:
       anchored coordinate patching (offline and dynamic/hooked).
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
+    - sparse_probing: Leakage-safe k-sparse binary probes over supplied
+      activation tensors, with train-only selection and raw null controls.
     - svd_circuits: Per-head QK/OV singular-vector decomposition with a
       degeneracy guard, OV vocab and logit readout, per-position activation
       projection onto singular directions, and a mandatory causal patch gate
@@ -80,6 +82,14 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
+from transformer_lens.tools.analysis.sparse_probing import (
+    SparseProbeControl,
+    SparseProbeMetrics,
+    SparseProbeResult,
+    SparseProbeSweep,
+    fit_sparse_probe,
+    sweep_sparse_probe,
+)
 from transformer_lens.tools.analysis.svd_circuits import (
     ActivationProjection,
     DegenerateDirectionError,
@@ -124,6 +134,10 @@ __all__ = [
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "RankReportRow",
+    "SparseProbeControl",
+    "SparseProbeMetrics",
+    "SparseProbeResult",
+    "SparseProbeSweep",
     "SubspaceBasis",
     "VocabularyRanking",
     "WeightLayout",
@@ -132,6 +146,7 @@ __all__ = [
     "decompose_head",
     "direct_logit_attribution",
     "estimate_occupancy",
+    "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
@@ -143,5 +158,6 @@ __all__ = [
     "random_projection_kernel_moments",
     "solve_coordinate_patch",
     "solve_coordinate_patch_positions",
+    "sweep_sparse_probe",
     "vocab_readout",
 ]

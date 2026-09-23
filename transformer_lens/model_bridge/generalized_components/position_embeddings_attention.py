@@ -9,11 +9,9 @@ so that all hook points fire at the correct computation stage:
 """
 from __future__ import annotations
 
-import weakref
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch
-import transformers.models.gemma2.modeling_gemma2 as gemma2_module
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.attention import (
@@ -25,16 +23,6 @@ from transformer_lens.model_bridge.generalized_components.position_embedding_hoo
 from transformer_lens.utilities.attention import clamp_qkv
 from transformer_lens.utilities.heterogeneous_config import safe_config_get
 from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
-
-# Global registry mapping HF attention modules to their bridge instances
-# Uses WeakValueDictionary to avoid preventing garbage collection of bridges
-_ATTENTION_BRIDGE_REGISTRY: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
-
-# Track whether we've already wrapped eager_attention_forward
-_EAGER_ATTENTION_WRAPPED = False
-
-# Store the original function for restoration
-_ORIGINAL_EAGER_ATTENTION_FORWARD: Optional[Callable] = None
 
 
 def _apply_rotary_pos_emb_adjacent_pairs(
@@ -60,71 +48,6 @@ def _apply_rotary_pos_emb_adjacent_pairs(
     q_embed = (q.float() * cos) + (_rotate(q).float() * sin)
     k_embed = (k.float() * cos) + (_rotate(k).float() * sin)
     return q_embed.to(original_dtype), k_embed.to(original_dtype)
-
-
-def _setup_eager_attention_hook_wrapper() -> None:
-    """Wrap gemma2's eager_attention_forward to fire hook_rot_q and hook_rot_k.
-
-    This function monkey-patches the module-level eager_attention_forward function
-    to intercept query and key tensors (which have already had rotary embeddings applied)
-    and fire the corresponding hooks on the registered bridge instance.
-
-    This is safe to call multiple times - it will only wrap once.
-    """
-    global _EAGER_ATTENTION_WRAPPED, _ORIGINAL_EAGER_ATTENTION_FORWARD
-
-    if _EAGER_ATTENTION_WRAPPED:
-        return
-
-    _ORIGINAL_EAGER_ATTENTION_FORWARD = gemma2_module.eager_attention_forward
-
-    def hooked_eager_attention_forward(
-        module: torch.nn.Module,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attention_mask: Optional[torch.Tensor],
-        **kwargs: Any,
-    ) -> tuple:
-        """Wrapped eager_attention_forward that fires rotary hooks.
-
-        Args:
-            module: The HF attention module (used to look up the bridge)
-            query: Query tensor AFTER rotary embeddings applied
-            key: Key tensor AFTER rotary embeddings applied
-            value: Value tensor
-            attention_mask: Attention mask
-            **kwargs: Additional arguments (dropout, scaling, etc.)
-
-        Returns:
-            Tuple of (attn_output, attn_weights)
-        """
-        # Look up the bridge instance for this attention module
-        bridge = _ATTENTION_BRIDGE_REGISTRY.get(id(module))
-
-        if bridge is not None:
-            # Fire hook_rot_q and hook_rot_k with the post-rotary Q/K
-            if hasattr(bridge, "hook_rot_q"):
-                query = bridge.hook_rot_q(query)
-            if hasattr(bridge, "hook_rot_k"):
-                key = bridge.hook_rot_k(key)
-
-        assert _ORIGINAL_EAGER_ATTENTION_FORWARD is not None
-        return _ORIGINAL_EAGER_ATTENTION_FORWARD(
-            module, query, key, value, attention_mask, **kwargs
-        )
-
-    # Replace the module-level function for both Gemma 2 and Gemma 3
-    gemma2_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
-
-    try:
-        import transformers.models.gemma3.modeling_gemma3 as gemma3_module
-
-        gemma3_module.eager_attention_forward = hooked_eager_attention_forward  # type: ignore[assignment]
-    except ImportError:
-        pass  # Gemma 3 not available in this transformers version
-
-    _EAGER_ATTENTION_WRAPPED = True
 
 
 class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
@@ -181,10 +104,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         self._qk_norm_phase: Optional[str] = None
 
     def set_original_component(self, component: torch.nn.Module) -> None:
-        """Wire HF module, register for rotary hooks, validate adapter declarations."""
+        """Wire HF module, validate adapter declarations."""
         super().set_original_component(component)
-        _ATTENTION_BRIDGE_REGISTRY[id(component)] = self
-        _setup_eager_attention_hook_wrapper()
         self._validate_submodule_declarations(component)
         self._qk_norm_phase = self._decide_qk_norm_phase(component)
         self._own_scaled_hook_k(component)
