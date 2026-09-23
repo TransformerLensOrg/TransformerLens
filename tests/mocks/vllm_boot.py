@@ -99,7 +99,7 @@ def mocked_vllm_boot(monkeypatch, *, hf_config=None, cfg=None, mock_plugin_confi
     build_cfg = MagicMock(return_value=cfg)
     monkeypatch.setattr(f"{_SOURCE}.build_bridge_config_from_hf", build_cfg)
     monkeypatch.setattr(
-        f"{_SOURCE}.ArchitectureAdapterFactory.select_architecture_adapter",
+        f"{_SOURCE}.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter",
         lambda c: adapter,
     )
     monkeypatch.setattr(f"{_SOURCE}.plugin.register", lambda: None)

@@ -218,7 +218,7 @@ class TestBootTransformersVisualModel:
         adapter = stub_adapter(cfg)
         monkeypatch.setattr(f"{_SOURCE}.build_bridge_config_from_hf", MagicMock(return_value=cfg))
         monkeypatch.setattr(
-            f"{_SOURCE}.ArchitectureAdapterFactory.select_architecture_adapter",
+            f"{_SOURCE}.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter",
             lambda c: adapter,
         )
         auto_tokenizer = MagicMock(name="AutoTokenizer")
