@@ -123,8 +123,7 @@ class VLLMDriver(DriverBase):
                 "overwrite the prefill buffer; multi-step capture is multi-buffer work."
             )
         intervene_specs = self._validate_interventions(intervene or {})
-        # Pad tokens fed to vLLM are real content to it (no mask concept) — honor a
-        # caller-supplied mask by trimming rows to their true lengths, never swallow it.
+        # vLLM treats pad IDs as content, so send only the mask's real-token span.
         attention_mask = kwargs.pop("attention_mask", None)
 
         # capture is authoritative — the bridge sends exactly the hooked names, so ()
@@ -140,8 +139,10 @@ class VLLMDriver(DriverBase):
 
         ids_list = self._normalize_input_ids(input_ids)
         if attention_mask is not None:
-            n_real = int(torch.as_tensor(attention_mask).sum())
-            ids_list = ids_list[:n_real]
+            mask = torch.as_tensor(attention_mask)
+            if mask.ndim == 2 and mask.shape[0] == 1:
+                mask = mask[0]
+            ids_list = self._trim_masked_prompt(ids_list, mask)
         if len(ids_list) > self._max_num_batched_tokens:
             # Worker buffers silently clamp on overflow — fail loud here instead.
             raise ValueError(
@@ -244,23 +245,25 @@ class VLLMDriver(DriverBase):
         across forwards. Interventions are global across the batch. ``names`` is
         authoritative: exactly the hooks to return (empty = none).
         """
-        from vllm import SamplingParams
-        from vllm.inputs import TokensPrompt
-
         prompts_ids = self._normalize_input_ids_batched(input_ids)
         if attention_mask is not None:
-            # Right-padded tensor batches carry pad ids vLLM would treat as content;
-            # trim each row to its masked length so per-row final positions are real.
             mask = torch.as_tensor(attention_mask)
             if mask.dim() == 1:
                 mask = mask.unsqueeze(0)
+            if mask.dim() != 2:
+                raise ValueError("attention_mask must have shape [batch, seq].")
             if mask.shape[0] != len(prompts_ids):
                 raise ValueError(
                     f"attention_mask batch dim {mask.shape[0]} != number of prompts "
                     f"{len(prompts_ids)}."
                 )
-            prompts_ids = [ids[: int(row.sum())] for ids, row in zip(prompts_ids, mask)]
+            prompts_ids = [
+                self._trim_masked_prompt(ids, row) for ids, row in zip(prompts_ids, mask)
+            ]
         prompt_lens = [len(ids) for ids in prompts_ids]
+
+        from vllm import SamplingParams
+        from vllm.inputs import TokensPrompt
 
         # Reset accumulators so prior-forward chunks don't leak into the cat.
         self._llm.collective_rpc("tl_reset_accumulators")
@@ -726,6 +729,25 @@ class VLLMDriver(DriverBase):
                 raise NotImplementedError("VLLMDriver supports batch_size=1 only.")
             ids_list = ids_list[0]
         return ids_list
+
+    @staticmethod
+    def _trim_masked_prompt(ids: list[int], mask: torch.Tensor) -> list[int]:
+        """Remove only contiguous padding around a nonempty prompt."""
+        if mask.ndim != 1 or mask.numel() != len(ids):
+            raise ValueError(
+                f"attention_mask must have one value per input token; got shape "
+                f"{tuple(mask.shape)} for {len(ids)} tokens."
+            )
+        values = mask.tolist()
+        if any(value not in (0, 1) for value in values):
+            raise ValueError("attention_mask values must be 0 or 1.")
+        positions = [index for index, value in enumerate(values) if value == 1]
+        if not positions:
+            raise ValueError("attention_mask must retain at least one prompt token.")
+        first, last = positions[0], positions[-1]
+        if last - first + 1 != len(positions):
+            raise ValueError("attention_mask cannot have gaps between prompt tokens.")
+        return ids[first : last + 1]
 
     @staticmethod
     def _normalize_input_ids_batched(input_ids: Any) -> list[list[int]]:
