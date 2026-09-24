@@ -13,9 +13,11 @@ import torch
 from tests.unit.tools.conftest import D_MODEL, D_VOCAB, _ToyBridge
 from transformer_lens.tools.analysis import JacobianLens
 from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+    AnswerMetrics,
     BenchmarkCorpus,
     FunctionSpec,
     PromptTrialSpec,
+    compute_answer_metrics,
     run_causal_swap_benchmark,
     run_causal_swap_trial,
 )
@@ -123,6 +125,62 @@ def test_run_causal_swap_trial_shares_decomposition_cache_between_real_and_contr
     # a mismatch would silently double the solve cost without failing any other assertion.
     seq_len = toy_bridge.to_tokens(spec.prompt).shape[1]
     assert set(cache) == {(1, 0, seq_len - 1)}
+
+
+def test_run_causal_swap_trial_conditions_match_independently_patched_passes(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    # Each condition must be exactly the pass its hooks produce when installed by hand.
+    # Comparing against the trial's baseline would catch neither a hardcoded alpha=0.0 nor
+    # swapped real/control assignments, because the baseline is scored on the source answer
+    # rather than the target's.
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    result = run_causal_swap_trial(
+        toy_lens,
+        toy_bridge,
+        spec,
+        layer=1,
+        control_tolerance=CONTROL_TOLERANCE,
+        k=SOLVE_K,
+    )
+    assert result.status == "ok"
+    assert result.control_token_id is not None
+
+    source_id = toy_bridge.to_single_token(f" {spec.source}")
+    target_id = toy_bridge.to_single_token(f" {spec.target}")
+    target_answer_id = toy_bridge.to_single_token(f" {spec.target_answer}")
+    tokens = toy_bridge.to_tokens(spec.prompt)
+
+    def _patched_metrics(condition_target_id: int) -> AnswerMetrics:
+        cache: Dict[Tuple[int, int, int], JSpaceDecomposition] = {}
+        cache[(1, 0, tokens.shape[1] - 1)] = toy_lens.decompose(
+            toy_bridge, spec.prompt, layer=1, position=-1, k=SOLVE_K
+        )
+        hooks = toy_lens.coordinate_patch_hooks(
+            toy_bridge,
+            source_id,
+            condition_target_id,
+            layers=[1],
+            positions=[-1],
+            decomposition_cache=cache,
+            k=SOLVE_K,
+            alpha=1.0,
+        )
+        with toy_bridge.hooks(fwd_hooks=hooks), torch.no_grad():
+            logits = toy_bridge(tokens)[0, -1].float()
+        return compute_answer_metrics(logits, target_answer_id)
+
+    real_metrics = _patched_metrics(target_id)
+    control_metrics = _patched_metrics(result.control_token_id)
+    assert result.real_target_metrics == real_metrics
+    assert result.control_target_metrics == control_metrics
+    # A no-op patch would leave both conditions at the unpatched pass, so pin that each
+    # condition actually moves the target's metrics; otherwise the equalities above could
+    # hold vacuously.
+    with torch.no_grad():
+        unpatched = compute_answer_metrics(toy_bridge(tokens)[0, -1].float(), target_answer_id)
+    assert real_metrics != unpatched
+    assert control_metrics != unpatched
 
 
 def test_run_causal_swap_trial_records_skip_without_raising_on_inactive_source(
