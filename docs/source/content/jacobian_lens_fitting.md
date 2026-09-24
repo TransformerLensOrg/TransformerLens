@@ -424,8 +424,9 @@ or a thousand. The artifact also records how many independent prompts the pooled
 since several trials can share one prompt.
 
 A generation script (`python -m
-transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark`, no `HF_TOKEN` required)
-produces a versioned, fingerprinted JSON artifact against the published GPT-2-small lens. The
+transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli`, no `HF_TOKEN`
+required) produces a versioned, fingerprinted JSON artifact against the published GPT-2-small
+lens. The
 [coordinate-patch benchmark demo](../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo)
 loads that frozen artifact and renders it; it never calls the model itself. A successful swap in
 that artifact shows a directional causal effect under the stated controls on GPT-2-small, not

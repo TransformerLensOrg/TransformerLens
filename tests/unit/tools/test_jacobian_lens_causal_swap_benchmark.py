@@ -21,7 +21,6 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     FunctionSpec,
     TrialResult,
     _control_generator,
-    _parse_seed_list,
     build_protocol_manifest,
     compute_answer_metrics,
     corpus_definition,
@@ -268,16 +267,6 @@ def test_control_generator_is_always_cpu() -> None:
     # device from the generator, so a device-local generator would select a different control
     # token per device and break artifact reproducibility.
     assert _control_generator(0).device == torch.device("cpu")
-
-
-def test_parse_seed_list_accepts_comma_separated_seeds() -> None:
-    assert _parse_seed_list("0,1,2") == (0, 1, 2)
-    assert _parse_seed_list(" 3 , 4 ") == (3, 4)
-
-
-def test_parse_seed_list_rejects_an_empty_list() -> None:
-    with pytest.raises(ValueError, match="at least one control seed"):
-        _parse_seed_list(",")
 
 
 def _accelerator_device() -> str:

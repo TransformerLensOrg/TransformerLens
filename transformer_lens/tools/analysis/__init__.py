@@ -23,7 +23,9 @@ Tools:
     - jacobian_lens_causal_swap_benchmark: A causal coordinate-swap benchmark for
       ``coordinate_patch_hooks``, with baseline-capability filtering,
       displacement-matched random-atom controls, exact Clopper-Pearson confidence
-      intervals, and a versioned, fingerprinted JSON artifact schema.
+      intervals, and a versioned, fingerprinted JSON artifact schema. Its
+      ``_cli`` sibling is the artifact-generation entry point and is deliberately
+      not imported here, so ``python -m`` runs it once.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
 """
