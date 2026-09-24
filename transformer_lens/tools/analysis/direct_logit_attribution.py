@@ -132,11 +132,9 @@ def _residual_stack_and_labels(
 def _validate_bridge_compatibility(model) -> None:
     """Reject Bridge inputs that DLA can't produce correct numbers for.
 
-    The compatibility-mode check catches a silent-
-    correctness footgun: without folded LN, the projection direction in
-    ``logit_attrs`` is wrong on a Bridge. The hybrid-arch check catches Mamba/
-    SSM blocks early with a clear error rather than letting ``decompose_resid``
-    raise a confusing KeyError downstream.
+    Compatibility mode alone does not guarantee the final norm is folded:
+    ``fold_ln=False`` and ``no_processing=True`` leave its affine parameters
+    active. The hybrid-arch check catches Mamba/SSM blocks before decomposition.
     """
     # Lazy import — keeps the module importable without dragging in the bridge.
     from transformer_lens.model_bridge import TransformerBridge
@@ -146,10 +144,33 @@ def _validate_bridge_compatibility(model) -> None:
 
     if not getattr(model, "compatibility_mode", False):
         raise ValueError(
-            "DLA on a TransformerBridge requires compatibility mode so that LayerNorm "
-            "weights are folded into W_U. Call `model.enable_compatibility_mode()` "
-            "after loading the bridge, then re-run DLA."
+            "DLA on a TransformerBridge requires compatibility mode and an identity "
+            "final norm. Call `model.enable_compatibility_mode()` with its default "
+            "weight processing after loading the bridge, then re-run DLA."
         )
+
+    final_norm = getattr(model, "ln_final", None)
+    if final_norm is not None:
+        weight = getattr(final_norm, "weight", None)
+        if isinstance(weight, torch.Tensor):
+            identity = (
+                torch.zeros_like(weight)
+                if getattr(model.cfg, "rmsnorm_uses_offset", False)
+                else torch.ones_like(weight)
+            )
+            if not torch.equal(weight, identity):
+                raise ValueError(
+                    "DLA requires an identity final norm weight: the learned scale is not "
+                    "folded into W_U. Load a fresh bridge and call "
+                    "`enable_compatibility_mode()` with fold_ln=True and no_processing=False."
+                )
+        bias = getattr(final_norm, "bias", None)
+        if isinstance(bias, torch.Tensor) and not torch.equal(bias, torch.zeros_like(bias)):
+            raise ValueError(
+                "DLA requires a zero final norm bias: the learned bias is not folded "
+                "into b_U. Load a fresh bridge and call `enable_compatibility_mode()` "
+                "with fold_ln=True and no_processing=False."
+            )
 
     layer_types = model.layer_types()
     hybrid = [lt for lt in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in lt.split("+"))]
@@ -186,9 +207,11 @@ def direct_logit_attribution(
     decomposition reconstructs ``logit[token] - b_U[token]`` rather than the raw
     logit.
 
-    On a ``TransformerBridge``, compatibility mode must be enabled (so the final
-    LayerNorm is folded into ``W_U``) — otherwise the projection direction is
-    wrong and DLA returns silently incorrect numbers. Hybrid architectures
+    On a ``TransformerBridge``, compatibility mode must be enabled and the final
+    normalization's affine parameters must be folded into ``W_U`` and ``b_U``
+    (or already be identity);
+    otherwise the projection direction is wrong and DLA would return silently
+    incorrect numbers. Hybrid architectures
     (Mamba/SSM/Mixer/LinearAttention) are not yet supported because
     ``decompose_resid`` only understands the ``attn_out + mlp_out`` block layout;
     both conditions raise an explicit error at call time.
@@ -196,7 +219,7 @@ def direct_logit_attribution(
     Args:
         model:
             A ``TransformerBridge`` with ``enable_compatibility_mode()``
-            already called.
+            already called and an identity final normalization.
         input:
             Prompt to run — a string, list of strings, or token tensor. Optional
             only when a precomputed ``cache`` is supplied.
@@ -231,7 +254,8 @@ def direct_logit_attribution(
     Raises:
         ValueError: If ``unit`` is invalid, ``answer_tokens`` is ``None``,
             neither ``input`` nor ``cache`` is provided, or a
-            ``TransformerBridge`` is passed without compatibility mode enabled.
+            ``TransformerBridge`` is passed without compatibility mode enabled
+            or with an active learned final-norm weight or bias.
         NotImplementedError: If a ``TransformerBridge`` reports a hybrid block
             layout (Mamba/SSM/Mixer/LinearAttention).
     """
