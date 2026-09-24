@@ -423,15 +423,24 @@ uncertainty about an all-failure sample, collapsing to `[0, 0]` whether the run 
 or a thousand. The artifact also records how many independent prompts the pooled rate rests on,
 since several trials can share one prompt.
 
+The artifact separates the layers that were swept from the layers that actually executed, and
+carries a per-status trial count, so a sweep where most layers contribute nothing is visible
+rather than implied. It also fingerprints the result blocks (trials, excluded baselines, and
+both interval blocks) alongside the protocol manifest, and embeds the full corpus definition
+with the repo/path/revision it was taken from, so the prompts and answers that decide
+capability and scoring enter the fingerprint instead of a bare corpus name.
+
 A generation script (`python -m
 transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli`, no `HF_TOKEN`
 required) produces a versioned, fingerprinted JSON artifact against the published GPT-2-small
 lens. The
 [coordinate-patch benchmark demo](../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo)
-loads that frozen artifact and renders it; it never calls the model itself. A successful swap in
-that artifact shows a directional causal effect under the stated controls on GPT-2-small, not
-proof of unique causal mediation, exhaustive concept coverage, or a result that transfers to
-closed-weight models.
+loads that frozen artifact and renders it; it never calls the model itself. Because the
+artifact lives under `demos/data/`, which the published wheel does not ship, the demo requires
+a repository checkout and fails with that requirement spelled out when the artifact is absent.
+A successful swap in that artifact shows a directional causal effect under the stated controls
+on GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result
+that transfers to closed-weight models.
 
 ### Interpreting the numbers honestly
 
