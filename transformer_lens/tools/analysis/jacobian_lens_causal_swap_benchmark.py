@@ -12,8 +12,9 @@ than folded into a single number.
 This module is layered bottom-up: the model-free prompt corpus and rank/margin metric,
 baseline-capability filtering, displacement-matched control-token selection, a per-trial
 runner that wires the first three together with real ``coordinate_patch_hooks`` calls
-against a live model, and exact Clopper-Pearson confidence intervals plus a versioned,
-fingerprinted JSON artifact schema. Running this module as a script (``python -m
+against a live model, and exact Clopper-Pearson confidence intervals plus a versioned JSON
+artifact schema that fingerprints both the protocol and the result blocks and embeds the
+corpus definition. Running this module as a script (``python -m
 transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark``) generates the frozen
 artifact consumed by ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb``; see
 ``main()`` below for the exact invocation.
@@ -24,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import (
@@ -33,6 +35,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    Mapping,
     MutableMapping,
     Optional,
     Sequence,
@@ -99,6 +102,28 @@ def iter_prompt_trials(corpus: BenchmarkCorpus) -> Iterator[PromptTrialSpec]:
                 source_answer=function.answers[source],
                 target_answer=function.answers[target],
             )
+
+
+def corpus_definition(corpus: BenchmarkCorpus) -> Dict[str, Any]:
+    """Serializes a corpus into the JSON shape embedded in the protocol manifest.
+
+    The prompts and answers decide which prompts are baseline-capable and how every
+    condition is scored, so they belong inside the fingerprinted manifest rather than
+    travelling as a bare name. Key order is normalized so the same corpus always
+    serializes identically.
+    """
+    return {
+        "name": corpus.name,
+        "concepts": list(corpus.concepts),
+        "functions": [
+            {
+                "name": function.name,
+                "template": function.template,
+                "answers": dict(function.answers),
+            }
+            for function in corpus.functions
+        ],
+    }
 
 
 @dataclass(frozen=True)
@@ -650,7 +675,11 @@ _REQUIRED_MANIFEST_FIELDS = (
     "lens_file",
     "lens_revision",
     "corpus_name",
-    "layers",
+    "corpus",
+    "corpus_repo",
+    "corpus_path",
+    "corpus_revision",
+    "layers_swept",
     "alpha",
     "k",
     "control_tolerance",
@@ -666,7 +695,10 @@ def build_protocol_manifest(**fields: Any) -> Dict[str, Any]:
 
     Requires at least :data:`_REQUIRED_MANIFEST_FIELDS`, the same key set (and, where they
     overlap, the same string values) as ``Jacobian_Lens_Demo.ipynb``'s existing
-    ``protocol_manifest`` cell.
+    ``protocol_manifest`` cell. Beyond that cell's fields the manifest carries the full
+    corpus definition (``corpus``) and the repo/path/revision triple it was taken from
+    (``corpus_repo``, ``corpus_path``, ``corpus_revision``), so the prompts and answers
+    that decide capability and scoring enter the fingerprint instead of a bare name.
 
     Raises:
         ValueError: If any required field is missing, naming the missing field(s).
@@ -684,7 +716,29 @@ def fingerprint_manifest(manifest: Dict[str, Any]) -> str:
     ).hexdigest()
 
 
-SCHEMA_VERSION = 1
+def results_fingerprint(artifact: Mapping[str, Any]) -> str:
+    """Fingerprints an artifact's result blocks with the manifest recipe.
+
+    ``protocol_fingerprint`` covers only the manifest, so an artifact whose trials,
+    excluded baselines, or confidence-interval blocks were rewritten would still load
+    clean and print the same provenance hash. Hashing those blocks separately catches
+    that tampering while leaving the manifest recipe and its stored value untouched.
+    """
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "trials": artifact["trials"],
+                "excluded_baselines": artifact["excluded_baselines"],
+                "real_success_ci": artifact["real_success_ci"],
+                "control_success_ci": artifact["control_success_ci"],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+SCHEMA_VERSION = 2
 
 
 def serialize_artifact(
@@ -699,8 +753,12 @@ def serialize_artifact(
     ``n_independent_prompts`` records how many distinct ``(function, source)`` prompts the
     pooled rate rests on. Pooling trials as independent draws overstates the evidence when
     several trials share one prompt, so the count travels with the rate.
+
+    ``layers_executed`` lists the sorted distinct layers that produced an ``ok`` trial, and
+    ``trial_status_counts`` counts trials per status, so a reader can see how many of the
+    swept layers contributed nothing and how many trials were skipped rather than executed.
     """
-    return {
+    artifact: Dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "protocol_manifest": manifest,
         "protocol_fingerprint": fingerprint_manifest(manifest),
@@ -711,7 +769,11 @@ def serialize_artifact(
         "n_independent_prompts": len(
             {(trial.function, trial.source) for trial in trials if trial.status == "ok"}
         ),
+        "layers_executed": sorted({trial.layer for trial in trials if trial.status == "ok"}),
+        "trial_status_counts": dict(Counter(trial.status for trial in trials)),
     }
+    artifact["results_fingerprint"] = results_fingerprint(artifact)
+    return artifact
 
 
 _REQUIRED_ARTIFACT_FIELDS = (
@@ -723,6 +785,9 @@ _REQUIRED_ARTIFACT_FIELDS = (
     "real_success_ci",
     "control_success_ci",
     "n_independent_prompts",
+    "layers_executed",
+    "trial_status_counts",
+    "results_fingerprint",
 )
 
 
@@ -730,9 +795,11 @@ def load_artifact(path: Path) -> Dict[str, Any]:
     """Reads and validates a frozen artifact produced by :func:`serialize_artifact`.
 
     Validates that every required top-level key is present, that ``schema_version``
-    matches :data:`SCHEMA_VERSION`, and that ``protocol_fingerprint`` matches a fresh
-    :func:`fingerprint_manifest` of the loaded ``protocol_manifest`` -- catching a
-    hand-edited or corrupted artifact rather than trusting the stored fingerprint blindly.
+    matches :data:`SCHEMA_VERSION`, that ``protocol_fingerprint`` matches a fresh
+    :func:`fingerprint_manifest` of the loaded ``protocol_manifest``, and that
+    ``results_fingerprint`` matches a fresh :func:`results_fingerprint` of the loaded
+    result blocks -- catching a hand-edited or corrupted artifact rather than trusting
+    the stored fingerprints blindly.
 
     Raises:
         ValueError: Naming the missing or mismatched field.
@@ -751,6 +818,13 @@ def load_artifact(path: Path) -> Dict[str, Any]:
         raise ValueError(
             "artifact protocol_fingerprint does not match a freshly computed fingerprint of "
             "its protocol_manifest (the manifest may have been hand-edited or corrupted)"
+        )
+    expected_results_fingerprint = results_fingerprint(artifact)
+    if artifact["results_fingerprint"] != expected_results_fingerprint:
+        raise ValueError(
+            "artifact results_fingerprint does not match a freshly computed fingerprint of "
+            "its trials, excluded_baselines, and confidence-interval blocks (they may have "
+            "been hand-edited or corrupted)"
         )
     return artifact
 
@@ -790,6 +864,11 @@ _COUNTRY_CORPUS = BenchmarkCorpus(
 _GPT2_LENS_REPO = "neuronpedia/jacobian-lens"
 _GPT2_LENS_FILE = "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"
 _GPT2_LENS_REVISION = "a4114d7752d11eb546e6cf372213d7e75526d3a1"
+# The corpus mirrors the country config ``Jacobian_Lens_Demo.ipynb`` pins, so it reuses that
+# notebook's repo/path/revision triple rather than inventing a second provenance scheme.
+_CORPUS_REPO = "anthropics/jacobian-lens"
+_CORPUS_PATH = "data/experiments/flexible-generalization.json"
+_CORPUS_REVISION = "581d398613e5602a5af361e1c34d3a92ea82ba8e"
 _DEFAULT_CONTROL_SEEDS = (0, 1, 2, 3, 4)
 _DEFAULT_ARTIFACT_PATH = (
     Path(__file__).resolve().parents[3]
@@ -880,7 +959,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         lens_file=_GPT2_LENS_FILE,
         lens_revision=_GPT2_LENS_REVISION,
         corpus_name=_COUNTRY_CORPUS.name,
-        layers=layers,
+        corpus=corpus_definition(_COUNTRY_CORPUS),
+        corpus_repo=_CORPUS_REPO,
+        corpus_path=_CORPUS_PATH,
+        corpus_revision=_CORPUS_REVISION,
+        layers_swept=layers,
         alpha=args.alpha,
         k=args.k,
         control_tolerance=args.control_tolerance,
@@ -895,12 +978,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n")
-    inactive = sum(1 for trial in trials if trial.status == "skipped_source_inactive")
-    no_control = sum(1 for trial in trials if trial.status == "skipped_no_control_token")
+    status_counts = artifact["trial_status_counts"]
     n_prompts = artifact["n_independent_prompts"]
     print(
         f"wrote {len(trials)} trials ({len(ok_trials)} ok over {n_prompts} independent "
-        f"prompt(s), {inactive} source-inactive, {no_control} no-control-token, "
+        f"prompt(s) at layers {artifact['layers_executed']}, "
+        f"{status_counts.get('skipped_source_inactive', 0)} source-inactive, "
+        f"{status_counts.get('skipped_no_control_token', 0)} no-control-token, "
         f"{len(excluded)} excluded prompts) to {args.output}"
     )
 

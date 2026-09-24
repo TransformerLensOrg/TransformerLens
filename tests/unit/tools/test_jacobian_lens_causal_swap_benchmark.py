@@ -24,10 +24,12 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     _parse_seed_list,
     build_protocol_manifest,
     compute_answer_metrics,
+    corpus_definition,
     filter_baseline_capable,
     fingerprint_manifest,
     iter_prompt_trials,
     load_artifact,
+    results_fingerprint,
     select_displacement_matched_control_token,
     serialize_artifact,
     success_rate_ci,
@@ -381,6 +383,39 @@ def test_build_protocol_manifest_rejects_missing_required_field() -> None:
         build_protocol_manifest(model_revision="x")
 
 
+def test_build_protocol_manifest_requires_corpus_fields() -> None:
+    fields = _full_manifest_fields()
+    del fields["corpus_repo"]
+    with pytest.raises(ValueError, match="corpus_repo"):
+        build_protocol_manifest(**fields)
+
+
+def test_corpus_definition_embeds_concepts_functions_and_answers() -> None:
+    corpus = BenchmarkCorpus(
+        name="toy",
+        concepts=("France", "China"),
+        functions=(
+            FunctionSpec(
+                name="capital",
+                template="The capital of {arg} is the city of",
+                answers={"France": "Paris", "China": "Beijing"},
+            ),
+        ),
+    )
+    definition = corpus_definition(corpus)
+    assert definition == {
+        "name": "toy",
+        "concepts": ["France", "China"],
+        "functions": [
+            {
+                "name": "capital",
+                "template": "The capital of {arg} is the city of",
+                "answers": {"France": "Paris", "China": "Beijing"},
+            }
+        ],
+    }
+
+
 def _full_manifest_fields(**overrides: Any) -> Dict[str, Any]:
     fields: Dict[str, Any] = dict(
         model_id="gpt2",
@@ -389,7 +424,11 @@ def _full_manifest_fields(**overrides: Any) -> Dict[str, Any]:
         lens_file="f",
         lens_revision="y",
         corpus_name="toy",
-        layers=[1],
+        corpus={"name": "toy", "concepts": ["France"], "functions": []},
+        corpus_repo="owner/repo",
+        corpus_path="data/config.json",
+        corpus_revision="abc123",
+        layers_swept=[1],
         alpha=1.0,
         k=8,
         control_tolerance=0.1,
@@ -400,6 +439,39 @@ def _full_manifest_fields(**overrides: Any) -> Dict[str, Any]:
     )
     fields.update(overrides)
     return fields
+
+
+def _ok_trial(*, target: str, layer: int) -> TrialResult:
+    metrics = AnswerMetrics(0, 1, True, False, 2.0)
+    return TrialResult(
+        function="continent",
+        source="Egypt",
+        target=target,
+        layer=layer,
+        status="ok",
+        baseline=metrics,
+        real_target_metrics=metrics,
+        control_token_id=1,
+        control_target_metrics=metrics,
+        control_draws=[ControlDraw(seed=0, token_id=1, metrics=metrics)],
+        error=None,
+    )
+
+
+def _skipped_trial(*, layer: int) -> TrialResult:
+    return TrialResult(
+        function="continent",
+        source="Egypt",
+        target="France",
+        layer=layer,
+        status="skipped_source_inactive",
+        baseline=AnswerMetrics(0, 1, True, False, 2.0),
+        real_target_metrics=None,
+        control_token_id=None,
+        control_target_metrics=None,
+        control_draws=[],
+        error="inactive",
+    )
 
 
 def test_serialize_then_load_artifact_round_trips(tmp_path) -> None:
@@ -417,7 +489,7 @@ def test_serialize_then_load_artifact_round_trips(tmp_path) -> None:
 
 
 def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> None:
-    manifest = build_protocol_manifest(**_full_manifest_fields(layers=[6]))
+    manifest = build_protocol_manifest(**_full_manifest_fields(layers_swept=[6]))
     trial = TrialResult(
         function="capital",
         source="France",
@@ -447,15 +519,71 @@ def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> 
 
 
 def test_load_artifact_rejects_tampered_fingerprint(tmp_path) -> None:
-    manifest = build_protocol_manifest(**_full_manifest_fields(layers=[1]))
+    manifest = build_protocol_manifest(**_full_manifest_fields(layers_swept=[1]))
     artifact = serialize_artifact(
         manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
     )
-    artifact["protocol_manifest"]["layers"] = [2]
+    artifact["protocol_manifest"]["layers_swept"] = [2]
     path = tmp_path / "bad.json"
     path.write_text(json.dumps(artifact))
     with pytest.raises(ValueError, match="fingerprint"):
         load_artifact(path)
+
+
+def test_load_artifact_rejects_tampered_trials(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    artifact = serialize_artifact(
+        manifest,
+        [_ok_trial(target="France", layer=9)],
+        [],
+        success_rate_ci([True]),
+        success_rate_ci([False]),
+    )
+    artifact["trials"][0]["status"] = "skipped_source_inactive"
+    path = tmp_path / "tampered_trials.json"
+    path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="results_fingerprint"):
+        load_artifact(path)
+
+
+def test_load_artifact_rejects_tampered_ci_block(tmp_path) -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    artifact = serialize_artifact(
+        manifest, [], [], success_rate_ci([True, False]), success_rate_ci([False, False])
+    )
+    artifact["real_success_ci"]["n_trials"] = 99
+    path = tmp_path / "tampered_ci.json"
+    path.write_text(json.dumps(artifact))
+    with pytest.raises(ValueError, match="results_fingerprint"):
+        load_artifact(path)
+
+
+def test_results_fingerprint_is_stable_across_key_order() -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields())
+    artifact = serialize_artifact(
+        manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
+    )
+    reordered = {
+        "control_success_ci": artifact["control_success_ci"],
+        "real_success_ci": artifact["real_success_ci"],
+        "excluded_baselines": artifact["excluded_baselines"],
+        "trials": artifact["trials"],
+    }
+    assert results_fingerprint(reordered) == artifact["results_fingerprint"]
+
+
+def test_serialize_artifact_records_executed_layers_and_status_counts() -> None:
+    manifest = build_protocol_manifest(**_full_manifest_fields(layers_swept=[0, 9, 10]))
+    trials = [
+        _ok_trial(target="France", layer=9),
+        _ok_trial(target="China", layer=10),
+        _skipped_trial(layer=0),
+    ]
+    artifact = serialize_artifact(
+        manifest, trials, [], success_rate_ci([True, False]), success_rate_ci([False, False])
+    )
+    assert artifact["layers_executed"] == [9, 10]
+    assert artifact["trial_status_counts"] == {"ok": 2, "skipped_source_inactive": 1}
 
 
 def test_load_artifact_rejects_wrong_schema_version(tmp_path) -> None:
@@ -487,21 +615,8 @@ def test_serialize_artifact_counts_independent_prompts(tmp_path) -> None:
     # Several trials can share one prompt, so the pooled rate rests on fewer independent
     # prompts than trials. The count must travel with the rate.
     manifest = build_protocol_manifest(**_full_manifest_fields())
-    metrics = AnswerMetrics(0, 1, True, False, 2.0)
     trials = [
-        TrialResult(
-            function="continent",
-            source="Egypt",
-            target=target,
-            layer=layer,
-            status="ok",
-            baseline=metrics,
-            real_target_metrics=metrics,
-            control_token_id=1,
-            control_target_metrics=metrics,
-            control_draws=[ControlDraw(seed=0, token_id=1, metrics=metrics)],
-            error=None,
-        )
+        _ok_trial(target=target, layer=layer)
         for target, layer in (("France", 9), ("France", 10), ("China", 9))
     ]
     artifact = serialize_artifact(
@@ -512,21 +627,7 @@ def test_serialize_artifact_counts_independent_prompts(tmp_path) -> None:
 
 def test_serialize_artifact_ignores_skipped_trials_when_counting_prompts() -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields())
-    metrics = AnswerMetrics(0, 1, True, False, 2.0)
-    skipped = TrialResult(
-        function="capital",
-        source="France",
-        target="China",
-        layer=6,
-        status="skipped_source_inactive",
-        baseline=metrics,
-        real_target_metrics=None,
-        control_token_id=None,
-        control_target_metrics=None,
-        control_draws=[],
-        error="inactive",
-    )
     artifact = serialize_artifact(
-        manifest, [skipped], [], success_rate_ci([True]), success_rate_ci([False])
+        manifest, [_skipped_trial(layer=6)], [], success_rate_ci([True]), success_rate_ci([False])
     )
     assert artifact["n_independent_prompts"] == 0

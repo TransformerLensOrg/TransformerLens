@@ -59,6 +59,7 @@ from transformer_lens.tools.analysis.jacobian_lens import (
 from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
     BenchmarkCorpus,
     FunctionSpec,
+    corpus_definition,
     load_artifact,
     run_causal_swap_benchmark,
     select_displacement_matched_control_token,
