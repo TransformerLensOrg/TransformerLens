@@ -718,7 +718,7 @@ class TestBootInspectVLLMDtype:
         monkeypatch.setattr(source_mod, "get_hf_token", lambda: None)
         monkeypatch.setattr(source_mod, "build_bridge_config_from_hf", lambda *a, **kw: cfg)
         monkeypatch.setattr(
-            source_mod,
+            source_mod.architecture_adapter_factory,
             "ArchitectureAdapterFactory",
             SimpleNamespace(select_architecture_adapter=lambda c: adapter),
         )
