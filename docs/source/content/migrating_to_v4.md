@@ -45,8 +45,13 @@ work with raw HuggingFace weights (the equivalent of the old
 | `transformer_lens.components` | `transformer_lens.model_bridge.generalized_components` |
 | `transformer_lens.pretrained` (weight converters) | Handled internally by the bridge's adapters; legacy TL-format repos load via `TransformerBridge.boot_tl_legacy(name)` |
 
-Accessing a removed name from the top-level package raises an `AttributeError`
-naming its replacement (e.g. `from transformer_lens import HookedTransformer`).
+Accessing a removed name from the top-level package raises an `ImportError`
+naming its replacement, for both `transformer_lens.HookedTransformer` and
+`from transformer_lens import HookedTransformer`. (It is an `ImportError` rather
+than an `AttributeError` so the message survives the `from ... import ...` form,
+which Python's import machinery would otherwise replace with a bare "cannot import
+name". A consequence is that `hasattr`/`getattr(..., default)` feature-detection on
+these names raises rather than reporting absence.)
 
 ## Weight accessors: `W_pos` / `W_E_pos`
 

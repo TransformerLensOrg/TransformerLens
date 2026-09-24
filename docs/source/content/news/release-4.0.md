@@ -1,5 +1,5 @@
 # TransformerLens 4.0
-**[release date TBD]**
+**September 21, 2026**
 
 TransformerLens 4.0 is here. Where 3.0 changed how models are loaded via the
 TransformerBridge and its architecture adapters, 4.0 expands options for **what runs the

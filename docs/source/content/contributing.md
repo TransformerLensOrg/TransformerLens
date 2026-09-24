@@ -315,7 +315,7 @@ Two test layers:
   ```
 
   If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`; otherwise leave the flag unset.
-- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge_core.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
+- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) come from the `hook_aliases` dicts on the generalized components (`BlockBridge`, `AttentionBridge`, `MLPBridge`) and on `BridgeCore` for top-level names, applied at boot by `_register_aliases()`; `build_alias_to_canonical_map()` in `bridge_core.py` only reads the result. Adapters declare canonical names only.
 - **`ComponentMapping` types do not need `# type: ignore`.** If the type system disagrees, prefer `isinstance` narrowing or `typing.cast`; the project as a whole avoids `# type: ignore`.
 
 ### Verifying a new model

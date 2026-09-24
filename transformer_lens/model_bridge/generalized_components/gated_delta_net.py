@@ -4,6 +4,7 @@ Reimplements forward (prefill only) to expose mech-interp-relevant intermediate
 states. Falls back to HF native forward during autoregressive generation where
 cache state management is required.
 """
+import sys
 from typing import Any, Dict, Optional
 
 import torch
@@ -17,6 +18,27 @@ from transformer_lens.model_bridge.generalized_components.base import (
 from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
     SSMStateHookMixin,
 )
+
+_MISSING = object()
+
+
+def _resolve_hf_fn(hf: torch.nn.Module, instance_attr: str, module_attr: str) -> Any:
+    """Resolve the function HF's GatedDeltaNet forward calls.
+
+    transformers < 5.15 stores it on the instance; >= 5.15 calls a module-level
+    function of the modeling file, which dispatches to the hub kernel when installed.
+    """
+    if hasattr(hf, instance_attr):
+        return getattr(hf, instance_attr)
+    fn = getattr(sys.modules[type(hf).__module__], module_attr, _MISSING)
+    if fn is _MISSING:
+        raise AttributeError(
+            f"{type(hf).__name__} has neither a `{instance_attr}` attribute "
+            f"(transformers < 5.15) nor a module-level `{module_attr}` in "
+            f"{type(hf).__module__} (transformers >= 5.15); GatedDeltaNetBridge "
+            "supports transformers >= 5.9 and was tested up to 5.17."
+        )
+    return fn
 
 
 class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
@@ -177,13 +199,15 @@ class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
 
         # --- Causal Convolution ---
         mixed_qkv = torch.cat((query, key, value), dim=-1).transpose(1, 2)
-        if hf.causal_conv1d_fn is not None:
-            mixed_qkv = hf.causal_conv1d_fn(
-                x=mixed_qkv,
-                weight=hf.conv1d.weight.squeeze(1),
-                bias=hf.conv1d.bias,
+        # None only on transformers < 5.15 without the causal-conv1d kernel.
+        # Positional: the >= 5.15 signature takes no x=/seq_idx=.
+        causal_conv1d_fn = _resolve_hf_fn(hf, "causal_conv1d_fn", "causal_conv1d_fn")
+        if causal_conv1d_fn is not None:
+            mixed_qkv = causal_conv1d_fn(
+                mixed_qkv,
+                hf.conv1d.weight.squeeze(1),
+                hf.conv1d.bias,
                 activation=hf.activation,
-                seq_idx=None,
             )
         else:
             mixed_qkv = F.silu(hf.conv1d(mixed_qkv)[:, :, :seq_len])
@@ -225,7 +249,10 @@ class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
             _, core_out = self._gated_delta_scan(query, key, value, g, beta, fire_hook=True)
             core_out = core_out.to(value.dtype)
         else:
-            core_out, _ = hf.chunk_gated_delta_rule(
+            chunk_gated_delta_rule = _resolve_hf_fn(
+                hf, "chunk_gated_delta_rule", "torch_chunk_gated_delta_rule"
+            )
+            core_out, _ = chunk_gated_delta_rule(
                 query,
                 key,
                 value,

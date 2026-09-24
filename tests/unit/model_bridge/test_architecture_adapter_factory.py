@@ -1,5 +1,7 @@
 """Unit tests for ArchitectureAdapterFactory — external registration and entry-point discovery."""
 
+import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -148,3 +150,22 @@ class TestDiscoverEntryPoints:
         ), pytest.warns(UserWarning, match="Failed to load entry point"):
             ArchitectureAdapterFactory.discover_entry_points()
         assert "BadEntryPointForCausalLM" not in ArchitectureAdapterFactory._adapters
+
+
+def test_factory_importable_as_first_import():
+    """The factory must import in a fresh interpreter before model_bridge is loaded.
+
+    This is the import the external adapter registration guide starts with. It has to
+    run in a subprocess because the test session has already imported model_bridge.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from transformer_lens.factories.architecture_adapter_factory import "
+            "ArchitectureAdapterFactory",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
