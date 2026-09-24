@@ -22,6 +22,7 @@ from transformer_lens.model_bridge.driver_protocol import (
 )
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources.vllm.driver import VLLMDriver
+from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 
 
 @pytest.fixture
@@ -213,6 +214,42 @@ class TestVLLMDriverForward:
             _driver(captures={}).forward(
                 torch.tensor([[0, 7, 8, 0]]), attention_mask=torch.tensor([[0, 1, 1]])
             )
+
+    def test_left_padded_capture_and_logits_keep_caller_positions(self, vllm_prompt_api):
+        driver = _driver(captures={"embed.hook_out": torch.ones(2, 4)}, top_logprobs={7: 2.0})
+        driver._unembed_probed = True
+        result = driver.forward(
+            torch.tensor([[0, 0, 7, 8]]),
+            attention_mask=torch.tensor([[0, 0, 1, 1]]),
+            capture=("embed.hook_out",),
+        )
+        assert result.logits is not None and result.logits.shape == (1, 4, 16)
+        assert result.logits[0, 3, 7] == 2.0
+        assert torch.isneginf(result.logits[0, :2]).all()
+        assert torch.equal(result.captured["embed.hook_out"][0, :2], torch.zeros(2, 4))
+        assert torch.equal(result.captured["embed.hook_out"][0, 2:], torch.ones(2, 4))
+
+    def test_left_padded_pos_uses_caller_coordinates(self, vllm_prompt_api):
+        driver = _driver(captures={}, enable_position_interventions=True)
+        driver.forward(
+            torch.tensor([[0, 0, 7, 8]]),
+            attention_mask=torch.tensor([[0, 0, 1, 1]]),
+            intervene={"embed.hook_out": {"op": "suppress", "pos": [2, 3]}},
+            return_logits=False,
+        )
+        spec = driver._llm.collective_rpc.call_args_list[0].kwargs["args"][0]
+        assert spec["embed.hook_out"]["pos"] == [0, 1]
+
+    @pytest.mark.parametrize("pos", [0, 1, 4])
+    def test_left_padded_pos_rejects_padding(self, pos):
+        driver = _driver(captures={}, enable_position_interventions=True)
+        with pytest.raises(ValueError, match="pos.*outside the unmasked prompt"):
+            driver.forward(
+                torch.tensor([[0, 0, 7, 8, 0]]),
+                attention_mask=torch.tensor([[0, 0, 1, 1, 0]]),
+                intervene={"embed.hook_out": {"op": "suppress", "pos": pos}},
+            )
+        driver._llm.generate.assert_not_called()
 
     def test_forward_logits_from_sampler_logprobs(self):
         """vLLM bypasses lm_head; driver synthesizes logits from sampler logprobs.
@@ -889,6 +926,55 @@ class TestBatchedForwardPaddingSemantics:
         )
         prompts = driver._llm.generate.call_args.kwargs["prompts"]
         assert [prompt["prompt_token_ids"] for prompt in prompts] == [[7, 8], [3, 4, 5]]
+
+    def test_masked_rows_restore_capture_and_fallback_logit_positions(self, vllm_prompt_api):
+        outputs = [
+            _batched_request_output("left", top_logprobs={7: 2.0}),
+            _batched_request_output("right", top_logprobs={3: 2.0}),
+        ]
+        captures = {
+            "left": {"embed.hook_out": torch.ones(2, 4)},
+            "right": {"embed.hook_out": torch.full((3, 4), 2.0)},
+        }
+        driver = _batched_driver(outputs=outputs, captures_by_req=captures)
+        driver._unembed_probed = True
+        result = driver.forward(
+            torch.tensor([[0, 7, 8, 0], [3, 4, 5, 0]]),
+            attention_mask=torch.tensor([[0, 1, 1, 0], [1, 1, 1, 0]]),
+            capture=("embed.hook_out",),
+        )
+        assert result.logits is not None and result.logits.shape == (2, 4, 16)
+        assert result.logits[0, 2, 7] == 2.0
+        assert result.logits[1, 2, 3] == 2.0
+        assert torch.isneginf(result.logits[0, [0, 3]]).all()
+        assert torch.isneginf(result.logits[1, 3]).all()
+        emb = result.captured["embed.hook_out"]
+        assert emb.shape == (2, 4, 4)
+        assert torch.equal(emb[0, 0], torch.zeros(4))
+        assert torch.equal(emb[0, 1:3], torch.ones(2, 4))
+        assert torch.equal(emb[1, :3], torch.full((3, 4), 2.0))
+        assert torch.equal(emb[:, 3], torch.zeros(2, 4))
+
+    def test_masked_rows_restore_reconstructed_logits(self, vllm_prompt_api):
+        outputs = [_batched_request_output("left"), _batched_request_output("full")]
+        captures = {
+            "left": {"ln_final.hook_normalized": torch.ones(2, 4)},
+            "full": {"ln_final.hook_normalized": torch.full((4, 4), 2.0)},
+        }
+        driver = _batched_driver(outputs=outputs, captures_by_req=captures)
+        driver._unembed = (torch.ones(16, 4), None)
+        driver._unembed_probed = True
+        tokens = torch.tensor([[0, 0, 7, 8], [3, 4, 5, 6]])
+        mask = torch.tensor([[0, 0, 1, 1], [1, 1, 1, 1]])
+        result = driver.forward(
+            tokens,
+            attention_mask=mask,
+        )
+        assert result.logits is not None and result.logits.shape == (2, 4, 16)
+        assert torch.isneginf(result.logits[0, :2]).all()
+        assert torch.equal(result.logits[0, 2:], torch.full((2, 16), 4.0))
+        assert torch.equal(result.logits[1], torch.full((4, 16), 8.0))
+        assert torch.isfinite(lm_cross_entropy_loss(result.logits, tokens, mask))
 
     def test_attention_mask_rejects_interior_gap(self):
         driver = _batched_driver(outputs=[], captures_by_req={})
