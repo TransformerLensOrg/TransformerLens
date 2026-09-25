@@ -8,6 +8,7 @@ monosemanticity, or superposition.
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -744,6 +745,19 @@ def fit_sparse_probe(
     )
 
 
+def _control_generator(seed: int, k: int, arm: str, repeat: int) -> torch.Generator:
+    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``.
+
+    Each control draw gets its own generator so a draw depends only on its own
+    coordinates, not on how many draws earlier k values or the other arm
+    consumed from a shared stream. SHA-256 (not Python ``hash``) keeps the seed
+    stable across processes; the mask keeps it in torch's accepted int64 range.
+    """
+    key = f"{seed}:{k}:{arm}:{repeat}".encode()
+    derived = int.from_bytes(hashlib.sha256(key).digest()[:8], "little") & 0x7FFFFFFFFFFFFFFF
+    return torch.Generator(device="cpu").manual_seed(derived)
+
+
 def sweep_sparse_probe(
     features: Float[torch.Tensor, "example feature"],
     labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
@@ -844,8 +858,9 @@ def sweep_sparse_probe(
     for k in k_values:
         random_supports = []
         random_metrics = []
-        for _ in range(random_count):
-            support = torch.randperm(feature_count, generator=generator)[:k].sort().values
+        for repeat in range(random_count):
+            draw_generator = _control_generator(validated.seed, k, "random", repeat)
+            support = torch.randperm(feature_count, generator=draw_generator)[:k].sort().values
             random_supports.append(support)
             random_metrics.append(
                 _fit_control(
@@ -860,8 +875,9 @@ def sweep_sparse_probe(
 
         shuffle_supports = []
         shuffle_metrics = []
-        for _ in range(shuffle_count):
-            permutation = torch.randperm(train_labels.numel(), generator=generator)
+        for repeat in range(shuffle_count):
+            draw_generator = _control_generator(validated.seed, k, "shuffle", repeat)
+            permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
             shuffled_labels = train_labels[permutation]
             shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
             support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:k]
