@@ -2,7 +2,7 @@
 
 Dream is Qwen2.5-shaped but bidirectional (diffusion): attention must stay
 delegated to HF, generation phases are excluded, and the v5 rope shim must
-restore the 'default' ROPE_INIT_FUNCTIONS entry the remote code looks up.
+restore the 'default' rope init the remote code looks up.
 """
 from typing import Any
 
@@ -79,12 +79,13 @@ class TestDreamComponentMapping:
 
 
 class TestDreamRopeShim:
-    def test_prepare_loading_registers_default_rope(self, adapter):
+    def test_prepare_loading_leaves_shared_rope_registry_alone(self, adapter):
+        """The shim is module-local: a shared "default" entry would override every
+        native model's own default rope init on transformers>=5.17."""
         from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
-        ROPE_INIT_FUNCTIONS.pop("default", None)
         adapter.prepare_loading("Dream-org/Dream-v0-Instruct-7B", {})
-        assert "default" in ROPE_INIT_FUNCTIONS
+        assert "default" not in ROPE_INIT_FUNCTIONS
 
     def test_v4_rope_matches_reference_formula(self):
         class Cfg:
