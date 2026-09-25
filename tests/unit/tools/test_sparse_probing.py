@@ -505,6 +505,87 @@ def test_binary_metrics_zero_division_policy():
     assert metrics.precision == 0
     assert metrics.recall == 0
     assert metrics.f1 == 0
+    assert metrics.roc_auc == 1.0
+    assert metrics.average_precision == 1.0
+
+
+@pytest.mark.parametrize("label", [0, 1])
+def test_binary_metrics_threshold_free_scores_are_nan_without_both_classes(label):
+    metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.full((3,), label))
+
+    assert math.isnan(metrics.roc_auc)
+    assert math.isnan(metrics.average_precision) == (label == 0)
+
+
+def test_dead_coordinate_probe_scores_chance_on_threshold_free_metrics():
+    # Fixture from issue #1814: a constant selected coordinate fits to all-zero logits,
+    # which predicts every held-out example positive.
+    features = torch.randn(300, 16, generator=torch.Generator().manual_seed(0))
+    features[:, 0] = 0.0
+    labels = (torch.rand(300, generator=torch.Generator().manual_seed(0)) < 0.5).long()
+
+    result = fit_sparse_probe(features[:, :1], labels, k=1, seed=0)
+
+    assert result.constant_features.tolist() == [True]
+    assert float(result.coefficients[0]) == 0.0
+    assert float(result.intercept) == 0.0
+    metrics = result.metrics
+    positive_rate = result.test_positive_count / (
+        result.test_positive_count + result.test_negative_count
+    )
+    assert metrics.false_negatives == metrics.true_negatives == 0
+    assert metrics.f1 == pytest.approx(2 * positive_rate / (1 + positive_rate))
+    assert metrics.f1 == pytest.approx(0.7, abs=5e-4)
+    assert metrics.roc_auc == 0.5
+    assert metrics.average_precision == pytest.approx(positive_rate)
+
+
+@pytest.mark.parametrize(
+    ("logits", "labels", "roc_auc", "average_precision"),
+    [
+        ([3.0, 2.0, 1.0, 0.0], [1, 1, 0, 0], 1.0, 1.0),
+        ([0.0, 1.0, 2.0, 3.0], [1, 1, 0, 0], 0.0, (1 / 3 + 2 / 4) / 2),
+        ([1.0, 1.0, 1.0, 1.0], [1, 0, 1, 0], 0.5, 0.5),
+        # The top two logits tie across classes: they are one threshold at precision 1/2,
+        # and one positive-negative pair counts half.
+        ([2.0, 2.0, 1.0, 0.0], [1, 0, 1, 0], 0.625, (1 / 2 + 2 / 3) / 2),
+    ],
+)
+def test_threshold_free_metrics_match_hand_computed_values(
+    logits, labels, roc_auc, average_precision
+):
+    metrics = _binary_metrics(torch.tensor(logits, dtype=torch.float64), torch.tensor(labels))
+
+    assert metrics.roc_auc == pytest.approx(roc_auc)
+    assert metrics.average_precision == pytest.approx(average_precision)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_threshold_free_metrics_match_a_brute_force_tie_aware_reference(seed):
+    generator = torch.Generator().manual_seed(seed)
+    labels = torch.arange(60) % 3 == 0
+    # Coarse rounding makes many ties, both within and across classes.
+    logits = torch.round(torch.randn(60, generator=generator, dtype=torch.float64) + labels)
+
+    positive_logits = logits[labels]
+    negative_logits = logits[~labels]
+    pair_wins = (positive_logits[:, None] > negative_logits[None, :]).double()
+    pair_ties = (positive_logits[:, None] == negative_logits[None, :]).double()
+    expected_roc_auc = float((pair_wins + 0.5 * pair_ties).mean())
+
+    expected_average_precision = 0.0
+    previous_recall = 0.0
+    for threshold in sorted(set(logits.tolist()), reverse=True):
+        predicted = logits >= threshold
+        precision = float((predicted & labels).sum()) / float(predicted.sum())
+        recall = float((predicted & labels).sum()) / float(labels.sum())
+        expected_average_precision += (recall - previous_recall) * precision
+        previous_recall = recall
+
+    metrics = _binary_metrics(logits, labels)
+
+    assert metrics.roc_auc == pytest.approx(expected_roc_auc, abs=1e-12)
+    assert metrics.average_precision == pytest.approx(expected_average_precision, abs=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -621,10 +702,14 @@ def test_disabled_controls_return_empty_aligned_results():
             random_control.precision,
             random_control.recall,
             random_control.f1,
+            random_control.roc_auc,
+            random_control.average_precision,
             shuffle_control.accuracy,
             shuffle_control.precision,
             shuffle_control.recall,
             shuffle_control.f1,
+            shuffle_control.roc_auc,
+            shuffle_control.average_precision,
         ):
             assert metric_values.shape == (0,)
             assert metric_values.dtype == torch.float64
@@ -662,6 +747,9 @@ def test_controls_are_deterministic_use_unique_supports_and_do_not_touch_global_
         assert torch.equal(left.precision, right.precision)
         assert torch.equal(left.recall, right.recall)
         assert torch.equal(left.f1, right.f1)
+        assert torch.equal(left.roc_auc, right.roc_auc)
+        assert torch.equal(left.average_precision, right.average_precision)
+        assert left.roc_auc.shape == left.average_precision.shape == (4,)
         for support in left.supports:
             assert torch.unique(support).numel() == 2
 
@@ -682,6 +770,10 @@ def test_controls_remain_below_a_strong_planted_feature():
     assert actual_f1 > 0.98
     assert float(sweep.random_coordinate_controls[0].f1.median()) < actual_f1 - 0.2
     assert float(sweep.label_shuffle_controls[0].f1.median()) < actual_f1 - 0.2
+    actual_roc_auc = sweep.results[0].metrics.roc_auc
+    assert actual_roc_auc > 0.98
+    assert float(sweep.random_coordinate_controls[0].roc_auc.median()) < actual_roc_auc - 0.2
+    assert float(sweep.label_shuffle_controls[0].roc_auc.median()) < actual_roc_auc - 0.2
 
 
 def test_larger_k_improves_distributed_decodability_without_assigning_a_representation_label():
@@ -756,6 +848,8 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
     assert float(control.precision[0]) == rescored.precision
     assert float(control.recall[0]) == rescored.recall
     assert float(control.f1[0]) == rescored.f1
+    assert float(control.roc_auc[0]) == rescored.roc_auc
+    assert float(control.average_precision[0]) == rescored.average_precision
     # Scoring the same fit against a different held-out label alignment would move the
     # metrics, so the exact match above pins the scoring labels to the true held-out labels.
     assert _binary_metrics(logits, ~true_test_labels).accuracy != rescored.accuracy
