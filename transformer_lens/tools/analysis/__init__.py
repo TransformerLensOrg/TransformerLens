@@ -20,6 +20,12 @@ Tools:
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
       anchored coordinate patching (offline and dynamic/hooked).
+    - jacobian_lens_causal_swap_benchmark: A causal coordinate-swap benchmark for
+      ``coordinate_patch_hooks``, with baseline-capability filtering,
+      displacement-matched random-atom controls, exact Clopper-Pearson confidence
+      intervals, and a versioned, fingerprinted JSON artifact schema. Its
+      ``_cli`` sibling is the artifact-generation entry point and is deliberately
+      not imported here, so ``python -m`` runs it once.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
@@ -57,6 +63,15 @@ from transformer_lens.tools.analysis.direct_path_patching import (
 from transformer_lens.tools.analysis.jacobian_lens import (
     JacobianLens,
     JacobianLensReadout,
+)
+from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+    BenchmarkCorpus,
+    FunctionSpec,
+    corpus_definition,
+    load_artifact,
+    run_causal_swap_benchmark,
+    select_displacement_matched_control_token,
+    success_rate_ci,
 )
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
@@ -113,10 +128,12 @@ __all__ = [
     "BackwardLensLayerResult",
     "BackwardLensMatrixResult",
     "BackwardLensResult",
+    "BenchmarkCorpus",
     "CoordinatePatch",
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
+    "FunctionSpec",
     "HeadAffinityPair",
     "HeadAffinityResult",
     "HeadDecomposition",
@@ -150,14 +167,18 @@ __all__ = [
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
+    "load_artifact",
     "logit_signature",
     "orthonormal_subspace",
     "patch_along_directions",
     "project_activations",
     "projection_kernel",
     "random_projection_kernel_moments",
+    "run_causal_swap_benchmark",
+    "select_displacement_matched_control_token",
     "solve_coordinate_patch",
     "solve_coordinate_patch_positions",
+    "success_rate_ci",
     "sweep_sparse_probe",
     "vocab_readout",
 ]

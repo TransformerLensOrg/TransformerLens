@@ -404,6 +404,44 @@ vocabulary-scale solve on every forward pass unless `decomposition_cache` alread
 it. The conditioning and near-parallel warnings described above still fire from inside the hook,
 per pair, exactly as they would from an offline `coordinate_patch` call on that pair's activation.
 
+### Causal-swap benchmark
+
+`transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark` measures whether
+`coordinate_patch_hooks` causes a directional change in model output, under baseline-capability
+filtering, a displacement-matched random-atom control, and exact Clopper-Pearson confidence
+intervals on every reported rate. The control matches the real edit's magnitude: the
+perturbation is `c_src * (a_target - a_source)`, so a candidate atom qualifies when its
+distance from `a_source` matches the target's within a fixed relative tolerance. Each trial
+draws the control arm under several seeds and records every draw, because a single draw leaves
+the control arm's own variance unmeasured. Each trial installs the hook at exactly one layer
+and the final prompt position; a trial whose source concept is not active in that layer's
+support, or whose layer admits no displacement-matched control, is recorded as skipped, not
+silently dropped.
+
+The interval is exact rather than bootstrapped: a percentile bootstrap cannot express
+uncertainty about an all-failure sample, collapsing to `[0, 0]` whether the run had one trial
+or a thousand. The artifact also records how many independent prompts the pooled rate rests on,
+since several trials can share one prompt.
+
+The artifact separates the layers that were swept from the layers that actually executed, and
+carries a per-status trial count, so a sweep where most layers contribute nothing is visible
+rather than implied. It also fingerprints the result blocks (trials, excluded baselines, and
+both interval blocks) alongside the protocol manifest, and embeds the full corpus definition
+with the repo/path/revision it was taken from, so the prompts and answers that decide
+capability and scoring enter the fingerprint instead of a bare corpus name.
+
+A generation script (`python -m
+transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli`, no `HF_TOKEN`
+required) produces a versioned, fingerprinted JSON artifact against the published GPT-2-small
+lens. The
+[coordinate-patch benchmark demo](../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo)
+loads that frozen artifact and renders it; it never calls the model itself. Because the
+artifact lives under `demos/data/`, which the published wheel does not ship, the demo requires
+a repository checkout and fails with that requirement spelled out when the artifact is absent.
+A successful swap in that artifact shows a directional causal effect under the stated controls
+on GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result
+that transfers to closed-weight models.
+
 ### Interpreting the numbers honestly
 
 The quantitative findings below are from Gurnee et al. (2026) and were measured on **closed
