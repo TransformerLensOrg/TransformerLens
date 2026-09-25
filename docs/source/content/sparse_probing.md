@@ -83,6 +83,18 @@ $\alpha_c=1$. The intercept is not regularized. Positive predictions have nonneg
 Accuracy, precision, recall, F1, and all four confusion counts are returned; precision or F1 is
 zero when its denominator is zero. F1 is the primary sparse-probing metric.
 
+F1 and the other threshold metrics describe a single operating point, `logit >= 0`, so they can
+reward a probe that carries no information. When every selected coordinate is constant on the
+training rows, the fit returns zero coefficients and a zero intercept, every held-out logit is
+exactly `0.0`, and every held-out example is predicted positive. F1 then equals $2p/(1+p)$ for
+the held-out positive rate $p$ (0.667 at $p = 0.5$) even though the probe cannot rank examples.
+
+`roc_auc` and `average_precision` are also returned, computed from the held-out logits without a
+threshold. Both are tie-aware: tied logits share their average rank for ROC-AUC and form one
+threshold for average precision. The degenerate probe above therefore scores ROC-AUC 0.5 and
+average precision $p$, the chance levels. Check `constant_features` and compare against these
+threshold-free metrics before reading a high F1 as decodability.
+
 Feature-score reductions use float64 for float64 inputs and float32 otherwise. Selected matrices
 move to CPU float64, where LBFGS (at most `max_iter` iterations, with a fixed internal gradient
 stop) is followed by up to `max_refinement_steps` damped Newton steps on the `(k+1)`-square
@@ -120,7 +132,13 @@ for k, probe, random_control in zip(
     sweep.random_coordinate_controls,
     strict=True,
 ):
-    print(k, probe.metrics.f1, random_control.f1.median())
+    print(
+        k,
+        probe.metrics.f1,
+        probe.metrics.roc_auc,
+        random_control.f1.median(),
+        random_control.roc_auc.median(),
+    )
 ```
 
 Every k uses the same split, preprocessing mode, and L2 strength. `ks` must be strictly
@@ -128,7 +146,10 @@ increasing and unique.
 
 Random-coordinate controls sample k distinct coordinates and fit the same classifier.
 Label-shuffle controls permute training labels, repeat selection and fitting, and evaluate against
-the untouched held-out labels. The API returns raw control supports and metric distributions; it
+the untouched held-out labels. Each control carries per-repeat accuracy, precision, recall, F1,
+ROC-AUC, and average precision. A random-coordinate control that lands on a dead coordinate keeps
+the inflated F1 described above, so compare controls on ROC-AUC as well. The API returns raw
+control supports and metric distributions; it
 does not convert them into p-values or representation labels. A repeat count of zero disables that
 control.
 
