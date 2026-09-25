@@ -131,7 +131,11 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
         all_tied_weights_keys lookup (the checkpoint is untied anyway).
         """
         try:
-            model_class = force_import_remote_class(model_name, "modeling_gidd.GiddForDiffusionLM")
+            model_class = force_import_remote_class(
+                model_name,
+                "modeling_gidd.GiddForDiffusionLM",
+                revision=model_kwargs.get("revision"),
+            )
             if model_class is not None:
                 disable_tied_weights_lookup(model_class)
                 # v5 walks _init_weights over every module post-materialization;

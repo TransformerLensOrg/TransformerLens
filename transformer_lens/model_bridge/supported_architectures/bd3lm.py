@@ -145,7 +145,9 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
         to PreTrainedModel, raising AttributeError on all_tied_weights_keys.
         """
         # Best-effort: never block loading if the dynamic module is missing/modified.
-        model_class = force_import_remote_class(model_name, "modeling_bd3lm.BD3LM")
+        model_class = force_import_remote_class(
+            model_name, "modeling_bd3lm.BD3LM", revision=model_kwargs.get("revision")
+        )
         if model_class is not None:
             disable_tied_weights_lookup(model_class)
 

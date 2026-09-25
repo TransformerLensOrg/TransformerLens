@@ -123,7 +123,14 @@ class OpenElmArchitectureAdapter(ArchitectureAdapter):
         patch_dynamic_cache_v5()
 
         # Force-import the modeling module so we can patch it
-        if force_import_remote_class(model_name, "modeling_openelm.OpenELMForCausalLM") is None:
+        if (
+            force_import_remote_class(
+                model_name,
+                "modeling_openelm.OpenELMForCausalLM",
+                revision=model_kwargs.get("revision"),
+            )
+            is None
+        ):
             return
 
         # Each model variant (e.g., OpenELM-1_1B vs OpenELM-1_1B-Instruct) gets its
