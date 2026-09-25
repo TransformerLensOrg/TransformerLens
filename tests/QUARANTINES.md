@@ -158,6 +158,7 @@ now bound solely by the surviving
 | [`unit/model_bridge/test_hook_alias_resolution.py`:90](unit/model_bridge/test_hook_alias_resolution.py) | `xfail(strict=True)` per-arch | Hook-alias gaps |
 | [`unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py`:448,464,494,514,605,700,805,947,1133](unit/model_bridge/supported_architectures/test_qwen3_5_adapter.py) | `skipif` ×9 | Qwen3_5 classes absent from installed transformers |
 | [`unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py`:397](unit/model_bridge/supported_architectures/test_qwen3_next_adapter.py) | `skipif` | Qwen3NextForCausalLM absent from installed transformers |
+| [`unit/model_bridge/supported_architectures/test_muse_glimmer_adapter.py`:8](unit/model_bridge/supported_architectures/test_muse_glimmer_adapter.py) (whole file) | `importorskip` | MuseGlimmer classes absent from installed transformers (needs >= 5.15; lock is 5.13) |
 | [`integration/test_weight_processing_integration.py`:279](integration/test_weight_processing_integration.py) | `skip` | Weight-processing edge case |
 | [`acceptance/model_bridge/compatibility/test_backward_hooks.py`:11](acceptance/model_bridge/compatibility/test_backward_hooks.py) | `skip` | Backward-hook compatibility |
 

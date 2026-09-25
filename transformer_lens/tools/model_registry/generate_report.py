@@ -45,6 +45,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "MistralForCausalLM": "Mistral AI's efficient 7B parameter model with sliding window attention",
     "Mistral3ForConditionalGeneration": "Mistral AI's Mistral-Small VLM (Pixtral tower + Mistral decoder)",
     "MixtralForCausalLM": "Mistral AI's Mixture of Experts model",
+    "MuseGlimmerForConditionalGeneration": "Meta's Muse Glimmer VLM (gated QK-norm attention, interleaved NoPE layers)",
     "GemmaForCausalLM": "Google's Gemma lightweight open model family",
     "Gemma2ForCausalLM": "Google's Gemma 2 with improved architecture",
     "Gemma3ForCausalLM": "Google's Gemma 3 latest generation",
