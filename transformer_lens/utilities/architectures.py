@@ -57,6 +57,7 @@ MULTIMODAL_ARCHITECTURES: set[str] = {
     "Florence2ForConditionalGeneration",
     "Mistral3ForConditionalGeneration",
     "Llama4ForConditionalGeneration",
+    "MuseGlimmerForConditionalGeneration",
     "Qwen2_5_VLForConditionalGeneration",
     "Qwen3VLForConditionalGeneration",
     "Qwen3VLMoeForConditionalGeneration",

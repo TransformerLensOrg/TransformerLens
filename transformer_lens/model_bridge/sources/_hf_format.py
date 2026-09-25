@@ -350,6 +350,7 @@ def determine_architecture_from_hf_config(hf_config):
             "mistral3": "Mistral3ForConditionalGeneration",
             "mixtral": "MixtralForCausalLM",
             "mpt": "MptForCausalLM",
+            "muse_glimmer": "MuseGlimmerForConditionalGeneration",
             "gemma": "GemmaForCausalLM",
             "gemma2": "Gemma2ForCausalLM",
             "gemma3": "Gemma3ForCausalLM",
