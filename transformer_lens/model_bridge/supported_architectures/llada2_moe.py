@@ -134,7 +134,10 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Restore the v4 'default' rope init the remote code looks up (Dream shim)."""
         restore_default_rope_init(
-            model_name, "modeling_llada2_moe.LLaDA2MoeModelLM", "LLaDA2MoeRotaryEmbedding"
+            model_name,
+            "modeling_llada2_moe.LLaDA2MoeModelLM",
+            "LLaDA2MoeRotaryEmbedding",
+            revision=model_kwargs.get("revision"),
         )
         super().prepare_loading(model_name, model_kwargs)
 

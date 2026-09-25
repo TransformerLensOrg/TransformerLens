@@ -158,10 +158,16 @@ def compute_default_rope_inv_freq(
     return inv_freq, 1.0
 
 
-def restore_default_rope_init(model_name: str, dotted_ref: str, rotary_class_name: str) -> None:
+def restore_default_rope_init(
+    model_name: str,
+    dotted_ref: str,
+    rotary_class_name: str,
+    revision: str | None = None,
+) -> None:
     """Restore v4's ``ROPE_INIT_FUNCTIONS["default"]`` for one remote-code model.
 
-    ``dotted_ref`` (``"<modeling_file>.<ClassName>"``) is force-imported; every
+    ``dotted_ref`` (``"<modeling_file>.<ClassName>"``) is force-imported at the
+    caller's ``revision`` (each revision is its own module copy); every
     loaded copy of that modeling file gets its module-level
     ``ROPE_INIT_FUNCTIONS`` rebound to a copy with "default" restored, and its
     ``rotary_class_name`` gets ``compute_default_rope_parameters`` for v5's
@@ -169,7 +175,7 @@ def restore_default_rope_init(model_name: str, dotted_ref: str, rotary_class_nam
     transformers 5.17, ``_init_weights`` lets its entries override every
     native model's own ``compute_default_rope_parameters``.
     """
-    if force_import_remote_class(model_name, dotted_ref) is None:
+    if force_import_remote_class(model_name, dotted_ref, revision=revision) is None:
         return
     for module in iter_remote_modeling_modules(dotted_ref.rsplit(".", 1)[0]):
         rope_functions = getattr(module, "ROPE_INIT_FUNCTIONS", None)

@@ -112,7 +112,12 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Shim the remote code's two transformers-v4 dependencies."""
-        restore_default_rope_init(model_name, "modeling_dream.DreamModel", "DreamRotaryEmbedding")
+        restore_default_rope_init(
+            model_name,
+            "modeling_dream.DreamModel",
+            "DreamRotaryEmbedding",
+            revision=model_kwargs.get("revision"),
+        )
         # DreamGenerationConfig.validate is a no-op with the v4 signature
         # (is_init=False); v5 passes user_set_attributes. Replace with a
         # kwargs-tolerant no-op.

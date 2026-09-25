@@ -313,3 +313,33 @@ class TestRestoreDefaultRopeInit:
 
         monkeypatch.setattr(dmu, "get_class_from_dynamic_module", boom)
         restore_default_rope_init("acme/zorbo", "modeling_zorbo.ZorboModel", "ZorboRotaryEmbedding")
+
+    def test_patches_the_requested_revision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A pinned revision is its own module copy; only importing that revision
+        brings it into sys.modules, so the revision must be forwarded."""
+        import transformers.dynamic_module_utils as dmu
+        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+
+        default_copy = self._install_fake_remote_module(monkeypatch)
+        revision_name = "transformers_modules.acme.zorbo.abc123.modeling_zorbo"
+
+        def fake_import(ref: str, name: str, revision: str | None = None, **kwargs: Any) -> type:
+            if revision == "abc123":
+                module = ModuleType(revision_name)
+                setattr(module, "ROPE_INIT_FUNCTIONS", ROPE_INIT_FUNCTIONS)
+                monkeypatch.setitem(sys.modules, revision_name, module)
+            return type("ZorboModel", (), {})
+
+        monkeypatch.setattr(dmu, "get_class_from_dynamic_module", fake_import)
+        restore_default_rope_init(
+            "acme/zorbo", "modeling_zorbo.ZorboModel", "ZorboRotaryEmbedding", revision="abc123"
+        )
+
+        revision_copy = sys.modules[revision_name]
+        assert getattr(revision_copy, "ROPE_INIT_FUNCTIONS")["default"] is (
+            compute_default_rope_inv_freq
+        )
+        assert getattr(default_copy, "ROPE_INIT_FUNCTIONS")["default"] is (
+            compute_default_rope_inv_freq
+        )
+        assert "default" not in ROPE_INIT_FUNCTIONS
