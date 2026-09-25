@@ -138,9 +138,8 @@ def compute_default_rope_inv_freq(
     Standard (unscaled) RoPE inverse frequencies with the v4 call contract the
     remote code targets — ``(config, device) -> (inv_freq, attention_scaling)``
     — plus v4's kwargs-only fallback (``base``/``dim`` passed directly).
-    Registration strategy stays with each adapter: dream re-registers the
-    global ``ROPE_INIT_FUNCTIONS["default"]``, ouro deliberately patches only
-    its own modeling module's copy.
+    Registered per remote modeling module, never in the shared
+    ``ROPE_INIT_FUNCTIONS`` (see ``restore_default_rope_init``).
     """
     if config is not None:
         base = config.rope_theta
@@ -157,3 +156,29 @@ def compute_default_rope_inv_freq(
         ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim)
     )
     return inv_freq, 1.0
+
+
+def restore_default_rope_init(model_name: str, dotted_ref: str, rotary_class_name: str) -> None:
+    """Restore v4's ``ROPE_INIT_FUNCTIONS["default"]`` for one remote-code model.
+
+    ``dotted_ref`` (``"<modeling_file>.<ClassName>"``) is force-imported; every
+    loaded copy of that modeling file gets its module-level
+    ``ROPE_INIT_FUNCTIONS`` rebound to a copy with "default" restored, and its
+    ``rotary_class_name`` gets ``compute_default_rope_parameters`` for v5's
+    ``_init_weights``. The shared transformers dict must stay untouched: from
+    transformers 5.17, ``_init_weights`` lets its entries override every
+    native model's own ``compute_default_rope_parameters``.
+    """
+    if force_import_remote_class(model_name, dotted_ref) is None:
+        return
+    for module in iter_remote_modeling_modules(dotted_ref.rsplit(".", 1)[0]):
+        rope_functions = getattr(module, "ROPE_INIT_FUNCTIONS", None)
+        if rope_functions is not None and "default" not in rope_functions:
+            setattr(
+                module,
+                "ROPE_INIT_FUNCTIONS",
+                {**rope_functions, "default": compute_default_rope_inv_freq},
+            )
+        rope_class = getattr(module, rotary_class_name, None)
+        if rope_class is not None and not hasattr(rope_class, "compute_default_rope_parameters"):
+            rope_class.compute_default_rope_parameters = staticmethod(compute_default_rope_inv_freq)
