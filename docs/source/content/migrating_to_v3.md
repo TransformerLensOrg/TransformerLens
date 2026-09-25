@@ -100,9 +100,9 @@ If you want no processing at all — the bridge's native default — you can ski
 
 Bottom-half analyses → call `enable_compatibility_mode()` after booting.
 
-## Dependency changes in 3.0
+## Dependency changes in 3.x
 
-TransformerLens 3.0 raises its minimum supported `transformers` to **5.4.0** (previously 4.56). This is enforced automatically, fresh installs and `pip install -U transformer_lens` will pull in a compatible release with no action on your part.
+TransformerLens 3.0 shipped with `transformers>=4.56`; the 3.3.0 release raised the floor to 5.4.0, and later 3.x releases moved it again — check `pyproject.toml` for the current floor rather than a number here. This is enforced automatically: fresh installs and `pip install -U transformer_lens` pull in a compatible release with no action on your part.
 
 If your code calls `transformers` directly alongside TransformerLens (e.g. manual `AutoModel.from_pretrained` calls in notebooks, or a downstream library that imports both), the v4 → v5 jump may surface breaking changes outside TransformerLens's surface area. See HuggingFace's Transformers v5 release notes for what changed there.
 

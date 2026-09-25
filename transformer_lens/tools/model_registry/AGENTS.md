@@ -124,7 +124,7 @@ SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH,
 
 ### Phase-score thresholds
 
-`verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES` ([`verify_models.py:508`](verify_models.py)). Below threshold OR a required-test failure → `STATUS_FAILED`. The contract:
+`verify_models` enforces hard pass/fail at the thresholds in `_MIN_PHASE_SCORES` ([`verify_models.py:603`](verify_models.py)). Below threshold OR a required-test failure → `STATUS_FAILED`. The contract:
 
 | Phase | Min score | Required tests | Effect when below threshold or required tests fail |
 |---|---|---|---|
@@ -133,7 +133,7 @@ SSM / recurrent families and the hybrids (Mamba-1/2, gated-delta-net, NemotronH,
 | 3 | 75% | `logits_equivalence`, `loss_equivalence` | `STATUS_FAILED` |
 | 4 | 54.5% — the measured pass line `p4_pass_threshold()` (score of the bake-off noise floor `JUDGE_R_GOOD`) | — | **Non-gating.** Below the line adds `"text quality poor (P4=…)"` to the registry `note`; never causes `STATUS_FAILED`. |
 | 7 | 75% | `multimodal_forward` | `STATUS_FAILED`. NULL score (processor unavailable) also fails. |
-| 8 | 75% | `audio_forward` | `STATUS_FAILED`. NULL score also fails. |
+| 8 | 75% | `audio_forward`, `audio_text_forward` | `STATUS_FAILED`. NULL score also fails. |
 | 9 | 75% | `vision_forward`, `vision_cache` | `STATUS_FAILED`. NULL score also fails. |
 
 P4 prompts each model with its resolved **prompt profile** — chat template, translation, code, own-language continuation, or another task kind — via `resolve_profile()` in [`benchmarks/text_quality_profiles.py`](../../benchmarks/text_quality_profiles.py) (precedence: per-model override > architecture rule > live HF Hub signals > stored registry value > default). The resolved profile is cached sparsely on the entry as `prompt_profile` (key omitted when it's just the default). Each generation is scored against a known-good reference by one pinned multilingual judge via the perplexity ratio `PPL(generated)/PPL(reference)`, which cancels the judge's per-language handicap; the pass/fail constants are measured, not hand-picked, in [`benchmarks/text_quality.py`](../../benchmarks/text_quality.py).

@@ -364,14 +364,14 @@ def test_forced_nonconvergence_raises():
 
 
 def _large_scale_data(
-    *, n_examples: int = 1000, n_features: int = 768, seed: int = 0
+    *, n_examples: int = 1000, n_features: int = 768, seed: int = 0, scale: float = 8000.0
 ) -> tuple[torch.Tensor, torch.Tensor]:
     # Raw (unstandardized) activations with a per-coordinate std in the thousands stall LBFGS
     # short of the optimum within its budget, so acceptance hinges on the Newton refinement.
     generator = torch.Generator().manual_seed(seed)
     labels = torch.arange(n_examples) % 2
-    features = 8000.0 * torch.randn(n_examples, n_features, generator=generator)
-    features[:, 7] += 20000.0 * (2 * labels - 1)
+    features = scale * torch.randn(n_examples, n_features, generator=generator)
+    features[:, 7] += 2.5 * scale * (2 * labels - 1)
     permutation = torch.randperm(n_examples, generator=generator)
     return features[permutation], labels[permutation]
 
@@ -441,9 +441,11 @@ def test_stop_reason_reports_a_stalled_line_search():
     # With tolerance_change at 0.0 the only LBFGS exit besides the caps and its gradient stop
     # is a strong-Wolfe search that returns a zero step; that exit is common on raw
     # activations and must keep its own label, or callers cannot tell it from convergence.
-    features, labels = _large_scale_data()
+    # At a std of 8000 the stall lands within ~1.2x of tolerance_grad, so one-ulp input changes
+    # (or another platform's BLAS) flip the label; at 1e7 the stalled gradient sits ~1e6x above.
+    features, labels = _large_scale_data(scale=1e7)
 
-    result = fit_sparse_probe(features, labels, k=4, seed=0)
+    result = fit_sparse_probe(features, labels, k=4, seed=1)
 
     assert result.stop_reason == "line_search"
     assert result.iterations < result.max_iter

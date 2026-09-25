@@ -17,14 +17,14 @@ The `logit_scale` bug existed because the rules below weren't documented anywher
 |---|---|
 | First-class TL field that adapters / hooks / weight processing read | **Declare as a dataclass parameter** on `TransformerBridgeConfig`. Set a sensible default. Update `map_default_transformer_lens_config` in [`sources/_hf_format.py`](../model_bridge/sources/_hf_format.py) to translate the HF-config attr name to your field name. |
 | HF attr the adapter reads at runtime, no semantic translation needed | **Add to `_HF_PASSTHROUGH_ATTRS`** in [`sources/_bridge_builder.py`](../model_bridge/sources/_bridge_builder.py) — the single list. See [sources/AGENTS.md](../model_bridge/sources/AGENTS.md). |
-| HF attr name differs from existing TL field | **Add an explicit handler** in `map_default_transformer_lens_config` (e.g. Gemma2's `final_logit_softcapping` → `output_logits_soft_cap`). Don't also add to PASSTHROUGH. |
+| HF attr name differs from existing TL field | **Add an explicit handler.** Plain renames go in `map_default_transformer_lens_config` (e.g. `head_dim` → `d_head`). Fields HF may register per-layer go inline in `build_bridge_config_from_hf` ([`sources/_bridge_builder.py`](../model_bridge/sources/_bridge_builder.py)) after the passthrough copy, read through `het_safe_view()` (e.g. Gemma2's `final_logit_softcapping` → `output_logits_soft_cap`). Don't also add to PASSTHROUGH. |
 | Just a derived view of an existing field | **Add a `@property`** on `TransformerBridgeConfig` (e.g. `head_dim` aliases `d_head`). |
 
 **Don't** declare the same attr both as a dataclass field AND a PASSTHROUGH entry — PASSTHROUGH writes happen AFTER `from_dict`, so the runtime value will silently overwrite whatever defaults / explicit handlers set.
 
 ## Existing properties that may surprise you
 
-- **`head_dim`** is a read-only `@property` aliasing `d_head` (line 212). `setattr(cfg, "head_dim", val)` raises `AttributeError: property 'head_dim' has no setter`. Don't add it to PASSTHROUGH.
+- **`head_dim`** is a read-only `@property` aliasing `d_head`. `setattr(cfg, "head_dim", val)` raises `AttributeError: property 'head_dim' has no setter`. Don't add it to PASSTHROUGH.
 - **`n_heads`** has `= -1` as its placeholder in the constructor signature, deliberately. Comment in the source: *"Add n_heads to signature so it's not filtered out by from_dict"*. Don't "fix" this default.
 
 ## Verifying a new field propagates

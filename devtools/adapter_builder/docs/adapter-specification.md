@@ -18,7 +18,7 @@ An Architecture Adapter is a Python class that extends `ArchitectureAdapter` (fr
 
 ## Registration Checklist
 
-After creating the adapter, register it in these files:
+After creating the adapter, register it in all four locations:
 
 1. **`transformer_lens/model_bridge/supported_architectures/__init__.py`**
    - Add import: `from transformer_lens.model_bridge.supported_architectures.<module> import <ClassName>`
@@ -27,6 +27,15 @@ After creating the adapter, register it in these files:
 2. **`transformer_lens/factories/architecture_adapter_factory.py`**
    - Add import (in the existing import block from `supported_architectures`)
    - Add entry to `SUPPORTED_ARCHITECTURES` dict: `"<HFArchitectureClass>": <AdapterClass>`
+
+3. **`transformer_lens/tools/model_registry/__init__.py`**
+   - Add the architecture name to `HF_SUPPORTED_ARCHITECTURES`
+   - Add the architecture's foundation-model organizations to `CANONICAL_AUTHORS_BY_ARCH`
+
+4. **`transformer_lens/tools/model_registry/generate_report.py`**
+   - Add a concise architecture description to `ARCHITECTURE_DESCRIPTIONS`
+
+`tests/unit/tools/test_model_registry.py::TestRegistrySyncedWithFactory` cross-checks site 3 against site 2; site 4 has no automated sync check, so verify it by eye.
 
 ## Config Attributes
 
@@ -254,13 +263,11 @@ Called after model loading but before bridge creation. Use for post-load fixups.
 
 ### Pattern 1: Llama-like (most modern models)
 
-RoPE + RMSNorm + GatedMLP + separate Q/K/V/O. Uses `GatedMLPBridge`. Used by: Llama, Mistral, Gemma, OLMo, Granite, StableLM.
-
-**Qwen2 variant:** Nearly identical to Llama but uses `MLPBridge` instead of `GatedMLPBridge` (while still setting `gated_mlp = True` and having gate/in/out submodules). Used by: Qwen2, Qwen3.
+RoPE + RMSNorm + GatedMLP + separate Q/K/V/O. Uses `GatedMLPBridge` (via the shared `_gated_mlp()` helper). Used by: Llama, Mistral, Qwen2, Qwen3, Gemma, OLMo, Granite, StableLM.
 
 ### Pattern 2: GPT2-like
 
-Standard positional embeddings + LayerNorm + standard MLP + combined QKV. Used by: GPT-2, GPT-J, GPT-Neo/NeoX.
+Learned positional embeddings + LayerNorm + standard MLP + combined QKV (`JointQKVAttentionBridge`). Used by: GPT-2. Its relatives each differ on at least one axis — GPT-Neo keeps learned positions but splits Q/K/V/O, GPT-NeoX keeps combined QKV but uses rotary, GPT-J uses rotary and separate Q/K/V/O — so start from the matching sibling (`neo.py`, `neox.py`, `gptj.py`) rather than `gpt2.py`.
 
 ### Pattern 3: MoE (Mixture of Experts)
 

@@ -24,7 +24,6 @@ from transformer_lens.benchmarks import run_benchmark_suite
 results = run_benchmark_suite(
     model_name="gpt2",
     device="cpu",
-    use_hf_reference=True,      # Compare against HuggingFace model
     use_hf_reference=True,      # Compare against the raw HuggingFace model
     enable_compatibility_mode=True,
     verbose=True
@@ -44,18 +43,20 @@ from transformer_lens.benchmarks import (
     benchmark_generation,
 )
 from transformer_lens.model_bridge import TransformerBridge
+from transformers import AutoModelForCausalLM
 
 # Load models
 bridge = TransformerBridge.boot_transformers("gpt2", device="cpu")
 bridge.enable_compatibility_mode()
+hf = AutoModelForCausalLM.from_pretrained("gpt2")  # raw HF reference
 
 # Run individual benchmarks
 test_text = "The quick brown fox"
 
-result1 = benchmark_forward_pass(bridge, test_text, reference_model=ht)
+result1 = benchmark_forward_pass(bridge, test_text, reference_model=hf)
 print(result1)  # 🟢 [PASS] forward_pass: ...
 
-result2 = benchmark_hook_functionality(bridge, test_text, reference_model=ht)
+result2 = benchmark_hook_functionality(bridge, test_text)  # reference-free ablation check
 print(result2)  # 🟢 [PASS] hook_functionality: ...
 
 result3 = benchmark_generation(bridge, test_text, max_new_tokens=10)
@@ -68,6 +69,7 @@ The benchmarks are designed to be used in pytest test suites. Here's how to inte
 
 ```python
 import pytest
+import torch
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.benchmarks import (
     benchmark_loss_equivalence,
@@ -75,48 +77,46 @@ from transformer_lens.benchmarks import (
     benchmark_hook_functionality,
 )
 
+TEST_TEXT = "Natural language processing"
+
 
 class TestTransformerBridgeCompatibility:
     @pytest.fixture
     def models(self):
-        """Create models for testing."""
-        from transformers import AutoModelForCausalLM
-
-        hf = AutoModelForCausalLM.from_pretrained("gpt2")
+        """Capture raw-weight references (== HF, per Phase 1), then enable compat mode."""
         bridge = TransformerBridge.boot_transformers("gpt2")
+        with torch.no_grad():
+            raw_logits = bridge(TEST_TEXT, return_type="logits")
+            raw_loss = bridge(TEST_TEXT, labels=bridge.to_tokens(TEST_TEXT), return_type="loss").item()
         bridge.enable_compatibility_mode()
-        return {"hf": hf, "bridge": bridge}
+        return {"bridge": bridge, "raw_loss": raw_loss, "raw_logits": raw_logits}
 
     def test_loss_equivalence(self, models):
-        """Test loss computation matches."""
-        test_text = "Natural language processing"
+        """Weight processing must preserve the loss."""
         result = benchmark_loss_equivalence(
             models["bridge"],
-            test_text,
-            reference_model=models["hf"],
+            TEST_TEXT,
+            reference_loss=models["raw_loss"],
             atol=1e-3
         )
         assert result.passed, result.message
 
     def test_logits_equivalence(self, models):
-        """Test logits match within tolerance."""
-        test_text = "Natural language processing"
+        """Weight processing must preserve the logits within tolerance."""
         result = benchmark_logits_equivalence(
             models["bridge"],
-            test_text,
-            reference_model=models["hf"],
+            TEST_TEXT,
+            reference_logits=models["raw_logits"],
             atol=3e-2,
             rtol=3e-2
         )
         assert result.passed, result.message
 
     def test_hooks(self, models):
-        """Test hook functionality."""
-        test_text = "Natural language processing"
+        """Reference-free ablation check of the hook system."""
         result = benchmark_hook_functionality(
             models["bridge"],
-            test_text,
-            reference_model=models["hf"],
+            TEST_TEXT,
             atol=2e-3
         )
         assert result.passed, result.message
@@ -156,9 +156,9 @@ Text generation benchmarks:
 ### `weight_processing.py`
 
 Weight processing benchmarks:
-- `benchmark_weight_processing()` - Verify folding and centering
-- `benchmark_weight_sharing()` - Test weight modification effects
-- `benchmark_weight_modification()` - Weight modification propagation
+- `benchmark_weight_modification()` - Weight modification propagation (the only one re-exported from `transformer_lens.benchmarks`)
+- `benchmark_layer_norm_folding()`, `benchmark_value_bias_folding()` - Verify folding
+- `benchmark_attention_output_centering()`, `benchmark_mlp_output_centering()`, `benchmark_unembed_centering()` - Verify centering
 
 ### `activation_cache.py`
 
@@ -217,11 +217,10 @@ python -m transformer_lens.benchmarks.main_benchmark \
     --device cuda \
     --no-compat  # Disable compatibility mode
 
-# Disable reference comparisons
+# Disable the HF reference comparison (structural-only; can only mint PROVISIONAL)
 python -m transformer_lens.benchmarks.main_benchmark \
     --model gpt2 \
     --no-hf-reference \
-    --no-ht-reference \
     --quiet  # Suppress verbose output
 ```
 
@@ -300,5 +299,5 @@ When adding new test patterns:
 
 ## See Also
 
-- [TransformerBridge Documentation](../model_bridge/README.md)
+- [TransformerBridge overview (AGENTS.md §2)](../../AGENTS.md#2-two-systems-live-in-this-repo)
 - [Test Suite](../../tests/)
