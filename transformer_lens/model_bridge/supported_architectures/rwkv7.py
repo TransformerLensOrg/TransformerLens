@@ -190,7 +190,14 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
         try:
             import fla.models.rwkv7.modeling_rwkv7  # noqa: F401
         except Exception:
-            if force_import_remote_class(model_name, "modeling_rwkv7.RWKV7ForCausalLM") is None:
+            if (
+                force_import_remote_class(
+                    model_name,
+                    "modeling_rwkv7.RWKV7ForCausalLM",
+                    revision=model_kwargs.get("revision"),
+                )
+                is None
+            ):
                 return
 
         # Patch every loaded RWKV-7 modeling module (each remote revision gets its

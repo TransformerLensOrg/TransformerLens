@@ -109,3 +109,42 @@ def test_prepare_loading_applies_both_v5_patches(planted_module, monkeypatch):
     # Idempotent: a second run must not double-wrap or crash.
     adapter.prepare_loading("fake/model", {})
     assert causal_cls._tied_weights_keys == planted_module._expected_tied_mapping
+
+
+@pytest.mark.parametrize(
+    "architecture",
+    [
+        "BD3LM",
+        "DreamModel",
+        "GiddForDiffusionLM",
+        "InternLM2ForCausalLM",
+        "LLaDA2MoeModelLM",
+        "OpenELMForCausalLM",
+        "OuroForCausalLM",
+        "RavenForCausalLM",
+        "RWKV7ForCausalLM",
+    ],
+)
+def test_prepare_loading_imports_the_requested_revision(architecture, monkeypatch):
+    """Each revision is its own module copy, imported by from_pretrained only after
+    prepare_loading ran; force-imports must use it so that copy is the one patched."""
+    import transformers.dynamic_module_utils as dmu
+
+    from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    revisions = []
+
+    def fake_import(class_ref, model_name, revision=None, **kwargs):
+        revisions.append(revision)
+        return type(class_ref.rsplit(".", 1)[-1], (), {"forward": lambda self: None})
+
+    monkeypatch.setitem(sys.modules, "fla", None)
+    monkeypatch.setattr(dmu, "get_class_from_dynamic_module", fake_import)
+
+    adapter = SUPPORTED_ARCHITECTURES[architecture](make_bridge_cfg(architecture))
+    adapter.prepare_loading("fake/model", {"revision": "abc123"})
+
+    assert revisions and set(revisions) == {"abc123"}
