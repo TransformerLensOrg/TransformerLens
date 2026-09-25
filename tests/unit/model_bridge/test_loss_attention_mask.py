@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 import torch
 import torch.nn.functional as F
-from transformers import GPT2Config, GPT2LMHeadModel
+from transformers import (
+    GPT2Config,
+    GPT2LMHeadModel,
+    LlamaConfig,
+    LlamaForCausalLM,
+    MptConfig,
+)
+from transformers.models.mpt.modeling_mpt import MptForCausalLM
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
@@ -204,58 +211,97 @@ def test_loss_fn_reduces_rectangular_cached_4d_attention_mask() -> None:
     assert loss.shape == (1, 1)
 
 
+@pytest.fixture(scope="module", params=["gpt2", "llama", "mpt"])
+def hf_bool_mask_bridge(request: pytest.FixtureRequest) -> tuple[TransformerBridge, bool]:
+    if request.param == "gpt2":
+        config = GPT2Config(
+            vocab_size=32,
+            n_positions=8,
+            n_embd=16,
+            n_layer=1,
+            n_head=2,
+            _attn_implementation="eager",
+        )
+        model_class = GPT2LMHeadModel
+        architecture = "GPT2LMHeadModel"
+        is_keep = True
+    elif request.param == "llama":
+        config = LlamaConfig(
+            vocab_size=32,
+            max_position_embeddings=8,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=2,
+            _attn_implementation="eager",
+        )
+        model_class = LlamaForCausalLM
+        architecture = "LlamaForCausalLM"
+        is_keep = True
+    else:
+        config = MptConfig(
+            vocab_size=32,
+            max_seq_len=8,
+            d_model=16,
+            expansion_ratio=2,
+            n_layers=1,
+            n_heads=2,
+            no_bias=True,
+            _attn_implementation="eager",
+        )
+        model_class = MptForCausalLM
+        architecture = "MPTForCausalLM"
+        is_keep = False
+
+    torch.manual_seed(1)
+    bridge = build_bridge_from_module(
+        model_class(config).eval(), architecture=architecture, hf_config=config
+    )
+    assert bridge.adapter.bool_4d_mask_is_keep is is_keep
+    return bridge, is_keep
+
+
+def _bool_4d_mask(token_mask: torch.Tensor, *, is_keep: bool) -> torch.Tensor:
+    pos = token_mask.shape[1]
+    blocked = ~token_mask.bool()[:, None, None, :] | torch.ones(pos, pos, dtype=torch.bool).triu(1)
+    return ~blocked if is_keep else blocked
+
+
 @pytest.mark.parametrize("padding", [False, True])
 @pytest.mark.parametrize("return_type", ["loss", "both"])
-def test_gpt2_bool_4d_keep_mask_loss_matches_2d(padding: bool, return_type: str) -> None:
-    config = GPT2Config(
-        vocab_size=32,
-        n_positions=8,
-        n_embd=16,
-        n_layer=1,
-        n_head=2,
-        _attn_implementation="eager",
-    )
-    torch.manual_seed(1)
-    model = GPT2LMHeadModel(config).eval()
-    bridge = build_bridge_from_module(model, architecture="GPT2LMHeadModel", hf_config=config)
+def test_hf_bool_4d_mask_loss_matches_2d(
+    hf_bool_mask_bridge: tuple[TransformerBridge, bool], padding: bool, return_type: str
+) -> None:
+    bridge, is_keep = hf_bool_mask_bridge
     tokens = torch.tensor([[1, 2, 3, 0, 0]] if padding else [[1, 2, 3, 4]])
     token_mask = torch.tensor([[1, 1, 1, 0, 0]] if padding else [[1, 1, 1, 1]])
-    pos = tokens.shape[1]
-    keep = token_mask.bool()[:, None, None, :] & torch.ones(pos, pos, dtype=torch.bool).tril()
+    mask_4d = _bool_4d_mask(token_mask, is_keep=is_keep)
 
     logits_2d, loss_2d = bridge(tokens, attention_mask=token_mask, return_type="both")
-    output = bridge(tokens, attention_mask=keep, return_type=return_type)
+    output = bridge(tokens, attention_mask=mask_4d, return_type=return_type)
     loss_4d = _extract_loss(output)
-    logits_4d = bridge(tokens, attention_mask=keep, return_type="logits")
+    logits_4d = bridge(tokens, attention_mask=mask_4d, return_type="logits")
 
-    torch.testing.assert_close(logits_4d[:, :3], logits_2d[:, :3], rtol=0, atol=0)
+    torch.testing.assert_close(logits_4d, logits_2d, rtol=0, atol=0)
     torch.testing.assert_close(loss_4d, loss_2d)
     torch.testing.assert_close(loss_4d, _manual_masked_loss(logits_4d, tokens, token_mask))
 
 
-def test_gpt2_bool_4d_keep_mask_respects_explicit_labels() -> None:
-    config = GPT2Config(
-        vocab_size=32,
-        n_positions=8,
-        n_embd=16,
-        n_layer=1,
-        n_head=2,
-        _attn_implementation="eager",
-    )
-    torch.manual_seed(1)
-    bridge = build_bridge_from_module(
-        GPT2LMHeadModel(config).eval(), architecture="GPT2LMHeadModel", hf_config=config
-    )
+def test_hf_bool_4d_mask_respects_explicit_labels(
+    hf_bool_mask_bridge: tuple[TransformerBridge, bool],
+) -> None:
+    bridge, is_keep = hf_bool_mask_bridge
     tokens = torch.tensor([[1, 2, 3, 0, 0]])
     labels = torch.tensor([[-100, 2, 3, -100, -100]])
     token_mask = torch.tensor([[1, 1, 1, 0, 0]])
-    keep = token_mask.bool()[:, None, None, :] & torch.ones(5, 5, dtype=torch.bool).tril()
+    mask_4d = _bool_4d_mask(token_mask, is_keep=is_keep)
 
     expected = bridge(
         tokens, labels=labels, attention_mask=token_mask, return_type="loss", loss_per_token=True
     )
     actual = bridge(
-        tokens, labels=labels, attention_mask=keep, return_type="loss", loss_per_token=True
+        tokens, labels=labels, attention_mask=mask_4d, return_type="loss", loss_per_token=True
     )
 
     torch.testing.assert_close(actual, expected)
