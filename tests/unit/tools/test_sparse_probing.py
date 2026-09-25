@@ -19,6 +19,7 @@ from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeResult,
     SparseProbeSweep,
     _binary_metrics,
+    _control_generator,
     _feature_scores,
     _fit_logistic,
     _selected_data,
@@ -706,9 +707,11 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
     )
 
     # Replay the sweep's RNG stream to recover the exact shuffled training labels and the
-    # support the single control fit used. Shuffling permutes only the training labels, so
-    # the fit must still be scored against the untouched held-out labels; rescoring the same
-    # fit against labels[test_indices] must reproduce the reported control metrics.
+    # support the single control fit used. The split still draws from a seed-only generator;
+    # the shuffle draw now comes from the per-(seed, k, arm, repeat) control generator.
+    # Shuffling permutes only the training labels, so the fit must still be scored against
+    # the untouched held-out labels; rescoring the same fit against labels[test_indices]
+    # must reproduce the reported control metrics.
     validated = _validate_inputs(
         features,
         labels,
@@ -728,7 +731,8 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         validated.canonical_labels, validated.test_fraction, generator
     )
     train_labels = validated.canonical_labels[train_indices]
-    permutation = torch.randperm(train_labels.numel(), generator=generator)
+    draw_generator = _control_generator(validated.seed, 2, "shuffle", 0)
+    permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
     shuffled_labels = train_labels[permutation]
     shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
     support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:2]
@@ -778,3 +782,40 @@ def test_sweep_rejects_invalid_grid_and_control_counts(ks, kwargs, message):
 
     with pytest.raises(ValueError, match=message):
         sweep_sparse_probe(features, labels, ks=ks, **kwargs)
+
+
+def test_control_draws_depend_only_on_seed_k_and_arm():
+    # A k=2 control must be a property of k=2 at a fixed seed: independent of which
+    # other k values were requested and of the other arm's repeat count. With one
+    # generator threaded through the whole loop, all three sweeps below returned
+    # different k=2 controls; per-draw seeding on (seed, k, arm, repeat) fixes it.
+    features, labels = _planted_data(n_examples=200, n_features=32, seed=0)
+
+    only_k2 = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=8, n_label_shuffles=8, seed=0
+    )
+    with_k1 = sweep_sparse_probe(
+        features, labels, ks=[1, 2], n_random_subsets=8, n_label_shuffles=8, seed=0
+    )
+    fewer_shuffles = sweep_sparse_probe(
+        features, labels, ks=[1, 2], n_random_subsets=8, n_label_shuffles=3, seed=0
+    )
+
+    # The k=2 control is identical whether or not k=1 was also swept — both arms.
+    for left, right in (
+        (only_k2.random_coordinate_controls[0], with_k1.random_coordinate_controls[1]),
+        (only_k2.label_shuffle_controls[0], with_k1.label_shuffle_controls[1]),
+    ):
+        assert torch.equal(left.supports, right.supports)
+        assert torch.equal(left.f1, right.f1)
+
+    # The random arm is unchanged by the other arm's repeat count (b vs c differ
+    # only in n_label_shuffles).
+    b_random = with_k1.random_coordinate_controls[1]
+    c_random = fewer_shuffles.random_coordinate_controls[1]
+    assert torch.equal(b_random.supports, c_random.supports)
+    assert torch.equal(b_random.f1, c_random.f1)
+
+    # Main-fit results never depend on the control configuration.
+    assert only_k2.results[0].metrics.f1 == with_k1.results[1].metrics.f1
+    assert with_k1.results[1].metrics.f1 == fewer_shuffles.results[1].metrics.f1
