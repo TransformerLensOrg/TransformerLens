@@ -63,8 +63,10 @@ content/ssm_interpretability
 content/projection_kernel
 content/jacobian_lens_fitting
 generated/demos/Jacobian_Lens_Decomposition_Demo
+generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo
 content/backward_lens
 content/debugging_numerical_divergence
+content/sparse_probing
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 content/special_cases

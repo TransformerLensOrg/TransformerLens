@@ -45,7 +45,7 @@ source .venv/bin/activate
 cp .env.example .env
 ```
 
-Dependency groups are defined in `pyproject.toml` under `[dependency-groups]`. The project sets `default-groups = ["dev", "docs", "jupyter", "multimodal"]`, so `uv sync` installs these groups out of the box — you do not need to pass `--group` flags for the standard contributor setup.
+Dependency groups are defined in `pyproject.toml` under `[dependency-groups]`. The project sets `default-groups = ["dev", "docs", "jupyter", "multimodal", "tokenizers"]`, so `uv sync` installs these groups out of the box — you do not need to pass `--group` flags for the standard contributor setup.
 
 - Standard contributor setup (recommended default): `uv sync`
 - Include the optional `quantization` group (bitsandbytes, optimum-quanto): `uv sync --all-groups`
@@ -298,12 +298,12 @@ The `TestRegistrySyncedWithFactory` class bidirectionally asserts that `SUPPORTE
 
 Two test layers:
 
-1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. ~26 of these exist; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
+1. **Unit adapter test** at `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`. One exists per supported architecture; copy the closest sibling. The pattern: a `_make_cfg()` factory, an `adapter` fixture, and one test per architecture-specific quirk. Unit adapter tests instantiate the adapter from a synthetic config and assert structural properties — they don't load weights and don't hit HF Hub.
 2. **Integration parity test** at `tests/integration/model_bridge/test_<arch>_adapter.py`. Loads a real cached HF model and asserts logit parity vs HuggingFace at fp32 + eager attention. The CI integration job runs `-m "not slow"`, so if the model isn't small and cached, mark the real-weights test `@pytest.mark.slow` and add a tiny `from_config` companion at `test_<arch>_tiny.py` (random CPU weights, no Hub download) to keep CI regression coverage — see [supported_architectures/AGENTS.md §Integration parity test](../../../transformer_lens/model_bridge/supported_architectures/AGENTS.md).
 
 ### Common adapter gotchas
 
-- **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`final_logit_softcapping`, `attn_logit_softcapping`, `query_pre_attn_scalar`, `sliding_window`, `layer_types`) onto `self.cfg` so weight processing and forward passes can see them.
+- **HF raw config attributes are invisible to TL-side consumers unless explicitly propagated to `self.cfg`.** Walk the HF `config.json` and mirror any non-standard knobs (`sliding_window`, `layer_types`, …) onto `self.cfg` so weight processing and forward passes can see them. Gemma's softcaps are already renamed by the bridge builder (`cfg.output_logits_soft_cap`, `cfg.attn_scores_soft_cap`), and `query_pre_attn_scalar` needs nothing — the wrapped HF attention applies it.
 - **Some config attrs need both surface-on-cfg AND fold-into-weight** via a `preprocess_weights()` override. The trigger: a numerical operation HF's forward applies natively must also be baked into the raw weights, or `bridge.enable_compatibility_mode()` (which calls `process_weights` on raw weights) produces wrong results. Concrete examples in-tree: Cohere `logit_scale` → `unembed.weight`; Gemma embedding scale (`√d_model`) → `embed.weight`. Skip the fold and Phase 3 / Phase 4 of `verify_models` will silently degrade.
 - **Tokenizer policy is per-model, not per-architecture.** Sibling models in the same family routinely differ — the chat-instruct variant may prepend BOS where the base does not, padding side can flip, EOS handling can differ. It's worth re-checking `default_prepend_bos`, padding side, and EOS handling against the specific target rather than copying them from a starter adapter. `tokenizer_config.json` is not always reliable on its own — some architectures (Cohere is a notable example) declare `add_bos_token=False` but HF's `__call__` prepends BOS anyway. The most reliable check is to invoke the tokenizer directly:
 
@@ -315,7 +315,7 @@ Two test layers:
   ```
 
   If `t("hello").input_ids[0] == t.bos_token_id`, set `cfg.default_prepend_bos = True`; otherwise leave the flag unset.
-- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) are registered elsewhere — in `transformer_lens/model_bridge/bridge_core.py` via `build_alias_to_canonical_map()`. Adapters declare canonical names only.
+- **Hook names inside adapters are Bridge-native** (e.g., `blocks.{i}.hook_out`). HookedTransformer-style aliases (e.g., `blocks.{i}.hook_resid_post`) come from the `hook_aliases` dicts on the generalized components (`BlockBridge`, `AttentionBridge`, `MLPBridge`) and on `BridgeCore` for top-level names, applied at boot by `_register_aliases()`; `build_alias_to_canonical_map()` in `bridge_core.py` only reads the result. Adapters declare canonical names only.
 - **`ComponentMapping` types do not need `# type: ignore`.** If the type system disagrees, prefer `isinstance` narrowing or `typing.cast`; the project as a whole avoids `# type: ignore`.
 
 ### Verifying a new model
@@ -342,7 +342,8 @@ It's worth reading the per-phase scores in addition to the final status — the 
 | 3 | 75% | `logits_equivalence`, `loss_equivalence` | Verification fails |
 | 4 | 54.5% (measured pass line, `p4_pass_threshold()`) | — | **Non-gating** — below the line adds a `"text quality poor (P4=…)"` note; never fails verification. |
 | 7 | 75% | `multimodal_forward` | Verification fails. A NULL score also fails. |
-| 8 | 75% | `audio_forward` | Verification fails. A NULL score also fails. |
+| 8 | 75% | `audio_forward`, `audio_text_forward` | Verification fails. A NULL score also fails. |
+| 9 | 75% | `vision_forward`, `vision_cache` | Verification fails. A NULL score also fails. |
 
 Phase 4 prompts each model with its resolved prompt profile (chat template, translation, code, own-language continuation, ...) and scores the generation against a known-good reference with one pinned multilingual judge, via the perplexity ratio `PPL(generated)/PPL(reference)`. It's intentionally lenient — a coherence metric, not a correctness check. A sub-100% Phase-4 score on a small parity-test model can still indicate a real adapter bug that the gates don't catch (missing `preprocess_weights` fold, wrong `default_prepend_bos`, and so on); the model can pass verification overall and still be worth a manual look.
 

@@ -516,11 +516,11 @@ class AttentionBridge(GeneralizedComponent):
                 stability, then cast to target_dtype.
         """
         if upcast_to_fp32:
-            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32)
+            attn_weights = self._masked_softmax(attn_scores, dtype=torch.float32)
             if target_dtype is not None:
                 attn_weights = attn_weights.to(target_dtype)
         else:
-            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1)
+            attn_weights = self._masked_softmax(attn_scores)
             if target_dtype is not None:
                 attn_weights = attn_weights.to(target_dtype)
         attn_weights = self._scrub_compatibility_pattern_nans(attn_weights)
@@ -528,8 +528,26 @@ class AttentionBridge(GeneralizedComponent):
         attn_weights = self.hook_pattern(attn_weights)
         return attn_weights
 
+    def _masked_softmax(
+        self, attn_scores: torch.Tensor, dtype: torch.dtype | None = None
+    ) -> torch.Tensor:
+        """Softmax over keys that zeroes fully masked rows in compatibility mode.
+
+        Compatibility mode masks with -inf, so a query with no visible key (e.g.
+        the leading pads of a left-padded row) softmaxes to NaN. Zeroing that NaN
+        afterwards only fixes the forward: softmax's backward still multiplies by
+        the NaN output and leaks it into Q/K and the residual stream.
+        """
+        if not self.compatibility_mode:
+            return torch.nn.functional.softmax(attn_scores, dim=-1, dtype=dtype)
+        fully_masked = torch.isneginf(attn_scores).all(dim=-1, keepdim=True)
+        pattern = torch.nn.functional.softmax(
+            attn_scores.masked_fill(fully_masked, 0.0), dim=-1, dtype=dtype
+        )
+        return pattern.masked_fill(fully_masked, 0.0)
+
     def _scrub_compatibility_pattern_nans(self, pattern: torch.Tensor) -> torch.Tensor:
-        """Match HookedTransformer for fully masked attention rows."""
+        """Match HookedTransformer's NaN scrub of the attention pattern."""
         if self.compatibility_mode:
             pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         return pattern

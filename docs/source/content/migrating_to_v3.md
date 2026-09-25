@@ -100,9 +100,9 @@ If you want no processing at all — the bridge's native default — you can ski
 
 Bottom-half analyses → call `enable_compatibility_mode()` after booting.
 
-## Dependency changes in 3.0
+## Dependency changes in 3.x
 
-TransformerLens 3.0 raises its minimum supported `transformers` to **5.4.0** (previously 4.56). This is enforced automatically, fresh installs and `pip install -U transformer_lens` will pull in a compatible release with no action on your part.
+TransformerLens 3.0 shipped with `transformers>=4.56`; the 3.3.0 release raised the floor to 5.4.0, and later 3.x releases moved it again — check `pyproject.toml` for the current floor rather than a number here. This is enforced automatically: fresh installs and `pip install -U transformer_lens` pull in a compatible release with no action on your part.
 
 If your code calls `transformers` directly alongside TransformerLens (e.g. manual `AutoModel.from_pretrained` calls in notebooks, or a downstream library that imports both), the v4 → v5 jump may surface breaking changes outside TransformerLens's surface area. See HuggingFace's Transformers v5 release notes for what changed there.
 
@@ -127,10 +127,10 @@ For the full mapping of legacy → canonical names and the expected tensor shape
 
 ### Hook semantic notes
 
-Two semantic differences inside `enable_compatibility_mode()` worth knowing if you are porting activation-patching, DLA, or attribution-patching code:
+Two flag-gated hooks worth knowing if you are porting activation-patching, DLA, or attribution-patching code (they behave the same with or without `enable_compatibility_mode()`):
 
 - **`blocks.{i}.hook_mlp_in` fires pre-ln2** (matching legacy `HookedTransformer`). Enable it with `bridge.set_use_hook_mlp_in(True)` or `bridge.cfg.use_hook_mlp_in = True`; direct config assignment routes through the same validation and propagation path as the setter. The pre-ln2 placement means cached values from one run can be patched into another and re-flow through `ln2 → mlp` consistently across the bridge and `HookedTransformer`.
-- **`hook_q_input` / `hook_k_input` / `hook_v_input` / `hook_attn_in`** also fire pre-ln1 in compat mode. On the per-head LN application that follows, the bridge routes through the raw HF norm rather than the `NormalizationBridge` wrapper, so `ln1`'s sub-hooks (`hook_in`, `hook_normalized`, `hook_scale`) do **not** fire once per head the way legacy `LayerNormPre` would. Q/K/V projections downstream still match legacy numerically; only the intermediate LN sub-hook firing is suppressed.
+- **`hook_q_input` / `hook_k_input` / `hook_v_input` / `hook_attn_in`** also fire pre-ln1 once `use_split_qkv_input` / `use_attn_in` is set (`bridge.set_use_split_qkv_input(True)` / `bridge.set_use_attn_in(True)`), in either mode. On the per-head LN application that follows, the bridge routes through the raw HF norm rather than the `NormalizationBridge` wrapper, so `ln1`'s sub-hooks (`hook_in`, `hook_normalized`, `hook_scale`) do **not** fire once per head the way legacy `LayerNormPre` would. Q/K/V projections downstream still match legacy numerically; only the intermediate LN sub-hook firing is suppressed.
 
 Post-norm architectures (OLMo 2, BERT-style encoders) and MLA blocks (DeepSeek V2/V3/R1) do not participate in the pre-ln1 capture — `MLABlockBridge` does not expose those aliases, and post-norm models would read the post-attention residual instead of the block input.
 

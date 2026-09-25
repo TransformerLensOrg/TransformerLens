@@ -10,15 +10,17 @@ import torch
 
 from tests.integration.model_bridge.helpers import make_tiny_pair
 from transformer_lens.model_bridge.generalized_components import MoEBridge
-from transformer_lens.model_bridge.supported_architectures.dream import (
-    _register_default_rope_init,
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    restore_default_rope_init,
 )
 
 MODEL_ID = "inclusionAI/LLaDA2.0-mini"
 
 
 def _tiny_llada2_pair():
-    _register_default_rope_init()
+    restore_default_rope_init(
+        MODEL_ID, "modeling_llada2_moe.LLaDA2MoeModelLM", "LLaDA2MoeRotaryEmbedding"
+    )
     from transformers import AutoConfig, AutoModelForCausalLM
 
     cfg = AutoConfig.from_pretrained(MODEL_ID, trust_remote_code=True)

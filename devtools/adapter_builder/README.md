@@ -162,8 +162,8 @@ Local defaults live in `.env`; see [`.env.example`](.env.example) for a template
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `DEFAULT_TARGET_REPO` | containing repo | Optional override; defaults to the repo holding this checkout |
-| `DEFAULT_BASE_BRANCH` | `dev-4.x` | Base branch for worktrees |
-| `DEFAULT_MAX_MEMORY_GB` | `96` | Memory limit in GB for verify_models |
+| `DEFAULT_BASE_BRANCH` | `dev` (`.env.example`; script fallback if unset: `dev-4.x`, which is stale) | Base branch for worktrees |
+| `DEFAULT_MAX_MEMORY_GB` | `48` (`.env.example`; script fallback `96`) | Memory limit in GB for verify_models |
 | `WORKTREE_BASE` | `<parent-of-TransformerLens>/worktrees` | Where agent pair worktrees are created |
 | `NOTIFICATION_WEBHOOK_URL` | — | Slack/Discord webhook URL for notifications |
 | `NOTIFICATION_NUMBER` | — | Phone number for iMessage fallback (macOS only) |

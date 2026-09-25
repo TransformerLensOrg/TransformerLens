@@ -177,14 +177,14 @@ cover:
   `dt_proj`, `out_proj` for Mamba-1; `in_proj`, `conv1d`, `inner_norm`, `out_proj` for
   Mamba-2)
 * Stateful generation with cache-aware decode steps
-* The `compute_effective_attention` utility (in
-  `transformer_lens.model_bridge.supported_architectures.mamba2`) that materializes
-  Mamba-2's SSD-derived attention matrix for comparison with transformer attention
-  patterns
+* `ActivationCache.compute_ssm_effective_attention(layer=...)`, which materializes the
+  SSD-derived attention matrix of a Mamba-2 (or any other SSM / hybrid) layer for
+  comparison with transformer attention patterns; the older
+  `mamba2.compute_effective_attention` remains only as a deprecated alias
 
 Verification lives in the integration tests at
 `tests/integration/model_bridge/test_mamba_adapter.py` and
-`tests/integration/model_bridge/test_mamba2_adapter.py` (81 tests total), and the
+`tests/integration/model_bridge/test_mamba2_adapter.py`, and the
 `verify_models` benchmark suite now covers the SSM and hybrid families. Mamba-1,
 Mamba-2, gated-delta-net (Qwen3.5 / Qwen3-Next), NemotronH, and GraniteMoeHybrid
 all declare `applicable_phases = [1, 2, 3, 4]`, so their forward parity (P1, vs raw
