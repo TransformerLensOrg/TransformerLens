@@ -523,7 +523,7 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 query_states.dtype
             )[..., :-1]
         else:
-            attn_weights = torch.nn.functional.softmax(attn_scores, dim=-1, dtype=torch.float32).to(
+            attn_weights = self._masked_softmax(attn_scores, dtype=torch.float32).to(
                 query_states.dtype
             )
         attn_weights = self._scrub_compatibility_pattern_nans(attn_weights)
