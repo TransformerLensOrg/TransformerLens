@@ -2563,6 +2563,31 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         return NoRepeatNGramLogitsProcessor(size)
 
+    def _encoder_decoder_seed(
+        self, input_tokens: torch.Tensor, forced_bos_token_id: Optional[int]
+    ) -> torch.Tensor:
+        """Share the decoder prefix between ordinary and streaming generation."""
+        config = self.original_model.config
+        start = getattr(config, "decoder_start_token_id", None)
+        if start is None:
+            start = getattr(config, "bos_token_id", None)
+            if start is None:
+                start = getattr(config, "eos_token_id", None)
+            if isinstance(start, (list, tuple)):
+                start = start[0]
+            if start is None:
+                start = 0
+        seed = torch.full(
+            (input_tokens.shape[0], 1),
+            start,
+            dtype=input_tokens.dtype,
+            device=input_tokens.device,
+        )
+        if forced_bos_token_id is not None:
+            forced = torch.full_like(seed, forced_bos_token_id)
+            seed = torch.cat([seed, forced], dim=1)
+        return seed
+
     def _generate_tokens(
         self,
         current_tokens: torch.Tensor,
@@ -3406,34 +3431,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # For encoder-decoder models, keep encoder input fixed and grow decoder input
         if is_encoder_decoder:
             encoder_input = input_tokens.clone()
-            decoder_start_token_id = getattr(
-                self.original_model.config, "decoder_start_token_id", None
-            )
-            if decoder_start_token_id is None:
-                # HF's fallback chain: bos, then eos (MBart-family checkpoints
-                # like IndicBART leave decoder_start unset and start from EOS).
-                fallback = getattr(self.original_model.config, "bos_token_id", None)
-                if fallback is None:
-                    fallback = getattr(self.original_model.config, "eos_token_id", None)
-                if isinstance(fallback, (list, tuple)):
-                    fallback = fallback[0]
-                decoder_start_token_id = fallback if fallback is not None else 0
-            decoder_tokens = torch.full(
-                (batch_size, 1),
-                decoder_start_token_id,
-                dtype=input_tokens.dtype,
-                device=self.cfg.device,
-            )
-            if forced_bos_token_id is not None:
-                # Multilingual seq2seq (M2M100/MBart/NLLB) selects the target
-                # language via the first decoder token after decoder_start.
-                forced = torch.full(
-                    (batch_size, 1),
-                    forced_bos_token_id,
-                    dtype=input_tokens.dtype,
-                    device=self.cfg.device,
-                )
-                decoder_tokens = torch.cat([decoder_tokens, forced], dim=1)
+            decoder_tokens = self._encoder_decoder_seed(input_tokens, forced_bos_token_id)
 
         try:
             for sampled_tokens, final_logits, all_finished in self._generate_tokens(
@@ -3684,7 +3682,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             a bare string for a single sequence and one string per batch row for a
             larger batch, matching generate(). Chunks accumulate up to
             max_tokens_per_yield tokens between yields; the first yield includes the
-            input tokens and subsequent yields contain only new tokens.
+            input tokens and subsequent yields contain only new tokens. For encoder-decoder
+            models, the first yield includes the decoder start token (and configured
+            forced BOS token), not the encoder input. Encoder-decoder streaming uses
+            the uncached loop, as generate() does; custom stopping criteria are unsupported.
         """
         self._ensure_generation_supported("generate_stream")
         # --- Input parsing (mirrors generate()) ---
@@ -3694,12 +3695,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         _encdec_early = hasattr(self.original_model, "config") and getattr(
             self.original_model.config, "is_encoder_decoder", False
         )
+        encoder_attention_mask = None
+        if _encdec_early:
+            use_past_kv_cache = False
         if isinstance(input, str):
             if _encdec_early:
                 # Native recipe: to_tokens' BOS policy corrupts encoder inputs.
-                input_tokens = self.tokenizer(input, return_tensors="pt")["input_ids"].to(
-                    self.cfg.device
-                )
+                encoded = self.tokenizer(input, return_tensors="pt")
+                input_tokens = encoded["input_ids"].to(self.cfg.device)
+                encoder_attention_mask = encoded.get("attention_mask")
             else:
                 input_tokens = self.to_tokens(
                     input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
@@ -3707,9 +3711,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             input_type = "str"
         elif isinstance(input, list):
             if _encdec_early:
-                input_tokens = self.tokenizer(input, return_tensors="pt", padding=True)[
-                    "input_ids"
-                ].to(self.cfg.device)
+                encoded = self.tokenizer(input, return_tensors="pt", padding=True)
+                input_tokens = encoded["input_ids"].to(self.cfg.device)
+                encoder_attention_mask = encoded.get("attention_mask")
             elif _is_batched_list:
                 _orig_ps = self.tokenizer.padding_side
                 self.tokenizer.padding_side = "left"
@@ -3764,9 +3768,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
-        # stop_strings / stopping_criteria: build the combined criteria list (validates
-        # tokenizer for stop_strings). generate_stream only runs the decoder-only text
-        # path, so no path guards are needed here.
+        if _encdec_early and (stop_strings is not None or stopping_criteria is not None):
+            raise NotImplementedError(
+                "stop_strings/stopping_criteria are not supported for encoder-decoder "
+                "generation in TransformerBridge.generate_stream(). Call hf_generate(...) "
+                "for HF-native stopping on those inputs."
+            )
         stopping_criteria_list = self._resolve_stopping_criteria(stop_strings, stopping_criteria)
         if stopping_criteria_list is not None and not stop_at_eos:
             _pad_id = None
@@ -3791,6 +3798,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             self._capture_hf_cache = True
 
         current_tokens = input_tokens.clone()
+        encoder_input = input_tokens if _encdec_early else None
+        decoder_tokens = None
+        stream_prefix = input_tokens
+        if _encdec_early:
+            forced_bos = getattr(
+                getattr(self.original_model, "generation_config", None), "forced_bos_token_id", None
+            )
+            decoder_tokens = self._encoder_decoder_seed(input_tokens, forced_bos)
+            stream_prefix = decoder_tokens
 
         # --- Streaming loop ---
         # All yields are token tensors [batch, seq_len]. Each yield contains
@@ -3857,22 +3873,33 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     use_stateful_cache=False,
                     mamba_cache=None,
                     mamba_conv_kernel=0,
-                    is_encoder_decoder=False,
+                    is_encoder_decoder=_encdec_early,
                     _is_batched_list=_is_batched_list,
                     _generate_from_embeds=False,
-                    encoder_input=None,
-                    decoder_tokens=None,
+                    encoder_input=encoder_input,
+                    decoder_tokens=decoder_tokens,
                     generated_token_ids=None,
                     pixel_values=None,
                     multimodal_kwargs={},
                     verbose=verbose,
                     stopping_criteria_list=stopping_criteria_list,
+                    min_decoder_length=(
+                        getattr(
+                            getattr(self.original_model, "generation_config", None),
+                            "min_length",
+                            None,
+                        )
+                        if _encdec_early
+                        else None
+                    ),
+                    ngram_processor=(self._encdec_ngram_processor() if _encdec_early else None),
+                    encoder_attention_mask=encoder_attention_mask,
                 )
             ):
                 new_tokens = sampled_tokens.unsqueeze(-1)
 
                 if step_idx == 0:
-                    accumulated_tokens = torch.cat([input_tokens, new_tokens], dim=-1)
+                    accumulated_tokens = torch.cat([stream_prefix, new_tokens], dim=-1)
                     tokens_since_last_yield = accumulated_tokens.shape[1]
                 else:
                     if accumulated_tokens is None:
