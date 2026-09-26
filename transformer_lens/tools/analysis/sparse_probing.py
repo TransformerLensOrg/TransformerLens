@@ -84,7 +84,14 @@ class SparseProbeResult:
 
 @dataclass(frozen=True)
 class SparseProbeControl:
-    """Raw held-out metric distributions for one control at one sparsity."""
+    """Raw held-out metric distributions for one control at one sparsity.
+
+    Rows are the control repeats that converged; a repeat whose fit was rejected
+    is excluded here (its coordinates and reason live in ``SparseProbeSweep.rejections``),
+    so the row count can be below the requested repeat count. These are raw metrics
+    only and carry no per-fit convergence diagnostics (``newton_decrement`` etc.) —
+    those live on ``SparseProbeResult`` for the main fits.
+    """
 
     supports: Int[torch.Tensor, "repeat selected_feature"]
     accuracy: Float[torch.Tensor, "repeat"]
@@ -94,14 +101,37 @@ class SparseProbeControl:
 
 
 @dataclass(frozen=True)
+class SparseProbeRejection:
+    """A control fit excluded from the sweep because it did not converge.
+
+    The sweep records rejected control fits here instead of aborting, so completed
+    main probes and other controls survive. ``arm`` is ``"random_coordinate"`` or
+    ``"label_shuffle"``, ``support`` is the coordinate set the rejected fit used, and
+    ``reason`` is the convergence-failure message. Main-probe fits are not made
+    partial this way — they still raise (see ``sweep_sparse_probe``).
+    """
+
+    arm: str
+    k: int
+    repeat: int
+    support: Int[torch.Tensor, "selected_feature"]
+    reason: str
+
+
+@dataclass(frozen=True)
 class SparseProbeSweep:
-    """Probe results and aligned controls over a strictly increasing k-grid."""
+    """Probe results and aligned controls over a strictly increasing k-grid.
+
+    ``rejections`` lists control fits that did not converge and were excluded; it is
+    empty when every requested control fit converged.
+    """
 
     ks: tuple[int, ...]
     results: tuple[SparseProbeResult, ...]
     random_coordinate_controls: tuple[SparseProbeControl, ...]
     label_shuffle_controls: tuple[SparseProbeControl, ...]
     seed: int
+    rejections: tuple[SparseProbeRejection, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -788,11 +818,15 @@ def sweep_sparse_probe(
             an estimate of the objective gap to the optimum in nats; a larger gap raises.
 
     Returns:
-        Main probe results plus aligned raw control distributions.
+        Main probe results plus aligned raw control distributions. A control fit
+        that fails to converge is excluded and recorded in ``rejections`` rather
+        than aborting the sweep, so completed fits survive; each control's rows
+        cover only its converged repeats.
 
     Raises:
         ValueError: If the grid, controls, inputs, or options are invalid.
-        RuntimeError: If any main or control fit fails to converge.
+        RuntimeError: If a main-probe fit fails to converge. Control-fit failures
+            do not raise here — they are collected in ``SparseProbeSweep.rejections``.
     """
     if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence):
         raise ValueError("ks must be a non-empty sequence of positive integers")
@@ -840,41 +874,47 @@ def sweep_sparse_probe(
 
     random_controls = []
     shuffle_controls = []
+    rejections: list[SparseProbeRejection] = []
     feature_count = validated.features.shape[1]
     for k in k_values:
         random_supports = []
         random_metrics = []
-        for _ in range(random_count):
+        for repeat in range(random_count):
             support = torch.randperm(feature_count, generator=generator)[:k].sort().values
-            random_supports.append(support)
-            random_metrics.append(
-                _fit_control(
-                    validated,
-                    train_indices,
-                    test_indices,
-                    support,
-                    train_labels,
+            # A control fit that fails to converge is recorded and skipped, not fatal:
+            # losing one auxiliary draw must not discard the completed main probes and
+            # other controls. Main fits above are the primary output and still raise.
+            try:
+                metrics = _fit_control(
+                    validated, train_indices, test_indices, support, train_labels
                 )
-            )
+            except RuntimeError as error:
+                rejections.append(
+                    SparseProbeRejection("random_coordinate", k, repeat, support, str(error))
+                )
+                continue
+            random_supports.append(support)
+            random_metrics.append(metrics)
         random_controls.append(_control_result(random_supports, random_metrics, k))
 
         shuffle_supports = []
         shuffle_metrics = []
-        for _ in range(shuffle_count):
+        for repeat in range(shuffle_count):
             permutation = torch.randperm(train_labels.numel(), generator=generator)
             shuffled_labels = train_labels[permutation]
             shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
             support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:k]
-            shuffle_supports.append(support)
-            shuffle_metrics.append(
-                _fit_control(
-                    validated,
-                    train_indices,
-                    test_indices,
-                    support,
-                    shuffled_labels,
+            try:
+                metrics = _fit_control(
+                    validated, train_indices, test_indices, support, shuffled_labels
                 )
-            )
+            except RuntimeError as error:
+                rejections.append(
+                    SparseProbeRejection("label_shuffle", k, repeat, support, str(error))
+                )
+                continue
+            shuffle_supports.append(support)
+            shuffle_metrics.append(metrics)
         shuffle_controls.append(_control_result(shuffle_supports, shuffle_metrics, k))
 
     return SparseProbeSweep(
@@ -883,4 +923,5 @@ def sweep_sparse_probe(
         random_coordinate_controls=tuple(random_controls),
         label_shuffle_controls=tuple(shuffle_controls),
         seed=validated.seed,
+        rejections=tuple(rejections),
     )

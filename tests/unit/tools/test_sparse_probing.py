@@ -778,3 +778,51 @@ def test_sweep_rejects_invalid_grid_and_control_counts(ks, kwargs, message):
 
     with pytest.raises(ValueError, match=message):
         sweep_sparse_probe(features, labels, ks=ks, **kwargs)
+
+
+def test_sweep_records_rejected_controls_and_keeps_completed_fits():
+    # max_refinement_steps=0 with a strict tolerance makes some control fits miss the
+    # acceptance threshold. Before the partial-result path a rejection raised and discarded
+    # the whole sweep — including the completed main probes, which are the expensive part.
+    features = torch.randn(200, 32, generator=torch.Generator().manual_seed(0))
+    labels = (torch.rand(200, generator=torch.Generator().manual_seed(1)) < 0.5).long()
+    features[:, 3] += labels.float() * 1.5
+    strict = dict(seed=0, max_refinement_steps=0, decrement_tolerance=1e-14)
+
+    sweep = sweep_sparse_probe(
+        features, labels, ks=[1, 2, 4], n_random_subsets=10, n_label_shuffles=10, **strict
+    )
+
+    # Main probes for every k survive.
+    assert tuple(result.k for result in sweep.results) == (1, 2, 4)
+
+    # At least one control was rejected and recorded with an actionable reason.
+    assert len(sweep.rejections) > 0
+    for rejection in sweep.rejections:
+        assert rejection.arm in ("random_coordinate", "label_shuffle")
+        assert rejection.k in (1, 2, 4)
+        assert "did not converge" in rejection.reason
+        assert rejection.support.numel() == rejection.k
+
+    # Each control distribution keeps exactly the repeats that converged: the requested
+    # count minus the rejections recorded for that arm and k.
+    for arm, controls in (
+        ("random_coordinate", sweep.random_coordinate_controls),
+        ("label_shuffle", sweep.label_shuffle_controls),
+    ):
+        for k, control in zip(sweep.ks, controls, strict=True):
+            rejected = sum(1 for r in sweep.rejections if r.arm == arm and r.k == k)
+            assert control.supports.shape[0] == 10 - rejected
+            assert control.f1.numel() == 10 - rejected
+
+
+def test_sweep_has_no_rejections_when_every_control_converges():
+    features, labels = _planted_data(n_examples=160, n_features=12)
+
+    sweep = sweep_sparse_probe(
+        features, labels, ks=[1, 2], n_random_subsets=4, n_label_shuffles=4, seed=5
+    )
+
+    assert sweep.rejections == ()
+    for control in (*sweep.random_coordinate_controls, *sweep.label_shuffle_controls):
+        assert control.supports.shape[0] == 4

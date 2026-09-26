@@ -100,6 +100,7 @@ from transformer_lens.tools.analysis.projection_kernel import (
 from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeControl,
     SparseProbeMetrics,
+    SparseProbeRejection,
     SparseProbeResult,
     SparseProbeSweep,
     fit_sparse_probe,
@@ -153,6 +154,7 @@ __all__ = [
     "RankReportRow",
     "SparseProbeControl",
     "SparseProbeMetrics",
+    "SparseProbeRejection",
     "SparseProbeResult",
     "SparseProbeSweep",
     "SubspaceBasis",
