@@ -132,6 +132,14 @@ the untouched held-out labels. The API returns raw control supports and metric d
 does not convert them into p-values or representation labels. A repeat count of zero disables that
 control.
 
+Unlike the main results, control distributions carry only raw metrics — no per-fit convergence
+diagnostics. A control fit that fails to converge is not fatal to the sweep: it is excluded from
+its control distribution and recorded in `sweep.rejections` (a `SparseProbeRejection` naming the
+arm, `k`, repeat, support, and reason), so the completed main probes and other controls survive.
+Each control's rows therefore cover only the repeats that converged. Main-probe fits are not made
+partial this way — a main fit that misses the acceptance threshold still raises, as does
+`fit_sparse_probe`.
+
 Controls can be expensive: the sweep performs one main fit plus both requested control counts for
 every k. Start with small grids and repeat counts.
 
