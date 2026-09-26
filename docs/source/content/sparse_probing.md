@@ -59,8 +59,11 @@ $$
 
 The selected support contains the $k$ largest $|s_j|$. Equal scores are resolved by increasing
 feature index. `preprocess="none"` fits the selected raw coordinates. With
-`preprocess="standardize"`, selected columns are centered and scaled using training statistics;
-zero-variance columns receive scale one. The same transform is then applied to held-out values.
+`preprocess="standardize"`, selected columns are centered and scaled using training statistics.
+Each column's scale is its training standard deviation raised to at least `std_floor` (default
+`1e-3`), so a near-constant column is not amplified to unit scale; zero-variance columns receive
+scale one, and `std_floor=0` disables the floor. The same transform is then applied to held-out
+values.
 
 Because L2 regularization is scale-sensitive, preprocessing can change the fitted probe and
 the resulting k-curve. A sweep therefore fixes preprocessing and L2 strength across every k.
@@ -84,8 +87,9 @@ Accuracy, precision, recall, F1, and all four confusion counts are returned; pre
 zero when its denominator is zero. F1 is the primary sparse-probing metric.
 
 Feature-score reductions use float64 for float64 inputs and float32 otherwise. Selected matrices
-move to CPU float64, where LBFGS (at most `max_iter` iterations, with a fixed internal gradient
-stop) is followed by up to `max_refinement_steps` damped Newton steps on the `(k+1)`-square
+move to CPU float64, where LBFGS (at most `max_iter` iterations and `max_iter * 5 // 4` function
+evaluations, with a fixed internal gradient stop) is followed by up to `max_refinement_steps`
+damped Newton steps on the `(k+1)`-square
 Hessian of the objective. A fit is accepted only when the Newton decrement $\tfrac{1}{2}
 g^\top H^{-1} g$, an estimate of the objective gap to the optimum in nats, is at most
 `decrement_tolerance` (default `1e-12`, which must lie in `(0, 1)`); the decrement is checked
@@ -163,4 +167,6 @@ with [reference code](https://github.com/wesg52/sparse-probing-paper).
 
 TransformerLens intentionally adds stratification, stable tie-breaking, explicit objective and
 convergence diagnostics, and deterministic controls. Its optional centered standardization and
-Torch LBFGS solver are not exact reproductions of the reference implementation.
+Torch LBFGS solver are not exact reproductions of the reference implementation. The default
+`std_floor=1e-3` matches the reference's standard-deviation floor, except that zero-variance
+columns keep scale one.

@@ -65,6 +65,7 @@ class SparseProbeResult:
     test_positive_count: int
     test_negative_count: int
     preprocess: PreprocessMode
+    std_floor: float
     class_weight: ClassWeightMode
     l2_strength: float
     test_fraction: float
@@ -113,6 +114,7 @@ class _ValidatedInputs:
     k: int
     test_fraction: float
     preprocess: PreprocessMode
+    std_floor: float
     class_weight: ClassWeightMode
     l2_strength: float
     seed: int
@@ -157,6 +159,7 @@ def _validate_inputs(
     test_fraction: int | float,
     positive_label: int | bool,
     preprocess: str,
+    std_floor: int | float,
     class_weight: str | None,
     l2_strength: int | float,
     seed: int,
@@ -217,6 +220,12 @@ def _validate_inputs(
         raise ValueError(f"test_fraction must be a finite real in (0, 1), got {test_fraction!r}")
     if preprocess not in ("none", "standardize"):
         raise ValueError(f"preprocess must be 'none' or 'standardize', got {preprocess!r}")
+    if isinstance(std_floor, bool) or not isinstance(std_floor, (int, float)):
+        raise ValueError(f"std_floor must be a finite nonnegative real, got {std_floor!r}")
+    validated_std_floor = float(std_floor)
+    if not math.isfinite(validated_std_floor) or validated_std_floor < 0:
+        raise ValueError(f"std_floor must be a finite nonnegative real, got {std_floor!r}")
+
     validated_preprocess = cast(PreprocessMode, preprocess)
     if class_weight not in ("balanced", None):
         raise ValueError(f"class_weight must be 'balanced' or None, got {class_weight!r}")
@@ -239,6 +248,7 @@ def _validate_inputs(
         k=validated_k,
         test_fraction=validated_fraction,
         preprocess=validated_preprocess,
+        std_floor=validated_std_floor,
         class_weight=validated_class_weight,
         l2_strength=validated_l2,
         seed=seed,
@@ -284,6 +294,7 @@ def _selected_data(
     train_indices: torch.Tensor,
     test_indices: torch.Tensor,
     preprocess: PreprocessMode,
+    std_floor: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     selected_device = selected_features.to(device=features.device)
     train_device = train_indices.to(device=features.device)
@@ -304,7 +315,7 @@ def _selected_data(
     constant = raw_scale == 0
     if preprocess == "standardize":
         mean = train.mean(dim=0)
-        scale = torch.where(constant, torch.ones_like(raw_scale), raw_scale)
+        scale = torch.where(constant, torch.ones_like(raw_scale), raw_scale.clamp(min=std_floor))
         return (train - mean) / scale, (test - mean) / scale, mean, scale, constant
     mean = torch.zeros(train.shape[1], dtype=torch.float64)
     scale = torch.ones(train.shape[1], dtype=torch.float64)
@@ -563,6 +574,7 @@ def _fit_result(
         train_indices,
         test_indices,
         validated.preprocess,
+        validated.std_floor,
     )
     train_labels = validated.canonical_labels[train_indices]
     fit = _fit_logistic(
@@ -594,6 +606,7 @@ def _fit_result(
         test_positive_count=int(test_labels.sum().item()),
         test_negative_count=int((~test_labels).sum().item()),
         preprocess=validated.preprocess,
+        std_floor=validated.std_floor,
         class_weight=validated.class_weight,
         l2_strength=validated.l2_strength,
         test_fraction=validated.test_fraction,
@@ -625,6 +638,7 @@ def _fit_control(
         train_indices,
         test_indices,
         validated.preprocess,
+        validated.std_floor,
     )
     fit = _fit_logistic(
         train_features,
@@ -674,6 +688,7 @@ def fit_sparse_probe(
     test_fraction: int | float = 0.3,
     positive_label: int | bool = 1,
     preprocess: str = "none",
+    std_floor: int | float = 1e-3,
     class_weight: str | None = "balanced",
     l2_strength: int | float = 1e-2,
     seed: int = 0,
@@ -694,10 +709,14 @@ def fit_sparse_probe(
         test_fraction: Requested held-out fraction within each class.
         positive_label: Label defining the positive class and score sign.
         preprocess: ``"none"`` or train-only ``"standardize"``.
+        std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, so a
+            near-constant column is not amplified to unit scale; ``0`` disables it.
         class_weight: ``"balanced"`` or ``None`` for unweighted BCE.
         l2_strength: Positive coefficient penalty in the logistic objective.
         seed: Local CPU-generator seed used only for the stratified split.
-        max_iter: Maximum LBFGS iterations before Newton refinement.
+        max_iter: Maximum LBFGS iterations before Newton refinement. LBFGS also stops after
+            ``max_iter * 5 // 4`` function evaluations (``stop_reason="max_eval"``), which
+            equals ``max_iter`` when ``max_iter <= 3``.
         max_refinement_steps: Maximum damped Newton steps after LBFGS; zero only checks.
         decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2``, an
             estimate of the objective gap to the optimum in nats; a larger gap raises.
@@ -717,6 +736,7 @@ def fit_sparse_probe(
         test_fraction=test_fraction,
         positive_label=positive_label,
         preprocess=preprocess,
+        std_floor=std_floor,
         class_weight=class_weight,
         l2_strength=l2_strength,
         seed=seed,
@@ -752,6 +772,7 @@ def sweep_sparse_probe(
     test_fraction: int | float = 0.3,
     positive_label: int | bool = 1,
     preprocess: str = "none",
+    std_floor: int | float = 1e-3,
     class_weight: str | None = "balanced",
     l2_strength: int | float = 1e-2,
     n_random_subsets: int = 0,
@@ -777,12 +798,16 @@ def sweep_sparse_probe(
         test_fraction: Requested held-out fraction within each class.
         positive_label: Label defining the positive class and score sign.
         preprocess: ``"none"`` or train-only ``"standardize"``.
+        std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, shared by
+            every fit; ``0`` disables it.
         class_weight: ``"balanced"`` or ``None``, shared by every fit.
         l2_strength: Positive coefficient penalty shared by every fit.
         n_random_subsets: Random-coordinate control fits per sparsity level.
         n_label_shuffles: Shuffled-training-label control fits per sparsity level.
         seed: Local CPU-generator seed for splitting and controls.
-        max_iter: Maximum LBFGS iterations per fit before Newton refinement.
+        max_iter: Maximum LBFGS iterations per fit before Newton refinement. LBFGS also stops
+            after ``max_iter * 5 // 4`` function evaluations (``stop_reason="max_eval"``),
+            which equals ``max_iter`` when ``max_iter <= 3``.
         max_refinement_steps: Maximum damped Newton steps per fit; zero only checks.
         decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2`` per fit,
             an estimate of the objective gap to the optimum in nats; a larger gap raises.
@@ -812,6 +837,7 @@ def sweep_sparse_probe(
         test_fraction=test_fraction,
         positive_label=positive_label,
         preprocess=preprocess,
+        std_floor=std_floor,
         class_weight=class_weight,
         l2_strength=l2_strength,
         seed=seed,
