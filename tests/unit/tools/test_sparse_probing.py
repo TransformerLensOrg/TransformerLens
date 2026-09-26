@@ -197,6 +197,42 @@ def test_standardization_is_train_only_and_heldout_values_do_not_change_selectio
     assert first.objective == second.objective
 
 
+def test_standardization_floor_near_constant_column_scale():
+    generator = torch.Generator().manual_seed(0)
+    features = torch.randn(200, 8, generator=generator)
+    features[:, 0] = 1.0 + torch.randn(200, generator=generator) * 1e-6
+    labels = (torch.rand(200, generator=generator) < 0.5).long()
+
+    result = fit_sparse_probe(features, labels, k=8, preprocess="standardize", seed=0)
+    near_constant = result.selected_features.tolist().index(0)
+
+    assert not result.constant_features[near_constant]
+    assert result.preprocess_scale[near_constant].item() == 1e-3
+    assert result.std_floor == 1e-3
+
+
+def test_std_floor_keeps_constant_columns_at_scale_one_and_zero_disables_it():
+    generator = torch.Generator().manual_seed(0)
+    features = torch.randn(200, 8, generator=generator)
+    features[:, 0] = 1.0 + torch.randn(200, generator=generator) * 1e-6
+    features[:, 1] = 5.0
+    labels = (torch.rand(200, generator=generator) < 0.5).long()
+
+    floored = fit_sparse_probe(features, labels, k=8, preprocess="standardize", seed=0)
+    unfloored = fit_sparse_probe(
+        features, labels, k=8, preprocess="standardize", std_floor=0, seed=0
+    )
+
+    support = floored.selected_features.tolist()
+    near_constant, constant = support.index(0), support.index(1)
+    selected_train = features[floored.train_indices][:, floored.selected_features].double()
+    assert floored.constant_features[constant]
+    assert floored.preprocess_scale[constant].item() == 1.0
+    assert unfloored.preprocess_scale[near_constant].item() == pytest.approx(
+        selected_train[:, near_constant].std(correction=0).item()
+    )
+
+
 def test_none_preprocessing_has_identity_metadata_and_constant_tie_order():
     features = torch.zeros(20, 5)
     labels = torch.arange(20) % 2
@@ -529,6 +565,9 @@ def test_binary_metrics_zero_division_policy():
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"class_weight": "bad"}, "class_weight"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"seed": -1}, "seed"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"preprocess": "bad"}, "preprocess"),
+        (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"std_floor": -1}, "std_floor"),
+        (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"std_floor": float("nan")}, "std_floor"),
+        (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"std_floor": True}, "std_floor"),
         (torch.ones(4, 2), torch.tensor([0, 1, 0, 1]), {"max_iter": 0}, "max_iter"),
         (
             torch.ones(4, 2),
@@ -716,6 +755,7 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         test_fraction=0.3,
         positive_label=1,
         preprocess="none",
+        std_floor=1e-3,
         class_weight="balanced",
         l2_strength=1e-2,
         seed=seed,
@@ -737,7 +777,12 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
     assert torch.equal(support, control.supports[0])
 
     train_features, test_features, *_ = _selected_data(
-        validated.features, support, train_indices, test_indices, validated.preprocess
+        validated.features,
+        support,
+        train_indices,
+        test_indices,
+        validated.preprocess,
+        validated.std_floor,
     )
     fit = _fit_logistic(
         train_features,
