@@ -152,7 +152,17 @@ Choose the hook and position policy before interpreting selected coordinates. Th
 leakage already introduced into caller-provided `features`. When several rows come from one source
 prompt, for example multiple positions of the same sequence, keep all of those rows on one side of
 the split; the row-level split is label-independent and can otherwise place rows of one prompt on
-both sides, inflating held-out accuracy on grouped data.
+both sides, inflating held-out accuracy on grouped data. Pass one integer group ID per row to split
+those rows together:
+
+```python
+groups = torch.arange(n_prompts).repeat_interleave(rows_per_prompt)
+result = fit_sparse_probe(features, labels, groups=groups, k=8)
+```
+
+Grouped stratification requires every group to contain one label class and at least two distinct
+groups per class. `sweep_sparse_probe` accepts the same `groups` argument and reuses one grouped
+split for every sparsity level. Omitting `groups` retains the row-level split.
 
 ## Reference
 

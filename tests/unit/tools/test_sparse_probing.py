@@ -778,3 +778,71 @@ def test_sweep_rejects_invalid_grid_and_control_counts(ks, kwargs, message):
 
     with pytest.raises(ValueError, match=message):
         sweep_sparse_probe(features, labels, ks=ks, **kwargs)
+
+
+def _grouped_identity_data(
+    *, n_groups: int = 40, rows_per_group: int = 8, n_features: int = 64, seed: int = 0
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    generator = torch.Generator().manual_seed(seed)
+    identities = torch.randn(n_groups, n_features, generator=generator) * 3.0
+    groups = torch.arange(n_groups).repeat_interleave(rows_per_group)
+    features = identities.repeat_interleave(rows_per_group, 0) + torch.randn(
+        n_groups * rows_per_group, n_features, generator=generator
+    )
+    labels = (
+        (torch.rand(n_groups, generator=generator) < 0.5).long().repeat_interleave(rows_per_group)
+    )
+    return features, labels, groups
+
+
+def test_fit_sparse_probe_splits_whole_groups_and_reduces_identity_leakage():
+    features, labels, groups = _grouped_identity_data()
+
+    result = fit_sparse_probe(features, labels, groups=groups, k=8, seed=0)
+
+    train_groups = groups[result.train_indices].unique()
+    test_groups = groups[result.test_indices].unique()
+    assert not bool(torch.isin(train_groups, test_groups).any())
+    assert 0.25 <= result.metrics.f1 <= 0.75
+
+
+def test_sweep_sparse_probe_reuses_a_group_disjoint_split():
+    features, labels, groups = _grouped_identity_data(n_groups=12, n_features=12)
+
+    sweep = sweep_sparse_probe(features, labels, groups=groups, ks=[1, 2], seed=7)
+
+    for result in sweep.results:
+        train_groups = groups[result.train_indices].unique()
+        test_groups = groups[result.test_indices].unique()
+        assert not bool(torch.isin(train_groups, test_groups).any())
+    assert torch.equal(sweep.results[0].train_indices, sweep.results[1].train_indices)
+    assert torch.equal(sweep.results[0].test_indices, sweep.results[1].test_indices)
+
+
+def test_grouped_split_requires_two_groups_per_class():
+    features = torch.randn(8, 3)
+    labels = torch.tensor([0, 0, 0, 0, 0, 0, 1, 1])
+    groups = torch.tensor([0, 0, 1, 1, 2, 2, 3, 3])
+
+    with pytest.raises(ValueError, match="at least two groups per class"):
+        fit_sparse_probe(features, labels, groups=groups, k=1)
+
+
+def test_grouped_split_rejects_groups_with_mixed_labels():
+    features = torch.randn(8, 3)
+    labels = torch.tensor([0, 1, 0, 1, 0, 1, 0, 1])
+    groups = torch.tensor([0, 0, 1, 1, 2, 2, 3, 3])
+
+    with pytest.raises(ValueError, match="one label class"):
+        fit_sparse_probe(features, labels, groups=groups, k=1)
+
+
+def test_omitting_groups_preserves_row_level_split():
+    features, labels, groups = _grouped_identity_data()
+
+    first = fit_sparse_probe(features, labels, k=8, seed=0)
+    second = fit_sparse_probe(features, labels, k=8, seed=0)
+
+    assert torch.equal(first.train_indices, second.train_indices)
+    assert torch.equal(first.test_indices, second.test_indices)
+    assert bool(torch.isin(groups[first.train_indices], groups[second.test_indices]).any())
