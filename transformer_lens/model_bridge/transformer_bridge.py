@@ -3931,8 +3931,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Args:
             input: Text string, list of strings, or tensor of tokens
             max_new_tokens: Maximum number of tokens to generate
-            stop_at_eos: If True, stop generating tokens when the model outputs eos_token
-            eos_token_id: The token ID to use for end of sentence
+            stop_at_eos: If True, stop generating tokens when the model outputs eos_token.
+                If False, disable EOS stopping, including the model's configured EOS.
+                Custom stopping criteria still apply.
+            eos_token_id: The token ID to use for end of sentence. Ignored when
+                stop_at_eos=False, matching generate().
             do_sample: If True, sample from the model's output distribution
             top_k: Number of tokens to sample from
             top_p: Probability mass to sample from
@@ -4014,9 +4017,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             generation_kwargs["top_k"] = top_k
         if top_p is not None:
             generation_kwargs["top_p"] = top_p
-        if eos_token_id is not None:
+        if not stop_at_eos:
+            # Omitting the kwarg would restore generation_config's EOS stopping.
+            generation_kwargs["eos_token_id"] = None
+        elif eos_token_id is not None:
             generation_kwargs["eos_token_id"] = eos_token_id
-        elif stop_at_eos and self.tokenizer.eos_token_id is not None:
+        elif self.tokenizer.eos_token_id is not None:
             generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 
         if pixel_values is not None:
