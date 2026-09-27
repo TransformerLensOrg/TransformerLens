@@ -211,7 +211,8 @@ class BackwardLensResult:
     every residual-width factor in ``layers`` is aligned to these same positions.
     Position zero is a prepended BOS only when the model and tokenizer configuration
     requests one. ``layers`` preserves requested order. Maximum errors summarize
-    both matrices over every requested layer.
+    every MLP matrix over each requested layer, including the gate projection when
+    present.
     ``includes_normalized_logits`` records whether the Normalized Logit Lens was
     computed. ``includes_full_logits`` records whether full vocabulary tensors
     were retained in addition to bounded rankings. No model or tokenizer reference
