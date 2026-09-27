@@ -6,8 +6,9 @@ with the forward inputs and backward signals that compose a gradient. A readable
 vocabulary projection is a diagnostic, not by itself evidence that a token or neuron
 causes a model behavior.
 
-TransformerLens supports dense-MLP decoder-only implementations through
-`TransformerBridge` (for example GPT-2 and Pythia/GPT-NeoX). It follows the method
+TransformerLens supports decoder-only implementations through
+`TransformerBridge` whose MLP projections are dense (for example GPT-2 and
+Pythia/GPT-NeoX) or gated (for example Qwen2). It follows the method
 introduced by [Katz et al. (2024)](https://aclanthology.org/2024.emnlp-main.142/).
 
 ## Gradient factorization
@@ -31,7 +32,7 @@ reporting the result in that projection's own storage layout: directly for
 Each matrix result includes the reconstructed gradient and maximum absolute and
 scale-aware relative reconstruction errors.
 
-### The two dense MLP matrices
+### Dense MLP matrices
 
 The two projections expose different residual-width factors. The weight shapes
 below use `Conv1D` (`[in, out]`) storage, as GPT-2 uses; `torch.nn.Linear` storage
@@ -46,6 +47,28 @@ The FF1 readout therefore describes the layer-normalized residual state entering
 MLP (post-`ln_2`, including its gain and bias).
 The FF2 readout describes raw loss gradients at the MLP output. These are different
 quantities and should not be interpreted interchangeably.
+
+### Gated MLP matrices
+
+A gated MLP computes $y = \operatorname{down}(\operatorname{act}(\operatorname{gate}(x)) \odot \operatorname{up}(x))$,
+so it has three linear projections instead of two. Each projection still
+factorizes its own weight gradient as a sum of per-position outer products, and
+`BackwardLens` returns a third matrix result, `gate_projection`, alongside
+`input_projection` (the up projection) and `output_projection` (the down
+projection). The weight shapes below use `torch.nn.Linear` (`[out, in]`) storage,
+as Qwen2 uses.
+
+| Result | Weight shape | Projected factor | Shape before vocabulary projection |
+|---|---:|---|---:|
+| `gate_projection` (`gate_proj`) | `[d_mlp, d_model]` | Forward input $x_i$ | `[position, d_model]` |
+| `input_projection` (`up_proj`) | `[d_mlp, d_model]` | Forward input $x_i$ | `[position, d_model]` |
+| `output_projection` (`down_proj`) | `[d_model, d_mlp]` | Backward signal $\delta_i$ | `[position, d_model]` |
+
+The gate and up projections both consume the same residual input $x$, so their
+forward-input factors and vocabulary logits coincide exactly; the two results are
+retained separately because their weight gradients and output gradients differ.
+The down projection carries the distinct shift direction, matching the dense FF2
+treatment. For dense MLPs, `gate_projection` is `None`.
 
 ## Vocabulary projection
 
@@ -146,6 +169,24 @@ pythia_result = BackwardLens(pythia).analyze(
 pythia_result.layer(0).input_projection.factors.weight_layout  # "out_in"
 ```
 
+The same call also works against a gated Bridge, whose MLP exposes separate gate,
+up, and down projections. The result gains a `gate_projection` matrix per layer:
+
+```python
+qwen = TransformerBridge.boot_transformers(
+    "Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32
+)
+
+qwen_result = BackwardLens(qwen).analyze(
+    prompt="The capital of France is",
+    target_token=" Paris",
+    layers=[0],
+)
+
+qwen_result.layer(0).gate_projection is not None  # True
+qwen_result.layer(0).gate_projection.factors.weight_layout  # "out_in"
+```
+
 ## Result structure
 
 `BackwardLens.analyze(...)` returns a detached `BackwardLensResult`:
@@ -153,7 +194,8 @@ pythia_result.layer(0).input_projection.factors.weight_layout  # "out_in"
 - `prompt`, `prompt_token_ids`, `target_token`, and `target_token_id` record the inputs.
 - `loss` is final-position cross-entropy against the one-token target.
 - `layers` preserves the requested layer order; `result.layer(index)` retrieves one.
-- Each layer has `input_projection` and `output_projection` matrix results.
+- Each layer has `input_projection` and `output_projection` matrix results, plus
+  `gate_projection` for gated MLPs (`None` for dense MLPs).
 - Each matrix exposes `factors`, `factor_norms`, `zero_norm_mask`, `vocabulary_size`,
   and retained raw `top_ranking` and `bottom_ranking` values and token ids.
 - `top(...)` and `bottom(...)` return prefixes of the retained signed rankings, so
@@ -168,7 +210,8 @@ pythia_result.layer(0).input_projection.factors.weight_layout  # "out_in"
   are present with `normalized=True`; full `normalized_vocabulary_logits` requires
   both options.
 - `includes_normalized_logits` and `includes_full_logits` record the requested modes.
-- Maximum reconstruction errors summarize both MLP matrices over all requested layers.
+- Maximum reconstruction errors summarize every MLP matrix over all requested
+  layers, including the gate projection when present.
 
 Returned tensors are detached, owned CPU copies. Factors, reconstructed gradients,
 norms, retained values, and optional vocabulary logits use float32; token ids and
@@ -179,17 +222,26 @@ ranks use int64. The bounded default avoids retaining a
 
 The current implementation requires:
 
-- A freshly booted, raw `TransformerBridge` whose dense MLP projections have a
+- A freshly booted, raw `TransformerBridge` whose MLP projections have a
   Bridge-orientable weight layout (`Conv1D`, e.g. GPT-2, or `torch.nn.Linear`,
-  e.g. Pythia/GPT-NeoX).
-- Original, trainable weights and a dense, non-gated MLP.
+  e.g. Pythia/GPT-NeoX and Qwen2).
+- Original, trainable weights and a dense or gated MLP whose projections are
+  distinct linear layers.
 - Compatibility mode and weight processing to remain disabled.
 - One non-empty prompt, one single-token target, and unique valid layer indices.
 
-It does not currently support batched prompts, multi-token target losses, gated MLPs,
-architecture families whose MLP projections have an unknown weight layout,
-compatibility-mode weights, model editing, or causal claims about the displayed
-vocabulary rankings.
+Supported model families:
+
+| Family | MLP | Layout |
+|---|---|---|
+| GPT-2 | dense | `in_out` |
+| Pythia / GPT-NeoX | dense | `out_in` |
+| Qwen2 | gated | `out_in` |
+
+It does not currently support batched prompts, multi-token target losses, fused
+gate/up projections, mixture-of-experts routing, architecture families whose MLP
+projections have an unknown weight layout, compatibility-mode weights, model
+editing, or causal claims about the displayed vocabulary rankings.
 
 ## Model-state safety
 
