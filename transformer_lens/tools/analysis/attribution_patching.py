@@ -56,6 +56,7 @@ NodeKind = Literal[
     "embed", "attn_head_out", "mlp_out", "q_input", "k_input", "v_input", "mlp_in", "logits"
 ]
 Granularity = Literal["node", "edge"]
+AblationMode = Literal["corrupt", "mean"]
 
 
 @dataclass
@@ -246,6 +247,50 @@ class AttributionResult:
         """
         ranked = sorted(self.edge_scores.items(), key=lambda item: abs(item[1]), reverse=True)
         return [(writer, reader, score) for (writer, reader), score in ranked[:k]]
+
+
+@dataclass(frozen=True)
+class FaithfulnessConfig:
+    """Configuration for an ablate-outside faithfulness measurement.
+
+    Attributes:
+        ablation: How an out-of-circuit edge's writer is replaced.
+            ``"corrupt"`` substitutes the corrupt run's own contribution, which
+            is the evaluation the pinned external reference reports and the
+            default here so the two compare like quantities. ``"mean"``
+            substitutes the dataset mean of that writer's contribution over the
+            clean/corrupt batch, which is the usual choice when no single
+            corrupt run is meaningful.
+    """
+
+    ablation: AblationMode = "corrupt"
+
+
+@dataclass
+class FaithfulnessResult:
+    """How much of the clean-to-corrupt metric gap a candidate circuit recovers.
+
+    Attributes:
+        recovered: Fraction of the clean-to-corrupt metric gap the circuit
+            recovers, ``(m_ablated - m_corrupt) / (m_clean - m_corrupt)``. A
+            fraction, not a percentage: ``1.0`` means ablating every edge
+            outside the circuit reproduces the clean metric, ``0.0`` means it
+            reproduces the corrupt metric. Values outside ``[0, 1]`` are
+            possible and meaningful -- a circuit can overshoot the clean run.
+        full_metric: The clean run's metric, the top of the gap.
+        corrupt_metric: The corrupt run's metric, the bottom of the gap.
+        circuit_size: Number of edges kept.
+        total_edges: Number of edges in the graph, so the budget is visible.
+        edge_class_recovered: Per-edge-class ``recovered`` values, keyed by edge
+            class. Empty unless the caller asks for the breakout.
+    """
+
+    recovered: float
+    full_metric: float
+    corrupt_metric: float
+    circuit_size: int
+    total_edges: int
+    edge_class_recovered: dict[str, float] = field(default_factory=dict)
 
 
 def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> list[str]:
@@ -1253,3 +1298,169 @@ def attribution_patch(
 
     node_scores = {node: total / batch for node, total in totals.items()}
     return AttributionResult(node_scores=node_scores)
+
+
+def _normalize_circuit(
+    circuit: Sequence[tuple[Node, Node]] | Sequence[tuple[Node, Node, float]],
+) -> list[tuple[Node, Node]]:
+    """Reduce a circuit to ``(writer, reader)`` pairs, dropping any scores.
+
+    Accepts either the bare edge list :func:`enumerate_edges` returns or the
+    ranked ``(writer, reader, score)`` triples ``AttributionResult.top_edges``
+    returns, so a discovered edge set feeds straight into
+    :func:`faithfulness` without reshaping.
+    """
+    normalized: list[tuple[Node, Node]] = []
+    for entry in circuit:
+        if len(entry) == 2:
+            writer, reader = entry
+        elif len(entry) == 3:
+            writer, reader, _score = entry
+        else:
+            raise ValueError(
+                f"circuit entries must be (writer, reader) or (writer, reader, score), "
+                f"got a {len(entry)}-tuple"
+            )
+        normalized.append((writer, reader))
+    return normalized
+
+
+def _mean_writer_contributions(
+    model: Any,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    """The dataset mean of each writer's contribution over the prompt pairs.
+
+    Averages the clean and corrupt runs together, since a replacement stands in
+    for an out-of-circuit edge regardless of which direction the run moves.
+    """
+    totals: dict[str, torch.Tensor] = {}
+    count = 0
+    for tokens in (clean, corrupt):
+        for index in range(int(tokens.shape[0])):
+            captured = capture_writer_outputs(model, tokens[index : index + 1])
+            for name, tensor in captured.items():
+                running = totals.get(name)
+                totals[name] = tensor if running is None else running + tensor
+            count += 1
+    if count == 0:
+        raise ValueError("faithfulness needs at least one clean/corrupt pair")
+    return {name: total / count for name, total in totals.items()}
+
+
+def faithfulness(
+    model: Any,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric_fn: MetricFn,
+    circuit: Sequence[tuple[Node, Node]] | Sequence[tuple[Node, Node, float]],
+    config: FaithfulnessConfig = FaithfulnessConfig(),
+) -> FaithfulnessResult:
+    """Measure how much of the clean-to-corrupt metric gap a circuit recovers.
+
+    Ablates every edge *outside* ``circuit`` and reports the metric the model
+    then produces. The residual stream is a running sum, so each reader's input
+    is rebuilt exactly -- subtracting the excluded writers' live contributions
+    and adding their replacements -- rather than approximated. A circuit that
+    recovers most of the gap is a faithful account of the behavior; one that
+    recovers little is not, however well it ranks.
+
+    This is a forward-only measurement: no gradient is taken, so it is
+    independent of the linearization :func:`attribution_patch` uses to rank
+    edges. Feed a ranked edge set straight in from
+    ``attribution_patch(..., config=EdgeAttributionConfig(granularity="edge")).top_edges(k=...)``.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
+            ``hook_dict``, and ``hooks()``.
+        clean: Clean token ids, shape ``[batch, seq]``.
+        corrupt: Corrupt token ids, shape ``[batch, seq]``, paired row-by-row
+            with ``clean``.
+        metric_fn: Maps single-example logits to a scalar.
+        circuit: The edges to keep, as ``(writer, reader)`` pairs or the
+            ``(writer, reader, score)`` triples ``top_edges`` returns. Every
+            other edge in the graph is ablated.
+        config: Ablation configuration. Defaults to replacing an ablated writer
+            with the corrupt run's own contribution.
+
+    Returns:
+        A :class:`FaithfulnessResult` with the recovered fraction, the clean and
+        corrupt metrics bounding it, and the circuit's size against the graph's.
+
+    Raises:
+        ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number
+            of pairs, hold more than one pair, a pair tokenizes to different
+            lengths, the model or a submodule is in training mode, a circuit edge
+            is not in the graph, or the clean and corrupt metrics are equal (so
+            the recovered fraction is undefined).
+    """
+    if clean.ndim != 2 or corrupt.ndim != 2:
+        raise ValueError(
+            "faithfulness expects 2D [batch, seq] token tensors, got clean "
+            f"{tuple(clean.shape)} and corrupt {tuple(corrupt.shape)}"
+        )
+    if clean.shape[0] != corrupt.shape[0]:
+        raise ValueError(
+            "clean and corrupt must hold the same number of prompt pairs, got "
+            f"{clean.shape[0]} and {corrupt.shape[0]}"
+        )
+    if clean.shape[0] != 1:
+        raise ValueError(
+            "faithfulness measures one clean/corrupt pair at a time, since the "
+            f"metric reads a single example; got {clean.shape[0]} pairs. Loop over "
+            "pairs and aggregate the recovered fractions yourself."
+        )
+    if clean.shape[1] != corrupt.shape[1]:
+        raise ValueError(
+            "each clean/corrupt pair must tokenize to the same length; got clean "
+            f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
+            "Faithfulness aligns activations position-by-position."
+        )
+
+    require_eval_mode(model, operation="faithfulness()")
+
+    kept = _normalize_circuit(circuit)
+    n_layers = int(model.cfg.n_layers)
+    hook_names = _edge_hook_names(n_layers)
+
+    with _edge_hook_flags(model):
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric_fn, names_filter=hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        graph = set(edges)
+        unknown = [edge for edge in kept if edge not in graph]
+        if unknown:
+            raise ValueError(
+                f"circuit holds {len(unknown)} edge(s) that are not in the graph, "
+                f"starting with {unknown[0]}; a stale or mistyped circuit would "
+                "otherwise ablate nothing."
+            )
+
+        if config.ablation == "mean":
+            replacements = _mean_writer_contributions(model, clean, corrupt)
+        else:
+            replacements = capture_writer_outputs(model, corrupt)
+
+        # Forward-only throughout: no gradient is taken, so the clean endpoint
+        # is evaluated without building a graph.
+        with torch.no_grad():
+            clean_metric = float(metric_fn(model(clean)))
+        corrupt_metric = float(corrupt_cache.metric)
+        ablated_metric = float(metric_fn(_ablate_edges(model, clean, edges, kept, replacements)))
+
+    gap = clean_metric - corrupt_metric
+    if gap == 0.0:
+        raise ValueError(
+            "the clean and corrupt runs produce the same metric, so the recovered "
+            "fraction is undefined; choose a pair the metric separates."
+        )
+
+    return FaithfulnessResult(
+        recovered=(ablated_metric - corrupt_metric) / gap,
+        full_metric=clean_metric,
+        corrupt_metric=corrupt_metric,
+        circuit_size=len(kept),
+        total_edges=len(edges),
+    )

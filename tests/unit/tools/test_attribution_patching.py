@@ -22,6 +22,8 @@ from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
     AttributionResult,
     EdgeAttributionConfig,
+    FaithfulnessConfig,
+    FaithfulnessResult,
     GradientCache,
     Node,
     _ablate_edges,
@@ -42,6 +44,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     capture_writer_outputs,
     enumerate_edges,
     enumerate_nodes,
+    faithfulness,
 )
 
 D_MODEL = 4
@@ -2322,3 +2325,189 @@ def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
 
     with _edge_hook_flags(model), pytest.raises(ValueError, match="no contribution captured"):
         _ablate_edges(model, tokens, edges, [], {})
+
+
+# ---------------------------------------------------------------------------
+# Faithfulness (public API)
+# ---------------------------------------------------------------------------
+#
+# faithfulness() ablates every edge outside a candidate circuit and reports how
+# much of the clean-to-corrupt metric gap the circuit recovers. The two boundary
+# circuits pin it: keeping nothing must reproduce the corrupt run, keeping
+# everything must reproduce the clean run.
+
+
+def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tensor, Callable]:
+    model = _EdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    return model, clean, corrupt, _metric_fn(answer=1, wrong=2)
+
+
+def _graph_edges(model: _EdgeScoringToyBridge, corrupt: torch.Tensor, metric: Callable) -> list:
+    _ensure_edge_hook_flags(model)
+    with _edge_hook_flags(model):
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=_edge_hook_names(N_LAYERS)
+        )
+        return enumerate_edges(model, corrupt_cache)
+
+
+def test_faithfulness_recovers_the_full_metric_for_the_full_circuit() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    report = faithfulness(model, clean, corrupt, metric, edges)
+
+    assert isinstance(report, FaithfulnessResult)
+    assert report.recovered == pytest.approx(1.0, abs=1e-6)
+    assert report.circuit_size == len(edges)
+    assert report.total_edges == len(edges)
+
+
+def test_faithfulness_recovers_nothing_for_the_empty_circuit() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    assert report.recovered == pytest.approx(0.0, abs=1e-6)
+    assert report.circuit_size == 0
+    assert report.total_edges > 0
+
+
+def test_faithfulness_full_and_corrupt_metrics_match_direct_evaluation() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    with torch.no_grad():
+        assert report.full_metric == pytest.approx(float(metric(model(clean))), abs=1e-6)
+        assert report.corrupt_metric == pytest.approx(float(metric(model(corrupt))), abs=1e-6)
+    # The pair genuinely separates, so the recovered fraction is well defined.
+    assert report.full_metric != pytest.approx(report.corrupt_metric)
+
+
+def test_faithfulness_defaults_to_corrupt_ablation() -> None:
+    assert FaithfulnessConfig().ablation == "corrupt"
+
+
+def test_faithfulness_mean_ablation_differs_from_corrupt_ablation() -> None:
+    """The two ablation modes are genuinely different measurements."""
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+    # Keep a strict subset, so some edges are actually ablated.
+    circuit = edges[: len(edges) // 2]
+
+    corrupt_report = faithfulness(model, clean, corrupt, metric, circuit)
+    mean_report = faithfulness(
+        model, clean, corrupt, metric, circuit, config=FaithfulnessConfig(ablation="mean")
+    )
+
+    assert corrupt_report.recovered != pytest.approx(mean_report.recovered)
+    # Both bound the same gap, so the clean/corrupt endpoints agree.
+    assert corrupt_report.full_metric == pytest.approx(mean_report.full_metric)
+    assert corrupt_report.corrupt_metric == pytest.approx(mean_report.corrupt_metric)
+
+
+def test_faithfulness_accepts_top_edges_output() -> None:
+    """A ranked edge list feeds straight in, scores and all."""
+    model, clean, corrupt, metric = _faithfulness_toy()
+    ranked = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    ).top_edges(k=5)
+
+    report = faithfulness(model, clean, corrupt, metric, ranked)
+
+    assert report.circuit_size == len(ranked)
+    assert math.isfinite(report.recovered)
+
+
+def test_faithfulness_raises_on_an_edge_outside_the_graph() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    # The graph never mixes positions, so a cross-position pair is not an edge.
+    bogus = (Node(kind="embed", position=1), Node(kind="mlp_in", layer=0, position=0))
+
+    with pytest.raises(ValueError, match="not in the graph"):
+        faithfulness(model, clean, corrupt, metric, [bogus])
+
+
+def test_faithfulness_raises_when_the_metric_gap_is_zero() -> None:
+    model, clean, _, metric = _faithfulness_toy()
+
+    with pytest.raises(ValueError, match="same metric"):
+        faithfulness(model, clean, clean, metric, [])
+
+
+def test_faithfulness_raises_on_token_length_mismatch() -> None:
+    model, _, corrupt, metric = _faithfulness_toy()
+    shorter = torch.tensor([[1, 2]])
+
+    with pytest.raises(ValueError, match="same length"):
+        faithfulness(model, shorter, corrupt, metric, [])
+
+
+def test_faithfulness_raises_on_more_than_one_pair() -> None:
+    """Batched input is rejected rather than silently half-ablated.
+
+    The metric reads a single example, so a batch would need per-pair
+    aggregation the caller should own. Silently ablating only the first row
+    would return a plausible but wrong number.
+    """
+    model, clean, corrupt, metric = _faithfulness_toy()
+    batched_clean = torch.cat([clean, clean], dim=0)
+    batched_corrupt = torch.cat([corrupt, corrupt], dim=0)
+
+    with pytest.raises(ValueError, match="one clean/corrupt pair at a time"):
+        faithfulness(model, batched_clean, batched_corrupt, metric, [])
+
+
+def test_faithfulness_rejects_model_in_training_mode() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    model.train()
+
+    with pytest.raises(ValueError, match="evaluation mode"):
+        faithfulness(model, clean, corrupt, metric, [])
+
+
+def test_faithfulness_restores_caller_hook_flags() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+    faithfulness(model, clean, corrupt, metric, [])
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+
+def test_faithfulness_restores_hook_flags_when_it_raises() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    bogus = (Node(kind="embed", position=1), Node(kind="mlp_in", layer=0, position=0))
+
+    with pytest.raises(ValueError, match="not in the graph"):
+        faithfulness(model, clean, corrupt, metric, [bogus])
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+
+def test_faithfulness_recovery_is_graded_not_binary() -> None:
+    """A partial circuit lands strictly between the corrupt and clean metrics.
+
+    Only edges into the readout position can move this toy's metric, since it is
+    position-wise and the metric reads the last position. Keeping half of those
+    must therefore recover part of the gap rather than all or none of it.
+    """
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+    readout = [edge for edge in edges if edge[1].position == SEQ_LEN - 1]
+    assert readout
+    partial = readout[: len(readout) // 2]
+
+    report = faithfulness(model, clean, corrupt, metric, partial)
+
+    assert 0.0 < report.recovered < 1.0
+    assert report.circuit_size == len(partial)
