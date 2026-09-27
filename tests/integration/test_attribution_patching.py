@@ -135,3 +135,44 @@ def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> 
     assert random_report.circuit_size == report.circuit_size
     assert random_report.recovered < 0.1
     assert report.recovered > random_report.recovered + 0.4
+
+
+def test_edge_class_breakout_marks_into_qk_as_the_least_faithful_class(gpt2_bridge) -> None:
+    """Removing the into-Q/K edges is what breaks the circuit's faithfulness.
+
+    Edges into Q and K pass through the softmax, so the linearized ranking is
+    least trustworthy there; edges into V, the MLP, and the terminal readout are
+    linear. The breakout measures that by keeping every edge outside one class,
+    so a class whose removal collapses recovery is the one carrying the
+    nonlinearity.
+
+    Thresholds are set from measured values on this exact model and prompt pair
+    (gpt2-small, fp32, CPU): keeping everything except into-Q/K recovers about
+    1.09 of the gap, while removing into-V drops it to about -0.18 and removing
+    into-logits to about 0.00.
+    """
+    clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1].item())
+    wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1].item())
+    metric_fn = _logit_diff_metric(answer_id, wrong_id)
+
+    result = attribution_patch(
+        gpt2_bridge,
+        clean,
+        corrupt,
+        metric_fn,
+        config=EdgeAttributionConfig(granularity="edge"),
+    )
+    report = faithfulness(gpt2_bridge, clean, corrupt, metric_fn, result.top_edges(k=200))
+
+    breakout = report.edge_class_recovered
+    assert set(breakout) == {"into_qk", "into_v", "into_mlp", "into_logits"}
+    assert all(math.isfinite(value) for value in breakout.values())
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+
+    # Dropping the softmax-fed class leaves the circuit intact; dropping the
+    # linear classes does not.
+    assert breakout["into_qk"] > 0.9
+    assert breakout["into_v"] < 0.5
+    assert breakout["into_logits"] < 0.5

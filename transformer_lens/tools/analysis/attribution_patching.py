@@ -57,6 +57,7 @@ NodeKind = Literal[
 ]
 Granularity = Literal["node", "edge"]
 AblationMode = Literal["corrupt", "mean"]
+EdgeClass = Literal["into_qk", "into_v", "into_mlp", "into_logits"]
 
 
 @dataclass
@@ -281,8 +282,17 @@ class FaithfulnessResult:
         corrupt_metric: The corrupt run's metric, the bottom of the gap.
         circuit_size: Number of edges kept.
         total_edges: Number of edges in the graph, so the budget is visible.
-        edge_class_recovered: Per-edge-class ``recovered`` values, keyed by edge
-            class. Empty unless the caller asks for the breakout.
+        edge_class_recovered: Recovered fraction when every edge *outside* this
+            class is kept, keyed by class. A class whose removal collapses
+            recovery is load-bearing; one whose removal leaves recovery near
+            ``1.0`` is not. Keeping only the class instead would report roughly
+            ``0.0`` for every class, since no single class alone reconstructs
+            the behavior, so the leave-one-out form is the informative one.
+            Edges into Q and K pass through the softmax, so ``"into_qk"`` is
+            expected to be the least faithful class; edges into V, the MLP, and
+            the terminal logits readout are linear.
+        edge_class_counts: Number of edges in each class, so a class with few
+            edges is not over-read.
     """
 
     recovered: float
@@ -290,7 +300,8 @@ class FaithfulnessResult:
     corrupt_metric: float
     circuit_size: int
     total_edges: int
-    edge_class_recovered: dict[str, float] = field(default_factory=dict)
+    edge_class_recovered: dict[EdgeClass, float] = field(default_factory=dict)
+    edge_class_counts: dict[EdgeClass, int] = field(default_factory=dict)
 
 
 def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> list[str]:
@@ -1325,6 +1336,26 @@ def _normalize_circuit(
     return normalized
 
 
+def _edge_class(edge: tuple[Node, Node]) -> EdgeClass:
+    """The class an edge belongs to, keyed by what its reader consumes.
+
+    Q and K share a class because both feed the attention score, so both pass
+    through the same softmax nonlinearity; V, the MLP entry, and the terminal
+    logits readout are each linear in the residual they read. The split exists
+    to make that asymmetry measurable rather than hidden in one aggregate.
+    """
+    reader = edge[1]
+    if reader.kind in ("q_input", "k_input"):
+        return "into_qk"
+    if reader.kind == "v_input":
+        return "into_v"
+    if reader.kind == "mlp_in":
+        return "into_mlp"
+    if reader.kind == "logits":
+        return "into_logits"
+    raise ValueError(f"{reader.kind} is a writer kind and has no edge class")
+
+
 def _mean_writer_contributions(
     model: Any,
     clean: torch.Tensor,
@@ -1386,7 +1417,11 @@ def faithfulness(
 
     Returns:
         A :class:`FaithfulnessResult` with the recovered fraction, the clean and
-        corrupt metrics bounding it, and the circuit's size against the graph's.
+        corrupt metrics bounding it, the circuit's size against the graph's, and
+        a per-edge-class breakout. The breakout measures each class
+        leave-one-out, so it costs one extra ablation per class; edges into Q and
+        K are expected to be the least faithful, since they pass through the
+        softmax.
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number
@@ -1448,14 +1483,33 @@ def faithfulness(
         with torch.no_grad():
             clean_metric = float(metric_fn(model(clean)))
         corrupt_metric = float(corrupt_cache.metric)
+        gap = clean_metric - corrupt_metric
+        if gap == 0.0:
+            raise ValueError(
+                "the clean and corrupt runs produce the same metric, so the recovered "
+                "fraction is undefined; choose a pair the metric separates."
+            )
         ablated_metric = float(metric_fn(_ablate_edges(model, clean, edges, kept, replacements)))
 
-    gap = clean_metric - corrupt_metric
-    if gap == 0.0:
-        raise ValueError(
-            "the clean and corrupt runs produce the same metric, so the recovered "
-            "fraction is undefined; choose a pair the metric separates."
-        )
+        # Break the report out by edge class, so the attention nonlinearity's
+        # cost is measured rather than hidden in the aggregate. Each class is
+        # measured leave-one-out: keep every edge outside it, so the value says
+        # how much of the gap survives without that class. One extra ablation
+        # per class.
+        class_counts: dict[EdgeClass, int] = {}
+        class_edges: dict[EdgeClass, list[tuple[Node, Node]]] = {}
+        for edge in edges:
+            edge_class = _edge_class(edge)
+            class_counts[edge_class] = class_counts.get(edge_class, 0) + 1
+            class_edges.setdefault(edge_class, []).append(edge)
+
+        class_recovered: dict[EdgeClass, float] = {}
+        for edge_class in class_edges:
+            outside = [edge for edge in edges if _edge_class(edge) != edge_class]
+            class_metric = float(
+                metric_fn(_ablate_edges(model, clean, edges, outside, replacements))
+            )
+            class_recovered[edge_class] = (class_metric - corrupt_metric) / gap
 
     return FaithfulnessResult(
         recovered=(ablated_metric - corrupt_metric) / gap,
@@ -1463,4 +1517,6 @@ def faithfulness(
         corrupt_metric=corrupt_metric,
         circuit_size=len(kept),
         total_edges=len(edges),
+        edge_class_recovered=class_recovered,
+        edge_class_counts=class_counts,
     )
