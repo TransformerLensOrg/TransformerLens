@@ -1,0 +1,184 @@
+"""Unit tests for ``RelevanceLens.fit``: shape/finite parity and rule coverage.
+
+These tests build a tiny random Qwen2 fully offline (programmatic HF config,
+random weights, no network access) so the fit runs on a real assembled
+``TransformerBridge`` with the opaque gated-MLP native-forward path. Both
+estimators are fitted on the same model and prompts, so the only difference
+between the two sets of transport matrices is the backward semantics each
+estimator selects.
+"""
+
+from __future__ import annotations
+
+from typing import NamedTuple, Sequence
+
+import pytest
+import torch
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import Whitespace
+from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFast
+
+from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
+from transformer_lens.model_bridge.supported_architectures.qwen2 import (
+    Qwen2ArchitectureAdapter,
+)
+from transformer_lens.tools.analysis import JacobianLens
+from transformer_lens.tools.analysis.relevance_lens import RelevanceLens
+
+N_LAYERS = 2
+D_MODEL = 32
+SOURCE_LAYERS = [0]
+CORPUS = "unit-test-corpus"
+PROMPTS = [
+    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+    "omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta",
+    "one two three four five six seven eight nine ten eleven twelve thirteen "
+    "fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty one "
+    "twenty two twenty three twenty four twenty five twenty six twenty seven",
+    "red orange yellow green blue indigo violet cyan magenta amber teal olive "
+    "maroon navy silver gold bronze copper crimson scarlet azure beige ivory "
+    "khaki lilac peach plum russet saffron tan umber",
+]
+TINY_DIMS = dict(
+    vocab_size=97,
+    hidden_size=D_MODEL,
+    intermediate_size=64,
+    num_hidden_layers=N_LAYERS,
+    num_attention_heads=4,
+    num_key_value_heads=2,
+    max_position_embeddings=64,
+    pad_token_id=0,
+    bos_token_id=1,
+    eos_token_id=2,
+)
+
+
+def _offline_tokenizer(prompts: Sequence[str]) -> PreTrainedTokenizerFast:
+    """Word-level tokenizer over the prompts' own vocabulary, built offline.
+
+    A real ``PreTrainedTokenizerFast`` (rather than a duck-typed stub) satisfies
+    the jaxtyping contract on ``TransformerBridge.to_tokens``, and deriving the
+    vocabulary from the prompts keeps every word in-vocab so no prompt collapses
+    to a run of ``<unk>``.
+    """
+    words = sorted({word for prompt in prompts for word in prompt.split()})
+    vocabulary = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3}
+    vocabulary.update({word: index + 4 for index, word in enumerate(words)})
+    backend = Tokenizer(WordLevel(vocabulary, unk_token="<unk>"))
+    backend.pre_tokenizer = Whitespace()
+    return PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        eos_token="<eos>",
+        pad_token="<pad>",
+        unk_token="<unk>",
+    )
+
+
+def _build_tiny_qwen2() -> TransformerBridge:
+    hf_config = AutoConfig.for_model("qwen2", **TINY_DIMS)
+    torch.manual_seed(0)
+    hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf_model.config, "Qwen2ForCausalLM", "qwen2-tiny", torch.float32
+    )
+    adapter = Qwen2ArchitectureAdapter(bridge_config)
+    return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_offline_tokenizer(PROMPTS))
+
+
+class _FittedPair(NamedTuple):
+    model: TransformerBridge
+    logits_before_fit: torch.Tensor
+    jacobian: JacobianLens
+    relevance: RelevanceLens
+
+
+@pytest.fixture(scope="module")
+def fitted() -> _FittedPair:
+    """Both estimators fitted on the same tiny model and prompts.
+
+    Sharing one model keeps the comparison apples-to-apples: the only thing that
+    differs between the two fits is the backward semantics the estimator
+    selects. The pre-fit logits are captured so a test can prove the scoped rule
+    context does not leak past the fit.
+    """
+    model = _build_tiny_qwen2()
+    with torch.no_grad():
+        logits_before_fit = model(model.to_tokens(PROMPTS[0]))
+    jacobian = JacobianLens.fit(
+        model,
+        PROMPTS,
+        corpus=CORPUS,
+        source_layers=SOURCE_LAYERS,
+        show_progress=False,
+    )
+    relevance = RelevanceLens.fit(
+        model,
+        PROMPTS,
+        corpus=CORPUS,
+        source_layers=SOURCE_LAYERS,
+        show_progress=False,
+    )
+    return _FittedPair(
+        model=model,
+        logits_before_fit=logits_before_fit,
+        jacobian=jacobian,
+        relevance=relevance,
+    )
+
+
+def _expected_rule_mounts() -> set[str]:
+    """Canonical mounts the three requested rules install on a pre-norm stack.
+
+    Qwen2 is pre-norm only, so the LN-rule reaches the residual-stream norms at
+    ``ln1``/``ln2`` and the Identity- and Half-rules reach the gated MLP at
+    ``mlp``. Attention-internal q/k norms are deliberately absent: the LN-rule
+    targets residual-stream norms only.
+    """
+    norms = {f"blocks.{layer}.{mount}" for layer in range(N_LAYERS) for mount in ("ln1", "ln2")}
+    mlps = {f"blocks.{layer}.mlp" for layer in range(N_LAYERS)}
+    return norms | mlps
+
+
+class TestFitShapeAndFiniteness:
+    def test_source_layers_and_d_model_match_jacobian_lens(self, fitted: _FittedPair) -> None:
+        assert fitted.relevance.source_layers == fitted.jacobian.source_layers
+        assert fitted.relevance.d_model == fitted.jacobian.d_model
+        assert fitted.relevance.n_prompts == fitted.jacobian.n_prompts
+
+    def test_every_transport_matrix_is_finite_and_square(self, fitted: _FittedPair) -> None:
+        for layer in fitted.relevance.source_layers:
+            matrix = fitted.relevance.jacobians[layer]
+            assert matrix.shape == (D_MODEL, D_MODEL)
+            assert torch.isfinite(matrix).all()
+
+
+class TestRuleCoverageSelection:
+    def test_installs_residual_norm_activation_and_gate_rules_only(
+        self, fitted: _FittedPair
+    ) -> None:
+        coverage = fitted.relevance.rule_coverage
+        assert set(coverage.installed) == _expected_rule_mounts()
+        assert coverage.skipped == ()
+
+    def test_rule_scope_does_not_leak_past_the_fit(self, fitted: _FittedPair) -> None:
+        with torch.no_grad():
+            logits_after_fit = fitted.model(fitted.model.to_tokens(PROMPTS[0]))
+        assert torch.equal(logits_after_fit, fitted.logits_before_fit)
+
+
+class TestEstimatorDiffersFromOrdinaryJacobian:
+    def test_early_layer_transport_differs_from_jacobian_lens(self, fitted: _FittedPair) -> None:
+        differing = [
+            layer
+            for layer in fitted.jacobian.source_layers
+            if not torch.allclose(
+                fitted.relevance.jacobians[layer],
+                fitted.jacobian.jacobians[layer],
+            )
+        ]
+        assert differing, (
+            "every relevance transport matrix equals the ordinary Jacobian; the "
+            "requested rules changed no backward semantics"
+        )
