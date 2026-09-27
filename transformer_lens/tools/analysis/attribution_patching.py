@@ -453,6 +453,40 @@ def _edge_hook_names(n_layers: int) -> list[str]:
     )
 
 
+def _writer_hook_names(n_layers: int) -> list[str]:
+    """The hook points holding a writer's own residual-stream contribution.
+
+    The three writer families an edge sweep scores: the token embedding write,
+    each attention head's per-head output (``attn.hook_result``, the
+    decomposition of the head's contribution after it is projected into the
+    residual stream), and each layer's MLP output. These are the hook points
+    :func:`_writer_hook_name` resolves a single writer node to, listed as a
+    family so a capture can filter to exactly them.
+    """
+    names = ["hook_embed"]
+    for layer in range(n_layers):
+        names.append(f"blocks.{layer}.attn.hook_result")
+        names.append(f"blocks.{layer}.hook_mlp_out")
+    return names
+
+
+def _reader_hook_names(n_layers: int) -> list[str]:
+    """The hook points holding a reader's input.
+
+    The residual each reader consumes: the split ``attn.hook_q_input`` /
+    ``hook_k_input`` / ``hook_v_input`` per head, and each layer's MLP entry
+    ``hook_mlp_in``. The terminal logits reader reads the final
+    ``hook_resid_post``, which :func:`_required_edge_reader_hook_names` lists.
+    """
+    names: list[str] = []
+    for layer in range(n_layers):
+        names.append(f"blocks.{layer}.attn.hook_q_input")
+        names.append(f"blocks.{layer}.attn.hook_k_input")
+        names.append(f"blocks.{layer}.attn.hook_v_input")
+        names.append(f"blocks.{layer}.hook_mlp_in")
+    return names
+
+
 def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]:
     """Enumerate every writer -> reader edge in the residual-stream graph.
 
@@ -705,6 +739,76 @@ def cache_activation_and_gradient(
             gradients[name] = None if grad is None else grad.detach().clone()
 
     return GradientCache(activations=activations, gradients=gradients, metric=metric.detach())
+
+
+def capture_writer_outputs(
+    model: Any,
+    tokens: torch.Tensor,
+    names_filter: NamesFilter = None,
+) -> dict[str, torch.Tensor]:
+    """Capture writer contributions in one forward-only pass.
+
+    Rewriting a reader's input during a live forward pass needs the writers'
+    *current* contributions rather than a gradient estimate. This runs a single
+    forward under :func:`torch.no_grad` with forward hooks only: no backward is
+    driven and no gradient is retained. That is the opposite contract from
+    :func:`cache_activation_and_gradient`, which exists to retain gradients and
+    refuses to run without autograd, so the two are kept as separate helpers
+    rather than one helper with a mode switch.
+
+    The default filter is the writer-output family only -- ``hook_embed``,
+    ``blocks.*.attn.hook_result``, and ``blocks.*.hook_mlp_out``. Caching the
+    reader-input family as well would roughly double the captured memory for no
+    benefit here, since a caller rewriting a reader's input reads that input
+    from the live forward rather than from a cache.
+
+    Memory caveat: ``attn.hook_result`` is a per-head
+    ``[batch, seq, n_heads, d_model]`` tensor, so the capture is fine on a model
+    the size of gpt2-small and does not scale to models with many heads or
+    layers. The hook point only fires while ``cfg.use_attn_result`` is on; see
+    :func:`_edge_hook_flags`.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
+            ``hook_dict``, and the ``hooks()`` context manager.
+        tokens: Input token ids for a single forward pass.
+        names_filter: Restricts which hook points are captured. ``None`` (the
+            default) captures the writer-output family. On a real Bridge the
+            gated points (``attn.hook_result``, the split-QKV inputs,
+            ``hook_mlp_in``) raise in ``add_hook`` unless their ``set_use_*``
+            flag is on, so a filter reaching them must be paired with
+            :func:`_edge_hook_flags`.
+
+    Returns:
+        Detached activation tensors keyed by hook name, for every hook point
+        matching ``names_filter``.
+
+    Raises:
+        ValueError: if ``names_filter`` matches no hook point.
+    """
+    if names_filter is None:
+        names_filter = _writer_hook_names(int(model.cfg.n_layers))
+    predicate = _as_predicate(names_filter)
+    names = [name for name in model.hook_dict if predicate(name)]
+    if not names:
+        raise ValueError("names_filter matched no hook points")
+
+    captured: dict[str, torch.Tensor] = {}
+
+    def make_fwd_hook(name: str) -> Callable[..., None]:
+        def hook(tensor: torch.Tensor, *, hook: Any) -> None:
+            del hook
+            if isinstance(tensor, torch.Tensor):
+                captured[name] = tensor.detach().clone()
+            return None
+
+        return hook
+
+    fwd_hooks = [(name, make_fwd_hook(name)) for name in names]
+    with torch.no_grad(), model.hooks(fwd_hooks=fwd_hooks):
+        model(tokens)
+
+    return captured
 
 
 def _node_effects(

@@ -31,10 +31,13 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _edge_hook_names,
     _ensure_edge_hook_flags,
     _node_effects,
+    _reader_hook_names,
     _required_hook_names,
     _writer_hook_name,
+    _writer_hook_names,
     attribution_patch,
     cache_activation_and_gradient,
+    capture_writer_outputs,
     enumerate_edges,
     enumerate_nodes,
 )
@@ -1956,3 +1959,105 @@ def test_top_edges_can_surface_a_head_to_logits_edge() -> None:
 
     # At least one carries a real signed effect, so the ranking is not over zeros.
     assert any(abs(score) > 1e-6 for _writer, _reader, score in head_to_logits)
+
+
+# ---------------------------------------------------------------------------
+# Writer-output capture (forward-only)
+# ---------------------------------------------------------------------------
+#
+# Rewriting a reader's input during a live forward pass needs the writers'
+# current contributions rather than a gradient estimate. The capture is
+# therefore forward-only and names-filtered to the writer families, the
+# opposite contract from cache_activation_and_gradient.
+
+
+def test_writer_hook_names_cover_the_three_writer_families() -> None:
+    names = _writer_hook_names(N_LAYERS)
+
+    assert names[0] == "hook_embed"
+    for layer in range(N_LAYERS):
+        assert f"blocks.{layer}.attn.hook_result" in names
+        assert f"blocks.{layer}.hook_mlp_out" in names
+    # Writer families only: no reader inputs, and no pre-hook_result attn-z.
+    assert not any("hook_q_input" in name for name in names)
+    assert not any("hook_mlp_in" in name for name in names)
+    assert not any(name.endswith("attn.hook_z") for name in names)
+
+
+def test_reader_hook_names_cover_the_reader_input_families() -> None:
+    names = _reader_hook_names(N_LAYERS)
+
+    for layer in range(N_LAYERS):
+        for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
+            assert f"blocks.{layer}.attn.{input_hook}" in names
+        assert f"blocks.{layer}.hook_mlp_in" in names
+    # Reader inputs only: no writer outputs.
+    assert not any("hook_result" in name for name in names)
+    assert not any("hook_mlp_out" in name for name in names)
+
+
+def test_capture_writer_outputs_populates_only_the_writer_family() -> None:
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+
+    with _edge_hook_flags(model):
+        captured = capture_writer_outputs(model, tokens)
+
+    assert set(captured) == set(_writer_hook_names(N_LAYERS))
+    # The reader-input family and the pre-hook_result attn-z are not captured.
+    assert "blocks.0.attn.hook_q_input" not in captured
+    assert "blocks.0.hook_mlp_in" not in captured
+    assert "blocks.0.attn.hook_z" not in captured
+
+    assert captured["hook_embed"].shape == (1, SEQ_LEN, D_MODEL)
+    for layer in range(N_LAYERS):
+        assert captured[f"blocks.{layer}.attn.hook_result"].shape == (
+            1,
+            SEQ_LEN,
+            N_HEADS,
+            D_MODEL,
+        )
+        assert captured[f"blocks.{layer}.hook_mlp_out"].shape == (
+            1,
+            SEQ_LEN,
+            D_MODEL,
+        )
+
+
+def test_capture_writer_outputs_returns_detached_tensors() -> None:
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+
+    with _edge_hook_flags(model):
+        captured = capture_writer_outputs(model, tokens)
+
+    for tensor in captured.values():
+        assert not tensor.requires_grad
+        assert tensor.grad_fn is None
+
+
+def test_capture_writer_outputs_raises_when_the_filter_matches_nothing() -> None:
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+
+    with pytest.raises(ValueError, match="matched no hook points"):
+        capture_writer_outputs(model, tokens, names_filter=["blocks.0.not_a_hook"])
+
+
+def test_capture_writer_outputs_needs_no_grad() -> None:
+    """The capture runs with autograd off, where the gradient helper refuses.
+
+    The two helpers have opposite contracts: this one is forward-only and must
+    work under ``torch.no_grad()``, while ``cache_activation_and_gradient``
+    exists to retain gradients and raises without autograd.
+    """
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+
+    with _edge_hook_flags(model), torch.no_grad():
+        captured = capture_writer_outputs(model, tokens)
+        assert set(captured) == set(_writer_hook_names(N_LAYERS))
+
+        with pytest.raises(ValueError, match="autograd"):
+            cache_activation_and_gradient(model, tokens, metric)
