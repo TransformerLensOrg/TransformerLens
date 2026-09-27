@@ -345,6 +345,19 @@ class TestMergePropagatesRuleConfiguration:
         assert merged.enabled_rules == ["normalization"]
 
 
+class TestPublicExport:
+    def test_relevance_lens_is_importable_from_the_analysis_package(self) -> None:
+        from transformer_lens.tools import analysis
+
+        assert analysis.RelevanceLens is RelevanceLens
+        assert "RelevanceLens" in analysis.__all__
+
+    def test_analysis_exports_stay_alphabetized(self) -> None:
+        from transformer_lens.tools import analysis
+
+        assert analysis.__all__ == sorted(analysis.__all__)
+
+
 class TestLoadRejectsForeignEstimator:
     def test_jacobian_artifact_cannot_load_as_a_relevance_lens(self, tmp_path: Any) -> None:
         path = tmp_path / "lens.pt"

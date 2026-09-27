@@ -28,6 +28,11 @@ Tools:
       not imported here, so ``python -m`` runs it once.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
+    - relevance_lens: The Relevance lens (R-lens) -- a Jacobian lens whose
+      per-layer transport matrices are estimated with scoped Layer-wise
+      Relevance Propagation rules on residual-stream norms and gated MLPs,
+      reusing the Jacobian lens readout, vocabulary vectors, sparse
+      decomposition, and interventions unchanged.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
       activation tensors, with train-only selection and raw null controls.
     - svd_circuits: Per-head QK/OV singular-vector decomposition with a
@@ -97,6 +102,7 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
+from transformer_lens.tools.analysis.relevance_lens import RelevanceLens
 from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeControl,
     SparseProbeMetrics,
@@ -151,6 +157,7 @@ __all__ = [
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "RankReportRow",
+    "RelevanceLens",
     "SparseProbeControl",
     "SparseProbeMetrics",
     "SparseProbeResult",
