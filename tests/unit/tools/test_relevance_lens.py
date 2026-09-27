@@ -386,3 +386,54 @@ class TestLoadRejectsForeignEstimator:
         loaded = RelevanceLens.load(str(path))
 
         assert loaded.estimator == "relevance_lens"
+
+
+class TestAnalysisSurfaceIsReusedNotDuplicated:
+    """The estimator changes only how matrices are estimated.
+
+    Readout, vocabulary vectors, sparse decomposition, and the interventions are
+    inherited from the Jacobian lens rather than reimplemented, so a fix to any
+    of them reaches both estimators. This pins that contract: a future
+    reimplementation on the subclass would silently fork the two surfaces.
+    """
+
+    INHERITED_METHODS = (
+        "transport",
+        "readout",
+        "lens_vectors",
+        "lens_vector_dictionary",
+        "decompose",
+        "occupancy",
+        "fraction_of_variance",
+        "steering_hooks",
+        "ablation_hooks",
+        "swap_hooks",
+        "swap_clamp_hooks",
+        "coordinate_patch",
+        "coordinate_patch_hooks",
+        "validate_model",
+        "save",
+        "merge",
+        "from_pretrained",
+    )
+
+    def test_downstream_methods_are_inherited_unchanged(self) -> None:
+        for name in self.INHERITED_METHODS:
+            assert name not in vars(RelevanceLens), (
+                f"{name} is redefined on RelevanceLens; the estimator is meant to "
+                "change only how transport matrices are estimated"
+            )
+            # Compare the underlying functions: a classmethod accessor returns a
+            # fresh bound method on every getattr, so identity on the accessor
+            # itself would never hold.
+            ours = getattr(RelevanceLens, name)
+            theirs = getattr(JacobianLens, name)
+            assert getattr(ours, "__func__", ours) is getattr(theirs, "__func__", theirs)
+
+    def test_only_the_estimator_specific_surface_is_overridden(self) -> None:
+        overridden = {
+            name
+            for name in vars(RelevanceLens)
+            if not name.startswith("__") and callable(getattr(RelevanceLens, name))
+        }
+        assert overridden == {"fit", "load", "_merge_identity"}
