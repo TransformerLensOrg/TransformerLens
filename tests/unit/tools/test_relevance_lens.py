@@ -24,6 +24,7 @@ import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
+from transformer_lens.model_bridge._relevance_rules import RelevanceRuleUnsupportedError
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
@@ -93,6 +94,18 @@ def _build_tiny_qwen2() -> TransformerBridge:
     hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
     bridge_config = build_bridge_config_from_hf(
         hf_model.config, "Qwen2ForCausalLM", "qwen2-tiny", torch.float32
+    )
+    adapter = Qwen2ArchitectureAdapter(bridge_config)
+    return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_offline_tokenizer(PROMPTS))
+
+
+def _build_tiny_qwen2_relu() -> TransformerBridge:
+    """A gated MLP whose activation the Identity-rule cannot honor."""
+    hf_config = AutoConfig.for_model("qwen2", **TINY_DIMS, hidden_act="relu")
+    torch.manual_seed(0)
+    hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf_model.config, "Qwen2ForCausalLM", "qwen2-relu-tiny", torch.float32
     )
     adapter = Qwen2ArchitectureAdapter(bridge_config)
     return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_offline_tokenizer(PROMPTS))
@@ -606,3 +619,45 @@ class TestPartialCoverageIsRecordedHonestly:
         assert not [
             item for item in record if "skipped" in str(item.message)
         ], "a fully covered fit must not warn about skipped mounts"
+
+
+class TestUnsupportedActivationIsRefusedBeforeFitting:
+    """A relu-family gated MLP must be refused, not scored with a wrong rule.
+
+    The Identity-rule's backward multiplier ``f(x) / x`` reduces to ``relu(x)``
+    for relu-squared rather than the true derivative ``2 * relu(x)``, so applying
+    it there would produce plausible but wrong transport matrices. The refusal
+    must happen before any fitting work, and must leave the model untouched.
+    """
+
+    def test_fit_raises_for_a_relu_gated_mlp(self) -> None:
+        model = _build_tiny_qwen2_relu()
+
+        with pytest.raises(RelevanceRuleUnsupportedError, match="activation"):
+            RelevanceLens.fit(
+                model,
+                PROMPTS,
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+
+    def test_refusal_leaves_the_model_untouched(self) -> None:
+        model = _build_tiny_qwen2_relu()
+        tokens = model.to_tokens(PROMPTS[0])
+        with torch.no_grad():
+            before = model(tokens)
+
+        with pytest.raises(RelevanceRuleUnsupportedError):
+            RelevanceLens.fit(
+                model,
+                PROMPTS,
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+
+        with torch.no_grad():
+            after = model(tokens)
+        assert torch.equal(after, before)
+        assert all(parameter.grad is None for parameter in model.parameters())
