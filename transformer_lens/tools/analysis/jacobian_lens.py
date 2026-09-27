@@ -263,6 +263,11 @@ class JacobianLens:
             from the reference implementation load with empty metadata.
     """
 
+    # Whether from_pretrained() resolves short model names through the bundled
+    # artifact registry. An estimator whose artifacts live in a different
+    # registry sets this False and accepts only explicit paths or Hub repo ids.
+    _uses_artifact_registry: bool = True
+
     def __init__(
         self,
         jacobians: Dict[int, Float[torch.Tensor, "d_model d_model"]],
@@ -304,6 +309,15 @@ class JacobianLens:
             f"JacobianLens(layers={layers[0]}..{layers[-1]} ({len(layers)}), "
             f"d_model={self.d_model}, n_prompts={self.n_prompts})"
         )
+
+    def _merge_identity(self) -> Dict[str, Any]:
+        """Estimator-specific identity that must match across merged shards.
+
+        Subclasses extend this with the configuration that changes their
+        transport matrices, so merge() refuses to combine shards whose matrices
+        were estimated differently.
+        """
+        return {"estimator": self.estimator}
 
     # ------------------------------------------------------------------ #
     # persistence                                                        #
@@ -488,7 +502,9 @@ class JacobianLens:
            ``"gemma-2-2b"`` or ``"google/gemma-2-2b"``), the corresponding
            artifact in ``neuronpedia/jacobian-lens`` is fetched automatically.
            The *filename* argument is ignored in this case because the registry
-           already encodes the correct subpath.
+           already encodes the correct subpath. Subclasses that set
+           ``_uses_artifact_registry = False`` skip this step and refuse a bare
+           short name, since the registry holds only Jacobian lens artifacts.
         4. **Explicit Hub repo** — otherwise *name_or_path* is treated as a Hub
            repo id and *filename* is used as-is, preserving full backward
            compatibility (e.g. ``from_pretrained("neuronpedia/jacobian-lens",
@@ -535,7 +551,16 @@ class JacobianLens:
         else:
             from huggingface_hub import hf_hub_download
 
-            resolved = _resolve_registry_entry(name_or_path)
+            if cls._uses_artifact_registry:
+                resolved = _resolve_registry_entry(name_or_path)
+            else:
+                if "/" not in name_or_path:
+                    raise ValueError(
+                        f"{cls.__name__} does not resolve short names from the "
+                        "Jacobian lens registry; pass an explicit path or a Hub "
+                        f"repo id (owner/name) instead of {name_or_path!r}."
+                    )
+                resolved = None
             if resolved is not None:
                 repo_id, resolved_filename = resolved
             else:
@@ -561,15 +586,18 @@ class JacobianLens:
         parallelized across processes or machines and merged afterwards.
         Provenance must match across shards (apart from ``n_prompts``), so a
         merge cannot silently relabel matrices fitted with different models,
-        corpora, dtypes, or estimator settings. The merged count replaces the
-        per-shard count.
+        corpora, dtypes, or estimator settings. The estimator and its
+        configuration must also match, so shards from different estimators or
+        rule configurations are refused even when their provenance is empty.
+        The merged count replaces the per-shard count.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
                 ``d_model``.
 
         Raises:
-            ValueError: On an empty sequence or mismatched lenses.
+            ValueError: On an empty sequence, mismatched lenses, or shards from
+                different estimators.
         """
         if not lenses:
             raise ValueError("cannot merge an empty sequence of lenses")
@@ -584,6 +612,7 @@ class JacobianLens:
         first = lenses[0]
         for lens in lenses:
             _validate_metadata(lens.metadata)
+        _require_matching_merge_identity(lenses)
         first_provenance = {
             key: value for key, value in first.metadata.items() if key != "n_prompts"
         }
@@ -1882,6 +1911,29 @@ def _require_raw_bridge(model: Any, *, estimator: str) -> None:
             f"{estimator} requires a direct d_model-width unembedding after ln_final; "
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
+        )
+
+
+def _require_matching_merge_identity(lenses: Sequence["JacobianLens"]) -> None:
+    """Reject a merge whose shards disagree on estimator-specific identity.
+
+    Transport matrices are only comparable when the estimator and its
+    configuration agree, so a merge across estimators or across rule
+    configurations would silently average incompatible quantities. The identity
+    is compared explicitly rather than through the provenance dict, so the guard
+    holds for lenses constructed without provenance metadata.
+    """
+    identities = [lens._merge_identity() for lens in lenses]
+    first = identities[0]
+    for index, other in enumerate(identities[1:], start=1):
+        if other == first:
+            continue
+        differing = sorted(
+            key for key in set(first) | set(other) if first.get(key) != other.get(key)
+        )
+        raise ValueError(
+            "all lenses being merged must share the same estimator provenance; "
+            f"shard 0 and shard {index} differ on {differing}"
         )
 
 

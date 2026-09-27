@@ -104,6 +104,10 @@ class RelevanceLens(JacobianLens):
         enabled_rules: Names of the ``RelevanceRules`` fields that were enabled.
     """
 
+    # Relevance artifacts are not published in the Jacobian lens registry, so
+    # short model names are refused rather than resolving to a Jacobian lens.
+    _uses_artifact_registry = False
+
     def __init__(
         self,
         jacobians: Dict[int, torch.Tensor],
@@ -120,6 +124,18 @@ class RelevanceLens(JacobianLens):
         self.rule_coverage = rule_coverage
         self.relevance_rule_version = int(relevance_rule_version)
         self.enabled_rules: List[str] = list(enabled_rules)
+
+    def _merge_identity(self) -> Dict[str, Any]:
+        """Extend the merge guard with the rule configuration.
+
+        Shards fitted under different rule semantics or with a different set of
+        rules enabled produce incomparable transport matrices, so both are part
+        of the identity that must match across a merge.
+        """
+        identity = super()._merge_identity()
+        identity["relevance_rule_version"] = self.relevance_rule_version
+        identity["enabled_rules"] = tuple(self.enabled_rules)
+        return identity
 
     @classmethod
     def fit(

@@ -10,7 +10,7 @@ estimator selects.
 
 from __future__ import annotations
 
-from typing import NamedTuple, Sequence
+from typing import Any, NamedTuple, Sequence
 
 import pytest
 import torch
@@ -19,13 +19,17 @@ from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
 from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFast
 
+import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
 from transformer_lens.tools.analysis import JacobianLens
-from transformer_lens.tools.analysis.relevance_lens import RelevanceLens
+from transformer_lens.tools.analysis.relevance_lens import (
+    RELEVANCE_RULE_VERSION,
+    RelevanceLens,
+)
 
 N_LAYERS = 2
 D_MODEL = 32
@@ -182,3 +186,104 @@ class TestEstimatorDiffersFromOrdinaryJacobian:
             "every relevance transport matrix equals the ordinary Jacobian; the "
             "requested rules changed no backward semantics"
         )
+
+
+def _shard(
+    *,
+    n_prompts: int,
+    metadata: dict[str, Any] | None = None,
+    rule_version: int = RELEVANCE_RULE_VERSION,
+    enabled_rules: Sequence[str] = (
+        "normalization",
+        "activation",
+        "multiplicative_gate",
+    ),
+) -> RelevanceLens:
+    """A hand-built relevance shard, so merge/registry tests need no model."""
+    return RelevanceLens(
+        {0: torch.eye(D_MODEL)},
+        n_prompts=n_prompts,
+        d_model=D_MODEL,
+        metadata=metadata,
+        relevance_rule_version=rule_version,
+        enabled_rules=enabled_rules,
+    )
+
+
+class TestMergeRejectsMixedEstimators:
+    def test_jacobian_shard_cannot_merge_with_relevance_shard(self) -> None:
+        jacobian = JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge([_shard(n_prompts=1), jacobian])
+
+    def test_relevance_shard_cannot_merge_with_jacobian_shard(self) -> None:
+        jacobian = JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+        with pytest.raises(ValueError, match="provenance"):
+            JacobianLens.merge([jacobian, _shard(n_prompts=1)])
+
+
+class TestMergeRejectsMismatchedRuleConfiguration:
+    def test_different_rule_version_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge(
+                [
+                    _shard(n_prompts=1, rule_version=RELEVANCE_RULE_VERSION),
+                    _shard(n_prompts=1, rule_version=RELEVANCE_RULE_VERSION + 1),
+                ]
+            )
+
+    def test_different_enabled_rules_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge(
+                [
+                    _shard(n_prompts=1),
+                    _shard(n_prompts=1, enabled_rules=("normalization",)),
+                ]
+            )
+
+
+class TestMergeWeightsByPromptCount:
+    def test_identical_provenance_shards_merge_by_prompt_count(self) -> None:
+        low = _shard(n_prompts=2)
+        low.jacobians[0] = torch.zeros(D_MODEL, D_MODEL)
+        high = _shard(n_prompts=6)
+        high.jacobians[0] = 4 * torch.ones(D_MODEL, D_MODEL)
+
+        merged = RelevanceLens.merge([low, high])
+
+        assert merged.n_prompts == 8
+        assert torch.allclose(merged.jacobians[0], 3 * torch.ones(D_MODEL, D_MODEL))
+        assert merged.estimator == "relevance_lens"
+
+
+class TestRegistryResolutionIsDisabled:
+    def test_short_name_does_not_resolve_the_jacobian_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fail_if_called(name_or_path: str) -> Any:
+            raise AssertionError(
+                f"the Jacobian registry must not resolve {name_or_path!r} for a " "relevance lens"
+            )
+
+        monkeypatch.setattr(jacobian_lens_module, "_resolve_registry_entry", fail_if_called)
+        with pytest.raises(ValueError, match="registry"):
+            RelevanceLens.from_pretrained("gemma-2-2b")
+
+    def test_explicit_hub_repo_is_still_accepted(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        path = tmp_path / "lens.pt"
+        _shard(n_prompts=1).save(str(path))
+        calls: dict[str, Any] = {}
+
+        def fake_retry(function: Any, **kwargs: Any) -> str:
+            calls["kwargs"] = kwargs
+            return str(path)
+
+        monkeypatch.setattr(jacobian_lens_module, "call_hf_with_retry", fake_retry)
+
+        loaded = RelevanceLens.from_pretrained("example/lenses", filename="model/lens.pt")
+
+        assert calls["kwargs"]["repo_id"] == "example/lenses"
+        assert calls["kwargs"]["filename"] == "model/lens.pt"
+        assert loaded.estimator == "relevance_lens"
