@@ -23,10 +23,20 @@ Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.
 
 Scope: this build ships node and edge granularity with plain attribution
-(``ig_steps=1``). The integrated-gradient path (EAP-IG, ``ig_steps>1``) and
-ablate-outside faithfulness are not implemented yet; their API is declared here,
-and ``ig_steps>1`` raises :class:`NotImplementedError`, so downstream code can pin
+(``ig_steps=1``), plus ablate-outside faithfulness. The integrated-gradient path
+(EAP-IG, ``ig_steps>1``) is not implemented yet; its API is declared here, and
+``ig_steps>1`` raises :class:`NotImplementedError`, so downstream code can pin
 against a stable surface now.
+
+Faithfulness intervenes rather than estimating: it ablates every edge outside a
+candidate circuit and reports how much of the clean-to-corrupt metric gap the
+circuit recovers. The residual stream is a running sum, so a reader's input is
+exactly the sum of its writers' contributions, and rebuilding that input from
+the included writers plus replacements for the excluded ones is an exact
+correction rather than an approximation. The reader's fork hooks
+(``attn.hook_q_input`` / ``hook_k_input`` / ``hook_v_input``, ``hook_mlp_in``)
+fire before the layer norm, so the correction is a plain add and subtract in
+``d_model`` space with no norm scale to divide out.
 """
 
 from __future__ import annotations
