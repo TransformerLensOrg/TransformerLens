@@ -39,8 +39,11 @@ Tools:
 from transformer_lens.tools.analysis.attribution_patching import (
     AttributionResult,
     EdgeAttributionConfig,
+    FaithfulnessConfig,
+    FaithfulnessResult,
     Node,
     attribution_patch,
+    faithfulness,
 )
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLens,
@@ -133,6 +136,8 @@ __all__ = [
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
+    "FaithfulnessConfig",
+    "FaithfulnessResult",
     "FunctionSpec",
     "HeadAffinityPair",
     "HeadAffinityResult",
@@ -163,6 +168,7 @@ __all__ = [
     "decompose_head",
     "direct_logit_attribution",
     "estimate_occupancy",
+    "faithfulness",
     "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
