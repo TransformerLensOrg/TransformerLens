@@ -965,6 +965,7 @@ def test_public_gated_analyze_returns_three_matrices_per_layer(qwen_bridge) -> N
     assert [layer.layer for layer in result.layers] == list(QWEN_LAYERS)
     assert result.max_absolute_reconstruction_error <= 2e-6
     assert result.max_relative_reconstruction_error <= 2e-5
+    prompt_length = int(result.prompt_token_ids.shape[0])
     for layer in result.layers:
         gate = layer.gate_projection
         assert gate is not None
@@ -988,6 +989,20 @@ def test_public_gated_analyze_returns_three_matrices_per_layer(qwen_bridge) -> N
         assert output_logits is not None
         torch.testing.assert_close(gate_logits, input_logits)
         assert not torch.allclose(gate_logits, output_logits)
+        for matrix in (gate, layer.input_projection, layer.output_projection):
+            target_ranks = matrix.gradient_descent_target_ranks(result.target_token_id)
+            normalized_target_ranks = matrix.gradient_descent_target_ranks(
+                result.target_token_id, normalized=True
+            )
+            assert target_ranks.shape == (prompt_length,)
+            assert normalized_target_ranks.shape == (prompt_length,)
+            assert target_ranks.dtype == torch.int64
+            assert normalized_target_ranks.dtype == torch.int64
+        # Shared imprint means the gate and up target ranks coincide too.
+        torch.testing.assert_close(
+            gate.gradient_descent_target_ranks(result.target_token_id),
+            layer.input_projection.gradient_descent_target_ranks(result.target_token_id),
+        )
 
 
 @pytest.mark.parametrize(
