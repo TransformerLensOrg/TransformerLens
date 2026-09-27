@@ -67,6 +67,8 @@ generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo
 content/backward_lens
 content/debugging_numerical_divergence
 content/sparse_probing
+content/svd_circuits
+generated/demos/SVD_Circuits_Demo
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 content/special_cases
