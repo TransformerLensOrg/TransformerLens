@@ -1117,3 +1117,35 @@ def test_public_dense_analyze_leaves_gate_projection_empty(request, model_fixtur
 
     for layer in result.layers:
         assert layer.gate_projection is None
+
+
+def test_fused_gate_up_mlp_is_supported_after_the_bridge_split(qwen_bridge) -> None:
+    from transformers import Phi3Config, Phi3ForCausalLM
+
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.tools.analysis import BackwardLens
+
+    config = Phi3Config(
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=4,
+        hidden_size=32,
+        intermediate_size=64,
+        max_position_embeddings=64,
+        vocab_size=int(qwen_bridge.cfg.d_vocab),
+    )
+    hf_model = cast(Any, Phi3ForCausalLM)(config).to(device="cpu", dtype=torch.float32).eval()
+    bridge = TransformerBridge.boot_transformers(
+        "phi3",
+        hf_model=hf_model,
+        tokenizer=qwen_bridge.tokenizer,
+        dtype=torch.float32,
+    )
+
+    # The Phi-3 adapter splits the fused gate/up matrix at boot, so the MLP
+    # exposes a distinct gate projection and the gated path applies unchanged.
+    result = BackwardLens(bridge).analyze("Small test", " token", [0])
+
+    gate = result.layer(0).gate_projection
+    assert gate is not None
+    assert gate.factors.relative_reconstruction_error <= 2e-5

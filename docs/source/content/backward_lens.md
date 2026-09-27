@@ -237,11 +237,17 @@ Supported model families:
 | GPT-2 | dense | `in_out` |
 | Pythia / GPT-NeoX | dense | `out_in` |
 | Qwen2 | gated | `out_in` |
+| Phi-3 | gated, fused gate/up split at boot | `out_in` |
 
-It does not currently support batched prompts, multi-token target losses, fused
-gate/up projections, mixture-of-experts routing, architecture families whose MLP
-projections have an unknown weight layout, compatibility-mode weights, model
-editing, or causal claims about the displayed vocabulary rankings.
+Families whose MLP stores gate and up in one fused matrix are supported when the
+Bridge splits that matrix into distinct gate and up projections at boot, as the
+Phi-3 adapter does. A gated MLP that exposes no distinct gate projection is
+rejected with a clear error.
+
+It does not currently support batched prompts, multi-token target losses,
+mixture-of-experts routing, architecture families whose MLP projections have an
+unknown weight layout, compatibility-mode weights, model editing, or causal
+claims about the displayed vocabulary rankings.
 
 ## Model-state safety
 
@@ -263,6 +269,7 @@ activation-editing hooks still affect the analyzed computation.
 | Requested `k` exceeds retained `top_k` | Increase `top_k` in `analyze(...)`; accessor methods cannot recover discarded rankings. |
 | FF2 ranking appears sign-reversed | Remember that results are raw loss gradients and gradient descent subtracts them; inspect bottom tokens or ascending target ranks. |
 | Results change when custom hooks are installed | Existing hooks are intentionally respected; remove them to analyze the unmodified model computation. |
+| Gated MLP exposes no distinct gate projection | The Bridge did not split a fused gate/up matrix into separate projections; only models whose adapter performs that split are supported. |
 
 ## References
 
