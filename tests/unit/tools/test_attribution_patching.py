@@ -1385,7 +1385,7 @@ class _EdgeScoringBlock(nn.Module):
         )
 
         w_o_per_head = self.w_o.weight.reshape(d_model, self.n_heads, self.d_head).permute(1, 2, 0)
-        per_head_out_raw = torch.einsum("bshd,hdm->bshm", z, w_o_per_head)
+        per_head_out_raw = self._attention_output(torch.einsum("bshd,hdm->bshm", z, w_o_per_head))
         if self.cfg.use_attn_result:
             per_head_out = self.hook_result(per_head_out_raw)
         else:
@@ -1395,6 +1395,28 @@ class _EdgeScoringBlock(nn.Module):
         mlp_in = self.hook_mlp_in(residual) if self.cfg.use_hook_mlp_in else residual
         mlp_out = self.hook_mlp_out(self.w_mlp(mlp_in))
         return self.hook_resid_post(residual + mlp_out)
+
+    def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
+        """Transform the per-head attention output before it joins the residual.
+
+        Identity here. A subclass can make the block nonlinear, which is what
+        stops a circuit from reproducing the metric merely by containing every
+        edge into the logits reader.
+        """
+        return per_head_out
+
+
+class _NonlinearEdgeScoringBlock(_EdgeScoringBlock):
+    """``_EdgeScoringBlock`` with a GELU on the attention output path.
+
+    The nonlinearity breaks the linear relation between a writer's contribution
+    and the metric, so a circuit cannot recover the metric just by containing
+    every edge into the logits reader. That is what makes a random edge set of
+    the same size a meaningful baseline rather than a coin flip.
+    """
+
+    def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.gelu(per_head_out)
 
 
 class _EdgeScoringToyBridge(_LinearToyBridge):
@@ -1473,6 +1495,30 @@ class _EdgeScoringToyBridge(_LinearToyBridge):
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
+
+class _NonlinearEdgeScoringToyBridge(_EdgeScoringToyBridge):
+    """``_EdgeScoringToyBridge`` whose attention output passes through a GELU.
+
+    Reuses the parent's hook graph and ``hooks()`` plumbing but swaps in
+    :class:`_NonlinearEdgeScoringBlock`, so a writer's contribution reaches the
+    metric nonlinearly. On a linear toy any circuit holding every edge into the
+    logits reader recovers the metric outright, which makes a random baseline
+    meaningless; the nonlinearity is what gives the comparison teeth.
+    """
+
+    def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
+        super().__init__(dtype=dtype)
+        torch.manual_seed(1)
+        self.blocks = nn.ModuleList(
+            [
+                _NonlinearEdgeScoringBlock(D_MODEL, N_HEADS, D_HEAD, layer, dtype, self.cfg)
+                for layer in range(N_LAYERS)
+            ]
+        )
+        # The parent's eval() ran before these blocks existed, so they would
+        # otherwise start in training mode and trip require_eval_mode.
+        self.eval()
 
 
 def test_attribution_patch_edge_granularity_scores_every_edge_with_finite_values() -> None:
@@ -2592,3 +2638,80 @@ def test_edge_class_breakout_is_leave_one_out() -> None:
     assert any(
         value != pytest.approx(report.recovered) for value in report.edge_class_recovered.values()
     )
+
+
+# ---------------------------------------------------------------------------
+# Random-edge-set baseline
+# ---------------------------------------------------------------------------
+#
+# A ranked circuit is only meaningful if it beats an arbitrary edge set of the
+# same size. The toy is nonlinear here on purpose: on a linear model any circuit
+# holding every edge into the logits reader recovers the metric outright, so the
+# baseline could tie by accident.
+
+
+def _random_edge_sets(
+    edges: list[tuple[Node, Node]], size: int, draws: int, seed: int
+) -> list[list[tuple[Node, Node]]]:
+    """``draws`` distinct random edge sets of ``size`` edges, from a fixed seed."""
+    generator = torch.Generator().manual_seed(seed)
+    return [
+        [edges[index] for index in torch.randperm(len(edges), generator=generator)[:size].tolist()]
+        for _ in range(draws)
+    ]
+
+
+def test_random_edge_set_recovers_markedly_less_than_the_attribution_circuit() -> None:
+    """The ranked circuit beats random edge sets of the same size by a wide margin.
+
+    This is the honesty guard: a ranking that does no better than chance would
+    still produce a plausible-looking ``recovered`` number, so the comparison
+    against same-size random sets is what makes the number mean anything.
+    """
+    model = _NonlinearEdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    edges = list(result.edge_scores)
+    budget = 8
+    ranked = result.top_edges(k=budget)
+    ranked_report = faithfulness(model, clean, corrupt, metric, ranked)
+
+    random_reports = [
+        faithfulness(model, clean, corrupt, metric, circuit)
+        for circuit in _random_edge_sets(edges, budget, draws=3, seed=0)
+    ]
+    random_recovered = [report.recovered for report in random_reports]
+    best_random = max(random_recovered)
+
+    # The baseline is not degenerate: if every random set recovered the whole
+    # gap, the toy would be too easy to discriminate and the comparison would be
+    # vacuous.
+    assert all(value < 1.0 for value in random_recovered), random_recovered
+    assert ranked_report.recovered > best_random + 0.2, (
+        f"ranked recovered {ranked_report.recovered:.4f} vs random "
+        f"{[round(value, 4) for value in random_recovered]}"
+    )
+
+
+def test_random_edge_set_baseline_is_reproducible_under_a_fixed_seed() -> None:
+    model = _NonlinearEdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    edges = list(result.edge_scores)
+
+    first = _random_edge_sets(edges, 8, draws=3, seed=0)
+    second = _random_edge_sets(edges, 8, draws=3, seed=0)
+
+    assert first == second
+    # Different seeds give different draws, so the seed is actually used.
+    assert first != _random_edge_sets(edges, 8, draws=3, seed=1)
