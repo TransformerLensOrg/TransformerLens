@@ -4,7 +4,9 @@ The Backward Lens represents a linear weight gradient as a sum of token-position
 outer products and projects residual-width factors into the model vocabulary.
 The public API supports raw dense-MLP decoder-only ``TransformerBridge`` models
 (for example GPT-2 and Pythia/GPT-NeoX), reading each MLP projection's weight
-layout from the Bridge component rather than the model class.
+layout from the Bridge component rather than the model class. Gated MLP
+projections are discovered and captured for the private capture path; the public
+entry point still requires a dense, non-gated MLP.
 """
 
 from __future__ import annotations
@@ -231,11 +233,15 @@ class BackwardLensResult:
 
 @dataclass(frozen=True)
 class _MLPLayerGradientFactors:
-    """Detached gradient factors for both MLP projections in one layer."""
+    """Detached gradient factors for the MLP projections in one layer.
+
+    ``gate_projection`` is populated for gated MLPs and ``None`` for dense MLPs.
+    """
 
     layer: int
     input_projection: LinearGradientFactors
     output_projection: LinearGradientFactors
+    gate_projection: LinearGradientFactors | None = None
 
 
 @dataclass(frozen=True)
@@ -585,21 +591,32 @@ def _require_raw_dense_mlp_bridge(model: Any) -> None:
 
 @dataclass(frozen=True)
 class _MLPLinear:
-    """One validated dense-MLP linear projection with its resolved weight layout."""
+    """One validated MLP linear projection with its resolved weight layout."""
 
     projection: Any
     weight_layout: WeightLayout
 
 
+_DENSE_MLP_ROLES = ("input", "output")
+_GATED_MLP_ROLES = ("gate", "input", "output")
+
+
+def _mlp_projection_roles(records: tuple[_MLPLinear, ...]) -> tuple[str, ...]:
+    """Role names matching a layer's discovered projection records."""
+    return _GATED_MLP_ROLES if len(records) == 3 else _DENSE_MLP_ROLES
+
+
 def _get_dense_mlp_projections(
     model: Any, layers: tuple[int, ...]
-) -> dict[int, tuple[_MLPLinear, _MLPLinear]]:
-    """Return validated live dense-MLP input/output projection bridges.
+) -> dict[int, tuple[_MLPLinear, ...]]:
+    """Return validated live MLP projection bridges for each requested layer.
 
-    Each projection's storage orientation is resolved from the Bridge weight-layout
-    oracle, so Conv1D ``[in, out]`` and ``torch.nn.Linear`` ``[out, in]`` weights are
-    both accepted without inspecting the model class. Projections whose wrapped
-    module the oracle cannot orient are rejected.
+    A dense MLP yields two records ordered ``(input, output)``; a gated MLP yields
+    three ordered ``(gate, input, output)``. Each projection's storage orientation
+    is resolved from the Bridge weight-layout oracle, so Conv1D ``[in, out]`` and
+    ``torch.nn.Linear`` ``[out, in]`` weights are both accepted without inspecting
+    the model class. Projections whose wrapped module the oracle cannot orient are
+    rejected.
     """
     from transformer_lens.hook_points import HookPoint
     from transformer_lens.model_bridge.generalized_components import (
@@ -613,18 +630,33 @@ def _get_dense_mlp_projections(
     d_model = int(model.cfg.d_model)
     d_mlp = int(model.cfg.d_mlp)
     # Feature counts are fixed by the MLP role; storage order follows the layout.
-    # Input maps d_model -> d_mlp, output maps d_mlp -> d_model.
-    feature_pairs = ((d_model, d_mlp), (d_mlp, d_model))
-    projections: dict[int, tuple[_MLPLinear, _MLPLinear]] = {}
+    # Gate and input map d_model -> d_mlp, output maps d_mlp -> d_model.
+    projections: dict[int, tuple[_MLPLinear, ...]] = {}
     for layer in layers:
         mlp = model.blocks[layer].mlp
-        if not isinstance(mlp, MLPBridge) or getattr(mlp, "gate", None) is not None:
-            raise ValueError(f"layer {layer} must have a dense, non-gated MLPBridge")
-        pair = (getattr(mlp, "in", None), getattr(mlp, "out", None))
+        if not isinstance(mlp, MLPBridge):
+            raise ValueError(f"layer {layer} must be an MLPBridge")
+        gate = getattr(mlp, "gate", None)
+        roles: tuple[tuple[str, Any, tuple[int, int]], ...]
+        if gate is None:
+            if bool(getattr(model.cfg, "gated_mlp", False)):
+                raise ValueError(
+                    f"layer {layer} is configured as a gated MLP but exposes no "
+                    "distinct gate projection; fused gate/up projections are not "
+                    "supported"
+                )
+            roles = (
+                ("input", getattr(mlp, "in", None), (d_model, d_mlp)),
+                ("output", getattr(mlp, "out", None), (d_mlp, d_model)),
+            )
+        else:
+            roles = (
+                ("gate", gate, (d_model, d_mlp)),
+                ("input", getattr(mlp, "in", None), (d_model, d_mlp)),
+                ("output", getattr(mlp, "out", None), (d_mlp, d_model)),
+            )
         records: list[_MLPLinear] = []
-        for name, projection, feature_pair in zip(
-            ("input", "output"), pair, feature_pairs, strict=True
-        ):
+        for name, projection, feature_pair in roles:
             if not isinstance(projection, LinearBridge):
                 raise ValueError(f"layer {layer} {name} projection must be a LinearBridge")
             layout_flag = weight_layout_in_out(projection)
@@ -659,7 +691,7 @@ def _get_dense_mlp_projections(
             ):
                 raise ValueError(f"layer {layer} {name} projection is missing Bridge hook points")
             records.append(_MLPLinear(projection=projection, weight_layout=weight_layout))
-        projections[layer] = (records[0], records[1])
+        projections[layer] = tuple(records)
     return projections
 
 
@@ -680,14 +712,14 @@ def _capture_once(
 
 @contextmanager
 def _capture_projection_tensors(
-    projections: dict[int, tuple[_MLPLinear, _MLPLinear]],
+    projections: dict[int, tuple[_MLPLinear, ...]],
 ) -> Iterator[dict[tuple[int, str, str], torch.Tensor]]:
     """Capture exact linear boundaries while preserving every pre-existing hook."""
     captured: dict[tuple[int, str, str], torch.Tensor] = {}
     handles: list[Any] = []
     try:
-        for layer, pair in projections.items():
-            for name, record in zip(("input", "output"), pair, strict=True):
+        for layer, records in projections.items():
+            for name, record in zip(_mlp_projection_roles(records), records, strict=True):
                 projection = record.projection
                 input_key = (layer, name, "forward_input")
                 output_key = (layer, name, "output")
@@ -747,11 +779,13 @@ def _capture_dense_mlp_gradient_factors(
     target_token: str,
     layers: Sequence[int],
 ) -> _DenseMLPGradientCapture:
-    """Capture exact dense-MLP weight-gradient factors for one next-token loss.
+    """Capture exact MLP weight-gradient factors for one next-token loss.
 
-    The analysis performs one grad-enabled forward and exactly one
-    :func:`torch.autograd.grad` call. It does not call ``backward``, touch
-    parameter ``.grad`` buffers, change training state, or remove caller hooks.
+    Dense MLPs contribute input and output factors; gated MLPs additionally
+    contribute a gate factor. The analysis performs one grad-enabled forward and
+    exactly one :func:`torch.autograd.grad` call. It does not call ``backward``,
+    touch parameter ``.grad`` buffers, change training state, or remove caller
+    hooks.
     """
     if torch.is_inference_mode_enabled():
         raise ValueError(
@@ -802,9 +836,9 @@ def _capture_dense_mlp_gradient_factors(
             if not bool(torch.isfinite(loss)):
                 raise ValueError("the next-token loss must be finite")
             outputs = [
-                captured[(layer, name, "output")]
+                captured[(layer, role, "output")]
                 for layer in requested_layers
-                for name in ("input", "output")
+                for role in _mlp_projection_roles(projections[layer])
             ]
             gradients = torch.autograd.grad(loss, (*outputs, *weights), allow_unused=False)
 
@@ -812,36 +846,29 @@ def _capture_dense_mlp_gradient_factors(
     weight_gradients = gradients[len(outputs) :]
     layer_results = []
     for index, layer in enumerate(requested_layers):
-        input_offset = 2 * index
-        input_record, output_record = projections[layer]
-        input_factors = _build_linear_gradient_factors(
-            _single_batch_matrix(
-                f"layer {layer} input projection input",
-                captured[(layer, "input", "forward_input")],
-            ),
-            _single_batch_matrix(
-                f"layer {layer} input projection gradient", output_gradients[input_offset]
-            ),
-            weight_gradients[input_offset],
-            weight_layout=input_record.weight_layout,
-        )
-        output_factors = _build_linear_gradient_factors(
-            _single_batch_matrix(
-                f"layer {layer} output projection input",
-                captured[(layer, "output", "forward_input")],
-            ),
-            _single_batch_matrix(
-                f"layer {layer} output projection gradient",
-                output_gradients[input_offset + 1],
-            ),
-            weight_gradients[input_offset + 1],
-            weight_layout=output_record.weight_layout,
-        )
+        records = projections[layer]
+        roles = _mlp_projection_roles(records)
+        offset = len(records) * index
+        factors: dict[str, LinearGradientFactors] = {}
+        for position, (role, record) in enumerate(zip(roles, records, strict=True)):
+            factors[role] = _build_linear_gradient_factors(
+                _single_batch_matrix(
+                    f"layer {layer} {role} projection input",
+                    captured[(layer, role, "forward_input")],
+                ),
+                _single_batch_matrix(
+                    f"layer {layer} {role} projection gradient",
+                    output_gradients[offset + position],
+                ),
+                weight_gradients[offset + position],
+                weight_layout=record.weight_layout,
+            )
         layer_results.append(
             _MLPLayerGradientFactors(
                 layer=layer,
-                input_projection=input_factors,
-                output_projection=output_factors,
+                input_projection=factors["input"],
+                output_projection=factors["output"],
+                gate_projection=factors.get("gate"),
             )
         )
     return _DenseMLPGradientCapture(
