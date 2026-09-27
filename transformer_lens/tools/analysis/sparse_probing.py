@@ -315,6 +315,7 @@ def _selected_data(
     constant = raw_scale == 0
     if preprocess == "standardize":
         mean = train.mean(dim=0)
+        # Zero-variance columns keep scale one: flooring them would inflate held-out deviations.
         scale = torch.where(constant, torch.ones_like(raw_scale), raw_scale.clamp(min=std_floor))
         return (train - mean) / scale, (test - mean) / scale, mean, scale, constant
     mean = torch.zeros(train.shape[1], dtype=torch.float64)

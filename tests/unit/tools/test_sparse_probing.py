@@ -203,6 +203,7 @@ def test_standardization_floor_near_constant_column_scale():
     features[:, 0] = 1.0 + torch.randn(200, generator=generator) * 1e-6
     labels = (torch.rand(200, generator=generator) < 0.5).long()
 
+    # The near-constant column has the smallest |score|, so only k=8 puts it in the support.
     result = fit_sparse_probe(features, labels, k=8, preprocess="standardize", seed=0)
     near_constant = result.selected_features.tolist().index(0)
 
