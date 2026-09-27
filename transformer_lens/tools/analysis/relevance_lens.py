@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import warnings
 from importlib.metadata import version
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
 import torch
 
@@ -88,6 +88,19 @@ _ENABLED_RULE_NAMES: Tuple[str, ...] = tuple(
 )
 
 
+def _coverage_from_metadata(
+    metadata: Dict[str, Any],
+) -> Optional[RelevanceRuleCoverage]:
+    """Rebuild rule coverage from persisted metadata, if it is present."""
+    recorded = metadata.get("rule_coverage")
+    if not isinstance(recorded, dict):
+        return None
+    return RelevanceRuleCoverage(
+        installed=tuple(str(name) for name in recorded.get("installed", ())),
+        skipped=tuple(str(name) for name in recorded.get("skipped", ())),
+    )
+
+
 class RelevanceLens(JacobianLens):
     """A Jacobian lens whose transport matrices use relevance-rule backward.
 
@@ -121,9 +134,35 @@ class RelevanceLens(JacobianLens):
     ) -> None:
         super().__init__(jacobians, n_prompts=n_prompts, d_model=d_model, metadata=metadata)
         self.estimator = ESTIMATOR_RELEVANCE
-        self.rule_coverage = rule_coverage
+        # The rule configuration is read back from the artifact metadata when
+        # present, so a loaded lens reports the semantics its matrices were
+        # estimated under rather than the constructor defaults. Explicit
+        # arguments win, which is how fit() records a fresh configuration.
+        recorded_version = self.metadata.get("relevance_rule_version")
+        if isinstance(recorded_version, int):
+            relevance_rule_version = recorded_version
+        recorded_rules = self.metadata.get("enabled_rules")
+        if isinstance(recorded_rules, (list, tuple)):
+            enabled_rules = tuple(str(name) for name in recorded_rules)
         self.relevance_rule_version = int(relevance_rule_version)
         self.enabled_rules: List[str] = list(enabled_rules)
+        if rule_coverage is None:
+            rule_coverage = _coverage_from_metadata(self.metadata)
+        self.rule_coverage = rule_coverage
+        # Stamp the rule configuration into the artifact metadata so a saved
+        # lens stays self-describing. Existing keys are left untouched so a
+        # fitted lens keeps the richer provenance recorded by fit().
+        self.metadata.setdefault("estimator", ESTIMATOR_RELEVANCE)
+        self.metadata.setdefault("relevance_rule_version", self.relevance_rule_version)
+        self.metadata.setdefault("enabled_rules", list(self.enabled_rules))
+        if self.rule_coverage is not None:
+            self.metadata.setdefault(
+                "rule_coverage",
+                {
+                    "installed": list(self.rule_coverage.installed),
+                    "skipped": list(self.rule_coverage.skipped),
+                },
+            )
 
     def _merge_identity(self) -> Dict[str, Any]:
         """Extend the merge guard with the rule configuration.
@@ -136,6 +175,25 @@ class RelevanceLens(JacobianLens):
         identity["relevance_rule_version"] = self.relevance_rule_version
         identity["enabled_rules"] = tuple(self.enabled_rules)
         return identity
+
+    @classmethod
+    def load(cls, path: str) -> "RelevanceLens":
+        """Load a relevance lens, refusing an artifact from another estimator.
+
+        The rule configuration travels in the artifact metadata and is restored
+        by the constructor. An artifact that records a different estimator is
+        refused, since its transport matrices were not estimated with relevance
+        rules.
+        """
+        lens = cast("RelevanceLens", super().load(path))
+        recorded_estimator = lens.metadata.get("estimator")
+        if isinstance(recorded_estimator, str) and recorded_estimator != ESTIMATOR_RELEVANCE:
+            raise ValueError(
+                f"{path} records estimator {recorded_estimator!r}, not "
+                f"{ESTIMATOR_RELEVANCE!r}; load it with the estimator that "
+                "produced it."
+            )
+        return lens
 
     @classmethod
     def fit(

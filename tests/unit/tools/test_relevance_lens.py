@@ -287,3 +287,89 @@ class TestRegistryResolutionIsDisabled:
         assert calls["kwargs"]["repo_id"] == "example/lenses"
         assert calls["kwargs"]["filename"] == "model/lens.pt"
         assert loaded.estimator == "relevance_lens"
+
+
+class TestRuleProvenanceSurvivesPersistence:
+    def test_fitted_rule_configuration_round_trips(
+        self, fitted: _FittedPair, tmp_path: Any
+    ) -> None:
+        path = tmp_path / "lens.pt"
+        fitted.relevance.save(str(path))
+
+        loaded = RelevanceLens.load(str(path))
+
+        assert loaded.estimator == "relevance_lens"
+        assert loaded.relevance_rule_version == fitted.relevance.relevance_rule_version
+        assert loaded.enabled_rules == fitted.relevance.enabled_rules
+        assert loaded.rule_coverage == fitted.relevance.rule_coverage
+
+    def test_non_default_rule_configuration_round_trips(self, tmp_path: Any) -> None:
+        path = tmp_path / "lens.pt"
+        _shard(
+            n_prompts=1,
+            rule_version=RELEVANCE_RULE_VERSION + 3,
+            enabled_rules=("normalization",),
+        ).save(str(path))
+
+        loaded = RelevanceLens.load(str(path))
+
+        assert loaded.relevance_rule_version == RELEVANCE_RULE_VERSION + 3
+        assert loaded.enabled_rules == ["normalization"]
+
+    def test_loaded_lens_still_refuses_a_mismatched_merge(self, tmp_path: Any) -> None:
+        path = tmp_path / "lens.pt"
+        _shard(n_prompts=1, rule_version=RELEVANCE_RULE_VERSION + 3).save(str(path))
+        loaded = RelevanceLens.load(str(path))
+
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge([loaded, _shard(n_prompts=1)])
+
+
+class TestMergePropagatesRuleConfiguration:
+    def test_merged_lens_keeps_the_rule_configuration(self) -> None:
+        rule_version = RELEVANCE_RULE_VERSION + 2
+        low = _shard(
+            n_prompts=2,
+            rule_version=rule_version,
+            enabled_rules=("normalization",),
+        )
+        high = _shard(
+            n_prompts=6,
+            rule_version=rule_version,
+            enabled_rules=("normalization",),
+        )
+
+        merged = RelevanceLens.merge([low, high])
+
+        assert merged.relevance_rule_version == rule_version
+        assert merged.enabled_rules == ["normalization"]
+
+
+class TestLoadRejectsForeignEstimator:
+    def test_jacobian_artifact_cannot_load_as_a_relevance_lens(self, tmp_path: Any) -> None:
+        path = tmp_path / "lens.pt"
+        JacobianLens(
+            {0: torch.eye(D_MODEL)},
+            n_prompts=1,
+            d_model=D_MODEL,
+            metadata={"estimator": "jacobian_lens"},
+        ).save(str(path))
+
+        with pytest.raises(ValueError, match="estimator"):
+            RelevanceLens.load(str(path))
+
+    def test_artifact_without_estimator_provenance_still_loads(self, tmp_path: Any) -> None:
+        path = tmp_path / "lens.pt"
+        torch.save(
+            {
+                "J": {0: torch.eye(D_MODEL)},
+                "n_prompts": 1,
+                "source_layers": [0],
+                "d_model": D_MODEL,
+            },
+            path,
+        )
+
+        loaded = RelevanceLens.load(str(path))
+
+        assert loaded.estimator == "relevance_lens"
