@@ -1460,3 +1460,104 @@ def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
             assert tiny_bridge.cfg.use_attn_result == initial
     finally:
         tiny_bridge.set_use_attn_result(original)
+
+
+# --------------------------------------------------------------------------- #
+# Top-k recovery (reconstruction fidelity, second clause)
+# --------------------------------------------------------------------------- #
+def _block_aligned_ladder(head_svd, *, geometric=True):
+    """Cumulative direction counts that never split a degenerate block.
+
+    ``patch_along_directions`` refuses a retained set that splits a block, so a
+    k-ladder has to advance block by block rather than one direction at a time.
+    Geometric spacing keeps the sweep to roughly ``log2(rank)`` calls instead of
+    one per direction, which matters because each call costs ``n_baseline + 2``
+    forward passes.
+    """
+    starts = []
+    last = None
+    for row in head_svd.rank_report:
+        if row.block_id != last:
+            starts.append(row.idx)
+            last = row.block_id
+    cumulative = starts[1:] + [len(head_svd.rank_report)]
+    if not geometric:
+        return cumulative
+
+    ladder = []
+    target = 1
+    for end in cumulative:
+        if end >= target:
+            ladder.append(end)
+            while target <= end:
+                target *= 2
+    if ladder[-1] != cumulative[-1]:
+        ladder.append(cumulative[-1])
+    return ladder
+
+
+def _reconstruction_residual(head_svd, k):
+    """Relative Frobenius residual of the rank-k reconstruction of the head map."""
+    full = head_svd.U @ torch.diag(head_svd.S) @ head_svd.V.T
+    recon = head_svd.U[:, :k] @ torch.diag(head_svd.S[:k]) @ head_svd.V[:, :k].T
+    return float((full - recon).norm() / full.norm())
+
+
+def test_top_k_recovery_converges_monotonically(tiny_bridge):
+    """Retaining more OV directions recovers more of the head's output.
+
+    The recovered quantity is the rank-k reconstruction of the head's OV map, and
+    its residual is non-increasing in k by Eckart-Young: each retained direction
+    removes the energy of one more singular value, so the residual can only fall.
+    That is the falsifiable form of the claim, and it is asserted directly.
+
+    The downstream metric is deliberately not asserted to be monotone in k. A
+    metric is a nonlinear functional of the patched logits, so adding a direction
+    can move it either way; on gpt2-small L9H9 the logit difference rises from
+    0.039 at k=17 to 0.226 at k=29 and peaks at 0.449 at k=33 before falling to
+    zero at k=64, while the residual falls monotonically across the same ladder.
+    Asserting metric monotonicity would therefore encode a claim that is false on
+    a real head. What is asserted instead is that the two endpoints bracket the
+    recovery: one direction moves the metric materially, and retaining the whole
+    span is a no-op.
+    """
+    decomposition = decompose_head(tiny_bridge, 0, 0, which=("OV",))
+    ov = decomposition.OV
+    rank = ov.V.shape[1]
+    prompt = torch.tensor([[5, 63, 7, 9]])
+    metric = lambda logits: float(logits[0, -1, 0] - logits[0, -1, 1])
+
+    ladder = _block_aligned_ladder(ov)
+    assert ladder[0] == 1
+    assert ladder[-1] == rank
+
+    residuals = [_reconstruction_residual(ov, k) for k in ladder]
+
+    deltas = []
+    for k in ladder:
+        # n_baseline=1 is the cheapest legal value: this test reads neither
+        # `gated` nor `baseline_delta_metric`, so the random control is pure
+        # overhead here. A full-rank keep is a no-op that ties the control by
+        # construction, so it needs an explicit threshold.
+        retained = list(range(k))
+        if k == rank:
+            result = patch_along_directions(
+                tiny_bridge, ov, prompt, metric, keep=retained, n_baseline=1, threshold=1e-4
+            )
+        else:
+            result = patch_along_directions(
+                tiny_bridge, ov, prompt, metric, keep=retained, n_baseline=1
+            )
+        deltas.append(abs(result.delta_metric))
+
+    print("\nk   residual      abs(delta_metric)")
+    for k, residual, delta in zip(ladder, residuals, deltas):
+        print(f"{k:3d}  {residual:.8f}   {delta:.8f}")
+
+    for prev, cur in zip(residuals, residuals[1:]):
+        assert cur <= prev + 1e-12
+
+    # Endpoints: retaining the whole span reconstructs the head onto its own OV
+    # map, so the metric barely moves; retaining a single direction moves it.
+    assert deltas[-1] < 1e-4
+    assert deltas[0] > 100 * deltas[-1]
