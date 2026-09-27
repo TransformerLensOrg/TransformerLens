@@ -41,10 +41,10 @@ def pythia_bridge():
 @pytest.fixture(scope="module")
 def gradient_capture(gpt2_bridge):
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
-    return _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, LAYERS)
+    return _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, LAYERS)
 
 
 @pytest.fixture(scope="module")
@@ -91,11 +91,11 @@ def test_real_dense_mlp_factors_reconstruct_both_mlp_weight_gradients(
     asserts_bos: bool,
 ) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     model = request.getfixturevalue(model_fixture)
-    gradient_capture = _capture_dense_mlp_gradient_factors(model, PROMPT, TARGET, layers)
+    gradient_capture = _capture_mlp_gradient_factors(model, PROMPT, TARGET, layers)
     expected_target_tokens = model.to_tokens(TARGET, prepend_bos=False)
     assert gradient_capture.target_token_id == int(expected_target_tokens.item())
     assert gradient_capture.loss > 0
@@ -350,31 +350,31 @@ def test_capture_rejects_invalid_analysis_inputs(
     match: str,
 ) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     with pytest.raises(error, match=match):
-        _capture_dense_mlp_gradient_factors(gpt2_bridge, prompt, target, layers)
+        _capture_mlp_gradient_factors(gpt2_bridge, prompt, target, layers)
 
 
 def test_capture_rejects_non_bridge_and_non_raw_states(gpt2_bridge, monkeypatch) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     with pytest.raises(TypeError, match="TransformerBridge only"):
-        _capture_dense_mlp_gradient_factors(object(), PROMPT, TARGET, [0])
+        _capture_mlp_gradient_factors(object(), PROMPT, TARGET, [0])
     monkeypatch.setattr(gpt2_bridge, "compatibility_mode", True)
     with pytest.raises(ValueError, match="compatibility mode"):
-        _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+        _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
     monkeypatch.setattr(gpt2_bridge, "compatibility_mode", False)
     monkeypatch.setattr(gpt2_bridge, "_weights_processed", True)
     with pytest.raises(ValueError, match="processed"):
-        _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+        _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
     monkeypatch.setattr(gpt2_bridge, "_weights_processed", False)
     monkeypatch.setattr(gpt2_bridge, "tokenizer", None)
     with pytest.raises(ValueError, match="tokenizer"):
-        _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+        _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
 
 
 def test_public_entry_accepts_a_gated_mlp(qwen_bridge) -> None:
@@ -386,12 +386,12 @@ def test_public_entry_accepts_a_gated_mlp(qwen_bridge) -> None:
 
 def test_capture_rejects_inference_mode(gpt2_bridge) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     with torch.inference_mode():
         with pytest.raises(ValueError, match="inference_mode"):
-            _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+            _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
 
 
 def test_capture_rejects_multi_device_before_projection_validation(
@@ -405,29 +405,29 @@ def test_capture_rejects_multi_device_before_projection_validation(
     monkeypatch.setattr(gpt2_bridge.cfg, "n_devices", 2)
     monkeypatch.setattr(
         backward_lens,
-        "_get_dense_mlp_projections",
+        "_get_mlp_projections",
         projection_validation_must_not_run,
     )
     with pytest.raises(ValueError, match=r"single-device.*co-located.*n_devices=2"):
-        backward_lens._capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+        backward_lens._capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
 
 
 def test_capture_rejects_a_non_linear_gate(gpt2_bridge, monkeypatch) -> None:
-    from transformer_lens.tools.analysis.backward_lens import _get_dense_mlp_projections
+    from transformer_lens.tools.analysis.backward_lens import _get_mlp_projections
 
     mlp = gpt2_bridge.blocks[0].mlp
     monkeypatch.setattr(mlp, "gate", torch.nn.Identity(), raising=False)
     with pytest.raises(ValueError, match="gate projection must be a LinearBridge"):
-        _get_dense_mlp_projections(gpt2_bridge, (0,))
+        _get_mlp_projections(gpt2_bridge, (0,))
 
 
 def test_capture_rejects_an_unorientable_component(gpt2_bridge, monkeypatch) -> None:
-    from transformer_lens.tools.analysis.backward_lens import _get_dense_mlp_projections
+    from transformer_lens.tools.analysis.backward_lens import _get_mlp_projections
 
     projection = getattr(gpt2_bridge.blocks[0].mlp, "in")
     monkeypatch.setitem(projection._modules, "_original_component", torch.nn.Identity())
     with pytest.raises(ValueError, match="unknown weight layout"):
-        _get_dense_mlp_projections(gpt2_bridge, (0,))
+        _get_mlp_projections(gpt2_bridge, (0,))
 
 
 @pytest.mark.parametrize(
@@ -444,7 +444,7 @@ def test_capture_rejects_an_invalid_weight(
     invalidity: str,
     match: str,
 ) -> None:
-    from transformer_lens.tools.analysis.backward_lens import _get_dense_mlp_projections
+    from transformer_lens.tools.analysis.backward_lens import _get_mlp_projections
 
     component = getattr(gpt2_bridge.blocks[0].mlp, "in").original_component
     if invalidity == "shape":
@@ -455,12 +455,12 @@ def test_capture_rejects_an_invalid_weight(
         )
     monkeypatch.setattr(component, "weight", replacement_weight)
     with pytest.raises(ValueError, match=match):
-        _get_dense_mlp_projections(gpt2_bridge, (0,))
+        _get_mlp_projections(gpt2_bridge, (0,))
 
 
 def test_capture_rejects_a_frozen_original_weight(gpt2_bridge) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     weight = getattr(gpt2_bridge.blocks[0].mlp, "in").original_component.weight
@@ -468,7 +468,7 @@ def test_capture_rejects_a_frozen_original_weight(gpt2_bridge) -> None:
     weight.requires_grad_(False)
     try:
         with pytest.raises(ValueError, match="trainable Parameter"):
-            _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+            _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
     finally:
         weight.requires_grad_(original_requires_grad)
 
@@ -484,7 +484,7 @@ def test_capture_preserves_model_state_hooks_and_uses_one_autograd_call(
         NATIVE_PATH_EDIT_FALLBACK_WARNING,
     )
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     model = request.getfixturevalue(model_fixture)
@@ -524,7 +524,7 @@ def test_capture_preserves_model_state_hooks_and_uses_one_autograd_call(
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = _capture_dense_mlp_gradient_factors(model, PROMPT, TARGET, [0])
+            result = _capture_mlp_gradient_factors(model, PROMPT, TARGET, [0])
 
         assert len(result.layers) == 1
         assert autograd_calls == 1
@@ -555,7 +555,7 @@ def test_capture_preserves_model_state_hooks_and_uses_one_autograd_call(
 
 def test_capture_reconstructs_with_existing_activation_edits(gpt2_bridge) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     mlp = gpt2_bridge.blocks[0].mlp
@@ -573,7 +573,7 @@ def test_capture_reconstructs_with_existing_activation_edits(gpt2_bridge) -> Non
     output_hook_point.add_hook(scale_output)
     output_handle = output_hook_point.fwd_hooks[-1]
     try:
-        result = _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+        result = _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
         assert input_handle in input_hook_point.fwd_hooks
         assert output_handle in output_hook_point.fwd_hooks
     finally:
@@ -596,7 +596,7 @@ def test_capture_reconstructs_with_existing_activation_edits(gpt2_bridge) -> Non
 
 def test_capture_cleans_owned_hooks_when_autograd_raises(gpt2_bridge, monkeypatch) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     hook_point = gpt2_bridge.blocks[0].mlp.out.hook_out
@@ -615,7 +615,7 @@ def test_capture_cleans_owned_hooks_when_autograd_raises(gpt2_bridge, monkeypatc
     monkeypatch.setattr(torch.autograd, "grad", fail_autograd)
     try:
         with pytest.raises(RuntimeError, match="forced autograd failure"):
-            _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+            _capture_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
         assert hook_calls == 1
         assert existing_handle in hook_point.fwd_hooks
         assert _projection_hook_snapshots(gpt2_bridge, 0) == hooks_before
@@ -629,7 +629,7 @@ def test_capture_cleans_owned_hooks_when_autograd_raises(gpt2_bridge, monkeypatc
 )
 def test_capture_removes_only_owned_hooks_when_forward_fails(request, model_fixture: str) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     model = request.getfixturevalue(model_fixture)
@@ -656,7 +656,7 @@ def test_capture_removes_only_owned_hooks_when_forward_fails(request, model_fixt
         requires_grad = [weight.requires_grad for weight in weights]
         hooks_before = _projection_hook_snapshots(model, 0)
         with pytest.raises(RuntimeError, match="forced existing-hook failure"):
-            _capture_dense_mlp_gradient_factors(model, PROMPT, TARGET, [0])
+            _capture_mlp_gradient_factors(model, PROMPT, TARGET, [0])
         assert _projection_hook_snapshots(model, 0) == hooks_before
         assert torch.equal(torch.random.get_rng_state(), rng_before)
         assert model.training is True
@@ -828,11 +828,11 @@ def tiny_llama_bridge():
 
 
 def test_tiny_llama_gated_discovery_is_structural(tiny_llama_bridge) -> None:
-    from transformer_lens.tools.analysis.backward_lens import _get_dense_mlp_projections
+    from transformer_lens.tools.analysis.backward_lens import _get_mlp_projections
 
     d_model = int(tiny_llama_bridge.cfg.d_model)
     d_mlp = int(tiny_llama_bridge.cfg.d_mlp)
-    records = _get_dense_mlp_projections(tiny_llama_bridge, (0,))[0]
+    records = _get_mlp_projections(tiny_llama_bridge, (0,))[0]
 
     assert len(records) == 3
     gate_record, input_record, output_record = records
@@ -856,10 +856,10 @@ def test_gated_mlp_factors_reconstruct_all_three_weight_gradients(
     qwen_bridge,
 ) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
-    capture = _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, QWEN_LAYERS)
+    capture = _capture_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, QWEN_LAYERS)
     d_model = int(qwen_bridge.cfg.d_model)
     d_mlp = int(qwen_bridge.cfg.d_mlp)
     prompt_length = int(capture.prompt_token_ids.shape[1])
@@ -893,10 +893,10 @@ def test_gated_gate_and_input_projections_share_the_residual_input(
     qwen_bridge,
 ) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
-    capture = _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, QWEN_LAYERS)
+    capture = _capture_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, QWEN_LAYERS)
 
     for result in capture.layers:
         gate = result.gate_projection
@@ -909,7 +909,7 @@ def test_gated_gate_and_input_projections_share_the_residual_input(
 
 def test_gated_projection_hooks_fire_once_per_forward(qwen_bridge) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     mlp = qwen_bridge.blocks[0].mlp
@@ -928,7 +928,7 @@ def test_gated_projection_hooks_fire_once_per_forward(qwen_bridge) -> None:
 
             handles.append(getattr(projection, hook_name).register_forward_hook(make_hook(key)))
     try:
-        _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
+        _capture_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
     finally:
         for handle in handles:
             handle.remove()
@@ -953,7 +953,7 @@ def test_gated_capture_preserves_model_state_and_uses_one_autograd_call(
         NATIVE_PATH_EDIT_FALLBACK_WARNING,
     )
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     mlp = qwen_bridge.blocks[0].mlp
@@ -992,7 +992,7 @@ def test_gated_capture_preserves_model_state_and_uses_one_autograd_call(
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
+            result = _capture_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
 
         assert result.layers[0].gate_projection is not None
         assert autograd_calls == 1
@@ -1023,7 +1023,7 @@ def test_gated_capture_preserves_model_state_and_uses_one_autograd_call(
 
 def test_gated_capture_cleans_owned_hooks_when_autograd_raises(qwen_bridge, monkeypatch) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
-        _capture_dense_mlp_gradient_factors,
+        _capture_mlp_gradient_factors,
     )
 
     hook_point = qwen_bridge.blocks[0].mlp.out.hook_out
@@ -1042,7 +1042,7 @@ def test_gated_capture_cleans_owned_hooks_when_autograd_raises(qwen_bridge, monk
     monkeypatch.setattr(torch.autograd, "grad", fail_autograd)
     try:
         with pytest.raises(RuntimeError, match="forced autograd failure"):
-            _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
+            _capture_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
         assert hook_calls == 1
         assert existing_handle in hook_point.fwd_hooks
         assert _projection_hook_snapshots(qwen_bridge, 0) == hooks_before

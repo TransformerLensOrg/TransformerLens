@@ -58,7 +58,7 @@ class VocabularyRanking:
 
 @dataclass(frozen=True)
 class BackwardLensMatrixResult:
-    """Factors and vocabulary readouts for one dense MLP weight matrix.
+    """Factors and vocabulary readouts for one MLP weight matrix.
 
     ``factors`` contains the full linear factorization. ``projected_factor`` says
     whether its residual-width ``forward_inputs`` or raw-gradient
@@ -251,8 +251,8 @@ class _MLPLayerGradientFactors:
 
 
 @dataclass(frozen=True)
-class _DenseMLPGradientCapture:
-    """Private capture result for one dense-MLP next-token loss.
+class _MLPGradientCapture:
+    """Private capture result for one MLP next-token loss.
 
     Tensor fields are detached, owned CPU copies.
     """
@@ -610,9 +610,7 @@ def _mlp_projection_roles(records: tuple[_MLPLinear, ...]) -> tuple[str, ...]:
     return _GATED_MLP_ROLES if len(records) == 3 else _DENSE_MLP_ROLES
 
 
-def _get_dense_mlp_projections(
-    model: Any, layers: tuple[int, ...]
-) -> dict[int, tuple[_MLPLinear, ...]]:
+def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple[_MLPLinear, ...]]:
     """Return validated live MLP projection bridges for each requested layer.
 
     A dense MLP yields two records ordered ``(input, output)``; a gated MLP yields
@@ -777,12 +775,12 @@ def _preserve_model_rng(model: Any) -> Iterator[None]:
             torch.mps.set_rng_state(mps_state)
 
 
-def _capture_dense_mlp_gradient_factors(
+def _capture_mlp_gradient_factors(
     model: Any,
     prompt: str,
     target_token: str,
     layers: Sequence[int],
-) -> _DenseMLPGradientCapture:
+) -> _MLPGradientCapture:
     """Capture exact MLP weight-gradient factors for one next-token loss.
 
     Dense MLPs contribute input and output factors; gated MLPs additionally
@@ -798,7 +796,7 @@ def _capture_dense_mlp_gradient_factors(
         )
     _require_raw_mlp_bridge(model)
     requested_layers = _validate_requested_layers(model, layers)
-    projections = _get_dense_mlp_projections(model, requested_layers)
+    projections = _get_mlp_projections(model, requested_layers)
     if not isinstance(prompt, str):
         raise TypeError("prompt must be a string")
     if prompt == "":
@@ -875,7 +873,7 @@ def _capture_dense_mlp_gradient_factors(
                 gate_projection=factors.get("gate"),
             )
         )
-    return _DenseMLPGradientCapture(
+    return _MLPGradientCapture(
         prompt_token_ids=prompt_tokens.detach().cpu().clone(),
         target_token_id=target_token_id,
         loss=float(loss.detach()),
@@ -934,7 +932,7 @@ class BackwardLens:
             raise ValueError(f"top_k must be in [1, {vocabulary_size}]; got {top_k!r}")
         if not isinstance(return_full_logits, bool):
             raise TypeError("return_full_logits must be a bool")
-        capture = _capture_dense_mlp_gradient_factors(self._model, prompt, target_token, layers)
+        capture = _capture_mlp_gradient_factors(self._model, prompt, target_token, layers)
         layer_results: list[BackwardLensLayerResult] = []
         absolute_errors: list[float] = []
         relative_errors: list[float] = []
