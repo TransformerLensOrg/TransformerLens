@@ -29,6 +29,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _ablate_edges,
     _assert_edges_unique,
     _check_required_hooks,
+    _edge_class,
     _edge_effects,
     _edge_hook_flags,
     _edge_hook_names,
@@ -2510,3 +2511,83 @@ def test_faithfulness_recovery_is_graded_not_binary() -> None:
 
     assert 0.0 < report.recovered < 1.0
     assert report.circuit_size == len(partial)
+
+
+# ---------------------------------------------------------------------------
+# Edge-class breakout
+# ---------------------------------------------------------------------------
+#
+# Edges into Q and K pass through the softmax, so they are expected to be less
+# faithful than edges into V, the MLP, or the terminal readout. The breakout
+# measures that per class instead of hiding it in one aggregate.
+
+
+def test_edge_class_partitions_edges_exhaustively_and_without_overlap() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    classes = [_edge_class(edge) for edge in edges]
+
+    # Every edge maps to exactly one class, and the classes partition the graph.
+    assert set(classes) == {"into_qk", "into_v", "into_mlp", "into_logits"}
+    assert len(classes) == len(edges)
+
+    report = faithfulness(model, clean, corrupt, metric, [])
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+    assert set(report.edge_class_counts) == set(classes)
+
+
+def test_edge_class_maps_each_reader_kind_to_its_class() -> None:
+    writer = Node(kind="embed", position=0)
+
+    assert _edge_class((writer, Node(kind="q_input", layer=0, head=0, position=0))) == "into_qk"
+    assert _edge_class((writer, Node(kind="k_input", layer=0, head=0, position=0))) == "into_qk"
+    assert _edge_class((writer, Node(kind="v_input", layer=0, head=0, position=0))) == "into_v"
+    assert _edge_class((writer, Node(kind="mlp_in", layer=0, position=0))) == "into_mlp"
+    assert _edge_class((writer, Node(kind="logits", layer=0, position=0))) == "into_logits"
+
+    # A writer kind is not a reader, so it has no class.
+    with pytest.raises(ValueError, match="no edge class"):
+        _edge_class((writer, Node(kind="mlp_out", layer=0, position=0)))
+
+
+def test_edge_class_recovered_reconciles_with_the_aggregate() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    report = faithfulness(model, clean, corrupt, metric, edges)
+
+    assert set(report.edge_class_recovered) == {
+        "into_qk",
+        "into_v",
+        "into_mlp",
+        "into_logits",
+    }
+    for edge_class, recovered in report.edge_class_recovered.items():
+        assert math.isfinite(recovered), f"non-finite recovery for {edge_class}"
+        assert report.edge_class_counts[edge_class] > 0
+    # Keeping every edge is the aggregate, so the full-circuit report recovers
+    # the whole gap.
+    assert report.recovered == pytest.approx(1.0, abs=1e-6)
+
+
+def test_edge_class_breakout_is_leave_one_out() -> None:
+    """Each class's entry is the recovery with that class's edges removed.
+
+    Keeping only a class would report roughly zero for every class, since no
+    single class alone reconstructs the behavior, so the leave-one-out form is
+    the one that carries signal. On this toy the classes are separable, so
+    dropping one must move the number away from the full-circuit ``1.0``.
+    """
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    report = faithfulness(model, clean, corrupt, metric, edges)
+
+    assert report.edge_class_recovered
+    assert all(math.isfinite(value) for value in report.edge_class_recovered.values())
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+    # Leave-one-out is not the aggregate: removing a class changes the number.
+    assert any(
+        value != pytest.approx(report.recovered) for value in report.edge_class_recovered.values()
+    )
