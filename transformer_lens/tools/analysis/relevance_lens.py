@@ -46,6 +46,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 import torch
 
 from transformer_lens.model_bridge._relevance_rules import (
+    _CANONICAL_MOUNTS,
     RelevanceRuleCoverage,
     RelevanceRules,
     use_relevance_rules,
@@ -79,13 +80,29 @@ RELEVANCE_RULES = RelevanceRules(
     multiplicative_gate=True,
 )
 
-# Names of the enabled rule kinds, derived from the rule set so the recorded
-# provenance cannot drift from what the fit actually installs.
-_ENABLED_RULE_NAMES: Tuple[str, ...] = tuple(
+# Names of the rule kinds the estimator requests, derived from the rule set so
+# the request cannot drift from what the fit attempts to install.
+_REQUESTED_RULE_NAMES: Tuple[str, ...] = tuple(
     name
     for name in ("normalization", "activation", "multiplicative_gate")
     if getattr(RELEVANCE_RULES, name)
 )
+
+
+def _installed_rule_names(coverage: RelevanceRuleCoverage) -> List[str]:
+    """Rule kinds that actually shaped the matrices, from the installed mounts.
+
+    A model can honor some rules and not others, so the requested set is not the
+    installed set. Deriving the names from the mounts that were installed keeps
+    the recorded provenance from claiming a rule contributed when every mount
+    for it was skipped.
+    """
+    installed_mounts = {name.rsplit(".", 1)[-1] for name in coverage.installed}
+    return [
+        kind
+        for kind in _REQUESTED_RULE_NAMES
+        if installed_mounts & set(_CANONICAL_MOUNTS.get(kind, ()))
+    ]
 
 
 def _coverage_from_metadata(
@@ -319,7 +336,7 @@ class RelevanceLens(JacobianLens):
             "skip_first_positions": skip_first_positions,
             "transformer_lens_fit": True,
             "relevance_rule_version": RELEVANCE_RULE_VERSION,
-            "enabled_rules": list(_ENABLED_RULE_NAMES),
+            "enabled_rules": _installed_rule_names(coverage),
             "rule_coverage": {
                 "installed": list(coverage.installed),
                 "skipped": list(coverage.skipped),
@@ -338,5 +355,5 @@ class RelevanceLens(JacobianLens):
             metadata=full_metadata,
             rule_coverage=coverage,
             relevance_rule_version=RELEVANCE_RULE_VERSION,
-            enabled_rules=_ENABLED_RULE_NAMES,
+            enabled_rules=_installed_rule_names(coverage),
         )

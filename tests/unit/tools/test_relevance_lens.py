@@ -20,6 +20,9 @@ from tokenizers.pre_tokenizers import Whitespace
 from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFast
 
 import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
+from transformer_lens.factories.architecture_adapter_factory import (
+    ArchitectureAdapterFactory,
+)
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
@@ -503,3 +506,69 @@ class TestFitRefusesSilentFallback:
         message = str(excinfo.value)
         assert "blocks.0.ln1" in message
         assert "blocks.0.mlp" in message
+
+
+def _build_tiny_opt() -> TransformerBridge:
+    """A model where the LN-rule installs but the MLP rules cannot.
+
+    OPT has residual-stream norms on the native-autograd path but a dense ReLU
+    MLP, so the normalization mounts install while every MLP mount is skipped.
+    """
+    hf_config = AutoConfig.for_model(
+        "opt",
+        vocab_size=97,
+        hidden_size=D_MODEL,
+        ffn_dim=64,
+        num_hidden_layers=N_LAYERS,
+        num_attention_heads=4,
+        max_position_embeddings=64,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
+    )
+    torch.manual_seed(0)
+    hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf_model.config, "OPTForCausalLM", "opt-tiny", torch.float32
+    )
+    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
+    return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_offline_tokenizer(PROMPTS))
+
+
+class TestPartialCoverageIsRecordedHonestly:
+    """``enabled_rules`` must name the rules that actually shaped the matrices.
+
+    A model can honor some rules and not others. Recording the requested set
+    rather than the installed set would claim the MLP rules contributed when
+    every MLP mount was skipped, which misdescribes the artifact.
+    """
+
+    def test_partial_coverage_installs_only_the_normalization_rule(self) -> None:
+        model = _build_tiny_opt()
+
+        lens = RelevanceLens.fit(
+            model,
+            PROMPTS,
+            corpus=CORPUS,
+            source_layers=SOURCE_LAYERS,
+            show_progress=False,
+        )
+
+        assert lens.rule_coverage.installed
+        assert lens.rule_coverage.skipped
+        assert lens.enabled_rules == ["normalization"]
+
+    def test_recorded_enabled_rules_match_the_installed_mounts(self) -> None:
+        model = _build_tiny_opt()
+
+        lens = RelevanceLens.fit(
+            model,
+            PROMPTS,
+            corpus=CORPUS,
+            source_layers=SOURCE_LAYERS,
+            show_progress=False,
+        )
+
+        assert lens.metadata["enabled_rules"] == lens.enabled_rules
+        assert "activation" not in lens.enabled_rules
+        assert "multiplicative_gate" not in lens.enabled_rules

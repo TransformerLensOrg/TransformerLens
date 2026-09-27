@@ -304,7 +304,10 @@ represent. Requesting it there raises instead of scoring the model incorrectly.
 
 A relevance lens records `estimator = "relevance_lens"`, the rule version, the
 enabled rules, and the per-mount coverage, and it restores that configuration on
-load. The guards are strict:
+load. `enabled_rules` names the rules that actually shaped the matrices, not the
+rules that were requested: a model can honor some rules and not others, so a fit
+whose MLP mounts were all skipped records only `normalization`. The guards are
+strict:
 
 - `merge()` refuses to combine shards from different estimators, or shards whose
   rule version or enabled rules differ, even when their provenance metadata is
