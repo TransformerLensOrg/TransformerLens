@@ -18,6 +18,8 @@ from transformer_lens.tools.analysis.backward_lens import (
     _build_matrix_result,
     _factor_norms_and_normalized_rows,
     _get_dense_mlp_projections,
+    _mlp_projection_roles,
+    _MLPLinear,
     _project_residual_factors,
     _rank_vocabulary_logits,
     _single_batch_matrix,
@@ -584,6 +586,21 @@ def test_get_dense_mlp_projections_rejects_an_unorientable_component() -> None:
 
     with pytest.raises(ValueError, match="unknown weight layout"):
         _get_dense_mlp_projections(model, (0,))
+
+
+def test_mlp_projection_roles_match_the_discovered_record_count() -> None:
+    dense_records = (
+        _MLPLinear(projection=object(), weight_layout="in_out"),
+        _MLPLinear(projection=object(), weight_layout="in_out"),
+    )
+    gated_records = (
+        _MLPLinear(projection=object(), weight_layout="out_in"),
+        _MLPLinear(projection=object(), weight_layout="out_in"),
+        _MLPLinear(projection=object(), weight_layout="out_in"),
+    )
+
+    assert _mlp_projection_roles(dense_records) == ("input", "output")
+    assert _mlp_projection_roles(gated_records) == ("gate", "input", "output")
 
 
 def test_get_dense_mlp_projections_discovers_gated_gate_up_down() -> None:
