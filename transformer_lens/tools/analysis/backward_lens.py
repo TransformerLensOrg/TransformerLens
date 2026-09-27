@@ -553,8 +553,8 @@ def _validate_requested_layers(model: Any, layers: Sequence[int]) -> tuple[int, 
     return requested
 
 
-def _require_raw_dense_mlp_bridge(model: Any) -> None:
-    """Require the raw dense-MLP Bridge capabilities used by gradient capture.
+def _require_raw_mlp_bridge(model: Any) -> None:
+    """Require the raw Bridge capabilities used by gradient capture.
 
     The architecture is not constrained by class; support is decided per
     projection from the Bridge weight-layout oracle in projection discovery.
@@ -580,13 +580,18 @@ def _require_raw_dense_mlp_bridge(model: Any) -> None:
             "projections, final normalization, and unembed must be co-located; "
             f"device-map dispatch with cfg.n_devices={model.cfg.n_devices} is not supported"
         )
-    if bool(getattr(model.cfg, "gated_mlp", False)):
-        raise NotImplementedError("Backward Lens currently requires dense, non-gated MLPs")
     if model.tokenizer is None:
         raise ValueError("Backward Lens requires a TransformerBridge with a tokenizer")
     for component in ("blocks", "ln_final", "unembed"):
         if not hasattr(model, component):
             raise ValueError(f"Backward Lens requires the standard {component} component")
+
+
+def _require_raw_dense_mlp_bridge(model: Any) -> None:
+    """Require a raw dense-MLP Bridge for the public analysis entry point."""
+    _require_raw_mlp_bridge(model)
+    if bool(getattr(model.cfg, "gated_mlp", False)):
+        raise NotImplementedError("Backward Lens currently requires dense, non-gated MLPs")
 
 
 @dataclass(frozen=True)
@@ -792,7 +797,7 @@ def _capture_dense_mlp_gradient_factors(
             "Backward Lens cannot capture gradients inside torch.inference_mode(); "
             "exit inference_mode before running the analysis"
         )
-    _require_raw_dense_mlp_bridge(model)
+    _require_raw_mlp_bridge(model)
     requested_layers = _validate_requested_layers(model, layers)
     projections = _get_dense_mlp_projections(model, requested_layers)
     if not isinstance(prompt, str):
