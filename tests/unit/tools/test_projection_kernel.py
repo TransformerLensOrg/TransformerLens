@@ -48,6 +48,29 @@ class SyntheticBridge:
         return self.attention_blocks if submodule == "attn" else []
 
 
+def decaying_spectrum_matrix(ambient, width, *, condition, dtype, seed=0):
+    """Full-rank matrix whose singular values decay geometrically to 1/condition."""
+    generator = torch.Generator().manual_seed(seed)
+    left, _ = torch.linalg.qr(torch.randn(ambient, width, generator=generator, dtype=torch.float64))
+    right, _ = torch.linalg.qr(torch.randn(width, width, generator=generator, dtype=torch.float64))
+    spectrum = torch.logspace(0.0, -math.log10(condition), width, dtype=torch.float64)
+    return (left @ torch.diag(spectrum) @ right.T).to(dtype)
+
+
+def single_head_bridge(query_matrix, *, dtype):
+    """Bridge with one attention head whose W_Q is the supplied matrix."""
+    ambient, width = query_matrix.shape
+    generator = torch.Generator().manual_seed(0)
+    attention = SyntheticAttention(0, d_model=ambient, d_head=width)
+    attention.W_Q = query_matrix.unsqueeze(0).to(dtype=dtype)
+    attention.W_K = torch.randn(1, ambient, width, generator=generator, dtype=dtype)
+    attention.W_V = torch.randn(1, ambient, width, generator=generator, dtype=dtype)
+    attention.W_O = torch.randn(1, width, ambient, generator=generator, dtype=dtype)
+    model = SyntheticBridge((0,))
+    model.attention_blocks = [(0, SyntheticBlock(attention))]
+    return model
+
+
 class TestOrthonormalSubspace:
     def test_extracts_full_rank_tall_basis(self):
         matrix = torch.tensor([[1.0, 0.0], [0.0, 2.0], [1.0, 1.0], [0.0, 1.0]], dtype=torch.float64)
@@ -121,6 +144,41 @@ class TestOrthonormalSubspace:
         assert full_result.measured_rank == 8
         assert deficient_result.measured_rank == 7
         assert full_result.rtol == pytest.approx(torch.finfo(dtype).eps)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_low_precision_default_measures_full_rank_for_decaying_spectrum(self, dtype):
+        matrix = decaying_spectrum_matrix(768, 64, condition=1000.0, dtype=dtype)
+
+        result = orthonormal_subspace(matrix)
+
+        assert result.measured_rank == 64
+        assert result.rtol == pytest.approx(768 * torch.finfo(torch.float32).eps)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_low_precision_default_still_detects_structural_deficiency(self, dtype):
+        matrix = decaying_spectrum_matrix(768, 64, condition=1000.0, dtype=dtype)
+        matrix[:, 1] = matrix[:, 0]
+
+        result = orthonormal_subspace(matrix)
+
+        assert result.measured_rank == 63
+
+    def test_float32_default_measures_full_rank_for_decaying_spectrum(self):
+        matrix = decaying_spectrum_matrix(768, 64, condition=1000.0, dtype=torch.float32)
+
+        result = orthonormal_subspace(matrix)
+
+        assert result.measured_rank == 64
+        assert result.rtol == pytest.approx(768 * torch.finfo(torch.float32).eps)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_explicit_rtol_overrides_the_compute_dtype_default(self, dtype):
+        matrix = decaying_spectrum_matrix(768, 64, condition=1000.0, dtype=dtype)
+
+        result = orthonormal_subspace(matrix, rtol=1e-2)
+
+        assert result.rtol == pytest.approx(1e-2)
+        assert result.measured_rank < 64
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_preserves_supported_dtype_and_cpu_device(self, dtype):
@@ -499,6 +557,16 @@ class TestAttentionHeadSubspaceAffinity:
         result = attention_head_subspace_affinity(model, target_role="Q")
 
         assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_wrapper_default_rtol_measures_full_rank_for_decaying_spectrum(self, dtype):
+        query = decaying_spectrum_matrix(768, 64, condition=1000.0, dtype=dtype)
+        model = single_head_bridge(query, dtype=dtype)
+
+        result = attention_head_subspace_affinity(model, target_role="Q")
+
+        assert result.source_ranks.tolist() == [[64]]
+        assert result.target_ranks.tolist() == [[64]]
 
     def test_rank_deficiency_names_role_layer_and_head(self):
         model = SyntheticBridge()
