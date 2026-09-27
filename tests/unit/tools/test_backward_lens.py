@@ -25,7 +25,11 @@ from transformer_lens.tools.analysis.backward_lens import (
 
 
 def _dense_mlp_bridge(
-    *, input_component: torch.nn.Module, output_component: torch.nn.Module, gate: Any = None
+    *,
+    input_component: torch.nn.Module,
+    output_component: torch.nn.Module,
+    gate: Any = None,
+    gate_component: torch.nn.Module | None = None,
 ) -> MLPBridge:
     """Build a real MLPBridge wrapping the given input/output projection modules."""
     mlp = MLPBridge(name="mlp")
@@ -35,14 +39,20 @@ def _dense_mlp_bridge(
     output_projection.set_original_component(output_component)
     setattr(mlp, "in", input_projection)
     setattr(mlp, "out", output_projection)
-    if gate is not None:
+    if gate_component is not None:
+        gate_projection = LinearBridge(name="mlp.gate")
+        gate_projection.set_original_component(gate_component)
+        setattr(mlp, "gate", gate_projection)
+    elif gate is not None:
         setattr(mlp, "gate", gate)
     return mlp
 
 
-def _dense_mlp_model(mlp: MLPBridge, *, d_model: int, d_mlp: int) -> SimpleNamespace:
+def _dense_mlp_model(
+    mlp: MLPBridge, *, d_model: int, d_mlp: int, gated_mlp: bool = False
+) -> SimpleNamespace:
     return SimpleNamespace(
-        cfg=SimpleNamespace(d_model=d_model, d_mlp=d_mlp),
+        cfg=SimpleNamespace(d_model=d_model, d_mlp=d_mlp, gated_mlp=gated_mlp),
         blocks=[SimpleNamespace(mlp=mlp)],
     )
 
@@ -576,16 +586,36 @@ def test_get_dense_mlp_projections_rejects_an_unorientable_component() -> None:
         _get_dense_mlp_projections(model, (0,))
 
 
-def test_get_dense_mlp_projections_rejects_a_gated_mlp() -> None:
+def test_get_dense_mlp_projections_discovers_gated_gate_up_down() -> None:
     d_model, d_mlp = 4, 6
     mlp = _dense_mlp_bridge(
         input_component=torch.nn.Linear(d_model, d_mlp),
         output_component=torch.nn.Linear(d_mlp, d_model),
-        gate=LinearBridge(name="mlp.gate"),
+        gate_component=torch.nn.Linear(d_model, d_mlp),
     )
-    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp)
+    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=True)
 
-    with pytest.raises(ValueError, match="dense, non-gated"):
+    records = _get_dense_mlp_projections(model, (0,))[0]
+
+    assert len(records) == 3
+    gate_record, input_record, output_record = records
+    assert gate_record.weight_layout == "out_in"
+    assert input_record.weight_layout == "out_in"
+    assert output_record.weight_layout == "out_in"
+    assert tuple(gate_record.projection.original_component.weight.shape) == (d_mlp, d_model)
+    assert tuple(input_record.projection.original_component.weight.shape) == (d_mlp, d_model)
+    assert tuple(output_record.projection.original_component.weight.shape) == (d_model, d_mlp)
+
+
+def test_get_dense_mlp_projections_rejects_a_gated_config_without_a_gate() -> None:
+    d_model, d_mlp = 4, 6
+    mlp = _dense_mlp_bridge(
+        input_component=torch.nn.Linear(d_model, d_mlp),
+        output_component=torch.nn.Linear(d_mlp, d_model),
+    )
+    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=True)
+
+    with pytest.raises(ValueError, match="fused gate/up projections are not supported"):
         _get_dense_mlp_projections(model, (0,))
 
 

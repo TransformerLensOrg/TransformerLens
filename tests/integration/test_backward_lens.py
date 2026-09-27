@@ -406,12 +406,12 @@ def test_capture_rejects_multi_device_before_projection_validation(
         backward_lens._capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
 
 
-def test_capture_rejects_a_per_layer_gate(gpt2_bridge, monkeypatch) -> None:
+def test_capture_rejects_a_non_linear_gate(gpt2_bridge, monkeypatch) -> None:
     from transformer_lens.tools.analysis.backward_lens import _get_dense_mlp_projections
 
     mlp = gpt2_bridge.blocks[0].mlp
     monkeypatch.setattr(mlp, "gate", torch.nn.Identity(), raising=False)
-    with pytest.raises(ValueError, match="dense, non-gated MLPBridge"):
+    with pytest.raises(ValueError, match="gate projection must be a LinearBridge"):
         _get_dense_mlp_projections(gpt2_bridge, (0,))
 
 
