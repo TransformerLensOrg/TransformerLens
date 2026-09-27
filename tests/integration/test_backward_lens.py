@@ -63,7 +63,10 @@ def backward_result(gpt2_bridge):
 
 def _projection_hook_snapshots(model, layer: int) -> list[tuple[int, ...]]:
     mlp = model.blocks[layer].mlp
-    projections = (getattr(mlp, "in"), mlp.out)
+    projections = [getattr(mlp, "in"), mlp.out]
+    gate = getattr(mlp, "gate", None)
+    if gate is not None:
+        projections.insert(0, gate)
     return [
         tuple(hook_point._forward_hooks)
         for projection in projections
@@ -802,3 +805,147 @@ def test_gated_gate_and_input_projections_share_the_residual_input(
         # forward-input factors coincide while their output gradients differ.
         torch.testing.assert_close(gate.forward_inputs, result.input_projection.forward_inputs)
         assert not torch.allclose(gate.output_gradients, result.input_projection.output_gradients)
+
+
+def test_gated_projection_hooks_fire_once_per_forward(qwen_bridge) -> None:
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_dense_mlp_gradient_factors,
+    )
+
+    mlp = qwen_bridge.blocks[0].mlp
+    counts: dict[str, int] = {}
+    handles = []
+    for role in ("gate", "in", "out"):
+        projection = getattr(mlp, role)
+        for hook_name in ("hook_in", "hook_out"):
+            key = f"{role}.{hook_name}"
+
+            def make_hook(key: str):
+                def hook(_module, _args, _output) -> None:
+                    counts[key] = counts.get(key, 0) + 1
+
+                return hook
+
+            handles.append(getattr(projection, hook_name).register_forward_hook(make_hook(key)))
+    try:
+        _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    # The opaque HF gated forward must reach every installed submodule hook;
+    # capture depends on gate/in/out hook_in and hook_out each firing once.
+    assert counts == {
+        "gate.hook_in": 1,
+        "gate.hook_out": 1,
+        "in.hook_in": 1,
+        "in.hook_out": 1,
+        "out.hook_in": 1,
+        "out.hook_out": 1,
+    }
+
+
+def test_gated_capture_preserves_model_state_and_uses_one_autograd_call(
+    qwen_bridge, monkeypatch
+) -> None:
+    from transformer_lens.model_bridge.generalized_components.normalization import (
+        NATIVE_PATH_BWD_FALLBACK_WARNING,
+        NATIVE_PATH_EDIT_FALLBACK_WARNING,
+    )
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_dense_mlp_gradient_factors,
+    )
+
+    mlp = qwen_bridge.blocks[0].mlp
+    projections = [getattr(mlp, "gate"), getattr(mlp, "in"), mlp.out]
+    weights = [projection.original_component.weight for projection in projections]
+    saved_grads = [weight.grad for weight in weights]
+    weight_copies = [weight.detach().clone() for weight in weights]
+    training = qwen_bridge.training
+    outer_rng = torch.random.get_rng_state()
+    hook_calls = 0
+    autograd_calls = 0
+    original_grad = torch.autograd.grad
+
+    def existing_hook(_tensor, hook=None) -> None:
+        nonlocal hook_calls
+        hook_calls += 1
+
+    def counting_grad(*args, **kwargs):
+        nonlocal autograd_calls
+        autograd_calls += 1
+        return original_grad(*args, **kwargs)
+
+    hook_point = mlp.out.hook_out
+    hook_point.add_hook(existing_hook)
+    existing_handle = hook_point.fwd_hooks[-1]
+    try:
+        qwen_bridge.train(True)
+        torch.manual_seed(4321)
+        rng_before = torch.random.get_rng_state()
+        for index, weight in enumerate(weights):
+            weight.grad = torch.full_like(weight, index + 1.0)
+        grad_copies = [weight.grad.clone() for weight in weights]
+        requires_grad = [weight.requires_grad for weight in weights]
+        hooks_before = _projection_hook_snapshots(qwen_bridge, 0)
+        monkeypatch.setattr(torch.autograd, "grad", counting_grad)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
+
+        assert result.layers[0].gate_projection is not None
+        assert autograd_calls == 1
+        assert hook_calls == 1
+        assert not any(
+            str(warning.message)
+            in (NATIVE_PATH_BWD_FALLBACK_WARNING, NATIVE_PATH_EDIT_FALLBACK_WARNING)
+            for warning in caught
+        )
+        assert torch.equal(torch.random.get_rng_state(), rng_before)
+        assert qwen_bridge.training is True
+        assert _projection_hook_snapshots(qwen_bridge, 0) == hooks_before
+        for weight, saved_weight, saved_grad, expected_requires_grad in zip(
+            weights, weight_copies, grad_copies, requires_grad, strict=True
+        ):
+            assert torch.equal(weight, saved_weight)
+            assert torch.equal(weight.grad, saved_grad)
+            assert weight.requires_grad is expected_requires_grad
+    finally:
+        existing_handle.hook.remove()
+        hook_point.fwd_hooks.remove(existing_handle)
+
+        for weight, saved_grad in zip(weights, saved_grads, strict=True):
+            weight.grad = saved_grad
+        qwen_bridge.train(training)
+        torch.random.set_rng_state(outer_rng)
+
+
+def test_gated_capture_cleans_owned_hooks_when_autograd_raises(qwen_bridge, monkeypatch) -> None:
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_dense_mlp_gradient_factors,
+    )
+
+    hook_point = qwen_bridge.blocks[0].mlp.out.hook_out
+    hook_calls = 0
+
+    def existing_hook(tensor, hook=None) -> None:
+        nonlocal hook_calls
+        hook_calls += 1
+
+    def fail_autograd(*args, **kwargs):
+        raise RuntimeError("forced autograd failure")
+
+    hook_point.add_hook(existing_hook)
+    existing_handle = hook_point.fwd_hooks[-1]
+    hooks_before = _projection_hook_snapshots(qwen_bridge, 0)
+    monkeypatch.setattr(torch.autograd, "grad", fail_autograd)
+    try:
+        with pytest.raises(RuntimeError, match="forced autograd failure"):
+            _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, [0])
+        assert hook_calls == 1
+        assert existing_handle in hook_point.fwd_hooks
+        assert _projection_hook_snapshots(qwen_bridge, 0) == hooks_before
+    finally:
+        existing_handle.hook.remove()
+        hook_point.fwd_hooks.remove(existing_handle)
