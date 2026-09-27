@@ -2,11 +2,10 @@
 
 The Backward Lens represents a linear weight gradient as a sum of token-position
 outer products and projects residual-width factors into the model vocabulary.
-The public API supports raw dense-MLP decoder-only ``TransformerBridge`` models
-(for example GPT-2 and Pythia/GPT-NeoX), reading each MLP projection's weight
-layout from the Bridge component rather than the model class. Gated MLP
-projections are discovered and captured for the private capture path; the public
-entry point still requires a dense, non-gated MLP.
+The public API supports raw decoder-only ``TransformerBridge`` models whose MLP
+exposes dense or gated linear projections (for example GPT-2, Pythia/GPT-NeoX,
+and Qwen2), reading each MLP projection's weight layout from the Bridge
+component rather than the model class.
 """
 
 from __future__ import annotations
@@ -186,11 +185,18 @@ class BackwardLensMatrixResult:
 
 @dataclass(frozen=True)
 class BackwardLensLayerResult:
-    """Vocabulary-facing input/output MLP matrix results for one indexed layer."""
+    """Vocabulary-facing MLP matrix results for one indexed layer.
+
+    ``gate_projection`` is populated for gated MLPs and ``None`` for dense MLPs.
+    For gated MLPs the gate and input projections share the residual input, so
+    their vocabulary logits coincide; the output projection carries the distinct
+    shift direction.
+    """
 
     layer: int
     input_projection: BackwardLensMatrixResult
     output_projection: BackwardLensMatrixResult
+    gate_projection: BackwardLensMatrixResult | None = None
 
 
 @dataclass(frozen=True)
@@ -587,13 +593,6 @@ def _require_raw_mlp_bridge(model: Any) -> None:
             raise ValueError(f"Backward Lens requires the standard {component} component")
 
 
-def _require_raw_dense_mlp_bridge(model: Any) -> None:
-    """Require a raw dense-MLP Bridge for the public analysis entry point."""
-    _require_raw_mlp_bridge(model)
-    if bool(getattr(model.cfg, "gated_mlp", False)):
-        raise NotImplementedError("Backward Lens currently requires dense, non-gated MLPs")
-
-
 @dataclass(frozen=True)
 class _MLPLinear:
     """One validated MLP linear projection with its resolved weight layout."""
@@ -885,17 +884,18 @@ def _capture_dense_mlp_gradient_factors(
 
 
 class BackwardLens:
-    """Analyze dense MLP weight gradients in the output vocabulary basis.
+    """Analyze MLP weight gradients in the output vocabulary basis.
 
-    The analyzer accepts a fresh, raw dense-MLP :class:`TransformerBridge` such as
-    GPT-2 or Pythia/GPT-NeoX. Results retain no model or tokenizer reference and
-    contain detached CPU-owned tensors. Raw backward signals are loss gradients;
-    gradient descent subtracts them.
+    The analyzer accepts a fresh, raw :class:`TransformerBridge` whose MLP
+    projections are dense (GPT-2, Pythia/GPT-NeoX) or gated (Qwen2). Results
+    retain no model or tokenizer reference and contain detached CPU-owned
+    tensors. Raw backward signals are loss gradients; gradient descent subtracts
+    them.
     """
 
     def __init__(self, model: Any):
-        """Validate and retain the raw dense-MLP Bridge used for analyses."""
-        _require_raw_dense_mlp_bridge(model)
+        """Validate and retain the raw MLP Bridge used for analyses."""
+        _require_raw_mlp_bridge(model)
         self._model = model
 
     def analyze(
@@ -957,24 +957,38 @@ class BackwardLens:
                 top_k=top_k,
                 return_full_logits=return_full_logits,
             )
+            gate_result = (
+                _build_matrix_result(
+                    self._model,
+                    layer.gate_projection,
+                    projected_factor="forward_inputs",
+                    include_normalized_logits=normalized,
+                    target_token_id=capture.target_token_id,
+                    top_k=top_k,
+                    return_full_logits=return_full_logits,
+                )
+                if layer.gate_projection is not None
+                else None
+            )
             layer_results.append(
                 BackwardLensLayerResult(
                     layer=layer.layer,
                     input_projection=input_result,
                     output_projection=output_result,
+                    gate_projection=gate_result,
                 )
             )
+            captured_factors = [
+                layer.input_projection,
+                layer.output_projection,
+            ]
+            if layer.gate_projection is not None:
+                captured_factors.append(layer.gate_projection)
             absolute_errors.extend(
-                (
-                    layer.input_projection.absolute_reconstruction_error,
-                    layer.output_projection.absolute_reconstruction_error,
-                )
+                factors.absolute_reconstruction_error for factors in captured_factors
             )
             relative_errors.extend(
-                (
-                    layer.input_projection.relative_reconstruction_error,
-                    layer.output_projection.relative_reconstruction_error,
-                )
+                factors.relative_reconstruction_error for factors in captured_factors
             )
         return BackwardLensResult(
             prompt=prompt,

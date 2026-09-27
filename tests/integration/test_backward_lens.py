@@ -377,12 +377,11 @@ def test_capture_rejects_non_bridge_and_non_raw_states(gpt2_bridge, monkeypatch)
         _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
 
 
-def test_public_entry_rejects_a_gated_mlp(gpt2_bridge, monkeypatch) -> None:
+def test_public_entry_accepts_a_gated_mlp(qwen_bridge) -> None:
     from transformer_lens.tools.analysis import BackwardLens
 
-    monkeypatch.setattr(gpt2_bridge.cfg, "gated_mlp", True)
-    with pytest.raises(NotImplementedError, match="non-gated"):
-        BackwardLens(gpt2_bridge)
+    lens = BackwardLens(qwen_bridge)
+    assert lens._model is qwen_bridge
 
 
 def test_capture_rejects_inference_mode(gpt2_bridge) -> None:
@@ -949,3 +948,56 @@ def test_gated_capture_cleans_owned_hooks_when_autograd_raises(qwen_bridge, monk
     finally:
         existing_handle.hook.remove()
         hook_point.fwd_hooks.remove(existing_handle)
+
+
+def test_public_gated_analyze_returns_three_matrices_per_layer(qwen_bridge) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    result = BackwardLens(qwen_bridge).analyze(
+        PROMPT,
+        TARGET,
+        QWEN_LAYERS,
+        normalized=True,
+        top_k=3,
+        return_full_logits=True,
+    )
+
+    assert [layer.layer for layer in result.layers] == list(QWEN_LAYERS)
+    assert result.max_absolute_reconstruction_error <= 2e-6
+    assert result.max_relative_reconstruction_error <= 2e-5
+    for layer in result.layers:
+        gate = layer.gate_projection
+        assert gate is not None
+        assert gate.projected_factor == "forward_inputs"
+        assert layer.input_projection.projected_factor == "forward_inputs"
+        assert layer.output_projection.projected_factor == "output_gradients"
+        for matrix in (gate, layer.input_projection, layer.output_projection):
+            assert matrix.factors.absolute_reconstruction_error <= 2e-6
+            assert matrix.factors.relative_reconstruction_error <= 2e-5
+            assert matrix.vocabulary_logits is not None
+            assert matrix.normalized_vocabulary_logits is not None
+            assert torch.isfinite(matrix.top_ranking.values).all()
+            assert torch.isfinite(matrix.bottom_ranking.values).all()
+        # Gate and up projections share the residual input, so their vocabulary
+        # readouts coincide; the down projection carries the shift direction.
+        gate_logits = gate.vocabulary_logits
+        input_logits = layer.input_projection.vocabulary_logits
+        output_logits = layer.output_projection.vocabulary_logits
+        assert gate_logits is not None
+        assert input_logits is not None
+        assert output_logits is not None
+        torch.testing.assert_close(gate_logits, input_logits)
+        assert not torch.allclose(gate_logits, output_logits)
+
+
+@pytest.mark.parametrize(
+    "model_fixture", ["gpt2_bridge", "pythia_bridge"], ids=["gpt2", "pythia-70m"]
+)
+def test_public_dense_analyze_leaves_gate_projection_empty(request, model_fixture: str) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    model = request.getfixturevalue(model_fixture)
+    result = BackwardLens(model).analyze(PROMPT, TARGET, [0])
+
+    for layer in result.layers:
+        assert layer.gate_projection is None
