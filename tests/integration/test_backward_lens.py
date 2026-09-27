@@ -741,6 +741,73 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
                 assert ranking.indices.device.type == "cpu"
 
 
+@pytest.mark.parametrize(("device", "dtype"), DEVICE_DTYPE_CASES)
+def test_tiny_gated_capture_supports_available_devices_and_reduced_precision(
+    qwen_bridge, device: str, dtype: torch.dtype
+) -> None:
+    from transformers import LlamaConfig, LlamaForCausalLM
+
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.tools.analysis import BackwardLens
+
+    config = LlamaConfig(
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=4,
+        hidden_size=32,
+        intermediate_size=64,
+        max_position_embeddings=64,
+        vocab_size=int(qwen_bridge.cfg.d_vocab),
+    )
+    hf_model = cast(Any, LlamaForCausalLM)(config).to(device=device, dtype=dtype).eval()
+    bridge = TransformerBridge.boot_transformers(
+        "llama",
+        hf_model=hf_model,
+        tokenizer=qwen_bridge.tokenizer,
+        dtype=dtype,
+    )
+    bridge.train(True)
+    if device == "cuda":
+        rng_before = torch.cuda.get_rng_state()
+    elif device == "mps":
+        rng_before = torch.mps.get_rng_state()
+    else:
+        rng_before = torch.random.get_rng_state()
+
+    result = BackwardLens(bridge).analyze("Small test", " token", [0, 1], normalized=True)
+
+    if device == "cuda":
+        rng_after = torch.cuda.get_rng_state()
+    elif device == "mps":
+        rng_after = torch.mps.get_rng_state()
+    else:
+        rng_after = torch.random.get_rng_state()
+    assert torch.equal(rng_after, rng_before)
+    for layer in result.layers:
+        gate = layer.gate_projection
+        assert gate is not None
+        for matrix in (gate, layer.input_projection, layer.output_projection):
+            factors = matrix.factors
+            assert torch.isfinite(factors.weight_gradient).all()
+            assert factors.relative_reconstruction_error <= 5e-2
+            assert matrix.vocabulary_logits is None
+            assert matrix.normalized_vocabulary_logits is None
+            assert torch.isfinite(matrix.top_ranking.values).all()
+            assert torch.isfinite(matrix.bottom_ranking.values).all()
+            assert matrix.normalized_top_ranking is not None
+            assert matrix.normalized_bottom_ranking is not None
+            assert torch.isfinite(matrix.normalized_top_ranking.values).all()
+            assert torch.isfinite(matrix.normalized_bottom_ranking.values).all()
+            for ranking in (
+                matrix.top_ranking,
+                matrix.bottom_ranking,
+                matrix.normalized_top_ranking,
+                matrix.normalized_bottom_ranking,
+            ):
+                assert ranking.values.device.type == "cpu"
+                assert ranking.indices.device.type == "cpu"
+
+
 QWEN_LAYERS = (0, 3)
 
 
