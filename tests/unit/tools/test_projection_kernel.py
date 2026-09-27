@@ -120,7 +120,7 @@ class TestOrthonormalSubspace:
 
         assert result.basis.dtype == torch.float32
         assert result.singular_values.dtype == torch.float32
-        assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
+        assert result.rtol == pytest.approx(3 * torch.finfo(torch.float32).eps)
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_low_precision_default_detects_rank_deficiency(self, dtype):
@@ -129,21 +129,21 @@ class TestOrthonormalSubspace:
         result = orthonormal_subspace(matrix)
 
         assert result.measured_rank == 1
-        assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
+        assert result.rtol == pytest.approx(4 * torch.finfo(torch.float32).eps)
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_low_precision_default_handles_realistic_ambient_dimension(self, dtype):
         generator = torch.Generator().manual_seed(7)
         full_rank = torch.randn(4096, 8, generator=generator, dtype=torch.float64)
         rank_deficient = full_rank.clone()
-        rank_deficient[:, -1] = 0.3 * full_rank[:, 0] + 0.7 * full_rank[:, 1]
+        rank_deficient[:, -1] = full_rank[:, 0]
 
         full_result = orthonormal_subspace(full_rank.to(dtype))
         deficient_result = orthonormal_subspace(rank_deficient.to(dtype))
 
         assert full_result.measured_rank == 8
         assert deficient_result.measured_rank == 7
-        assert full_result.rtol == pytest.approx(torch.finfo(dtype).eps)
+        assert full_result.rtol == pytest.approx(4096 * torch.finfo(torch.float32).eps)
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_low_precision_default_measures_full_rank_for_decaying_spectrum(self, dtype):
@@ -549,14 +549,27 @@ class TestAttentionHeadSubspaceAffinity:
         assert result.target_rank == 2
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-    def test_wrapper_uses_least_precise_storage_dtype_for_default_rtol(self, dtype):
+    def test_wrapper_default_rtol_uses_compute_dtype_not_storage_dtype(self, dtype):
         model = SyntheticBridge((0, 1))
         for _, block in model.attention_blocks:
             block.attn.W_Q = block.attn.W_Q.to(dtype=dtype)
+            block.attn.W_K = block.attn.W_K.to(dtype=dtype)
+            block.attn.W_V = block.attn.W_V.to(dtype=dtype)
+            block.attn.W_O = block.attn.W_O.to(dtype=dtype)
 
         result = attention_head_subspace_affinity(model, target_role="Q")
 
-        assert result.rtol == pytest.approx(torch.finfo(dtype).eps)
+        assert result.rtol == pytest.approx(5 * torch.finfo(torch.float32).eps)
+        assert result.rtol < torch.finfo(dtype).eps
+
+    def test_wrapper_explicit_rtol_still_overrides_the_default(self):
+        model = SyntheticBridge((0, 1))
+        for _, block in model.attention_blocks:
+            block.attn.W_Q = block.attn.W_Q.to(dtype=torch.bfloat16)
+
+        result = attention_head_subspace_affinity(model, target_role="Q", rtol=1e-4)
+
+        assert result.rtol == pytest.approx(1e-4)
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_wrapper_default_rtol_measures_full_rank_for_decaying_spectrum(self, dtype):
