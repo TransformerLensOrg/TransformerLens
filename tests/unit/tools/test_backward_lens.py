@@ -20,7 +20,6 @@ from transformer_lens.tools.analysis.backward_lens import (
     _get_dense_mlp_projections,
     _project_residual_factors,
     _rank_vocabulary_logits,
-    _require_raw_dense_mlp_bridge,
     _single_batch_matrix,
 )
 
@@ -618,26 +617,6 @@ def test_get_dense_mlp_projections_rejects_a_gated_config_without_a_gate() -> No
 
     with pytest.raises(ValueError, match="fused gate/up projections are not supported"):
         _get_dense_mlp_projections(model, (0,))
-
-
-def test_public_guard_adds_a_gated_rejection_on_top_of_the_shared_guard(
-    monkeypatch,
-) -> None:
-    from transformer_lens.tools.analysis import backward_lens
-
-    calls: list[Any] = []
-
-    def record(model: Any) -> None:
-        calls.append(model)
-
-    monkeypatch.setattr(backward_lens, "_require_raw_mlp_bridge", record)
-    gated = SimpleNamespace(cfg=SimpleNamespace(gated_mlp=True))
-    dense = SimpleNamespace(cfg=SimpleNamespace(gated_mlp=False))
-
-    _require_raw_dense_mlp_bridge(dense)
-    with pytest.raises(NotImplementedError, match="non-gated"):
-        _require_raw_dense_mlp_bridge(gated)
-    assert calls == [dense, gated]
 
 
 def test_public_backward_lens_symbols_are_exported() -> None:
