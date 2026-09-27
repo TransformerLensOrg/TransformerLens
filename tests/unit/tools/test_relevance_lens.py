@@ -10,6 +10,7 @@ estimator selects.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, NamedTuple, Sequence
 
 import pytest
@@ -572,3 +573,36 @@ class TestPartialCoverageIsRecordedHonestly:
         assert lens.metadata["enabled_rules"] == lens.enabled_rules
         assert "activation" not in lens.enabled_rules
         assert "multiplicative_gate" not in lens.enabled_rules
+
+    def test_partial_coverage_warns_with_the_skipped_mounts(self) -> None:
+        model = _build_tiny_opt()
+
+        with pytest.warns(UserWarning, match="skipped") as record:
+            RelevanceLens.fit(
+                model,
+                PROMPTS,
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+
+        message = str(record[0].message)
+        assert "blocks.0.mlp" in message
+        assert "normalization" in message
+
+    def test_full_coverage_does_not_warn_about_skipped_mounts(self) -> None:
+        model = _build_tiny_qwen2()
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            RelevanceLens.fit(
+                model,
+                PROMPTS,
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+
+        assert not [
+            item for item in record if "skipped" in str(item.message)
+        ], "a fully covered fit must not warn about skipped mounts"

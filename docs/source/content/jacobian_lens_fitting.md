@@ -287,6 +287,12 @@ common case for a dense-MLP model such as GPT-2, whose norms do not dispatch
 through the native-autograd branch the LN-rule wraps and which has no gated MLP;
 use `JacobianLens` for those models.
 
+A fit that installs **some** rules but skips others warns, naming the installed
+rules and the skipped mounts. The transport matrices then mix rule-modified and
+ordinary gradients, which is a weaker estimator than a fully covered fit and
+should be reported alongside any result. OPT is the common case: its norms take
+the LN-rule but its dense ReLU MLP takes neither MLP rule.
+
 | Component | LN-rule | Identity-rule | Half-rule |
 |---|---|---|---|
 | Residual-stream norms on the native-autograd path | yes | n/a | n/a |

@@ -305,6 +305,15 @@ class RelevanceLens(JacobianLens):
                     "MLPs with GELU or SiLU activations; use JacobianLens for "
                     "models without them."
                 )
+            if coverage.skipped:
+                warnings.warn(
+                    "some relevance-rule mounts were skipped, so the transport "
+                    "matrices mix rule-modified and ordinary gradients. Installed "
+                    f"rules: {_installed_rule_names(coverage)}. Skipped mounts: "
+                    f"{list(coverage.skipped)}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             transport_matrices, n_done = _fit_transport_matrices(
                 model,
                 prompts,
