@@ -234,6 +234,12 @@ class RelevanceLens(JacobianLens):
         estimated with rule-modified backward semantics. The forward pass is
         unchanged, and the rule scope is released before this method returns.
 
+        Coverage is checked before any fitting work. A model that can honor no
+        rule is refused, since the fit would otherwise return ordinary Jacobian
+        matrices labelled as a relevance lens. A model that honors some rules
+        but skips others is fitted with a warning, and the artifact records only
+        the rules that actually shaped the matrices.
+
         Args:
             model: A raw ``TransformerBridge``. Model parameters are temporarily
                 frozen during fitting and restored after. The model and all of
@@ -258,7 +264,15 @@ class RelevanceLens(JacobianLens):
         Raises:
             TypeError: If model is not a ``TransformerBridge``.
             ValueError: On compatibility mode, training mode, invalid provenance
-                or layer indices, or if no prompt was long enough to fit on.
+                or layer indices, if no prompt was long enough to fit on, or if
+                no relevance rule could be installed on the model.
+            RelevanceRuleUnsupportedError: If a mount that is expected to honor
+                a requested rule cannot, such as a gated MLP whose activation
+                the Identity-rule does not hold for.
+
+        Warns:
+            UserWarning: If some rule mounts were skipped, so the matrices mix
+                rule-modified and ordinary gradients.
         """
         _require_raw_bridge(model, estimator=cls.__name__)
         require_eval_mode(model, operation=f"{cls.__name__}.fit()")
