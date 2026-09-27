@@ -24,12 +24,14 @@ from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
     GradientCache,
     Node,
+    _ablate_edges,
     _assert_edges_unique,
     _check_required_hooks,
     _edge_effects,
     _edge_hook_flags,
     _edge_hook_names,
     _ensure_edge_hook_flags,
+    _excluded_writers_by_reader,
     _node_effects,
     _reader_hook_names,
     _required_hook_names,
@@ -1722,6 +1724,53 @@ def test_edge_scores_sum_to_the_readers_direct_input_change() -> None:
     assert checked > 0
 
 
+def _assert_mutation_only_changes_the_perturbed_writers_edges(
+    edges: list[tuple[Node, Node]],
+    writer: Node,
+    perturbation: torch.Tensor,
+    baseline_scores: dict[tuple[Node, Node], float],
+    mutated_scores: dict[tuple[Node, Node], float],
+    corrupt_cache: GradientCache,
+) -> None:
+    """Assert a single-writer perturbation moved exactly that writer's edges.
+
+    Both the edge scorer and the ablation correction read a writer's delta and a
+    reader's gradient from independently indexed tensors (writer position/head,
+    reader position/head). A slicing bug that mixed up either index could leak a
+    perturbation into an edge whose writer was never touched, or fail to move an
+    edge whose writer was. Perturbing a single head's slice of a shared per-head
+    tensor also exercises the narrower case: sibling heads and positions inside
+    the *same* tensor must stay untouched.
+
+    Shared by the edge-scoring and edge-ablation tests so the two cannot drift
+    apart: the ablation's correction terms inherit the same indexing failure
+    modes as the scorer.
+    """
+    changed = 0
+    moved = 0
+    for edge in edges:
+        edge_writer, reader = edge
+        if edge_writer == writer:
+            grad = corrupt_cache.gradients[reader.hook_name]
+            assert grad is not None
+            if reader.kind in ("q_input", "k_input", "v_input"):
+                grad_vec = grad[0, reader.position, reader.head]
+            else:
+                grad_vec = grad[0, reader.position]
+            shift = float((perturbation * grad_vec).sum())
+            expected = baseline_scores[edge] + shift
+            assert mutated_scores[edge] == pytest.approx(expected)
+            changed += 1
+            if abs(shift) > 1e-6:
+                assert mutated_scores[edge] != pytest.approx(baseline_scores[edge])
+                moved += 1
+        else:
+            assert mutated_scores[edge] == baseline_scores[edge]
+
+    assert changed > 0
+    assert moved > 0  # the perturbation genuinely shifts scores at the readout position
+
+
 def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> None:
     """Perturbing one writer's captured contribution changes only that writer's edges.
 
@@ -1771,29 +1820,9 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
 
     mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
 
-    changed = 0
-    moved = 0
-    for edge in edges:
-        edge_writer, reader = edge
-        if edge_writer == writer:
-            grad = corrupt_cache.gradients[reader.hook_name]
-            assert grad is not None
-            if reader.kind in ("q_input", "k_input", "v_input"):
-                grad_vec = grad[0, reader.position, reader.head]
-            else:
-                grad_vec = grad[0, reader.position]
-            shift = float((perturbation * grad_vec).sum())
-            expected = baseline_scores[edge] + shift
-            assert mutated_scores[edge] == pytest.approx(expected)
-            changed += 1
-            if abs(shift) > 1e-6:
-                assert mutated_scores[edge] != pytest.approx(baseline_scores[edge])
-                moved += 1
-        else:
-            assert mutated_scores[edge] == baseline_scores[edge]
-
-    assert changed > 0
-    assert moved > 0  # the perturbation genuinely shifts scores at the readout position
+    _assert_mutation_only_changes_the_perturbed_writers_edges(
+        edges, writer, perturbation, baseline_scores, mutated_scores, corrupt_cache
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2060,3 +2089,235 @@ def test_capture_writer_outputs_needs_no_grad() -> None:
 
         with pytest.raises(ValueError, match="autograd"):
             cache_activation_and_gradient(model, tokens, metric)
+
+
+# ---------------------------------------------------------------------------
+# Reader-input rewrite (edge ablation core)
+# ---------------------------------------------------------------------------
+#
+# The residual stream is a running sum, so a reader's input is exactly the sum
+# of its writers' contributions. Ablating an edge means subtracting that
+# writer's live contribution and adding its replacement at the reader's fork
+# hook, which fires before the layer norm -- an exact correction, not an
+# approximation. The two boundary cases pin the rewrite: excluding every edge
+# must reproduce the corrupt run, excluding none must reproduce the clean run.
+
+
+def _ablation_replacement(
+    model: _EdgeScoringToyBridge, tokens: torch.Tensor
+) -> dict[str, torch.Tensor]:
+    """The value standing in for an ablated writer: the corrupt run's own."""
+    with _edge_hook_flags(model):
+        return capture_writer_outputs(model, tokens)
+
+
+def test_excluded_writers_by_reader_groups_only_out_of_circuit_edges() -> None:
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+
+    # Keeping the whole graph excludes nothing.
+    assert _excluded_writers_by_reader(edges, edges) == {}
+
+    # Keeping nothing excludes every writer, grouped once per reader.
+    excluded = _excluded_writers_by_reader(edges, [])
+    readers = {reader for _writer, reader in edges}
+    assert set(excluded) == readers
+    for reader, writers in excluded.items():
+        expected = [writer for writer, edge_reader in edges if edge_reader == reader]
+        assert writers == expected
+
+    # A single kept edge excludes exactly that edge's writer from its reader.
+    # Pick a reader with more than one incoming edge, so the exclusion is
+    # observable rather than emptying the reader's writer list.
+    kept_edge = next(
+        edge for edge in edges if len([writer for writer, reader in edges if reader == edge[1]]) > 1
+    )
+    excluded = _excluded_writers_by_reader(edges, [kept_edge])
+    kept_writer, kept_reader = kept_edge
+    incoming = [writer for writer, reader in edges if reader == kept_reader]
+    assert kept_writer not in excluded[kept_reader]
+    assert len(excluded[kept_reader]) == len(incoming) - 1
+
+
+def test_ablating_the_empty_circuit_reproduces_the_corrupt_metric() -> None:
+    """Excluding every edge rebuilds each reader's input as the corrupt run's."""
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    replacements = _ablation_replacement(model, corrupt)
+
+    with _edge_hook_flags(model):
+        ablated_logits = _ablate_edges(model, corrupt, edges, [], replacements)
+
+    ablated = float(metric(ablated_logits))
+    assert ablated == pytest.approx(float(corrupt_cache.metric), abs=1e-6)
+    # Discriminating: the correction genuinely moved the run, so this cannot
+    # pass on an ablation that silently did nothing.
+    assert ablated != pytest.approx(float(clean_cache.metric), abs=1e-6)
+
+
+def test_ablating_the_full_circuit_reproduces_the_clean_metric() -> None:
+    """Keeping every edge leaves each reader's input untouched."""
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    replacements = _ablation_replacement(model, corrupt)
+
+    with _edge_hook_flags(model):
+        ablated_logits = _ablate_edges(model, clean, edges, edges, replacements)
+
+    ablated = float(metric(ablated_logits))
+    assert ablated == pytest.approx(float(clean_cache.metric), abs=1e-6)
+    # Discriminating: the clean and corrupt runs genuinely differ, so this
+    # cannot pass on a degenerate pair.
+    assert ablated != pytest.approx(float(corrupt_cache.metric), abs=1e-6)
+
+
+def test_ablation_installs_one_hook_per_reader_node() -> None:
+    """Each reader node is corrected once, not once per incoming edge.
+
+    Several reader nodes share one hook point (one per head, one per position),
+    and each rewrites a disjoint slice of it. Installing one hook per excluded
+    edge would apply the correction repeatedly and overshoot, so the count of
+    hooks on each fork point must equal the number of reader nodes reading it --
+    not the number of edges into those nodes.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    replacements = _ablation_replacement(model, tokens)
+
+    readers = {reader for _writer, reader in edges}
+    assert len(readers) > 0
+    # Some readers have several incoming edges, so a per-edge hook would
+    # register several hooks on the same point.
+    crowded = {
+        reader
+        for reader in readers
+        if len([writer for writer, edge_reader in edges if edge_reader == reader]) > 1
+    }
+    assert crowded
+
+    # The ablation's hooks live only for the duration of its forward, so count
+    # them from a pre-hook on the model root, which fires while they are
+    # registered.
+    counts: dict[str, int] = {}
+
+    def snapshot(_module: nn.Module, _args: tuple) -> None:
+        for reader in readers:
+            counts[reader.hook_name] = len(model.hook_dict[reader.hook_name].fwd_hooks)
+
+    handle = model.register_forward_pre_hook(snapshot)
+    try:
+        with _edge_hook_flags(model):
+            _ablate_edges(model, tokens, edges, [], replacements)
+    finally:
+        handle.remove()
+
+    expected = {
+        name: len([reader for reader in readers if reader.hook_name == name])
+        for name in {reader.hook_name for reader in readers}
+    }
+    assert counts == expected
+    # Fewer hooks than edges: the grouping collapsed the per-edge corrections.
+    assert sum(counts.values()) < len(edges)
+
+
+def test_ablation_correction_terms_isolate_the_intended_edges() -> None:
+    """Perturbing one writer's contribution moves only that writer's edges.
+
+    The ablation's correction terms read a writer's contribution and a reader's
+    position from independently indexed tensors, the same failure mode the edge
+    scorer has. This reuses the scorer's mutation guard rather than restating it,
+    so the two cannot drift apart.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    _assert_edges_unique(edges)
+    baseline_scores = _edge_effects(clean_cache, corrupt_cache, edges)
+
+    writer = Node(kind="attn_head_out", layer=0, head=0, position=SEQ_LEN - 1)
+    assert any(edge_writer == writer for edge_writer, _reader in edges)
+
+    perturbation = torch.full((D_MODEL,), 0.37, dtype=clean_cache.activations["hook_embed"].dtype)
+    writer_name = _writer_hook_name(writer)
+    perturbed_activations = dict(clean_cache.activations)
+    perturbed_activations[writer_name] = perturbed_activations[writer_name].clone()
+    perturbed_activations[writer_name][0, writer.position, writer.head] += perturbation
+    perturbed_clean_cache = GradientCache(
+        activations=perturbed_activations,
+        gradients=clean_cache.gradients,
+        metric=clean_cache.metric,
+    )
+
+    mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
+
+    _assert_mutation_only_changes_the_perturbed_writers_edges(
+        edges, writer, perturbation, baseline_scores, mutated_scores, corrupt_cache
+    )
+
+
+def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
+    """An uncaptured writer raises rather than silently skipping the correction."""
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+
+    with _edge_hook_flags(model), pytest.raises(ValueError, match="no contribution captured"):
+        _ablate_edges(model, tokens, edges, [], {})

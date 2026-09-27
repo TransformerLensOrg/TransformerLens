@@ -33,7 +33,17 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator, Literal, Optional, Sequence, Union
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Iterator,
+    Literal,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 import torch
 
@@ -948,6 +958,170 @@ def _aggregate_edge_scores_to_writer_nodes(
     for (writer, _reader), score in edge_scores.items():
         totals[writer] = totals.get(writer, 0.0) + score
     return totals
+
+
+def _writer_contribution_slice(writer: Node, tensor: torch.Tensor) -> torch.Tensor:
+    """The writer's own contribution at its position, and head if it has one.
+
+    A captured writer tensor holds every position (and, for an attention head,
+    every head); an edge carries only the writer's contribution at the edge's
+    position, so this selects that slice. The result is a ``d_model`` vector,
+    which broadcasts into a reader's input -- a per-head reader receives the
+    writer once per head.
+    """
+    if writer.kind == "attn_head_out":
+        return tensor[0, writer.position, writer.head]
+    return tensor[0, writer.position]
+
+
+def _excluded_writers_by_reader(
+    edges: Sequence[tuple[Node, Node]],
+    circuit: Collection[tuple[Node, Node]],
+) -> dict[Node, list[Node]]:
+    """Group the out-of-circuit writers feeding each reader node.
+
+    A reader node's input is rebuilt once, from the writers whose edges into it
+    lie outside ``circuit``. Grouping by reader node keeps that rebuild to a
+    single hook per node: one hook per excluded edge would apply the correction
+    once per edge instead of once per node.
+    """
+    circuit_set = set(circuit)
+    excluded: dict[Node, list[Node]] = {}
+    for writer, reader in edges:
+        if (writer, reader) not in circuit_set:
+            excluded.setdefault(reader, []).append(writer)
+    return excluded
+
+
+def _make_writer_capture_hook(name: str, sink: dict[str, torch.Tensor]) -> Callable[..., None]:
+    """Record a writer's live contribution for the reader hooks that follow it.
+
+    A writer always precedes the readers it feeds, so by the time a reader's
+    fork hook fires the contributions it needs are already in ``sink``. The
+    tensor is detached rather than cloned: it is only read, and the reader hook
+    clones its own input before rewriting it.
+    """
+
+    def hook(tensor: torch.Tensor, *, hook: Any) -> None:
+        del hook
+        if isinstance(tensor, torch.Tensor):
+            sink[name] = tensor.detach()
+        return None
+
+    return hook
+
+
+def _make_edge_ablation_hook(
+    reader: Node,
+    excluded_writers: Sequence[Node],
+    live_writers: dict[str, torch.Tensor],
+    replacement_writers: dict[str, torch.Tensor],
+) -> Callable[..., torch.Tensor]:
+    """Rebuild one reader's input with its out-of-circuit writers replaced.
+
+    The residual stream is a running sum, so a reader's input is exactly the sum
+    of its writers' contributions. Removing an edge therefore means subtracting
+    that writer's live contribution and adding its replacement -- an exact
+    correction rather than an approximation. The reader's fork hook fires before
+    the layer norm, so the correction is a plain add and subtract in ``d_model``
+    space with no norm scale to divide out.
+
+    A per-head reader's input is the residual replicated across heads, so the
+    correction is applied to that reader's own head slot. Several reader nodes
+    share one hook point (one per head, one per position), and each rewrites a
+    disjoint slice, so no writer's contribution is subtracted twice.
+
+    Args:
+        reader: The reader whose input is rebuilt.
+        excluded_writers: Writers whose edges into ``reader`` lie outside the
+            circuit.
+        live_writers: Contributions captured during the current forward, keyed
+            by writer hook name.
+        replacement_writers: The value standing in for each excluded writer,
+            keyed by writer hook name.
+
+    Returns:
+        A forward hook returning the rebuilt input.
+
+    Raises:
+        ValueError: if an excluded writer's contribution was not captured, which
+            means its hook family was not enabled for this forward.
+    """
+    if reader.kind in ("q_input", "k_input", "v_input"):
+        # Node.__post_init__ guarantees a head for the per-head reader kinds.
+        index: tuple[int, ...] = (0, reader.position, cast(int, reader.head))
+    else:
+        index = (0, reader.position)
+
+    def hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        rebuilt = tensor.clone()
+        for writer in excluded_writers:
+            name = _writer_hook_name(writer)
+            live = live_writers.get(name)
+            replacement = replacement_writers.get(name)
+            if live is None or replacement is None:
+                raise ValueError(
+                    f"cannot ablate the edge from {writer} into {reader}: no "
+                    f"contribution captured at {name!r}. Enable the writer's hook "
+                    "family before running the ablation."
+                )
+            rebuilt[index] = (
+                rebuilt[index]
+                - _writer_contribution_slice(writer, live)
+                + _writer_contribution_slice(writer, replacement)
+            )
+        return rebuilt
+
+    return hook
+
+
+def _ablate_edges(
+    model: Any,
+    tokens: torch.Tensor,
+    edges: Sequence[tuple[Node, Node]],
+    circuit: Collection[tuple[Node, Node]],
+    replacement_writers: dict[str, torch.Tensor],
+) -> torch.Tensor:
+    """Run one forward with every edge outside ``circuit`` ablated.
+
+    Captures each writer's live contribution and rewrites each reader's input at
+    its fork hook, so the forward sees a model in which only the circuit's edges
+    carry the run's own values. Forward-only: no gradient is involved, and the
+    caller must have the writer and reader hook families enabled (see
+    :func:`_edge_hook_flags`).
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible).
+        tokens: Input token ids for the ablated forward.
+        edges: The full edge list, as :func:`enumerate_edges` returns it.
+        circuit: The edges to keep. Every other edge is ablated.
+        replacement_writers: The value standing in for each ablated writer,
+            keyed by writer hook name.
+
+    Returns:
+        The model's logits under the ablation, detached. The rewrite is a
+        forward-only intervention, so the pass runs under :func:`torch.no_grad`
+        and no gradient is retained.
+    """
+    excluded_by_reader = _excluded_writers_by_reader(edges, circuit)
+
+    live_writers: dict[str, torch.Tensor] = {}
+    fwd_hooks: list[tuple[str, Callable[..., Any]]] = [
+        (name, _make_writer_capture_hook(name, live_writers))
+        for name in _writer_hook_names(int(model.cfg.n_layers))
+    ]
+    fwd_hooks.extend(
+        (
+            reader.hook_name,
+            _make_edge_ablation_hook(reader, writers, live_writers, replacement_writers),
+        )
+        for reader, writers in excluded_by_reader.items()
+    )
+
+    with torch.no_grad(), model.hooks(fwd_hooks=fwd_hooks):
+        logits = model(tokens)
+    return logits
 
 
 def attribution_patch(
