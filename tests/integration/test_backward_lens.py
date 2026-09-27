@@ -369,13 +369,17 @@ def test_capture_rejects_non_bridge_and_non_raw_states(gpt2_bridge, monkeypatch)
     with pytest.raises(ValueError, match="processed"):
         _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
     monkeypatch.setattr(gpt2_bridge, "_weights_processed", False)
-    monkeypatch.setattr(gpt2_bridge.cfg, "gated_mlp", True)
-    with pytest.raises(NotImplementedError, match="non-gated"):
-        _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
-    monkeypatch.setattr(gpt2_bridge.cfg, "gated_mlp", False)
     monkeypatch.setattr(gpt2_bridge, "tokenizer", None)
     with pytest.raises(ValueError, match="tokenizer"):
         _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
+
+
+def test_public_entry_rejects_a_gated_mlp(gpt2_bridge, monkeypatch) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    monkeypatch.setattr(gpt2_bridge.cfg, "gated_mlp", True)
+    with pytest.raises(NotImplementedError, match="non-gated"):
+        BackwardLens(gpt2_bridge)
 
 
 def test_capture_rejects_inference_mode(gpt2_bridge) -> None:
@@ -733,3 +737,68 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
             ):
                 assert ranking.values.device.type == "cpu"
                 assert ranking.indices.device.type == "cpu"
+
+
+QWEN_LAYERS = (0, 3)
+
+
+@pytest.fixture(scope="module")
+def qwen_bridge():
+    from transformer_lens.model_bridge import TransformerBridge
+
+    return TransformerBridge.boot_transformers("Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32)
+
+
+def test_gated_mlp_factors_reconstruct_all_three_weight_gradients(
+    qwen_bridge,
+) -> None:
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_dense_mlp_gradient_factors,
+    )
+
+    capture = _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, QWEN_LAYERS)
+    d_model = int(qwen_bridge.cfg.d_model)
+    d_mlp = int(qwen_bridge.cfg.d_mlp)
+    prompt_length = int(capture.prompt_token_ids.shape[1])
+    assert [result.layer for result in capture.layers] == list(QWEN_LAYERS)
+
+    for result in capture.layers:
+        gate = result.gate_projection
+        assert gate is not None
+        assert gate.weight_layout == "out_in"
+        assert gate.forward_inputs.shape == (prompt_length, d_model)
+        assert gate.output_gradients.shape == (prompt_length, d_mlp)
+        assert gate.weight_gradient.shape == (d_mlp, d_model)
+        assert result.input_projection.weight_gradient.shape == (d_mlp, d_model)
+        assert result.output_projection.weight_gradient.shape == (d_model, d_mlp)
+        for factors in (
+            gate,
+            result.input_projection,
+            result.output_projection,
+        ):
+            torch.testing.assert_close(
+                factors.reconstructed_gradient,
+                factors.weight_gradient,
+                atol=2e-6,
+                rtol=2e-5,
+            )
+            assert factors.absolute_reconstruction_error <= 2e-6
+            assert factors.relative_reconstruction_error <= 2e-5
+
+
+def test_gated_gate_and_input_projections_share_the_residual_input(
+    qwen_bridge,
+) -> None:
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_dense_mlp_gradient_factors,
+    )
+
+    capture = _capture_dense_mlp_gradient_factors(qwen_bridge, PROMPT, TARGET, QWEN_LAYERS)
+
+    for result in capture.layers:
+        gate = result.gate_projection
+        assert gate is not None
+        # Gate and up projections both consume the residual stream, so their
+        # forward-input factors coincide while their output gradients differ.
+        torch.testing.assert_close(gate.forward_inputs, result.input_projection.forward_inputs)
+        assert not torch.allclose(gate.output_gradients, result.input_projection.output_gradients)
