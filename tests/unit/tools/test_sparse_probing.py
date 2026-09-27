@@ -509,12 +509,20 @@ def test_binary_metrics_zero_division_policy():
     assert metrics.average_precision == 1.0
 
 
-@pytest.mark.parametrize("label", [0, 1])
-def test_binary_metrics_threshold_free_scores_are_nan_without_both_classes(label):
-    metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.full((3,), label))
+def test_binary_metrics_all_negative_labels_leave_both_threshold_free_scores_undefined():
+    metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.zeros(3, dtype=torch.int64))
 
     assert math.isnan(metrics.roc_auc)
-    assert math.isnan(metrics.average_precision) == (label == 0)
+    assert math.isnan(metrics.average_precision)
+
+
+def test_binary_metrics_all_positive_labels_give_nan_roc_auc_and_unit_average_precision():
+    # ROC-AUC needs a negative to rank against; average precision is still defined, since
+    # every threshold has precision one.
+    metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.ones(3, dtype=torch.int64))
+
+    assert math.isnan(metrics.roc_auc)
+    assert metrics.average_precision == 1.0
 
 
 def test_dead_coordinate_probe_scores_chance_on_threshold_free_metrics():

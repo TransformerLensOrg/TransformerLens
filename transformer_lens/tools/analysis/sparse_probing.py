@@ -32,7 +32,9 @@ class SparseProbeMetrics:
 
     Confusion counts, accuracy, precision, recall, and F1 are read at the logit-zero
     threshold. ``roc_auc`` and ``average_precision`` are threshold-free and tie-aware:
-    held-out examples with equal logits share one rank and one threshold.
+    held-out examples with equal logits share one rank and one threshold. The stratified
+    split always holds out both classes; if a class is absent, ``roc_auc`` is NaN, and
+    ``average_precision`` is NaN without positives and 1.0 without negatives.
     """
 
     true_positives: int
