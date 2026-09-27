@@ -22,6 +22,9 @@ from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFa
 import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
+from transformer_lens.model_bridge.supported_architectures.gpt2 import (
+    GPT2ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
@@ -437,3 +440,66 @@ class TestAnalysisSurfaceIsReusedNotDuplicated:
             if not name.startswith("__") and callable(getattr(RelevanceLens, name))
         }
         assert overridden == {"fit", "load", "_merge_identity"}
+
+
+def _build_tiny_gpt2() -> TransformerBridge:
+    """A dense-MLP, plain-python-norm model that can honor none of the rules.
+
+    GPT-2 has no gated MLP and its norms do not dispatch through the
+    native-autograd branch the LN-rule wraps, so every canonical mount is
+    reported skipped.
+    """
+    hf_config = AutoConfig.for_model(
+        "gpt2",
+        vocab_size=97,
+        n_embd=D_MODEL,
+        n_layer=N_LAYERS,
+        n_head=4,
+        n_positions=64,
+        n_ctx=64,
+    )
+    torch.manual_seed(0)
+    hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf_model.config, "GPT2LMHeadModel", "gpt2-tiny", torch.float32
+    )
+    adapter = GPT2ArchitectureAdapter(bridge_config)
+    return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_offline_tokenizer(PROMPTS))
+
+
+class TestFitRefusesSilentFallback:
+    """A fit that installs no rule must not masquerade as a relevance lens.
+
+    Without this guard the estimator would return ordinary Jacobian matrices
+    labelled ``estimator="relevance_lens"``, which is indistinguishable from a
+    real relevance fit in the artifact and would silently mislead a downstream
+    comparison.
+    """
+
+    def test_fit_raises_when_no_rule_can_be_installed(self) -> None:
+        model = _build_tiny_gpt2()
+
+        with pytest.raises(ValueError, match="no relevance rule"):
+            RelevanceLens.fit(
+                model,
+                PROMPTS,
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+
+    def test_error_names_the_skipped_mounts(self) -> None:
+        model = _build_tiny_gpt2()
+
+        with pytest.raises(ValueError) as excinfo:
+            RelevanceLens.fit(
+                model,
+                PROMPTS,
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+
+        message = str(excinfo.value)
+        assert "blocks.0.ln1" in message
+        assert "blocks.0.mlp" in message

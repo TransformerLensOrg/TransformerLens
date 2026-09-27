@@ -280,6 +280,13 @@ per fit, and a requested rule that cannot be installed on a component that is
 expected to honor it raises rather than silently falling back to ordinary
 gradients.
 
+A fit that installs **no** rule at all also raises. Without that guard the
+estimator would return ordinary Jacobian matrices labelled as a relevance lens,
+which is indistinguishable from a real relevance fit in the artifact. This is the
+common case for a dense-MLP model such as GPT-2, whose norms do not dispatch
+through the native-autograd branch the LN-rule wraps and which has no gated MLP;
+use `JacobianLens` for those models.
+
 | Component | LN-rule | Identity-rule | Half-rule |
 |---|---|---|---|
 | Residual-stream norms on the native-autograd path | yes | n/a | n/a |

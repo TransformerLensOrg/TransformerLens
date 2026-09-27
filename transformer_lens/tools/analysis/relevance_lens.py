@@ -278,6 +278,16 @@ class RelevanceLens(JacobianLens):
             )
 
         with use_relevance_rules(model, RELEVANCE_RULES) as coverage:
+            if not coverage.installed:
+                raise ValueError(
+                    "no relevance rule could be installed on this model, so the "
+                    "fit would return ordinary Jacobian matrices labelled as a "
+                    "relevance lens. Skipped mounts: "
+                    f"{list(coverage.skipped)}. The relevance estimator needs "
+                    "residual-stream norms on the native-autograd path and gated "
+                    "MLPs with GELU or SiLU activations; use JacobianLens for "
+                    "models without them."
+                )
             transport_matrices, n_done = _fit_transport_matrices(
                 model,
                 prompts,
