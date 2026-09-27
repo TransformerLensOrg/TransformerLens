@@ -751,6 +751,40 @@ def qwen_bridge():
     return TransformerBridge.boot_transformers("Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32)
 
 
+@pytest.fixture(scope="module")
+def tiny_llama_bridge():
+    from transformer_lens.model_bridge import TransformerBridge
+
+    return TransformerBridge.boot_transformers(
+        "stas/tiny-random-llama-2", device="cpu", dtype=torch.float32
+    )
+
+
+def test_tiny_llama_gated_discovery_is_structural(tiny_llama_bridge) -> None:
+    from transformer_lens.tools.analysis.backward_lens import _get_dense_mlp_projections
+
+    d_model = int(tiny_llama_bridge.cfg.d_model)
+    d_mlp = int(tiny_llama_bridge.cfg.d_mlp)
+    records = _get_dense_mlp_projections(tiny_llama_bridge, (0,))[0]
+
+    assert len(records) == 3
+    gate_record, input_record, output_record = records
+    for record in records:
+        assert record.weight_layout == "out_in"
+    assert tuple(gate_record.projection.original_component.weight.shape) == (
+        d_mlp,
+        d_model,
+    )
+    assert tuple(input_record.projection.original_component.weight.shape) == (
+        d_mlp,
+        d_model,
+    )
+    assert tuple(output_record.projection.original_component.weight.shape) == (
+        d_model,
+        d_mlp,
+    )
+
+
 def test_gated_mlp_factors_reconstruct_all_three_weight_gradients(
     qwen_bridge,
 ) -> None:
