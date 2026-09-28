@@ -183,16 +183,9 @@ def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
     return torch.float64 if dtype == torch.float64 else torch.float32
 
 
-def _rank_tolerance_dtype(dtypes: Sequence[torch.dtype]) -> torch.dtype:
-    """Return the least precise storage dtype for a shared rank tolerance."""
-    return max(dtypes, key=lambda dtype: torch.finfo(dtype).eps)
-
-
 def _validate_rtol(rtol: Optional[float], shape: Tuple[int, int], dtype: torch.dtype) -> float:
     if rtol is None:
-        compute_epsilon = torch.finfo(_compute_dtype(dtype)).eps
-        storage_epsilon = torch.finfo(dtype).eps
-        return max(max(shape) * compute_epsilon, storage_epsilon)
+        return max(shape) * torch.finfo(_compute_dtype(dtype)).eps
     if isinstance(rtol, bool) or not isinstance(rtol, Real):
         raise ValueError(f"rtol must be a finite non-negative real number, got {rtol!r}")
     value = float(rtol)
@@ -220,10 +213,10 @@ def orthonormal_subspace(
     """Extract an explicitly ranked orthonormal column-space basis.
 
     Low-precision inputs are promoted to float32 before the reduced SVD. With no
-    explicit ``rtol``, numerical rank uses the larger of the compute-SVD error
-    scale and one input-storage epsilon, relative to the largest singular value.
-    An explicit ``rank`` truncates the measured subspace but may not exceed its
-    measured rank.
+    explicit ``rtol``, numerical rank uses the compute-SVD error scale relative
+    to the largest singular value, so the default does not depend on the storage
+    dtype. An explicit ``rank`` truncates the measured subspace but may not
+    exceed its measured rank.
 
     Args:
         matrix: Finite floating-point matrix with shape ``[ambient_dim, width]``.
@@ -654,14 +647,11 @@ def attention_head_subspace_affinity(
         )
 
     matrices = source_matrices + target_matrices
-    tolerance_dtype = _rank_tolerance_dtype([matrix.dtype for matrix in matrices])
     dtype = matrices[0].dtype
     for matrix in matrices[1:]:
         dtype = torch.promote_types(dtype, matrix.dtype)
     dtype = _compute_dtype(dtype)
-    effective_rtol = _validate_rtol(
-        rtol, (source_ambient, max(source_width, target_width)), tolerance_dtype
-    )
+    effective_rtol = _validate_rtol(rtol, (source_ambient, max(source_width, target_width)), dtype)
     requested_rank = _validate_rank(rank, min(source_ambient, source_width, target_width))
     source_rank = source_width if requested_rank is None else requested_rank
     target_rank = target_width if requested_rank is None else requested_rank
