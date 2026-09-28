@@ -315,7 +315,7 @@ def _selected_data(
     constant = raw_scale == 0
     if preprocess == "standardize":
         mean = train.mean(dim=0)
-        # Zero-variance columns keep scale one: flooring them would inflate held-out deviations.
+        # Guards 0/0 when std_floor=0; zero-variance columns get a zero coefficient either way.
         scale = torch.where(constant, torch.ones_like(raw_scale), raw_scale.clamp(min=std_floor))
         return (train - mean) / scale, (test - mean) / scale, mean, scale, constant
     mean = torch.zeros(train.shape[1], dtype=torch.float64)
@@ -715,9 +715,10 @@ def fit_sparse_probe(
         class_weight: ``"balanced"`` or ``None`` for unweighted BCE.
         l2_strength: Positive coefficient penalty in the logistic objective.
         seed: Local CPU-generator seed used only for the stratified split.
-        max_iter: Maximum LBFGS iterations before Newton refinement. LBFGS also stops after
-            ``max_iter * 5 // 4`` function evaluations (``stop_reason="max_eval"``), which
-            equals ``max_iter`` when ``max_iter <= 3``.
+        max_iter: Maximum LBFGS iterations before Newton refinement. LBFGS also stops once its
+            function evaluations reach ``max_iter * 5 // 4`` (``stop_reason="max_eval"``; the
+            line search can finish one past it), a budget equal to ``max_iter`` when
+            ``max_iter <= 3``.
         max_refinement_steps: Maximum damped Newton steps after LBFGS; zero only checks.
         decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2``, an
             estimate of the objective gap to the optimum in nats; a larger gap raises.
@@ -807,8 +808,9 @@ def sweep_sparse_probe(
         n_label_shuffles: Shuffled-training-label control fits per sparsity level.
         seed: Local CPU-generator seed for splitting and controls.
         max_iter: Maximum LBFGS iterations per fit before Newton refinement. LBFGS also stops
-            after ``max_iter * 5 // 4`` function evaluations (``stop_reason="max_eval"``),
-            which equals ``max_iter`` when ``max_iter <= 3``.
+            once its function evaluations reach ``max_iter * 5 // 4``
+            (``stop_reason="max_eval"``; the line search can finish one past it), a budget
+            equal to ``max_iter`` when ``max_iter <= 3``.
         max_refinement_steps: Maximum damped Newton steps per fit; zero only checks.
         decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2`` per fit,
             an estimate of the objective gap to the optimum in nats; a larger gap raises.

@@ -234,6 +234,32 @@ def test_std_floor_keeps_constant_columns_at_scale_one_and_zero_disables_it():
     )
 
 
+def test_sweep_passes_std_floor_to_main_and_control_fits(monkeypatch):
+    features, labels = _planted_data(n_examples=120, n_features=6)
+    received = []
+
+    def recording_selected_data(*args):
+        received.append(args[-1])
+        return _selected_data(*args)
+
+    monkeypatch.setattr(
+        "transformer_lens.tools.analysis.sparse_probing._selected_data", recording_selected_data
+    )
+    sweep = sweep_sparse_probe(
+        features,
+        labels,
+        ks=[1, 2],
+        preprocess="standardize",
+        std_floor=0.25,
+        n_random_subsets=2,
+        n_label_shuffles=2,
+        seed=0,
+    )
+
+    assert [result.std_floor for result in sweep.results] == [0.25, 0.25]
+    assert received == [0.25] * 10
+
+
 def test_none_preprocessing_has_identity_metadata_and_constant_tie_order():
     features = torch.zeros(20, 5)
     labels = torch.arange(20) % 2
