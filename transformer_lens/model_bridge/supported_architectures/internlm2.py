@@ -201,7 +201,11 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
         patch_dynamic_cache_v5()
 
         # Force-import the remote modeling module so we can patch _init_weights.
-        force_import_remote_class(model_name, "modeling_internlm2.InternLM2ForCausalLM")
+        force_import_remote_class(
+            model_name,
+            "modeling_internlm2.InternLM2ForCausalLM",
+            revision=model_kwargs.get("revision"),
+        )
 
         # v5 calls _init_weights on all modules after weight materialization;
         # skip already-real tensors so checkpoint values survive.

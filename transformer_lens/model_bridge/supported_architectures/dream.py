@@ -122,12 +122,16 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
         # (is_init=False); v5 passes user_set_attributes. Replace with a
         # kwargs-tolerant no-op.
         gen_cfg_cls = force_import_remote_class(
-            model_name, "generation_utils.DreamGenerationConfig"
+            model_name,
+            "generation_utils.DreamGenerationConfig",
+            revision=model_kwargs.get("revision"),
         )
         if gen_cfg_cls is not None:
             setattr(gen_cfg_cls, "validate", lambda self, *args, **kwargs: None)
             _patch_from_model_config(gen_cfg_cls)
-        attn_cls = force_import_remote_class(model_name, "modeling_dream.DreamAttention")
+        attn_cls = force_import_remote_class(
+            model_name, "modeling_dream.DreamAttention", revision=model_kwargs.get("revision")
+        )
         if attn_cls is not None:
             _patch_eager_attention_mask(attn_cls)
         super().prepare_loading(model_name, model_kwargs)

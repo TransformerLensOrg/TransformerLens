@@ -176,7 +176,14 @@ class RavenArchitectureAdapter(ArchitectureAdapter):
             model_kwargs: The kwargs dict for from_pretrained().
         """
         # Force-import the modeling module so it appears in sys.modules to patch.
-        if force_import_remote_class(model_name, "raven_modeling_minimal.RavenForCausalLM") is None:
+        if (
+            force_import_remote_class(
+                model_name,
+                "raven_modeling_minimal.RavenForCausalLM",
+                revision=model_kwargs.get("revision"),
+            )
+            is None
+        ):
             return
 
         # Each checkpoint revision gets its own module in sys.modules; patch all.
