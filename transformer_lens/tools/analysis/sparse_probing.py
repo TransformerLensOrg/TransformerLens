@@ -8,6 +8,7 @@ monosemanticity, or superposition.
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -28,7 +29,14 @@ _SUPPORTED_FEATURE_DTYPES = (
 
 @dataclass(frozen=True)
 class SparseProbeMetrics:
-    """Held-out binary-classification metrics and confusion counts."""
+    """Held-out binary-classification metrics and confusion counts.
+
+    Confusion counts, accuracy, precision, recall, and F1 are read at the logit-zero
+    threshold. ``roc_auc`` and ``average_precision`` are threshold-free and tie-aware:
+    held-out examples with equal logits share one rank and one threshold. The stratified
+    split always holds out both classes; if a class is absent, ``roc_auc`` is NaN, and
+    ``average_precision`` is NaN without positives and 1.0 without negatives.
+    """
 
     true_positives: int
     true_negatives: int
@@ -38,6 +46,8 @@ class SparseProbeMetrics:
     precision: float
     recall: float
     f1: float
+    roc_auc: float
+    average_precision: float
 
 
 @dataclass(frozen=True)
@@ -98,6 +108,8 @@ class SparseProbeControl:
     precision: Float[torch.Tensor, "repeat"]
     recall: Float[torch.Tensor, "repeat"]
     f1: Float[torch.Tensor, "repeat"]
+    roc_auc: Float[torch.Tensor, "repeat"]
+    average_precision: Float[torch.Tensor, "repeat"]
 
 
 @dataclass(frozen=True)
@@ -552,6 +564,39 @@ def _fit_logistic(
     )
 
 
+def _roc_auc(logits: torch.Tensor, positive: torch.Tensor) -> float:
+    """Mann-Whitney ROC-AUC with average ranks for tied logits; NaN if a class is absent."""
+    positive_count = int(positive.sum().item())
+    negative_count = positive.numel() - positive_count
+    if positive_count == 0 or negative_count == 0:
+        return math.nan
+    _, inverse, counts = torch.unique(logits, return_inverse=True, return_counts=True)
+    counts = counts.to(dtype=torch.float64)
+    # A tie group occupying ranks start+1..end gets their mean, end - (count - 1) / 2.
+    average_ranks = (counts.cumsum(0) - (counts - 1) / 2)[inverse]
+    positive_rank_sum = float(average_ranks[positive].sum().item())
+    return (positive_rank_sum - positive_count * (positive_count + 1) / 2) / (
+        positive_count * negative_count
+    )
+
+
+def _average_precision(logits: torch.Tensor, positive: torch.Tensor) -> float:
+    """Step-wise average precision over distinct logits; NaN if there is no positive."""
+    positive_count = int(positive.sum().item())
+    if positive_count == 0:
+        return math.nan
+    _, inverse = torch.unique(logits, return_inverse=True)
+    group_count = int(inverse.max().item()) + 1
+    # Tied logits form one threshold, so the recall gained there is scored at a single precision.
+    group_positives = torch.zeros(group_count, dtype=torch.float64).index_add_(
+        0, inverse, positive.to(dtype=torch.float64)
+    )
+    group_sizes = torch.bincount(inverse, minlength=group_count).to(dtype=torch.float64)
+    positives_descending = group_positives.flip(0)
+    precision = positives_descending.cumsum(0) / group_sizes.flip(0).cumsum(0)
+    return float((positives_descending * precision).sum().item()) / positive_count
+
+
 def _binary_metrics(logits: torch.Tensor, labels: torch.Tensor) -> SparseProbeMetrics:
     predictions = logits >= 0
     positive = labels.to(dtype=torch.bool)
@@ -576,6 +621,8 @@ def _binary_metrics(logits: torch.Tensor, labels: torch.Tensor) -> SparseProbeMe
         precision=precision,
         recall=recall,
         f1=f1,
+        roc_auc=_roc_auc(logits, positive),
+        average_precision=_average_precision(logits, positive),
     )
 
 
@@ -687,6 +734,8 @@ def _control_result(
         precision=metric_tensor("precision"),
         recall=metric_tensor("recall"),
         f1=metric_tensor("f1"),
+        roc_auc=metric_tensor("roc_auc"),
+        average_precision=metric_tensor("average_precision"),
     )
 
 
@@ -772,6 +821,19 @@ def fit_sparse_probe(
         selected_features,
         validated.k,
     )
+
+
+def _control_generator(seed: int, k: int, arm: str, repeat: int) -> torch.Generator:
+    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``.
+
+    Each control draw gets its own generator so a draw depends only on its own
+    coordinates, not on how many draws earlier k values or the other arm
+    consumed from a shared stream. SHA-256 (not Python ``hash``) keeps the seed
+    stable across processes; the mask keeps it in torch's accepted int64 range.
+    """
+    key = f"{seed}:{k}:{arm}:{repeat}".encode()
+    derived = int.from_bytes(hashlib.sha256(key).digest()[:8], "little") & 0x7FFFFFFFFFFFFFFF
+    return torch.Generator(device="cpu").manual_seed(derived)
 
 
 def sweep_sparse_probe(
@@ -880,7 +942,8 @@ def sweep_sparse_probe(
         random_supports = []
         random_metrics = []
         for repeat in range(random_count):
-            support = torch.randperm(feature_count, generator=generator)[:k].sort().values
+            draw_generator = _control_generator(validated.seed, k, "random", repeat)
+            support = torch.randperm(feature_count, generator=draw_generator)[:k].sort().values
             # A control fit that fails to converge is recorded and skipped, not fatal:
             # losing one auxiliary draw must not discard the completed main probes and
             # other controls. Main fits above are the primary output and still raise.
@@ -900,7 +963,8 @@ def sweep_sparse_probe(
         shuffle_supports = []
         shuffle_metrics = []
         for repeat in range(shuffle_count):
-            permutation = torch.randperm(train_labels.numel(), generator=generator)
+            draw_generator = _control_generator(validated.seed, k, "shuffle", repeat)
+            permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
             shuffled_labels = train_labels[permutation]
             shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
             support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:k]

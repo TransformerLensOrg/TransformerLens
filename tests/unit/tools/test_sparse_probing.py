@@ -19,6 +19,7 @@ from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeResult,
     SparseProbeSweep,
     _binary_metrics,
+    _control_generator,
     _feature_scores,
     _fit_logistic,
     _selected_data,
@@ -505,6 +506,95 @@ def test_binary_metrics_zero_division_policy():
     assert metrics.precision == 0
     assert metrics.recall == 0
     assert metrics.f1 == 0
+    assert metrics.roc_auc == 1.0
+    assert metrics.average_precision == 1.0
+
+
+def test_binary_metrics_all_negative_labels_leave_both_threshold_free_scores_undefined():
+    metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.zeros(3, dtype=torch.int64))
+
+    assert math.isnan(metrics.roc_auc)
+    assert math.isnan(metrics.average_precision)
+
+
+def test_binary_metrics_all_positive_labels_give_nan_roc_auc_and_unit_average_precision():
+    # ROC-AUC needs a negative to rank against; average precision is still defined, since
+    # every threshold has precision one.
+    metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.ones(3, dtype=torch.int64))
+
+    assert math.isnan(metrics.roc_auc)
+    assert metrics.average_precision == 1.0
+
+
+def test_dead_coordinate_probe_scores_chance_on_threshold_free_metrics():
+    # Fixture from issue #1814: a constant selected coordinate fits to all-zero logits,
+    # which predicts every held-out example positive.
+    features = torch.randn(300, 16, generator=torch.Generator().manual_seed(0))
+    features[:, 0] = 0.0
+    labels = (torch.rand(300, generator=torch.Generator().manual_seed(0)) < 0.5).long()
+
+    result = fit_sparse_probe(features[:, :1], labels, k=1, seed=0)
+
+    assert result.constant_features.tolist() == [True]
+    assert float(result.coefficients[0]) == 0.0
+    assert float(result.intercept) == 0.0
+    metrics = result.metrics
+    positive_rate = result.test_positive_count / (
+        result.test_positive_count + result.test_negative_count
+    )
+    assert metrics.false_negatives == metrics.true_negatives == 0
+    assert metrics.f1 == pytest.approx(2 * positive_rate / (1 + positive_rate))
+    assert metrics.f1 == pytest.approx(0.7, abs=5e-4)
+    assert metrics.roc_auc == 0.5
+    assert metrics.average_precision == pytest.approx(positive_rate)
+
+
+@pytest.mark.parametrize(
+    ("logits", "labels", "roc_auc", "average_precision"),
+    [
+        ([3.0, 2.0, 1.0, 0.0], [1, 1, 0, 0], 1.0, 1.0),
+        ([0.0, 1.0, 2.0, 3.0], [1, 1, 0, 0], 0.0, (1 / 3 + 2 / 4) / 2),
+        ([1.0, 1.0, 1.0, 1.0], [1, 0, 1, 0], 0.5, 0.5),
+        # The top two logits tie across classes: they are one threshold at precision 1/2,
+        # and one positive-negative pair counts half.
+        ([2.0, 2.0, 1.0, 0.0], [1, 0, 1, 0], 0.625, (1 / 2 + 2 / 3) / 2),
+    ],
+)
+def test_threshold_free_metrics_match_hand_computed_values(
+    logits, labels, roc_auc, average_precision
+):
+    metrics = _binary_metrics(torch.tensor(logits, dtype=torch.float64), torch.tensor(labels))
+
+    assert metrics.roc_auc == pytest.approx(roc_auc)
+    assert metrics.average_precision == pytest.approx(average_precision)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_threshold_free_metrics_match_a_brute_force_tie_aware_reference(seed):
+    generator = torch.Generator().manual_seed(seed)
+    labels = torch.arange(60) % 3 == 0
+    # Coarse rounding makes many ties, both within and across classes.
+    logits = torch.round(torch.randn(60, generator=generator, dtype=torch.float64) + labels)
+
+    positive_logits = logits[labels]
+    negative_logits = logits[~labels]
+    pair_wins = (positive_logits[:, None] > negative_logits[None, :]).double()
+    pair_ties = (positive_logits[:, None] == negative_logits[None, :]).double()
+    expected_roc_auc = float((pair_wins + 0.5 * pair_ties).mean())
+
+    expected_average_precision = 0.0
+    previous_recall = 0.0
+    for threshold in sorted(set(logits.tolist()), reverse=True):
+        predicted = logits >= threshold
+        precision = float((predicted & labels).sum()) / float(predicted.sum())
+        recall = float((predicted & labels).sum()) / float(labels.sum())
+        expected_average_precision += (recall - previous_recall) * precision
+        previous_recall = recall
+
+    metrics = _binary_metrics(logits, labels)
+
+    assert metrics.roc_auc == pytest.approx(expected_roc_auc, abs=1e-12)
+    assert metrics.average_precision == pytest.approx(expected_average_precision, abs=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -621,10 +711,14 @@ def test_disabled_controls_return_empty_aligned_results():
             random_control.precision,
             random_control.recall,
             random_control.f1,
+            random_control.roc_auc,
+            random_control.average_precision,
             shuffle_control.accuracy,
             shuffle_control.precision,
             shuffle_control.recall,
             shuffle_control.f1,
+            shuffle_control.roc_auc,
+            shuffle_control.average_precision,
         ):
             assert metric_values.shape == (0,)
             assert metric_values.dtype == torch.float64
@@ -662,6 +756,9 @@ def test_controls_are_deterministic_use_unique_supports_and_do_not_touch_global_
         assert torch.equal(left.precision, right.precision)
         assert torch.equal(left.recall, right.recall)
         assert torch.equal(left.f1, right.f1)
+        assert torch.equal(left.roc_auc, right.roc_auc)
+        assert torch.equal(left.average_precision, right.average_precision)
+        assert left.roc_auc.shape == left.average_precision.shape == (4,)
         for support in left.supports:
             assert torch.unique(support).numel() == 2
 
@@ -682,6 +779,10 @@ def test_controls_remain_below_a_strong_planted_feature():
     assert actual_f1 > 0.98
     assert float(sweep.random_coordinate_controls[0].f1.median()) < actual_f1 - 0.2
     assert float(sweep.label_shuffle_controls[0].f1.median()) < actual_f1 - 0.2
+    actual_roc_auc = sweep.results[0].metrics.roc_auc
+    assert actual_roc_auc > 0.98
+    assert float(sweep.random_coordinate_controls[0].roc_auc.median()) < actual_roc_auc - 0.2
+    assert float(sweep.label_shuffle_controls[0].roc_auc.median()) < actual_roc_auc - 0.2
 
 
 def test_larger_k_improves_distributed_decodability_without_assigning_a_representation_label():
@@ -706,9 +807,11 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
     )
 
     # Replay the sweep's RNG stream to recover the exact shuffled training labels and the
-    # support the single control fit used. Shuffling permutes only the training labels, so
-    # the fit must still be scored against the untouched held-out labels; rescoring the same
-    # fit against labels[test_indices] must reproduce the reported control metrics.
+    # support the single control fit used. The split still draws from a seed-only generator;
+    # the shuffle draw now comes from the per-(seed, k, arm, repeat) control generator.
+    # Shuffling permutes only the training labels, so the fit must still be scored against
+    # the untouched held-out labels; rescoring the same fit against labels[test_indices]
+    # must reproduce the reported control metrics.
     validated = _validate_inputs(
         features,
         labels,
@@ -728,7 +831,8 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         validated.canonical_labels, validated.test_fraction, generator
     )
     train_labels = validated.canonical_labels[train_indices]
-    permutation = torch.randperm(train_labels.numel(), generator=generator)
+    draw_generator = _control_generator(validated.seed, 2, "shuffle", 0)
+    permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
     shuffled_labels = train_labels[permutation]
     shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
     support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:2]
@@ -756,6 +860,8 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
     assert float(control.precision[0]) == rescored.precision
     assert float(control.recall[0]) == rescored.recall
     assert float(control.f1[0]) == rescored.f1
+    assert float(control.roc_auc[0]) == rescored.roc_auc
+    assert float(control.average_precision[0]) == rescored.average_precision
     # Scoring the same fit against a different held-out label alignment would move the
     # metrics, so the exact match above pins the scoring labels to the true held-out labels.
     assert _binary_metrics(logits, ~true_test_labels).accuracy != rescored.accuracy
@@ -826,3 +932,40 @@ def test_sweep_has_no_rejections_when_every_control_converges():
     assert sweep.rejections == ()
     for control in (*sweep.random_coordinate_controls, *sweep.label_shuffle_controls):
         assert control.supports.shape[0] == 4
+
+
+def test_control_draws_depend_only_on_seed_k_and_arm():
+    # A k=2 control must be a property of k=2 at a fixed seed: independent of which
+    # other k values were requested and of the other arm's repeat count. With one
+    # generator threaded through the whole loop, all three sweeps below returned
+    # different k=2 controls; per-draw seeding on (seed, k, arm, repeat) fixes it.
+    features, labels = _planted_data(n_examples=200, n_features=32, seed=0)
+
+    only_k2 = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=8, n_label_shuffles=8, seed=0
+    )
+    with_k1 = sweep_sparse_probe(
+        features, labels, ks=[1, 2], n_random_subsets=8, n_label_shuffles=8, seed=0
+    )
+    fewer_shuffles = sweep_sparse_probe(
+        features, labels, ks=[1, 2], n_random_subsets=8, n_label_shuffles=3, seed=0
+    )
+
+    # The k=2 control is identical whether or not k=1 was also swept — both arms.
+    for left, right in (
+        (only_k2.random_coordinate_controls[0], with_k1.random_coordinate_controls[1]),
+        (only_k2.label_shuffle_controls[0], with_k1.label_shuffle_controls[1]),
+    ):
+        assert torch.equal(left.supports, right.supports)
+        assert torch.equal(left.f1, right.f1)
+
+    # The random arm is unchanged by the other arm's repeat count (b vs c differ
+    # only in n_label_shuffles).
+    b_random = with_k1.random_coordinate_controls[1]
+    c_random = fewer_shuffles.random_coordinate_controls[1]
+    assert torch.equal(b_random.supports, c_random.supports)
+    assert torch.equal(b_random.f1, c_random.f1)
+
+    # Main-fit results never depend on the control configuration.
+    assert only_k2.results[0].metrics.f1 == with_k1.results[1].metrics.f1
+    assert with_k1.results[1].metrics.f1 == fewer_shuffles.results[1].metrics.f1
