@@ -114,6 +114,7 @@ def test_prepare_loading_applies_both_v5_patches(planted_module, monkeypatch):
 @pytest.mark.parametrize(
     "architecture",
     [
+        "BaichuanForCausalLM",
         "BD3LM",
         "DreamModel",
         "GiddForDiffusionLM",

@@ -275,7 +275,9 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
                 "modeling_baichuan.BaiChuanForCausalLM",
             ):
                 try:
-                    get_class_from_dynamic_module(cls_name, model_name)
+                    get_class_from_dynamic_module(
+                        cls_name, model_name, revision=model_kwargs.get("revision")
+                    )
                     last_exc = None
                     break
                 except Exception as exc:
