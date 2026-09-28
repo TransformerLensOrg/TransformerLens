@@ -96,6 +96,10 @@ class ArchitectureAdapter:
     # Whether Bridge's shifted next-token cross-entropy is meaningful.
     supports_causal_loss: bool = True
 
+    # HF-style 4D boolean attention masks keep positions marked True. Override
+    # for architectures whose forward path uses True to block attention.
+    bool_4d_mask_is_keep: bool = True
+
     # Optional libraries this adapter needs at load time (e.g. the multimodal group's timm).
     # Checked at construction so a missing one raises a clear error, not a deep HF failure.
     required_libraries: list[str] = []

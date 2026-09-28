@@ -437,10 +437,15 @@ class HookIntrospectionMixin:
 # is kept — import it from transformer_lens or transformer_lens.HookedRootModule.
 def __getattr__(name: str):
     if name == "HookedRootModule":
-        raise AttributeError(
+        # ImportError, not AttributeError: the from-import machinery discards an
+        # AttributeError and raises its own unchained "cannot import name", so
+        # `from transformer_lens.hook_points import HookedRootModule` would lose this
+        # pointer. ImportError reaches both attribute access and from-import.
+        raise ImportError(
             "Importing HookedRootModule from transformer_lens.hook_points was "
             "removed in TransformerLens 4.0. Import it from transformer_lens "
             "(preferred) or transformer_lens.HookedRootModule instead — the class "
-            "itself is kept."
+            "itself is kept.",
+            name=name,
         )
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

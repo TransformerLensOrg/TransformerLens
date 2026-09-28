@@ -80,10 +80,11 @@ Use this after you've committed the adapter from a successful run and want to ti
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--architecture <class>` | (required) | HF architecture class name, e.g. `CohereForCausalLM`, `CodeGenForCausalLM` |
+| `--seed-model <hf-id>` | — | A known HF model of the architecture (e.g. `Qwen/Qwen3.5-9B`), passed into the Programmer prompt to seed scaffolding and verification; implies `--skip-arch-check` |
 | `--target-repo <path>` | `DEFAULT_TARGET_REPO` from `.env` | Path to TransformerLens repository |
-| `--base-branch <branch>` | `DEFAULT_BASE_BRANCH` from `.env` (`dev-4.x`) | Base branch to create the worktree from |
+| `--base-branch <branch>` | `DEFAULT_BASE_BRANCH` from `.env` (`dev`) | Base branch to create the worktree from |
 | `--new-branch <branch>` | `feature/<arch>-adapter` | Feature branch name (auto-derived from architecture) |
-| `--max-memory <gb>` | `DEFAULT_MAX_MEMORY_GB` from `.env` (`96`) | Memory limit in GB for verify_models |
+| `--max-memory <gb>` | `DEFAULT_MAX_MEMORY_GB` from `.env` (`48`) | Memory limit in GB for verify_models |
 | `--worktree-dir <path>` | `${WORKTREE_BASE}/<branch>` | Custom worktree location |
 | `--programmer-prompt <text>` | auto-generated from architecture | Override the task prompt sent to the Programmer |
 | `--reviewer-prompt <text>` | generic review focus | Extra review criteria for the Reviewer |
@@ -123,8 +124,8 @@ Defaults are set in `.env`; see [`.env.example`](../.env.example) for a template
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DEFAULT_TARGET_REPO` | — | Path to the TransformerLens repo |
-| `DEFAULT_BASE_BRANCH` | `dev-4.x` | Base branch for worktrees |
-| `DEFAULT_MAX_MEMORY_GB` | `96` | Memory limit in GB for verify_models |
+| `DEFAULT_BASE_BRANCH` | `dev` (`.env.example`; script fallback if unset: `dev-4.x`, which is stale) | Base branch for worktrees |
+| `DEFAULT_MAX_MEMORY_GB` | `48` (`.env.example`; script fallback `96`) | Memory limit in GB for verify_models |
 | `WORKTREE_BASE` | `<parent-of-TransformerLens>/worktrees` | Where agent pair worktrees are created |
 | `NOTIFICATION_WEBHOOK_URL` | — | Slack/Discord/custom webhook URL for notifications |
 | `NOTIFICATION_NUMBER` | — | Phone number for iMessage fallback (macOS only) |

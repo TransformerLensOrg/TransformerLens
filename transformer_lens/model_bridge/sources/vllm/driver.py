@@ -123,8 +123,7 @@ class VLLMDriver(DriverBase):
                 "overwrite the prefill buffer; multi-step capture is multi-buffer work."
             )
         intervene_specs = self._validate_interventions(intervene or {})
-        # Pad tokens fed to vLLM are real content to it (no mask concept) — honor a
-        # caller-supplied mask by trimming rows to their true lengths, never swallow it.
+        # vLLM treats pad IDs as content, so send only the mask's real-token span.
         attention_mask = kwargs.pop("attention_mask", None)
 
         # capture is authoritative — the bridge sends exactly the hooked names, so ()
@@ -139,9 +138,16 @@ class VLLMDriver(DriverBase):
             )
 
         ids_list = self._normalize_input_ids(input_ids)
+        original_length = len(ids_list)
+        start = 0
         if attention_mask is not None:
-            n_real = int(torch.as_tensor(attention_mask).sum())
-            ids_list = ids_list[:n_real]
+            mask = torch.as_tensor(attention_mask)
+            if mask.ndim == 2 and mask.shape[0] == 1:
+                mask = mask[0]
+            ids_list, start = self._trim_masked_prompt(ids_list, mask)
+            intervene_specs = self._remap_intervention_positions(
+                intervene_specs, start, len(ids_list)
+            )
         if len(ids_list) > self._max_num_batched_tokens:
             # Worker buffers silently clamp on overflow — fail loud here instead.
             raise ValueError(
@@ -205,6 +211,15 @@ class VLLMDriver(DriverBase):
         captured = self._expose_captured(
             {name: t.unsqueeze(0) for name, t in worker_captures.items()}, names
         )
+        if attention_mask is not None:
+            if logits is not None:
+                logits = self._restore_masked_positions(
+                    logits, [start], [original_length], [n_tokens], float("-inf")
+                )
+            captured = {
+                name: self._restore_masked_positions(t, [start], [original_length], [n_tokens], 0.0)
+                for name, t in captured.items()
+            }
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs[0])
 
     def _sampler_logprobs(self, return_logits: bool) -> int | None:
@@ -244,23 +259,27 @@ class VLLMDriver(DriverBase):
         across forwards. Interventions are global across the batch. ``names`` is
         authoritative: exactly the hooks to return (empty = none).
         """
-        from vllm import SamplingParams
-        from vllm.inputs import TokensPrompt
-
         prompts_ids = self._normalize_input_ids_batched(input_ids)
+        original_lengths = [len(ids) for ids in prompts_ids]
+        starts = [0] * len(prompts_ids)
         if attention_mask is not None:
-            # Right-padded tensor batches carry pad ids vLLM would treat as content;
-            # trim each row to its masked length so per-row final positions are real.
             mask = torch.as_tensor(attention_mask)
             if mask.dim() == 1:
                 mask = mask.unsqueeze(0)
+            if mask.dim() != 2:
+                raise ValueError("attention_mask must have shape [batch, seq].")
             if mask.shape[0] != len(prompts_ids):
                 raise ValueError(
                     f"attention_mask batch dim {mask.shape[0]} != number of prompts "
                     f"{len(prompts_ids)}."
                 )
-            prompts_ids = [ids[: int(row.sum())] for ids, row in zip(prompts_ids, mask)]
+            trimmed = [self._trim_masked_prompt(ids, row) for ids, row in zip(prompts_ids, mask)]
+            prompts_ids = [ids for ids, _start in trimmed]
+            starts = [start for _ids, start in trimmed]
         prompt_lens = [len(ids) for ids in prompts_ids]
+
+        from vllm import SamplingParams
+        from vllm.inputs import TokensPrompt
 
         # Reset accumulators so prior-forward chunks don't leak into the cat.
         self._llm.collective_rpc("tl_reset_accumulators")
@@ -311,6 +330,15 @@ class VLLMDriver(DriverBase):
                 else self._synthesize_logits_batched(outputs, prompt_lens, d_vocab)
             )
         captured = self._expose_captured(captured, names)
+        if attention_mask is not None:
+            if logits is not None:
+                logits = self._restore_masked_positions(
+                    logits, starts, original_lengths, prompt_lens, float("-inf")
+                )
+            captured = {
+                name: self._restore_masked_positions(t, starts, original_lengths, prompt_lens, 0.0)
+                for name, t in captured.items()
+            }
 
         return ForwardResult(logits=logits, captured=captured, raw_output=outputs)
 
@@ -715,6 +743,28 @@ class VLLMDriver(DriverBase):
                 )
 
     @staticmethod
+    def _remap_intervention_positions(specs: dict, start: int, seq_len: int) -> dict:
+        """Translate caller positions to the trimmed prompt without changing its specs."""
+        remapped = {}
+        for hook_name, spec in specs.items():
+            pos = spec.get("pos")
+            if pos is None:
+                remapped[hook_name] = spec
+                continue
+            positions = [pos] if isinstance(pos, int) else list(pos)
+            outside = [p for p in positions if p < start or p >= start + seq_len]
+            if outside:
+                raise ValueError(
+                    f"Intervention {hook_name!r}: 'pos' {outside} is outside the unmasked "
+                    f"prompt positions [{start}, {start + seq_len})."
+                )
+            remapped[hook_name] = {
+                **spec,
+                "pos": pos - start if isinstance(pos, int) else [p - start for p in positions],
+            }
+        return remapped
+
+    @staticmethod
     def _normalize_input_ids(input_ids: Any) -> list:
         """Coerce input_ids to a flat list[int] for ``TokensPrompt``; batch_size=1 only."""
         if isinstance(input_ids, torch.Tensor):
@@ -726,6 +776,41 @@ class VLLMDriver(DriverBase):
                 raise NotImplementedError("VLLMDriver supports batch_size=1 only.")
             ids_list = ids_list[0]
         return ids_list
+
+    @staticmethod
+    def _trim_masked_prompt(ids: list[int], mask: torch.Tensor) -> tuple[list[int], int]:
+        """Remove contiguous padding and retain the caller's starting position."""
+        if mask.ndim != 1 or mask.numel() != len(ids):
+            raise ValueError(
+                f"attention_mask must have one value per input token; got shape "
+                f"{tuple(mask.shape)} for {len(ids)} tokens."
+            )
+        values = mask.tolist()
+        if any(value not in (0, 1) for value in values):
+            raise ValueError("attention_mask values must be 0 or 1.")
+        positions = [index for index, value in enumerate(values) if value == 1]
+        if not positions:
+            raise ValueError("attention_mask must retain at least one prompt token.")
+        first, last = positions[0], positions[-1]
+        if last - first + 1 != len(positions):
+            raise ValueError("attention_mask cannot have gaps between prompt tokens.")
+        return ids[first : last + 1], first
+
+    @staticmethod
+    def _restore_masked_positions(
+        values: torch.Tensor,
+        starts: list[int],
+        original_lengths: list[int],
+        prompt_lens: list[int],
+        pad_value: float,
+    ) -> torch.Tensor:
+        """Place vLLM's trimmed rows back into the caller's sequence coordinates."""
+        restored = values.new_full(
+            (len(starts), max(original_lengths), *values.shape[2:]), pad_value
+        )
+        for row, (start, n_tokens) in enumerate(zip(starts, prompt_lens)):
+            restored[row, start : start + n_tokens] = values[row, :n_tokens]
+        return restored
 
     @staticmethod
     def _normalize_input_ids_batched(input_ids: Any) -> list[list[int]]:

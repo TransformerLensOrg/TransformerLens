@@ -13,8 +13,6 @@ Jamba is Mamba-1 with selective-param RMSNorms (`dt_layernorm` / `b_layernorm` /
 `compute_ssm_*` reconstruction and the opt-in `eager_scan` path; stock Mamba-1 is
 unchanged.
 
-> These features are **bridge-only** — there is no `HookedTransformer` counterpart for
-> SSM models. Load with `TransformerBridge.boot_transformers(...)`.
 
 ---
 

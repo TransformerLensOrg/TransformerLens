@@ -34,9 +34,9 @@ The first hop where they disagree localizes the bug.
 
 | Symptom | Likely cause | Where to look |
 |---|---|---|
-| Logits off everywhere but Q/K/V close | RoPE base / scaling mismatch | Adapter's `RotaryEmbeddingBridge` setup; check `cfg.rotary_base`, `cfg.rope_scaling` |
+| Logits off everywhere but Q/K/V close | RoPE base / scaling mismatch | Adapter's `RotaryEmbeddingBridge` setup; check `cfg.rotary_base`. For scaling, read the HF `config.rope_scaling` dict the adapter received — `self.cfg` never carries it for `boot_transformers`-loaded bridges |
 | Attention output drifts; Q / K / V match | Wrong `n_key_value_heads`, wrong head reshape | `_qkvo_weight_conversions(n_kv_heads=...)`; GQA-aware split |
-| First-layer outputs off; embeddings off | Embedding scaling missing (Gemma, T5) | `preprocess_weights()` override; `cfg.scale_embeddings` |
+| First-layer outputs off; embeddings off | Embedding scale applied twice or not at all | Gemma scales embeddings at runtime inside its HF embedding module and `bridge.embed` already captures the scaled value — do **not** add a `preprocess_weights()` rescale (that double-scales); look for a stray manual `√d_model` multiply in the adapter instead. BART-family: check `cfg.scale_embedding` |
 | Off by a constant scale in residual | Final-RMS-norm offset missing | `cfg.rmsnorm_uses_offset = True` + `ArithmeticTensorConversion(ADDITION, 1.0)` |
 | Logits flat / saturated at extremes | Missing logit softcap | `cfg.output_logits_soft_cap` from HF's `final_logit_softcapping` |
 | Attention pattern collapses to argmax | Missing attention-score softcap | `cfg.attn_scores_soft_cap` from HF's `attn_logit_softcapping` |
@@ -73,7 +73,7 @@ hf_logits = hf(ids).logits
 print((ref_logits - hf_logits).abs().max())  # should be < 1e-4 in fp32
 ```
 
-If `boot_transformers` itself disagrees with HF on the same model, the issue is upstream of your adapter (probably a `_HF_PASSTHROUGH_ATTRS` gap in `transformer_lens/model_bridge/sources/_bridge_builder.py`, or a non-standard HF config attribute that the adapter never propagated onto `self.cfg`). HF raw config attributes are invisible to TL-side consumers unless explicitly mirrored. Common attributes that need propagation: `final_logit_softcapping` (Gemma2/3), `attn_logit_softcapping` (Gemma2/3), `query_pre_attn_scalar` (Gemma2/3), `sliding_window` (Mistral, Qwen2, Gemma2), `layer_types` (hybrid models), and non-standard RMSNorm eps attribute names (Llama uses `variance_epsilon`).
+If `boot_transformers` itself disagrees with HF on the same model, the issue is upstream of your adapter (probably a `_HF_PASSTHROUGH_ATTRS` gap in `transformer_lens/model_bridge/sources/_bridge_builder.py`, or a non-standard HF config attribute that the adapter never propagated onto `self.cfg`). HF raw config attributes are invisible to TL-side consumers unless explicitly mirrored. Common attributes that need propagation: `sliding_window` (Mistral, Qwen2, Gemma2), `layer_types` (hybrid models), and non-standard RMSNorm eps attribute names (Llama uses `variance_epsilon`). Gemma's softcaps are renamed once in `build_bridge_config_from_hf` (`final_logit_softcapping` → `cfg.output_logits_soft_cap`, `attn_logit_softcapping` → `cfg.attn_scores_soft_cap`) — check the TL fields, not the HF names; `query_pre_attn_scalar` needs nothing, the wrapped HF attention applies it.
 
 ## 5. Bisecting `verify_models` phase failures
 
@@ -84,9 +84,9 @@ If `boot_transformers` itself disagrees with HF on the same model, the issue is 
 | 1 | Forward correctness vs HF | Steps 1–4 above; this is the standard parity workflow |
 | 2 | Hook firing / gradient flow | The hook isn't registered, or it's firing on a tensor that's been replaced (in-place op). Grep adapter for in-place ops on hookable tensors. |
 | 3 | Weight processing | Run with `no_processing=True` to isolate. Then bisect compat-mode flags per §3 above. |
-| 4 | Text-generation quality | Usually tokenizer policy: `default_prepend_bos`, padding side, EOS handling, chat-template wiring. Tokenizer behaviour is per-model, not per-architecture — check the target's `tokenizer_config.json`, don't inherit from a sibling. Less often, a generation-loop divergence; rerun with `--no-ht-reference` to skip HT comparison. |
+| 4 | Text-generation quality | Usually tokenizer policy: `default_prepend_bos`, padding side, EOS handling, chat-template wiring. Tokenizer behaviour is per-model, not per-architecture — check the target's `tokenizer_config.json`, don't inherit from a sibling. Less often, a generation-loop divergence; rerun with `--phases 4` to isolate it. |
 | 7 | Multimodal alignment | Vision encoder output drift or projection mismatch. Llava / Gemma3-multimodal only. |
-| 8 | Audio | HuBERT only; check CTC head and audio-feature alignment. |
+| 8 | Audio | HuBERT / Wav2Vec2 encoders and AST audio classification; check the CTC head and audio-feature alignment. |
 
 ## 6. What "fp noise" actually looks like
 

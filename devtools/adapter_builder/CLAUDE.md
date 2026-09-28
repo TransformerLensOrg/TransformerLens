@@ -107,8 +107,8 @@ Nothing is copied into the TransformerLens worktree except `.claude/agents/` (re
 - `.env` — see `.env.example` for all variables; gitignored, never commit it
 - `HF_TOKEN` — HuggingFace API token (falls back to the repo root `.env` if unset here)
 - `DEFAULT_TARGET_REPO` — optional override; defaults to the containing repo
-- `DEFAULT_BASE_BRANCH` — default branch (dev-4.x)
-- `DEFAULT_MAX_MEMORY_GB` — memory limit for verification (96)
+- `DEFAULT_BASE_BRANCH` — base branch for worktrees (`dev` in `.env.example`; the launch scripts fall back to the stale, fully-merged `dev-4.x` if it is unset, so set it)
+- `DEFAULT_MAX_MEMORY_GB` — memory limit for verification (`48` in `.env.example`; script fallback `96`)
 - `WORKTREE_BASE` — where agent pair worktrees live; optional, defaults to `<parent-of-TransformerLens>/worktrees`
 - `NOTIFICATION_WEBHOOK_URL` — Slack webhook for notifications
 - `NOTIFICATION_NUMBER` — iMessage fallback

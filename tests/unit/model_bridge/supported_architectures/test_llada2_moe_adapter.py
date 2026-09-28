@@ -67,12 +67,11 @@ class TestLLaDA2MoeMapping:
         assert adapter.component_mapping["embed"].name == "model.word_embeddings"
 
 
-def test_prepare_loading_registers_rope_shim(adapter=None):
+def test_prepare_loading_leaves_shared_rope_registry_alone(adapter=None):
     from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
-    ROPE_INIT_FUNCTIONS.pop("default", None)
     LLaDA2MoeArchitectureAdapter(_make_cfg()).prepare_loading("inclusionAI/LLaDA2.0-mini", {})
-    assert "default" in ROPE_INIT_FUNCTIONS
+    assert "default" not in ROPE_INIT_FUNCTIONS
 
 
 def test_factory_registration():

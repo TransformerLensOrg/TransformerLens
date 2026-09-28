@@ -53,8 +53,9 @@ Almost every new model is a variant of an existing pattern. Pick the nearest mat
 | If your model is like…                | Start from…                          |
 |---------------------------------------|--------------------------------------|
 | Llama, Mistral, Qwen2, Gemma, OLMo    | `llama.py`                           |
-| Qwen2/Qwen3 (gated config, MLPBridge) | `qwen2.py`                           |
-| GPT-2, GPT-J, GPT-Neo                 | `gpt2.py`                            |
+| Qwen2/Qwen3 (Llama pattern + Q/K/V biases) | `qwen2.py`                      |
+| GPT-2                                 | `gpt2.py`                            |
+| GPT-J, GPT-Neo, GPT-NeoX              | `gptj.py`, `neo.py`, `neox.py`       |
 | BLOOM, Falcon                         | `bloom.py` or `falcon.py`            |
 | T5 / encoder-decoder                  | `t5.py`                              |
 | MoE                                   | `mixtral.py` or `granite_moe.py`     |
@@ -253,8 +254,7 @@ uv run python -m transformer_lens.tools.model_registry.verify_models \
   --model <model-id> \
   --max-memory <GB> \
   --device cpu \
-  --dtype float32 \
-  --no-ht-reference
+  --dtype float32
 ```
 
 If a model OOMs with float32, retry that single model with `--dtype bfloat16`. Set `--max-memory` to roughly 75-85% of your device memory, to ensure adequate space for running the benchmarks.
@@ -266,6 +266,7 @@ Each model gets a status:
 - **status=1** — passed, move to the next model
 - **status=2** — skipped by `verify_models` (e.g., exceeded the memory pre-check). Note it and move on; not an adapter bug.
 - **status=3** — phase score failure. Stop and fix. Read the `note` and the per-phase scores, find the root cause, fix the adapter, re-verify.
+- **status=4** — provisional: the run used `--no-hf-reference`, so Phase 1 was structural-only and never compared against HF. Re-run without the flag; an adapter isn't verified until a real HF-compared run reaches status=1.
 
 ### Lint
 

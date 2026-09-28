@@ -46,7 +46,7 @@ Each step names the doc to read **when you reach that step** — don't load all 
 
 6. **Add the HF repo entry** to [`data/supported_models.json`](../../transformer_lens/tools/model_registry/data/supported_models.json) per [§Adding the HF repo to the registry](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#adding-the-hf-repo-to-the-registry). Ask the user about adding canonical sibling variants from `CANONICAL_AUTHORS_BY_ARCH[<HFArchClass>]`.
 
-7. **Verify** end-to-end: `/verify-model $ARGUMENTS`. Read both `status` AND per-phase scores. `STATUS_VERIFIED` means hard gates passed (see [§Phase-score thresholds](../../transformer_lens/tools/model_registry/AGENTS.md#phase-score-thresholds)) — but P4's 50% bar is intentionally lenient. P4 well below 100% on a small parity-test model + `status==1` → suspect missing `preprocess_weights` fold or wrong `default_prepend_bos`; investigate before step 8.
+7. **Verify** end-to-end: `/verify-model $ARGUMENTS`. Read both `status` AND per-phase scores. `STATUS_VERIFIED` means hard gates passed (see [§Phase-score thresholds](../../transformer_lens/tools/model_registry/AGENTS.md#phase-score-thresholds)) — but P4's ~54.5% bar (`p4_pass_threshold()`, not a fixed number) is intentionally lenient. P4 well below 100% on a small parity-test model + `status==1` → suspect missing `preprocess_weights` fold or wrong `default_prepend_bos`; investigate before step 8.
 
 8. **Write tests** per [§Required tests](../../transformer_lens/model_bridge/supported_architectures/AGENTS.md#required-tests) (unit + integration). Copy the closest sibling.
 

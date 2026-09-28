@@ -112,6 +112,23 @@ Structured diff between two existing adapters. The Programmer uses this in Step 
 
 Outputs: config attribute differences, bridge-component differences, component-mapping path differences, weight-conversion differences, optional override differences, and a truncated code diff.
 
+### [`strip-adapter.py`](../scripts/strip-adapter.py)
+
+Golden-master rebuild tests: removes an existing adapter — module, `__init__` and factory registrations, unit tests, registry entries — from the current checkout so the builder can be pointed at the architecture as if it were unsupported, then the rebuilt result is diffed against the original. Run from inside the worktree to strip; shared infrastructure is left alone.
+
+```bash
+python3 scripts/strip-adapter.py --module neox --adapter-class NeoxArchitectureAdapter \
+    --arch-class GPTNeoXForCausalLM --arch-class NeoXForCausalLM
+```
+
+| Flag | Description |
+|------|-------------|
+| `--module <name>` | adapter module name, e.g. `neox` (required) |
+| `--adapter-class <name>` | adapter class name, e.g. `NeoxArchitectureAdapter` (required) |
+| `--arch-class <HFClass>` | HF architecture class registered to this adapter; repeatable (required) |
+
+Launch the builder against the stripped branch with `--base-branch <test-branch>`.
+
 ## Operational tooling
 
 ### [`format-timeline.py`](../scripts/format-timeline.py)

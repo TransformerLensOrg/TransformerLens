@@ -22,6 +22,8 @@ from transformer_lens.model_bridge.generalized_components.mpt_alibi_attention im
 class MPTArchitectureAdapter(ArchitectureAdapter):
     """MPT adapter: ALiBi bias; all layers bias-free (no b_Q/b_K/b_V/b_O/b_in/b_out/ln bias)."""
 
+    bool_4d_mask_is_keep = False
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 

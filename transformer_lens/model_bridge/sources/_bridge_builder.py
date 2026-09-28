@@ -8,9 +8,10 @@ import torch
 from torch import nn
 
 from transformer_lens.config import TransformerBridgeConfig
-from transformer_lens.factories.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
-)
+
+# Module import (not a name import): architecture_adapter_factory imports model_bridge,
+# which imports this module, so its names may not be defined yet at this point.
+from transformer_lens.factories import architecture_adapter_factory
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources._hf_format import (
@@ -346,7 +347,9 @@ def build_bridge_from_module(
     else:
         bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, dtype)
 
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
+    adapter = architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter(
+        bridge_config
+    )
 
     if post_adapter_hook is not None:
         post_adapter_hook(adapter)

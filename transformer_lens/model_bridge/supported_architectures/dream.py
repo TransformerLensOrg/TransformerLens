@@ -12,8 +12,9 @@ reimplemented attention assumes causal masking. Q/K/V/O hooks fire on the
 wrapped projections; there is no reconstructed pattern hook.
 
 The remote code targets transformers 4.46; v5 removed the "default" key
-from ``ROPE_INIT_FUNCTIONS``, so ``prepare_loading`` re-registers it with
-the v4 semantics (plain inverse-frequency rope, attention factor 1.0).
+from ``ROPE_INIT_FUNCTIONS``, so ``prepare_loading`` restores it in the remote
+modeling module with the v4 semantics (plain inverse-frequency rope,
+attention factor 1.0).
 """
 
 from typing import Any
@@ -25,8 +26,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
 )
 from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
-    compute_default_rope_inv_freq,
     force_import_remote_class,
+    restore_default_rope_init,
 )
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
@@ -73,14 +74,6 @@ def _patch_from_model_config(gen_cfg_cls: Any) -> None:
     setattr(gen_cfg_cls, "_tl_from_model_config_patched", True)
 
 
-def _register_default_rope_init() -> None:
-    """Restore the global ``ROPE_INIT_FUNCTIONS["default"]`` entry v5 removed;
-    Dream's remote code (and llada2_moe's) looks it up by that key."""
-    from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-
-    ROPE_INIT_FUNCTIONS.setdefault("default", compute_default_rope_inv_freq)
-
-
 class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
     """Architecture adapter for DreamModel diffusion LMs."""
 
@@ -119,7 +112,12 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Shim the remote code's two transformers-v4 dependencies."""
-        _register_default_rope_init()
+        restore_default_rope_init(
+            model_name,
+            "modeling_dream.DreamModel",
+            "DreamRotaryEmbedding",
+            revision=model_kwargs.get("revision"),
+        )
         # DreamGenerationConfig.validate is a no-op with the v4 signature
         # (is_init=False); v5 passes user_set_attributes. Replace with a
         # kwargs-tolerant no-op.

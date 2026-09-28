@@ -58,7 +58,7 @@ make unit-test          # fast, no model loads
 make integration-test   # cross-component
 make acceptance-test    # end-to-end
 make docstring-test     # doctest + doctest-plus
-make notebook-test      # slow; subset run in CI
+make notebook-test      # slow, local-only; CI runs its own per-notebook matrix (notebook-checks in checks.yml), not this target
 make test-pr            # unit + docstring + acceptance + integration (PR-review surface)
 make test               # everything (long; includes benchmarks + notebooks)
 
@@ -105,7 +105,7 @@ Python: **>=3.10, <4.0**. CI tests 3.10, 3.11, 3.12. Format/type/docstring check
 ## 5. Hook naming — HT vs Bridge
 
 - **HT canonical**: uniform across architectures — `hook_embed`, `blocks.{i}.hook_resid_pre`, `blocks.{i}.attn.hook_q`, `blocks.{i}.hook_resid_post`.
-- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases registered via `build_alias_to_canonical_map()` in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py).
+- **Bridge-native**: architecture-shaped — `blocks.{i}.hook_out`, `blocks.{i}.attn.q.hook_out`. HT aliases come from the `hook_aliases` dicts on the generalized components and `BridgeCore`, registered at boot (not only in compat mode); `build_alias_to_canonical_map()` in [bridge_core.py](transformer_lens/model_bridge/bridge_core.py) reads them.
 
 Prefer Bridge-native names in new code. Raw-HF-forward drivers comparing against `boot_transformers` must match its load configuration (fp32, eager attention) and probe for optional features like `resid_mid` rather than assume.
 
@@ -213,9 +213,9 @@ Load-bearing pins live in [pyproject.toml](pyproject.toml):
 
 | Pin | Where | Why it matters |
 |---|---|---|
-| `transformers>=5.4.0` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. |
+| `transformers>=5.9.0` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. |
 | `torch>=2.6` | `[project] dependencies` | Hook system relies on PyTorch's forward / backward hook semantics; major torch bumps occasionally change ordering. |
-| `accelerate>=0.23.0` | `[project] dependencies` | Required for Llama-family loading. |
+| `accelerate>=1.1.0` | `[project] dependencies` | Required for Llama-family loading and `device_map` disk offload (`align_module_device`). |
 | `numpy>=1.24` / `>=1.26` | `[project] dependencies` (python-version-conditional) | Doctest float formatting can drift across NumPy versions. |
 | `isort==5.8.0` | `[dependency-groups] dev` (exact) | Format check pins to exactly this version; a bump flips the formatting of every file. |
 

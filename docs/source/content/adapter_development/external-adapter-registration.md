@@ -67,7 +67,7 @@ my_transformer_plugin/
 name = "my-transformer-plugin"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = ["transformer-lens>=3.0"]
+dependencies = ["transformer-lens>=3.6"]
 
 [project.entry-points."transformer_lens.architectures"]
 "MyModelForCausalLM" = "my_transformer_plugin.adapters:MyArchitectureAdapter"

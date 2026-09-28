@@ -137,7 +137,8 @@ Check if a similar architecture already has an adapter. Most new models are vari
 | If your model is like... | Start from adapter... |
 |--------------------------|----------------------|
 | Llama, Mistral, Qwen2, Gemma | `llama.py` |
-| GPT-2, GPT-J | `gpt2.py` |
+| GPT-2 | `gpt2.py` |
+| GPT-J, GPT-Neo, GPT-NeoX | `gptj.py`, `neo.py`, `neox.py` |
 | BLOOM, Falcon | `bloom.py` or `falcon.py` |
 | T5, encoder-decoder | `t5.py` |
 | MoE model | `mixtral.py` or `granite_moe.py` |

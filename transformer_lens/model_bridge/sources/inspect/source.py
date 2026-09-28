@@ -7,9 +7,9 @@ from typing import Any, Optional
 
 import torch
 
-from transformer_lens.factories.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
-)
+# Module import (not a name import): architecture_adapter_factory imports model_bridge,
+# which imports this module, so its names may not be defined yet at this point.
+from transformer_lens.factories import architecture_adapter_factory
 from transformer_lens.model_bridge.remote_bridge import RemoteBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
@@ -79,7 +79,9 @@ def boot_inspect(
     resolved_dtype = dtype if dtype is not None else torch.float32
 
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, resolved_dtype)
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
+    adapter = architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter(
+        bridge_config
+    )
     if tokenizer is None and not skip_tokenizer_for_modality(adapter.cfg):
         tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
     if tokenizer is not None:

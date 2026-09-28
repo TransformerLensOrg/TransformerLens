@@ -1,6 +1,6 @@
 # TransformerBridge Compatibility Mode
 
-`TransformerBridge.boot_transformers(...)` returns a bridge whose **default numerics match HuggingFace** — raw weights, no folding, no centering. Calling `bridge.enable_compatibility_mode()` afterwards puts the bridge into **HookedTransformer-equivalent numerics** — weights folded, centered, and the legacy hook aliases registered.
+`TransformerBridge.boot_transformers(...)` returns a bridge whose **default numerics match HuggingFace** — raw weights, no folding, no centering. Calling `bridge.enable_compatibility_mode()` afterwards puts the bridge into **HookedTransformer-equivalent numerics** — weights folded and centered. The legacy hook names already resolve on every bridge (see [Model Structure](model_structure.md)); compatibility mode changes the numerics, not the names.
 
 Most research code that was written against `HookedTransformer.from_pretrained(...)` assumes compatibility mode. Most new code that needs HF-faithful logits does not.
 
@@ -14,10 +14,10 @@ Most research code that was written against `HookedTransformer.from_pretrained(.
 |---|---|---|
 | Logit lens / direct logit attribution | **Yes** | These analyses reason in the post-fold-LN coordinate system; raw HF weights produce different (wrong) attributions. |
 | Residual-stream norm analysis | **Yes** | Centered weights give the residual a meaningful zero. |
-| Circuit analysis using HT-style hook names (`blocks.{i}.attn.hook_q`, `hook_resid_pre`, etc.) | **Yes** | Legacy aliases register only after compat mode. |
+| Circuit analysis using HT-style hook names (`blocks.{i}.attn.hook_q`, `hook_resid_pre`, etc.) | **Yes** | Legacy hook names resolve on every bridge (see [model structure](model_structure.md)); compat mode makes the cached values match HookedTransformer's processed-weight numerics. |
 | Logit parity against HuggingFace | **No** | Folding changes weights; logits will not match HF. |
 | Generation / inference vs HF baseline | **No** | Same reason. |
-| Verifying a new adapter's forward pass | **No (initially)** | Use `enable_compatibility_mode(no_processing=True)` to get hook aliases without weight processing — isolates forward-pass bugs from weight-processing bugs. |
+| Verifying a new adapter's forward pass | **No (initially)** | Use `enable_compatibility_mode(no_processing=True)` to exercise the compatibility-mode forward without weight processing — isolates forward-pass bugs from weight-processing bugs. Hook aliases resolve on every bridge and do not need it. |
 
 ## What each flag does
 
@@ -35,7 +35,7 @@ bridge.enable_compatibility_mode(
 
 | Flag | Default | Effect |
 |---|---|---|
-| `no_processing` | `False` | If `True`, **overrides all other processing flags to False** — registers the legacy hook aliases only, leaves weights raw. The "I want HT hook names but HF numerics" mode. |
+| `no_processing` | `False` | If `True`, **overrides all other processing flags to False** — leaves weights raw while still switching the bridge and every component into compatibility mode (HookedTransformer-style attention masking and hook-name bookkeeping). The "HT forward semantics on HF weights" mode; hook aliases resolve on every bridge and do not need it. |
 | `fold_ln` | `True` | Folds LayerNorm scale + bias into the subsequent linear weights so the LayerNorm modules become pure normalization. Changes weights; mathematically equivalent. |
 | `center_writing_weights` | `True` | Subtracts the mean from each "writing" weight (`W_out` in attention, MLP-down). Makes residual contributions sum to zero per layer, which makes residual-stream norms interpretable. |
 | `center_unembed` | `True` | Subtracts the mean from the unembedding matrix. Logits become mean-zero — affects logit-lens output but not argmax. |
@@ -46,14 +46,14 @@ bridge.enable_compatibility_mode(
 After processing, the bridge **also**:
 
 - Re-initializes the hook registry.
-- Calls `_setup_hook_compatibility()` on every component (installs HT-style hook conversions like reshaping `hook_z` from `[batch, seq, d_model]` to `[batch, seq, n_heads, d_head]`).
-- Registers HT-style hook aliases recursively across blocks.
+- Re-runs `_setup_hook_compatibility()` (it already ran at boot) so per-attention hook conversions such as the `hook_z` reshape to `[batch, seq, n_heads, d_head]` are rebuilt on the fresh registry.
+- Re-registers aliases recursively so the *property* aliases (`W_Q`, `b_O`, …) point at the processed weights. The hook aliases already exist from boot.
 
 `compatibility_mode` is then `True` on the bridge and on every component, so subsequent operations behave as if the bridge were loaded by `HookedTransformer.from_pretrained()`.
 
 ## Hook semantic parity
 
-After `enable_compatibility_mode()`, these HT hook names fire on the **pre-norm residual** (matching HookedTransformer semantics):
+With their config flag set, these HT hook names fire on the **pre-norm residual** in either mode (matching HookedTransformer semantics):
 
 - `blocks.{i}.attn.hook_q_input`, `hook_k_input`, `hook_v_input`
 - `blocks.{i}.hook_attn_in`
@@ -89,7 +89,7 @@ The shared conftest at [`tests/conftest.py`](../../../tests/conftest.py) provide
 |---|---|---|---|
 | `gpt2_bridge` | off | n/a | HF-faithful numerics |
 | `gpt2_bridge_compat` | on | `False` | HT-equivalent numerics |
-| `gpt2_bridge_compat_no_processing` | on | `True` | Hook aliases without weight processing — used to bisect numerical bugs |
+| `gpt2_bridge_compat_no_processing` | on | `True` | Compatibility-mode forward without weight processing — used to bisect numerical bugs |
 | (reference) `gpt2_goldens_processed`, `gpt2_goldens_unprocessed` | n/a | n/a | Frozen HookedTransformer outputs with/without weight processing |
 
 New integration tests should use the variant that matches the property they're testing. Tests of HF parity → `gpt2_bridge`. Tests of HT-API behaviour → `gpt2_bridge_compat`. Tests of hook semantics regardless of weights → `gpt2_bridge_compat_no_processing`.

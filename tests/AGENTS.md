@@ -23,7 +23,7 @@ Read [the root AGENTS.md](../AGENTS.md) for project-wide rules. This file covers
 |---|---|---|---|---|---|---|
 | `unit` | [`tests/unit/`](unit/) | `make unit-test` | None / synthetic (rare exceptions) | No | Function or single module | [`tests/unit/test_key_value_cache_entry.py`](unit/test_key_value_cache_entry.py) |
 | `integration` | [`tests/integration/`](integration/) | `make integration-test` | 1–2 cached models, module-scoped | Yes | Cross-component | [`tests/integration/test_generation_compatibility.py`](integration/test_generation_compatibility.py) |
-| `acceptance` | [`tests/acceptance/`](acceptance/) | `make acceptance-test` | Full models (`gpt2`, `bloom-560m`), session-scoped | Yes | End-to-end behaviour | [`tests/acceptance/conftest.py`](acceptance/conftest.py) |
+| `acceptance` | [`tests/acceptance/`](acceptance/) | `make acceptance-test` | Full models (`gpt2`, `distilgpt2`; one `gemma-2-2b-it` test), loaded inline per test | Yes | End-to-end behaviour | [`tests/acceptance/conftest.py`](acceptance/conftest.py) |
 | `benchmarks` | [`tests/benchmarks/`](benchmarks/) | `make benchmark-test` | Varies; performance focus | Yes | Throughput / memory | [`tests/benchmarks/test_boot_memory.py`](benchmarks/test_boot_memory.py) |
 | `mps` | [`tests/mps/`](mps/) | `pytest tests/mps -v` (needs `TRANSFORMERLENS_ALLOW_MPS=1`) | TinyStories-1M, fp32 only | Yes | macOS-MPS smoke only | [`tests/mps/test_mps_basic.py`](mps/test_mps_basic.py) |
 
@@ -41,7 +41,7 @@ Common combinations: `make test-pr` (unit + docstring + acceptance + integration
 - `_enable_hf_retry_for_tests` (session autouse) — wraps HF `from_pretrained` with 429 retry
 - Seeded RNG (numpy/torch/Python @ 42)
 - `gpt2_tokenizer` (session)
-- `gpt2_hooked_processed`, `gpt2_hooked_unprocessed` (session)
+- `gpt2_goldens_processed`, `gpt2_goldens_unprocessed` (session)
 - `gpt2_bridge`, `gpt2_bridge_compat`, `gpt2_bridge_compat_no_processing` (session; acceptance/integration-tier only — see [Hard "don'ts"](#hard-donts))
 - `temp_dir`
 
@@ -49,19 +49,19 @@ Sub-folder conftests:
 
 | Path | Provides |
 |---|---|
-| [`tests/acceptance/conftest.py`](acceptance/conftest.py) | `gpt2_model`, `bloom_560m_hooked`, `bloom_560m_hf_model`, `bloom_560m_hf_tokenizer` (all session) |
-| [`tests/integration/model_bridge/conftest.py`](integration/model_bridge/conftest.py) | distilgpt2 Bridge/Hooked variants × {compat, no-compat, no-processing}; module-scoped `sample_tokens` for adapter tests |
+| [`tests/acceptance/conftest.py`](acceptance/conftest.py) | No fixtures (docstring only). Acceptance tests load models inline — `TransformerBridge.boot_transformers("gpt2")` or a per-file `load_model("distilgpt2")` helper |
+| [`tests/integration/model_bridge/conftest.py`](integration/model_bridge/conftest.py) | `distilgpt2_bridge`, `distilgpt2_bridge_compat`, `distilgpt2_bridge_compat_no_processing`, `distilgpt2_goldens_{processed,unprocessed}`; module-scoped `sample_tokens` for adapter tests |
 
 Two cross-cutting rules:
 
 - All `transformer_lens` imports inside conftest fixtures live in fixture bodies, not at module top — jaxtyping's `pytest_configure` hook must install before the package is first imported.
-- Session-scoped model fixtures (`gpt2_hooked_processed`, `gpt2_bridge`, …) are read-only — mutating them leaks across the entire test session.
+- Session-scoped model fixtures (`gpt2_goldens_processed`, `gpt2_bridge`, …) are read-only — mutating them leaks across the entire test session.
 
 ---
 
 ## Cached-model allowlist
 
-CI cache ([`checks.yml`](../.github/workflows/checks.yml)) covers: `gpt2`, `gpt2-xl`, `distilgpt2`, `pythia-70m`, `gpt-neo-125M`, `gemma-2-2b-it`, `bloom-560m`, `Qwen2-0.5B`, `bert-base-cased`, `NeelNanda/Attn_Only*`, `roneneldan/TinyStories-1M*`, `NeelNanda/SoLU*`, `redwood_attn_2l`, `tiny-random-llama-2`, `DialoGPT-medium`.
+CI cache ([`checks.yml`](../.github/workflows/checks.yml)) covers: `gpt2`, `gpt2-xl`, `distilgpt2`, `pythia-70m`, `gpt-neo-125M`, `gemma-2-2b-it`, `bloom-560m`, `Qwen2-0.5B`, `bert-base-cased`, `NeelNanda/Attn_Only*`, `roneneldan/TinyStories-1M*`, `NeelNanda/SoLU*`, `redwood_attn_2l`, `tiny-random-llama-2`, `DialoGPT-medium`, plus the `hf-internal-testing/tiny-random-*`, `trl-internal-testing/tiny-*`, and `katuni4ka/tiny-random-deepseek-v3` models the per-architecture adapter tests use. The cache block in `checks.yml` is authoritative when in doubt.
 
 Prefer `attn-only-{1,2,3,4}l` and `tiny-stories-1M` for fast tests — `gpt2` is slow on CI's CPU runners. Use `gpt2` only when you need GPT-2 numerics. Anything outside the cached set → `@pytest.mark.slow`.
 

@@ -114,6 +114,8 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
     """Adapter for ``NativeModel`` — TL-native, split-QKV, pre-LN; feature set
     driven by cfg (gated MLP, RMS norm, rotary, GQA, soft-cap, attn_only)."""
 
+    bool_4d_mask_is_keep = False
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 

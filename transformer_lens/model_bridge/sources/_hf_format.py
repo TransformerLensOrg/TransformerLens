@@ -13,9 +13,9 @@ from typing import Any
 
 from transformers import PreTrainedTokenizerBase
 
-from transformer_lens.factories.architecture_adapter_factory import (
-    SUPPORTED_ARCHITECTURES,
-)
+# Module import (not a name import): architecture_adapter_factory imports model_bridge,
+# which imports this module, so its names may not be defined yet at this point.
+from transformer_lens.factories import architecture_adapter_factory
 from transformer_lens.utilities import get_tokenizer_with_bos
 from transformer_lens.utilities.heterogeneous_config import (
     het_safe_view,
@@ -407,11 +407,11 @@ def determine_architecture_from_hf_config(hf_config):
             architectures.append(model_type_mappings[model_type])
 
     for arch in architectures:
-        if arch in SUPPORTED_ARCHITECTURES:
+        if arch in architecture_adapter_factory.SUPPORTED_ARCHITECTURES:
             return arch
     raise ValueError(
         f"Could not determine supported architecture from config. Available architectures: "
-        f"{list(SUPPORTED_ARCHITECTURES.keys())}, Config architectures: {architectures}, "
+        f"{list(architecture_adapter_factory.SUPPORTED_ARCHITECTURES.keys())}, Config architectures: {architectures}, "
         f"Model type: {getattr(hf_config, 'model_type', None)}"
     )
 

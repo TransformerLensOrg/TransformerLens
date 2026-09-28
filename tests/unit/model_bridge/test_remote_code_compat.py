@@ -20,6 +20,7 @@ from transformer_lens.model_bridge.supported_architectures._remote_code_compat i
     force_import_remote_class,
     iter_remote_modeling_modules,
     patch_init_weights_skip_loaded,
+    restore_default_rope_init,
     retie_weights_keys_v5,
 )
 
@@ -249,9 +250,96 @@ class TestComputeDefaultRopeInvFreq:
         assert inv_freq.shape == (8,)
 
     def test_kwargs_only_path(self) -> None:
-        """v4 also allowed configless calls with base/dim; dream registers the
-        helper globally, so arbitrary remote code may use that form."""
+        """v4 also allowed configless calls with base/dim; remote code may use that form."""
         inv_freq, scaling = compute_default_rope_inv_freq(base=10000.0, dim=8)
         expected = 1.0 / (10000.0 ** (torch.arange(0, 8, 2, dtype=torch.int64).float() / 8))
         torch.testing.assert_close(inv_freq, expected)
         assert scaling == 1.0
+
+
+class TestRestoreDefaultRopeInit:
+    MODULE = "transformers_modules.acme.zorbo.modeling_zorbo"
+
+    def _install_fake_remote_module(self, monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+        """A stand-in remote modeling module that imported the (default-less) v5 dict."""
+        import transformers.dynamic_module_utils as dmu
+        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+
+        class ZorboRotaryEmbedding:
+            pass
+
+        module = ModuleType(self.MODULE)
+        setattr(module, "ROPE_INIT_FUNCTIONS", ROPE_INIT_FUNCTIONS)
+        setattr(module, "ZorboRotaryEmbedding", ZorboRotaryEmbedding)
+        monkeypatch.setitem(sys.modules, self.MODULE, module)
+        monkeypatch.setattr(
+            dmu, "get_class_from_dynamic_module", lambda *args, **kwargs: ZorboRotaryEmbedding
+        )
+        return module
+
+    def test_patches_remote_module_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+
+        module = self._install_fake_remote_module(monkeypatch)
+        restore_default_rope_init("acme/zorbo", "modeling_zorbo.ZorboModel", "ZorboRotaryEmbedding")
+
+        assert getattr(module, "ROPE_INIT_FUNCTIONS")["default"] is compute_default_rope_inv_freq
+        rotary_cls = getattr(module, "ZorboRotaryEmbedding")
+        assert rotary_cls.compute_default_rope_parameters is compute_default_rope_inv_freq
+        assert "default" not in ROPE_INIT_FUNCTIONS
+
+    def test_native_models_still_build_afterwards(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """transformers>=5.17 lets shared ROPE_INIT_FUNCTIONS entries override a
+        native model's own default rope init, so the shared dict must stay clean."""
+        from transformers import LlamaConfig, LlamaForCausalLM
+
+        self._install_fake_remote_module(monkeypatch)
+        restore_default_rope_init("acme/zorbo", "modeling_zorbo.ZorboModel", "ZorboRotaryEmbedding")
+
+        cfg = LlamaConfig(
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            vocab_size=32,
+        )
+        LlamaForCausalLM(cfg)
+
+    def test_noop_when_dynamic_module_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import transformers.dynamic_module_utils as dmu
+
+        def boom(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("offline / not a remote-code repo")
+
+        monkeypatch.setattr(dmu, "get_class_from_dynamic_module", boom)
+        restore_default_rope_init("acme/zorbo", "modeling_zorbo.ZorboModel", "ZorboRotaryEmbedding")
+
+    def test_patches_the_requested_revision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A pinned revision is its own module copy; only importing that revision
+        brings it into sys.modules, so the revision must be forwarded."""
+        import transformers.dynamic_module_utils as dmu
+        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+
+        default_copy = self._install_fake_remote_module(monkeypatch)
+        revision_name = "transformers_modules.acme.zorbo.abc123.modeling_zorbo"
+
+        def fake_import(ref: str, name: str, revision: str | None = None, **kwargs: Any) -> type:
+            if revision == "abc123":
+                module = ModuleType(revision_name)
+                setattr(module, "ROPE_INIT_FUNCTIONS", ROPE_INIT_FUNCTIONS)
+                monkeypatch.setitem(sys.modules, revision_name, module)
+            return type("ZorboModel", (), {})
+
+        monkeypatch.setattr(dmu, "get_class_from_dynamic_module", fake_import)
+        restore_default_rope_init(
+            "acme/zorbo", "modeling_zorbo.ZorboModel", "ZorboRotaryEmbedding", revision="abc123"
+        )
+
+        revision_copy = sys.modules[revision_name]
+        assert getattr(revision_copy, "ROPE_INIT_FUNCTIONS")["default"] is (
+            compute_default_rope_inv_freq
+        )
+        assert getattr(default_copy, "ROPE_INIT_FUNCTIONS")["default"] is (
+            compute_default_rope_inv_freq
+        )
+        assert "default" not in ROPE_INIT_FUNCTIONS

@@ -93,19 +93,25 @@ HF raw config attributes are invisible to TL-side consumers unless propagated to
 
 | HF attribute | Surface as | Used by |
 |---|---|---|
-| `final_logit_softcapping` | `self.cfg.final_logit_softcapping` | Gemma2/3 — final-layer logit clip |
-| `attn_logit_softcapping` | `self.cfg.attn_logit_softcapping` | Gemma2/3 — attention-score clip |
-| `query_pre_attn_scalar` | `self.cfg.query_pre_attn_scalar` | Gemma2/3 — query scaling override |
 | `sliding_window` | `self.cfg.sliding_window` | Mistral, Qwen2, Gemma2 — local-attention layers |
 | `layer_types` | `self.cfg.layer_types` | Hybrid models with per-layer attention type lists |
+
+**Renamed attributes** (translated once in `build_bridge_config_from_hf` in [`sources/_bridge_builder.py`](../sources/_bridge_builder.py); they never exist under their HF names on `self.cfg`, so an adapter reading `cfg.final_logit_softcapping` gets `None`):
+
+| HF attribute | TL field | Used by |
+|---|---|---|
+| `final_logit_softcapping` | `self.cfg.output_logits_soft_cap` | Gemma2/3 — final-layer logit clip |
+| `attn_logit_softcapping` | `self.cfg.attn_scores_soft_cap` | Gemma2/3 — attention-score clip |
+
+Gemma's `query_pre_attn_scalar` is not surfaced anywhere: the wrapped HF attention module applies it itself.
 
 **Weight-fold attributes** (need BOTH surface-on-cfg AND fold-into-weight via `preprocess_weights` — see [the next section](#when-to-override-preprocess_weights)):
 
 | HF attribute | Fold target | Used by |
 |---|---|---|
 | `logit_scale` | `unembed.weight` (multiply in fp32 then cast back) | Cohere — final logits scaled by `1/16` |
-| `embedding_multiplier` / embed-scale flags | `embed.weight` (multiply) | Gemma — embeddings scaled by `√d_model` |
-| Tied unembed with extra scale | `unembed.weight` | T5-family tied projection variants |
+
+Cohere is currently the only config-attr fold in the tree (Phi3's `preprocess_weights` override folds LayerNorm into its joint QKV / gate-up projections instead — a `fold_ln` special case, not a config knob). Gemma's `√d_model` embedding scale is **not** folded; see the counter-example below.
 
 Rule of thumb: if the model card or HF source mentions a numerical knob, assume it needs to land on `self.cfg`. If that knob changes weights or final outputs and HF's forward applies it natively, you ALSO need a `preprocess_weights` override or compatibility mode will diverge.
 
@@ -128,7 +134,7 @@ If HF applies the same factor outside the module whose weight is being folded, `
 Examples:
 
 - **Cohere** — `cfg.logit_scale` (default `0.0625`) folds into `unembed.weight`, then `postprocess_weights()` neutralizes the model-level `logit_scale` that HF forward would otherwise apply again. Guard re-entry with a private instance flag (`_logit_scale_already_folded`), not by mutating `cfg.logit_scale` itself — that value is a declared model constant other code reads (`apply_output_logits_transform`, integration tests asserting the original scale), and a stale *live* attribute is one thing, a corrupted *config* is another.
-- **Gemma1/2/3** — embedding scale (`√d_model`) folds into `embed.weight`. HF's `GemmaTextScaledWordEmbedding` scales on forward; compat-mode reads raw.
+- **Gemma1/2/3 (counter-example)** — the `√d_model` embedding scale is applied at runtime inside HF's scaled-embedding module on both the raw and compat-mode paths, and `bridge.embed` already captures the scaled value, so none of the Gemma adapters override `preprocess_weights`. Adding a fold there double-scales the embeddings.
 
 Skeleton:
 
@@ -318,7 +324,7 @@ Two test layers per architecture, both required for review:
 
 ### 1. Unit adapter test — `tests/unit/model_bridge/supported_architectures/test_<arch>_adapter.py`
 
-26 of these exist; they all follow the same shape. Copy from a sibling that matches your architecture's quirks:
+One exists per supported architecture; they all follow the same shape. Copy from a sibling that matches your architecture's quirks:
 
 - **Standard decoder LM** template: [`test_gemma1_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gemma1_adapter.py) or [`test_gpt2_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_gpt2_adapter.py)
 - **GQA / modern RMSNorm+RoPE** template: [`test_qwen3_adapter.py`](../../../tests/unit/model_bridge/supported_architectures/test_qwen3_adapter.py)

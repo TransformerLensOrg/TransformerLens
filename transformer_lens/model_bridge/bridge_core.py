@@ -488,11 +488,10 @@ class BridgeCore:
         losses = losses.masked_fill(~valid_targets, 0.0)
         return losses if per_token else losses.sum() / valid_targets.sum()
 
-    @staticmethod
     def _prepare_loss_attention_mask(
-        attention_mask: torch.Tensor, tokens: torch.Tensor
+        self, attention_mask: torch.Tensor, tokens: torch.Tensor
     ) -> torch.Tensor:
-        """Reduce a forward attention mask to the token window scored by the loss."""
+        """Reduce a forward mask using the adapter's 4D boolean polarity."""
         batch, pos = tokens.shape
         if attention_mask.ndim not in (2, 4):
             raise ValueError(
@@ -520,7 +519,10 @@ class BridgeCore:
                 f"got key length {key_pos} for {pos} tokens"
             )
 
-        blocked = attention_mask if attention_mask.dtype is torch.bool else attention_mask < -1.0
+        if attention_mask.dtype is torch.bool:
+            blocked = ~attention_mask if self.adapter.bool_4d_mask_is_keep else attention_mask
+        else:
+            blocked = attention_mask < -1.0
         if query_pos == 1:
             # Broadcast key-only masks use one query row for the full sequence.
             keep = ~blocked[..., 0, -pos:]

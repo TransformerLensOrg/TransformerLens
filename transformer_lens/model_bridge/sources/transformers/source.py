@@ -10,9 +10,9 @@ from typing import Any
 import torch
 from transformers import AutoConfig, AutoTokenizer, PreTrainedTokenizerBase
 
-from transformer_lens.factories.architecture_adapter_factory import (
-    ArchitectureAdapterFactory,
-)
+# Module import (not a name import): architecture_adapter_factory imports model_bridge,
+# which imports this module, so its names may not be defined yet at this point.
+from transformer_lens.factories import architecture_adapter_factory
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources._bridge_builder import (
     build_bridge_config_from_hf,
@@ -203,7 +203,9 @@ def boot(
     architecture = determine_architecture_from_hf_config(hf_config)
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, dtype)
     bridge_config.trust_remote_code = trust_remote_code
-    adapter = ArchitectureAdapterFactory.select_architecture_adapter(bridge_config)
+    adapter = architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter(
+        bridge_config
+    )
     # Pre-loaded models carry their own weight placement (possibly set by the caller via
     # device_map). Passing device_map / n_devices / max_memory alongside hf_model= is ambiguous
     # and would silently be ignored, so fail loudly.

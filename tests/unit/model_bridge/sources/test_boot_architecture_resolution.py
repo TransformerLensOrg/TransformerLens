@@ -59,7 +59,7 @@ def _mock_inspect_boot(monkeypatch, hf_config, cfg):
     )
     monkeypatch.setattr(
         "transformer_lens.model_bridge.sources.inspect.source"
-        ".ArchitectureAdapterFactory.select_architecture_adapter",
+        ".architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter",
         lambda c: adapter,
     )
     configure_tok = MagicMock(side_effect=fake_configure_tokenizer)

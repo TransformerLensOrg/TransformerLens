@@ -1,0 +1,4412 @@
+{
+  "control_success_ci": {
+    "ci_high": 0.4592581264399004,
+    "ci_low": 0.0,
+    "confidence": 0.95,
+    "n_successes": 0,
+    "n_trials": 6,
+    "point_estimate": 0.0
+  },
+  "excluded_baselines": [
+    {
+      "function": "capital",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -0.2864990234375,
+        "target_rank": 2,
+        "target_tied_for_top": false,
+        "top1_token_id": 6586
+      },
+      "prompt": "The capital of Canada is the city of",
+      "source": "Canada"
+    },
+    {
+      "function": "capital",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -0.7241363525390625,
+        "target_rank": 2,
+        "target_tied_for_top": false,
+        "top1_token_id": 20834
+      },
+      "prompt": "The capital of China is the city of",
+      "source": "China"
+    },
+    {
+      "function": "capital",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.7487869262695312,
+        "target_rank": 7,
+        "target_tied_for_top": false,
+        "top1_token_id": 27872
+      },
+      "prompt": "The capital of Egypt is the city of",
+      "source": "Egypt"
+    },
+    {
+      "function": "language",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.105224609375,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 257
+      },
+      "prompt": "Most people in China speak",
+      "source": "China"
+    },
+    {
+      "function": "continent",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9497413635253906,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 262
+      },
+      "prompt": "Canada is a country on the continent of",
+      "source": "Canada"
+    },
+    {
+      "function": "continent",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -0.6490402221679688,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 262
+      },
+      "prompt": "China is a country on the continent of",
+      "source": "China"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9744873046875,
+        "target_rank": 7,
+        "target_tied_for_top": false,
+        "top1_token_id": 366
+      },
+      "prompt": "The single-word name for the currency now used in France is the",
+      "source": "France"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -4.760887145996094,
+        "target_rank": 38,
+        "target_tied_for_top": false,
+        "top1_token_id": 5398
+      },
+      "prompt": "The single-word name for the currency now used in Canada is the",
+      "source": "Canada"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.1355819702148438,
+        "target_rank": 6,
+        "target_tied_for_top": false,
+        "top1_token_id": 34847
+      },
+      "prompt": "The single-word name for the currency now used in China is the",
+      "source": "China"
+    },
+    {
+      "function": "currency",
+      "metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -5.075996398925781,
+        "target_rank": 116,
+        "target_tied_for_top": false,
+        "top1_token_id": 14075
+      },
+      "prompt": "The single-word name for the currency now used in Egypt is the",
+      "source": "Egypt"
+    }
+  ],
+  "layers_executed": [
+    9,
+    10
+  ],
+  "n_independent_prompts": 1,
+  "protocol_fingerprint": "b831263c046c1110ff56ddc4858b3aea41cd9677a6a04331d5563e554a33d65f",
+  "protocol_manifest": {
+    "alpha": 1.0,
+    "baseline_definition": "source answer token id equals deterministic argmax token id",
+    "control_seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "control_tolerance": 0.1,
+    "corpus": {
+      "concepts": [
+        "France",
+        "Canada",
+        "China",
+        "Egypt"
+      ],
+      "functions": [
+        {
+          "answers": {
+            "Canada": "Ottawa",
+            "China": "Beijing",
+            "Egypt": "Cairo",
+            "France": "Paris"
+          },
+          "name": "capital",
+          "template": "The capital of {arg} is the city of"
+        },
+        {
+          "answers": {
+            "Canada": "English",
+            "China": "Chinese",
+            "Egypt": "Arabic",
+            "France": "French"
+          },
+          "name": "language",
+          "template": "Most people in {arg} speak"
+        },
+        {
+          "answers": {
+            "Canada": "North",
+            "China": "Asia",
+            "Egypt": "Africa",
+            "France": "Europe"
+          },
+          "name": "continent",
+          "template": "{arg} is a country on the continent of"
+        },
+        {
+          "answers": {
+            "Canada": "Dollar",
+            "China": "Yuan",
+            "Egypt": "Pound",
+            "France": "Euro"
+          },
+          "name": "currency",
+          "template": "The single-word name for the currency now used in {arg} is the"
+        }
+      ],
+      "name": "countries"
+    },
+    "corpus_name": "countries",
+    "corpus_path": "data/experiments/flexible-generalization.json",
+    "corpus_repo": "anthropics/jacobian-lens",
+    "corpus_revision": "581d398613e5602a5af361e1c34d3a92ea82ba8e",
+    "k": 25,
+    "layers_swept": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "lens_file": "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt",
+    "lens_repo": "neuronpedia/jacobian-lens",
+    "lens_revision": "a4114d7752d11eb546e6cf372213d7e75526d3a1",
+    "model_id": "gpt2",
+    "model_revision": "n/a",
+    "rank_definition": "1 + count(logits strictly greater than target logit)",
+    "success_definition": "target token id equals deterministic argmax token id"
+  },
+  "real_success_ci": {
+    "ci_high": 0.4592581264399004,
+    "ci_low": 0.0,
+    "confidence": 0.95,
+    "n_successes": 0,
+    "n_trials": 6,
+    "point_estimate": 0.0
+  },
+  "results_fingerprint": "05321a650108369fafb68c59cc159502a3c46fb6a553cdd82a84e40cbcf7c12b",
+  "schema_version": 2,
+  "trial_status_counts": {
+    "ok": 6,
+    "skipped_source_inactive": 192
+  },
+  "trials": [
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "capital",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "capital",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "capital",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 0's active support for this prompt",
+      "function": "language",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 0's active support for this prompt",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 0's active support for this prompt",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 0's active support for this prompt",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 0's active support for this prompt",
+      "function": "continent",
+      "layer": 0,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "capital",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "capital",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "capital",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 1's active support for this prompt",
+      "function": "language",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 1's active support for this prompt",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 1's active support for this prompt",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 1's active support for this prompt",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 1's active support for this prompt",
+      "function": "continent",
+      "layer": 1,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "capital",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "capital",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "capital",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 2's active support for this prompt",
+      "function": "language",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 2's active support for this prompt",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 2's active support for this prompt",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 2's active support for this prompt",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 2's active support for this prompt",
+      "function": "continent",
+      "layer": 2,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "capital",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "capital",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "capital",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 3's active support for this prompt",
+      "function": "language",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 3's active support for this prompt",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 3's active support for this prompt",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 3's active support for this prompt",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 3's active support for this prompt",
+      "function": "continent",
+      "layer": 3,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "capital",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "capital",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "capital",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 4's active support for this prompt",
+      "function": "language",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 4's active support for this prompt",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 4's active support for this prompt",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 4's active support for this prompt",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 4's active support for this prompt",
+      "function": "continent",
+      "layer": 4,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "capital",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "capital",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "capital",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 5's active support for this prompt",
+      "function": "language",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 5's active support for this prompt",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 5's active support for this prompt",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 5's active support for this prompt",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 5's active support for this prompt",
+      "function": "continent",
+      "layer": 5,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "capital",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "capital",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "capital",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 6's active support for this prompt",
+      "function": "language",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 6's active support for this prompt",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 6's active support for this prompt",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 6's active support for this prompt",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 6's active support for this prompt",
+      "function": "continent",
+      "layer": 6,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "capital",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "capital",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "capital",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 7's active support for this prompt",
+      "function": "language",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 7's active support for this prompt",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 7's active support for this prompt",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 7's active support for this prompt",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 7's active support for this prompt",
+      "function": "continent",
+      "layer": 7,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "capital",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "capital",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "capital",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 8's active support for this prompt",
+      "function": "language",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 8's active support for this prompt",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 8's active support for this prompt",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 8's active support for this prompt",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 8's active support for this prompt",
+      "function": "continent",
+      "layer": 8,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "capital",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "capital",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "capital",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 9's active support for this prompt",
+      "function": "language",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 9's active support for this prompt",
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.9654541015625,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 0,
+          "token_id": 11871
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.9669761657714844,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 1,
+          "token_id": 21315
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.9666061401367188,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 2,
+          "token_id": 12577
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.971466064453125,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 3,
+          "token_id": 148
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.9481735229492188,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 4,
+          "token_id": 2780
+        }
+      ],
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9654541015625,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 11871,
+      "error": null,
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9085540771484375,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.8585166931152344,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 0,
+          "token_id": 4950
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.8820762634277344,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 1,
+          "token_id": 36154
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.8672561645507812,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 2,
+          "token_id": 11733
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.8776626586914062,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 3,
+          "token_id": 20100
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.866718292236328,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 4,
+          "token_id": 10686
+        }
+      ],
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.8585166931152344,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 4950,
+      "error": null,
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.825183868408203,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.774383544921875,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 0,
+          "token_id": 20703
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.7773590087890625,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 1,
+          "token_id": 21938
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.7904205322265625,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 2,
+          "token_id": 48164
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.7815704345703125,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 3,
+          "token_id": 21274
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.794788360595703,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 4,
+          "token_id": 12166
+        }
+      ],
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.774383544921875,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 20703,
+      "error": null,
+      "function": "continent",
+      "layer": 9,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.7115440368652344,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "capital",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "capital",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.08658599853515625,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 6342
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "capital",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.5519790649414062,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 4141
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7837142944335938,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 3594
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 3340 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Canada",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.41039276123046875,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 17526
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 6365 is not in layer 10's active support for this prompt",
+      "function": "language",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "Egypt",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "China"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.39803314208984375,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 2031
+      },
+      "control_draws": [],
+      "control_target_metrics": null,
+      "control_token_id": null,
+      "error": "source token id 4881 is not in layer 10's active support for this prompt",
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": null,
+      "source": "France",
+      "status": "skipped_source_inactive",
+      "target": "Egypt"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.9293785095214844,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 0,
+          "token_id": 3908
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.9347648620605469,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 1,
+          "token_id": 19010
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.924072265625,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 2,
+          "token_id": 26956
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.8063507080078125,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 3,
+          "token_id": 8031
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -1.81707763671875,
+            "target_rank": 3,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 4,
+          "token_id": 5491
+        }
+      ],
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.9293785095214844,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 3908,
+      "error": null,
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -1.7807693481445312,
+        "target_rank": 3,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "France"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.847797393798828,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 0,
+          "token_id": 35108
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.8723678588867188,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 1,
+          "token_id": 29600
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.7833175659179688,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 2,
+          "token_id": 3782
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.809295654296875,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 3,
+          "token_id": 14769
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.809123992919922,
+            "target_rank": 5,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 4,
+          "token_id": 16888
+        }
+      ],
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.847797393798828,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 35108,
+      "error": null,
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.749217987060547,
+        "target_rank": 5,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "Canada"
+    },
+    {
+      "baseline": {
+        "target_is_top1": true,
+        "target_logit_margin": 0.7269477844238281,
+        "target_rank": 1,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_draws": [
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.6885337829589844,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 0,
+          "token_id": 21473
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.7274246215820312,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 1,
+          "token_id": 17579
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.644866943359375,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 2,
+          "token_id": 12313
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.7168045043945312,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 3,
+          "token_id": 24998
+        },
+        {
+          "metrics": {
+            "target_is_top1": false,
+            "target_logit_margin": -2.6703872680664062,
+            "target_rank": 4,
+            "target_tied_for_top": false,
+            "top1_token_id": 5478
+          },
+          "seed": 4,
+          "token_id": 14702
+        }
+      ],
+      "control_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.6885337829589844,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "control_token_id": 21473,
+      "error": null,
+      "function": "continent",
+      "layer": 10,
+      "real_target_metrics": {
+        "target_is_top1": false,
+        "target_logit_margin": -2.54638671875,
+        "target_rank": 4,
+        "target_tied_for_top": false,
+        "top1_token_id": 5478
+      },
+      "source": "Egypt",
+      "status": "ok",
+      "target": "China"
+    }
+  ]
+}

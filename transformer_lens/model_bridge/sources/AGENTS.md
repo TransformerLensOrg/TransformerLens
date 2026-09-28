@@ -9,7 +9,7 @@ Execution backends for the bridge. Each source boots an engine (HF, TL-native, v
 | [`../driver_protocol.py`](../driver_protocol.py) | The `Driver` protocol: `forward(input_ids, capture=, intervene=, max_new_tokens=, return_logits=) → ForwardResult`, `close()`, `supports(feature)`, declared `supported_hook_points` / `non_fireable_hook_points`. Also `to_torch` (torch → DLPack → numpy ladder) and `validate_driver` (run at both bridge constructors). |
 | [`_driver_base.py`](_driver_base.py) | `DriverBase` — optional ABC with defaults for the protocol's members (`supports`, `close`, `provides_sequence_logits`). Duck-typing works too. |
 | [`_hf_format.py`](_hf_format.py) | HF-*format* (not HF-loading) utilities shared by every source whose backend yields an HF-shaped config/tokenizer: `map_default_transformer_lens_config`, `determine_architecture_from_hf_config`, `setup_tokenizer` |
-| [`_bridge_builder.py`](_bridge_builder.py) | Loader-agnostic assembly: `build_bridge_config_from_hf`, `build_bridge_from_module`, `detect_tokenizer_bos_eos`; hosts the single `_HF_PASSTHROUGH_ATTRS` list (lines 22–58) |
+| [`_bridge_builder.py`](_bridge_builder.py) | Loader-agnostic assembly: `build_bridge_config_from_hf`, `build_bridge_from_module`, `detect_tokenizer_bos_eos`; hosts the single `_HF_PASSTHROUGH_ATTRS` list (lines 28–178) |
 | [`transformers_driver.py`](transformers_driver.py) | `TransformersDriver` — wraps an HF `nn.Module`; the reference torch driver (gradients, parameters, state_dict, weight access, intervention callbacks) |
 | [`transformers/`](transformers/) | HF backend: `source.py` has `boot` (→ `TransformerBridge.boot_transformers`), `helpers.py` has `check_model_support` / `list_supported_models` / checkpoint-revision resolution; `__init__.py` re-exports the historical `sources.transformers` names |
 | [`native/`](native/) | TL-native models built from scratch (no HF): `model.py` / `init.py`, booted via `TransformerBridge.boot_native` |
@@ -42,7 +42,7 @@ hf_config
   │
   ├─ TransformerBridgeConfig.from_dict()        [filters to declared fields]
   │
-  └─ _HF_PASSTHROUGH_ATTRS copy → bridge_config [_bridge_builder.py:78]
+  └─ _HF_PASSTHROUGH_ATTRS copy → bridge_config [_bridge_builder.py:193]
 ```
 
 **Implications:**
