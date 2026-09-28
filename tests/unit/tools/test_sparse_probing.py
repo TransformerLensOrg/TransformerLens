@@ -259,6 +259,9 @@ def test_sweep_passes_std_floor_to_main_and_control_fits(monkeypatch):
     assert [result.std_floor for result in sweep.results] == [0.25, 0.25]
     assert received == [0.25] * 10
 
+    default_sweep = sweep_sparse_probe(features, labels, ks=[1], seed=0)
+    assert default_sweep.results[0].std_floor == 1e-3
+
 
 def test_none_preprocessing_has_identity_metadata_and_constant_tie_order():
     features = torch.zeros(20, 5)
