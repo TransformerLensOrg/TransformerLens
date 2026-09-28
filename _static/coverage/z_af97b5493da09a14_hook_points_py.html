@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/hook_points.py: 85%</title>
+    <title>Coverage for transformer_lens/hook_points.py: 86%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_6b508a39.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/hook_points.py</b>:
-            <span class="pc_cov">85%</span>
+            <span class="pc_cov">86%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,10 +56,10 @@
         </aside>
         <h2>
             <span class="text">199 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">172<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">27<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">173<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">26<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">5<span class="text"> excluded</span></button>
-            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">10<span class="text"> partial</span></button>
+            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">9<span class="text"> partial</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_af97b5493da09a14_head_detector_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_c52e5e7ba31bf580___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-21 19:27 +0000
+            created at 2026-09-28 15:26 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -520,14 +520,19 @@
     <p class="pln"><span class="n"><a id="t436" href="#t436">436</a></span><span class="t"><span class="com"># deprecated re-export from here was removed in 4.0 as promised. The class itself</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t437" href="#t437">437</a></span><span class="t"><span class="com"># is kept &#8212; import it from transformer_lens or transformer_lens.HookedRootModule.</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t438" href="#t438">438</a></span><span class="t"><span class="key">def</span> <span class="nam">__getattr__</span><span class="op">(</span><span class="nam">name</span><span class="op">:</span> <span class="nam">str</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t439" href="#t439">439</a></span><span class="t">    <span class="key">if</span> <span class="nam">name</span> <span class="op">==</span> <span class="str">"HookedRootModule"</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">439&#x202F;&#x219B;&#x202F;440</span><span class="annotate long">line 439 didn't jump to line 440 because the condition on line 439 was never true</span></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t440" href="#t440">440</a></span><span class="t">        <span class="key">raise</span> <span class="nam">AttributeError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t441" href="#t441">441</a></span><span class="t">            <span class="str">"Importing HookedRootModule from transformer_lens.hook_points was "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t442" href="#t442">442</a></span><span class="t">            <span class="str">"removed in TransformerLens 4.0. Import it from transformer_lens "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t443" href="#t443">443</a></span><span class="t">            <span class="str">"(preferred) or transformer_lens.HookedRootModule instead &#8212; the class "</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t444" href="#t444">444</a></span><span class="t">            <span class="str">"itself is kept."</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t445" href="#t445">445</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t446" href="#t446">446</a></span><span class="t">    <span class="key">raise</span> <span class="nam">AttributeError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">module </span><span class="op">{</span><span class="nam">__name__</span><span class="op">!</span><span class="nam">r</span><span class="op">}</span><span class="fst"> has no attribute </span><span class="op">{</span><span class="nam">name</span><span class="op">!</span><span class="nam">r</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t439" href="#t439">439</a></span><span class="t">    <span class="key">if</span> <span class="nam">name</span> <span class="op">==</span> <span class="str">"HookedRootModule"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t440" href="#t440">440</a></span><span class="t">        <span class="com"># ImportError, not AttributeError: the from-import machinery discards an</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t441" href="#t441">441</a></span><span class="t">        <span class="com"># AttributeError and raises its own unchained "cannot import name", so</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t442" href="#t442">442</a></span><span class="t">        <span class="com"># `from transformer_lens.hook_points import HookedRootModule` would lose this</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t443" href="#t443">443</a></span><span class="t">        <span class="com"># pointer. ImportError reaches both attribute access and from-import.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t444" href="#t444">444</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ImportError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t445" href="#t445">445</a></span><span class="t">            <span class="str">"Importing HookedRootModule from transformer_lens.hook_points was "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t446" href="#t446">446</a></span><span class="t">            <span class="str">"removed in TransformerLens 4.0. Import it from transformer_lens "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t447" href="#t447">447</a></span><span class="t">            <span class="str">"(preferred) or transformer_lens.HookedRootModule instead &#8212; the class "</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t448" href="#t448">448</a></span><span class="t">            <span class="str">"itself is kept."</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t449" href="#t449">449</a></span><span class="t">            <span class="nam">name</span><span class="op">=</span><span class="nam">name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t450" href="#t450">450</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t451" href="#t451">451</a></span><span class="t">    <span class="key">raise</span> <span class="nam">AttributeError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">module </span><span class="op">{</span><span class="nam">__name__</span><span class="op">!</span><span class="nam">r</span><span class="op">}</span><span class="fst"> has no attribute </span><span class="op">{</span><span class="nam">name</span><span class="op">!</span><span class="nam">r</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -537,7 +542,7 @@
             <a class="nav" href="z_c52e5e7ba31bf580___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-21 19:27 +0000
+            created at 2026-09-28 15:26 +0000
         </p>
     </div>
 </footer>

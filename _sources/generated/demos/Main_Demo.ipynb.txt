@@ -995,7 +995,7 @@
     "\n",
     "LayerNorm is a normalization technique used by transformers, analogous to BatchNorm but more friendly to massive parallelisation. No one *really* knows why it works, but it seems to improve model numerical stability. Unlike BatchNorm, LayerNorm actually changes the functional form of the model, which makes it a massive pain for interpretability! \n",
     "\n",
-    "Folding LayerNorm is a technique to make it lower overhead to deal with, and the flags `center_writing_weights` and `fold_ln` in `HookedTransformer.from_pretrained` apply this automatically (they default to True). These simplify the internal structure without changing the weights.\n",
+    "Folding LayerNorm is a technique to make it lower overhead to deal with, and the flags `fold_ln` and `center_writing_weights` in `model.enable_compatibility_mode()` apply this automatically (they default to True). These simplify the internal structure without changing the weights.\n",
     "\n",
     "Intuitively, LayerNorm acts on each residual stream vector (ie for each batch element and token position) independently, sets their mean to 0 (centering) and standard deviation to 1 (normalizing) (*across* the residual stream dimension - very weird!), and then applies a learned elementwise scaling and translation to each vector.\n",
     "\n",
@@ -1807,7 +1807,7 @@
    "source": [
     "## Loading Pre-Trained Checkpoints\n",
     "\n",
-    "**Note:** `TransformerBridge.boot_transformers` mainly works with HuggingFace revisions, and is only compatible with checkpoints for a few model families. For other models with saved checkpoints, keep using `HookedTransformer.from_pretrained`.\n",
+    "**Note:** `TransformerBridge.boot_transformers` mainly works with HuggingFace revisions, and is only compatible with checkpoints for a few model families. Legacy TransformerLens-format repos (`NeelNanda/*`, `ArthurConmy/*`, `Baidicoot/*`) have no HF `model_type`, so `boot_transformers` cannot load them; use `TransformerBridge.boot_tl_legacy(model_name, checkpoint_index=...)` (or `checkpoint_value=...`) for those, as the code below does.\n",
     "\n",
     "There are a lot of interesting questions combining mechanistic interpretability and training dynamics - analysing model capabilities and the underlying circuits that make them possible, and how these change as we train the model. \n",
     "\n",

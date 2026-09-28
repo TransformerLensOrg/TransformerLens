@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -665,7 +670,7 @@
         <article role="main">
           <section id="transformerbridge-compatibility-mode">
 <h1>TransformerBridge Compatibility Mode<a class="headerlink" href="#transformerbridge-compatibility-mode" title="Link to this heading">¶</a></h1>
-<p><code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers(...)</span></code> returns a bridge whose <strong>default numerics match HuggingFace</strong> — raw weights, no folding, no centering. Calling <code class="docutils literal notranslate"><span class="pre">bridge.enable_compatibility_mode()</span></code> afterwards puts the bridge into <strong>HookedTransformer-equivalent numerics</strong> — weights folded, centered, and the legacy hook aliases registered.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers(...)</span></code> returns a bridge whose <strong>default numerics match HuggingFace</strong> — raw weights, no folding, no centering. Calling <code class="docutils literal notranslate"><span class="pre">bridge.enable_compatibility_mode()</span></code> afterwards puts the bridge into <strong>HookedTransformer-equivalent numerics</strong> — weights folded and centered. The legacy hook names already resolve on every bridge (see <a class="reference internal" href="model_structure.html"><span class="std std-doc">Model Structure</span></a>); compatibility mode changes the numerics, not the names.</p>
 <p>Most research code that was written against <code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained(...)</span></code> assumes compatibility mode. Most new code that needs HF-faithful logits does not.</p>
 <blockquote>
 <div><p>Source: <a class="reference download internal" download="" href="../_downloads/8a1e78f300197bcabfb04a4981c568a3/transformer_bridge.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">transformer_lens/model_bridge/transformer_bridge.py:enable_compatibility_mode</span></code></span></a>.</p>
@@ -692,7 +697,7 @@
 </tr>
 <tr class="row-even"><td><p>Circuit analysis using HT-style hook names (<code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_q</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_resid_pre</span></code>, etc.)</p></td>
 <td><p><strong>Yes</strong></p></td>
-<td><p>Legacy aliases register only after compat mode.</p></td>
+<td><p>Legacy hook names resolve on every bridge (see <a class="reference internal" href="model_structure.html"><span class="std std-doc">model structure</span></a>); compat mode makes the cached values match HookedTransformer’s processed-weight numerics.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Logit parity against HuggingFace</p></td>
 <td><p><strong>No</strong></p></td>
@@ -704,7 +709,7 @@
 </tr>
 <tr class="row-odd"><td><p>Verifying a new adapter’s forward pass</p></td>
 <td><p><strong>No (initially)</strong></p></td>
-<td><p>Use <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode(no_processing=True)</span></code> to get hook aliases without weight processing — isolates forward-pass bugs from weight-processing bugs.</p></td>
+<td><p>Use <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode(no_processing=True)</span></code> to exercise the compatibility-mode forward without weight processing — isolates forward-pass bugs from weight-processing bugs. Hook aliases resolve on every bridge and do not need it.</p></td>
 </tr>
 </tbody>
 </table>
@@ -734,7 +739,7 @@
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">no_processing</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></td>
-<td><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, <strong>overrides all other processing flags to False</strong> — registers the legacy hook aliases only, leaves weights raw. The “I want HT hook names but HF numerics” mode.</p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, <strong>overrides all other processing flags to False</strong> — leaves weights raw while still switching the bridge and every component into compatibility mode (HookedTransformer-style attention masking and hook-name bookkeeping). The “HT forward semantics on HF weights” mode; hook aliases resolve on every bridge and do not need it.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fold_ln</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
@@ -766,14 +771,14 @@
 <p>After processing, the bridge <strong>also</strong>:</p>
 <ul class="simple">
 <li><p>Re-initializes the hook registry.</p></li>
-<li><p>Calls <code class="docutils literal notranslate"><span class="pre">_setup_hook_compatibility()</span></code> on every component (installs HT-style hook conversions like reshaping <code class="docutils literal notranslate"><span class="pre">hook_z</span></code> from <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq,</span> <span class="pre">d_model]</span></code> to <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq,</span> <span class="pre">n_heads,</span> <span class="pre">d_head]</span></code>).</p></li>
-<li><p>Registers HT-style hook aliases recursively across blocks.</p></li>
+<li><p>Re-runs <code class="docutils literal notranslate"><span class="pre">_setup_hook_compatibility()</span></code> (it already ran at boot) so per-attention hook conversions such as the <code class="docutils literal notranslate"><span class="pre">hook_z</span></code> reshape to <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq,</span> <span class="pre">n_heads,</span> <span class="pre">d_head]</span></code> are rebuilt on the fresh registry.</p></li>
+<li><p>Re-registers aliases recursively so the <em>property</em> aliases (<code class="docutils literal notranslate"><span class="pre">W_Q</span></code>, <code class="docutils literal notranslate"><span class="pre">b_O</span></code>, …) point at the processed weights. The hook aliases already exist from boot.</p></li>
 </ul>
 <p><code class="docutils literal notranslate"><span class="pre">compatibility_mode</span></code> is then <code class="docutils literal notranslate"><span class="pre">True</span></code> on the bridge and on every component, so subsequent operations behave as if the bridge were loaded by <code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained()</span></code>.</p>
 </section>
 <section id="hook-semantic-parity">
 <h2>Hook semantic parity<a class="headerlink" href="#hook-semantic-parity" title="Link to this heading">¶</a></h2>
-<p>After <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code>, these HT hook names fire on the <strong>pre-norm residual</strong> (matching HookedTransformer semantics):</p>
+<p>With their config flag set, these HT hook names fire on the <strong>pre-norm residual</strong> in either mode (matching HookedTransformer semantics):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_q_input</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_k_input</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_v_input</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_in</span></code></p></li>
@@ -826,7 +831,7 @@ output, off from the contribution by the multiplier.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gpt2_bridge_compat_no_processing</span></code></p></td>
 <td><p>on</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
-<td><p>Hook aliases without weight processing — used to bisect numerical bugs</p></td>
+<td><p>Compatibility-mode forward without weight processing — used to bisect numerical bugs</p></td>
 </tr>
 <tr class="row-odd"><td><p>(reference) <code class="docutils literal notranslate"><span class="pre">gpt2_goldens_processed</span></code>, <code class="docutils literal notranslate"><span class="pre">gpt2_goldens_unprocessed</span></code></p></td>
 <td><p>n/a</p></td>

@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -1034,6 +1039,40 @@ vocabulary-scale solve on every forward pass unless <code class="docutils litera
 it. The conditioning and near-parallel warnings described above still fire from inside the hook,
 per pair, exactly as they would from an offline <code class="docutils literal notranslate"><span class="pre">coordinate_patch</span></code> call on that pair’s activation.</p>
 </section>
+<section id="causal-swap-benchmark">
+<h3>Causal-swap benchmark<a class="headerlink" href="#causal-swap-benchmark" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark</span></code> measures whether
+<code class="docutils literal notranslate"><span class="pre">coordinate_patch_hooks</span></code> causes a directional change in model output, under baseline-capability
+filtering, a displacement-matched random-atom control, and exact Clopper-Pearson confidence
+intervals on every reported rate. The control matches the real edit’s magnitude: the
+perturbation is <code class="docutils literal notranslate"><span class="pre">c_src</span> <span class="pre">*</span> <span class="pre">(a_target</span> <span class="pre">-</span> <span class="pre">a_source)</span></code>, so a candidate atom qualifies when its
+distance from <code class="docutils literal notranslate"><span class="pre">a_source</span></code> matches the target’s within a fixed relative tolerance. Each trial
+draws the control arm under several seeds and records every draw, because a single draw leaves
+the control arm’s own variance unmeasured. Each trial installs the hook at exactly one layer
+and the final prompt position; a trial whose source concept is not active in that layer’s
+support, or whose layer admits no displacement-matched control, is recorded as skipped, not
+silently dropped.</p>
+<p>The interval is exact rather than bootstrapped: a percentile bootstrap cannot express
+uncertainty about an all-failure sample, collapsing to <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0]</span></code> whether the run had one trial
+or a thousand. The artifact also records how many independent prompts the pooled rate rests on,
+since several trials can share one prompt.</p>
+<p>The artifact separates the layers that were swept from the layers that actually executed, and
+carries a per-status trial count, so a sweep where most layers contribute nothing is visible
+rather than implied. It also fingerprints the result blocks (trials, excluded baselines, and
+both interval blocks) alongside the protocol manifest, and embeds the full corpus definition
+with the repo/path/revision it was taken from, so the prompts and answers that decide
+capability and scoring enter the fingerprint instead of a bare corpus name.</p>
+<p>A generation script (<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli</span></code>, no <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code>
+required) produces a versioned, fingerprinted JSON artifact against the published GPT-2-small
+lens. The
+<a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html"><span class="doc std std-doc">coordinate-patch benchmark demo</span></a>
+loads that frozen artifact and renders it; it never calls the model itself. Because the
+artifact lives under <code class="docutils literal notranslate"><span class="pre">demos/data/</span></code>, which the published wheel does not ship, the demo requires
+a repository checkout and fails with that requirement spelled out when the artifact is absent.
+A successful swap in that artifact shows a directional causal effect under the stated controls
+on GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result
+that transfers to closed-weight models.</p>
+</section>
 <section id="interpreting-the-numbers-honestly">
 <h3>Interpreting the numbers honestly<a class="headerlink" href="#interpreting-the-numbers-honestly" title="Link to this heading">¶</a></h3>
 <p>The quantitative findings below are from Gurnee et al. (2026) and were measured on <strong>closed
@@ -1292,6 +1331,7 @@ follow-up once a lossless mapping is established.</p>
 <li><a class="reference internal" href="#sparse-decomposition-j-space-coordinates">Sparse decomposition (J-space coordinates)</a><ul>
 <li><a class="reference internal" href="#coordinate-patching">Coordinate patching</a></li>
 <li><a class="reference internal" href="#dynamic-coordinate-patch-hooks">Dynamic coordinate-patch hooks</a></li>
+<li><a class="reference internal" href="#causal-swap-benchmark">Causal-swap benchmark</a></li>
 <li><a class="reference internal" href="#interpreting-the-numbers-honestly">Interpreting the numbers honestly</a></li>
 <li><a class="reference internal" href="#occupancy-and-fraction-of-variance">Occupancy and fraction of variance</a></li>
 </ul>

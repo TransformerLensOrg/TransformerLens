@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Transformer Lens Main Demo Notebook" href="../generated/demos/Main_Demo.html" /><link rel="prev" title="Backward Lens" href="backward_lens.html" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Sparse Probing" href="sparse_probing.html" /><link rel="prev" title="Backward Lens" href="backward_lens.html" />
 
     <link rel="shortcut icon" href="../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>Debugging Numerical Divergence - TransformerLens Documentation</title>
@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -741,15 +746,15 @@
 <tbody>
 <tr class="row-even"><td><p>Logits off everywhere but Q/K/V close</p></td>
 <td><p>RoPE base / scaling mismatch</p></td>
-<td><p>Adapter’s <code class="docutils literal notranslate"><span class="pre">RotaryEmbeddingBridge</span></code> setup; check <code class="docutils literal notranslate"><span class="pre">cfg.rotary_base</span></code>, <code class="docutils literal notranslate"><span class="pre">cfg.rope_scaling</span></code></p></td>
+<td><p>Adapter’s <code class="docutils literal notranslate"><span class="pre">RotaryEmbeddingBridge</span></code> setup; check <code class="docutils literal notranslate"><span class="pre">cfg.rotary_base</span></code>. For scaling, read the HF <code class="docutils literal notranslate"><span class="pre">config.rope_scaling</span></code> dict the adapter received — <code class="docutils literal notranslate"><span class="pre">self.cfg</span></code> never carries it for <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code>-loaded bridges</p></td>
 </tr>
 <tr class="row-odd"><td><p>Attention output drifts; Q / K / V match</p></td>
 <td><p>Wrong <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span></code>, wrong head reshape</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">_qkvo_weight_conversions(n_kv_heads=...)</span></code>; GQA-aware split</p></td>
 </tr>
 <tr class="row-even"><td><p>First-layer outputs off; embeddings off</p></td>
-<td><p>Embedding scaling missing (Gemma, T5)</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">preprocess_weights()</span></code> override; <code class="docutils literal notranslate"><span class="pre">cfg.scale_embeddings</span></code></p></td>
+<td><p>Embedding scale applied twice or not at all</p></td>
+<td><p>Gemma scales embeddings at runtime inside its HF embedding module and <code class="docutils literal notranslate"><span class="pre">bridge.embed</span></code> already captures the scaled value — do <strong>not</strong> add a <code class="docutils literal notranslate"><span class="pre">preprocess_weights()</span></code> rescale (that double-scales); look for a stray manual <code class="docutils literal notranslate"><span class="pre">√d_model</span></code> multiply in the adapter instead. BART-family: check <code class="docutils literal notranslate"><span class="pre">cfg.scale_embedding</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p>Off by a constant scale in residual</p></td>
 <td><p>Final-RMS-norm offset missing</p></td>
@@ -807,7 +812,7 @@
 <span class="nb">print</span><span class="p">((</span><span class="n">ref_logits</span> <span class="o">-</span> <span class="n">hf_logits</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>  <span class="c1"># should be &lt; 1e-4 in fp32</span>
 </pre></div>
 </div>
-<p>If <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code> itself disagrees with HF on the same model, the issue is upstream of your adapter (probably a <code class="docutils literal notranslate"><span class="pre">_HF_PASSTHROUGH_ATTRS</span></code> gap in <code class="docutils literal notranslate"><span class="pre">transformer_lens/model_bridge/sources/_bridge_builder.py</span></code>, or a non-standard HF config attribute that the adapter never propagated onto <code class="docutils literal notranslate"><span class="pre">self.cfg</span></code>). HF raw config attributes are invisible to TL-side consumers unless explicitly mirrored. Common attributes that need propagation: <code class="docutils literal notranslate"><span class="pre">final_logit_softcapping</span></code> (Gemma2/3), <code class="docutils literal notranslate"><span class="pre">attn_logit_softcapping</span></code> (Gemma2/3), <code class="docutils literal notranslate"><span class="pre">query_pre_attn_scalar</span></code> (Gemma2/3), <code class="docutils literal notranslate"><span class="pre">sliding_window</span></code> (Mistral, Qwen2, Gemma2), <code class="docutils literal notranslate"><span class="pre">layer_types</span></code> (hybrid models), and non-standard RMSNorm eps attribute names (Llama uses <code class="docutils literal notranslate"><span class="pre">variance_epsilon</span></code>).</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code> itself disagrees with HF on the same model, the issue is upstream of your adapter (probably a <code class="docutils literal notranslate"><span class="pre">_HF_PASSTHROUGH_ATTRS</span></code> gap in <code class="docutils literal notranslate"><span class="pre">transformer_lens/model_bridge/sources/_bridge_builder.py</span></code>, or a non-standard HF config attribute that the adapter never propagated onto <code class="docutils literal notranslate"><span class="pre">self.cfg</span></code>). HF raw config attributes are invisible to TL-side consumers unless explicitly mirrored. Common attributes that need propagation: <code class="docutils literal notranslate"><span class="pre">sliding_window</span></code> (Mistral, Qwen2, Gemma2), <code class="docutils literal notranslate"><span class="pre">layer_types</span></code> (hybrid models), and non-standard RMSNorm eps attribute names (Llama uses <code class="docutils literal notranslate"><span class="pre">variance_epsilon</span></code>). Gemma’s softcaps are renamed once in <code class="docutils literal notranslate"><span class="pre">build_bridge_config_from_hf</span></code> (<code class="docutils literal notranslate"><span class="pre">final_logit_softcapping</span></code> → <code class="docutils literal notranslate"><span class="pre">cfg.output_logits_soft_cap</span></code>, <code class="docutils literal notranslate"><span class="pre">attn_logit_softcapping</span></code> → <code class="docutils literal notranslate"><span class="pre">cfg.attn_scores_soft_cap</span></code>) — check the TL fields, not the HF names; <code class="docutils literal notranslate"><span class="pre">query_pre_attn_scalar</span></code> needs nothing, the wrapped HF attention applies it.</p>
 </section>
 <section id="bisecting-verify-models-phase-failures">
 <h2>5. Bisecting <code class="docutils literal notranslate"><span class="pre">verify_models</span></code> phase failures<a class="headerlink" href="#bisecting-verify-models-phase-failures" title="Link to this heading">¶</a></h2>
@@ -835,7 +840,7 @@
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
 <td><p>Text-generation quality</p></td>
-<td><p>Usually tokenizer policy: <code class="docutils literal notranslate"><span class="pre">default_prepend_bos</span></code>, padding side, EOS handling, chat-template wiring. Tokenizer behaviour is per-model, not per-architecture — check the target’s <code class="docutils literal notranslate"><span class="pre">tokenizer_config.json</span></code>, don’t inherit from a sibling. Less often, a generation-loop divergence; rerun with <code class="docutils literal notranslate"><span class="pre">--no-ht-reference</span></code> to skip HT comparison.</p></td>
+<td><p>Usually tokenizer policy: <code class="docutils literal notranslate"><span class="pre">default_prepend_bos</span></code>, padding side, EOS handling, chat-template wiring. Tokenizer behaviour is per-model, not per-architecture — check the target’s <code class="docutils literal notranslate"><span class="pre">tokenizer_config.json</span></code>, don’t inherit from a sibling. Less often, a generation-loop divergence; rerun with <code class="docutils literal notranslate"><span class="pre">--phases</span> <span class="pre">4</span></code> to isolate it.</p></td>
 </tr>
 <tr class="row-even"><td><p>7</p></td>
 <td><p>Multimodal alignment</p></td>
@@ -843,7 +848,7 @@
 </tr>
 <tr class="row-odd"><td><p>8</p></td>
 <td><p>Audio</p></td>
-<td><p>HuBERT only; check CTC head and audio-feature alignment.</p></td>
+<td><p>HuBERT / Wav2Vec2 encoders and AST audio classification; check the CTC head and audio-feature alignment.</p></td>
 </tr>
 </tbody>
 </table>
@@ -877,12 +882,12 @@
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../generated/demos/Main_Demo.html">
+          <a class="next-page" href="sparse_probing.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Transformer Lens Main Demo Notebook</div>
+                <div class="title">Sparse Probing</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

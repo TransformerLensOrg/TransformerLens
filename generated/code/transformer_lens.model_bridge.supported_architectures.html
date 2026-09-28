@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -1468,7 +1473,11 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html">transformer_lens.model_bridge.supported_architectures.mpt module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html#transformer_lens.model_bridge.supported_architectures.mpt.MPTArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html#transformer_lens.model_bridge.supported_architectures.mpt.MPTArchitectureAdapter.bool_4d_mask_is_keep"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.bool_4d_mask_is_keep</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html#transformer_lens.model_bridge.supported_architectures.mpt.MPTArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.component_mapping</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html#transformer_lens.model_bridge.supported_architectures.mpt.MPTArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.uses_split_attention</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html#transformer_lens.model_bridge.supported_architectures.mpt.MPTArchitectureAdapter.validate_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.validate_output_logits_transform()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.mpt.html#transformer_lens.model_bridge.supported_architectures.mpt.MPTArchitectureAdapter.weight_processing_conversions"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.weight_processing_conversions</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1497,7 +1506,11 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html">transformer_lens.model_bridge.supported_architectures.native module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter.bool_4d_mask_is_keep"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.bool_4d_mask_is_keep</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.component_mapping</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.prepare_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.uses_split_attention</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.native.html#transformer_lens.model_bridge.supported_architectures.native.NativeArchitectureAdapter.weight_processing_conversions"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.weight_processing_conversions</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -3660,6 +3673,11 @@ at the top level, leaving lm_head randomly initialized.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.supported_architectures.</span></span><span class="sig-name descname"><span class="pre">MPTArchitectureAdapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchitectureAdapter</span></code></a></p>
 <p>MPT adapter: ALiBi bias; all layers bias-free (no b_Q/b_K/b_V/b_O/b_in/b_out/ln bias).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter.bool_4d_mask_is_keep">
+<span class="sig-name descname"><span class="pre">bool_4d_mask_is_keep</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter.bool_4d_mask_is_keep" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter.validate_output_logits_transform">
 <span class="sig-name descname"><span class="pre">validate_output_logits_transform</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter.validate_output_logits_transform" title="Link to this definition">¶</a></dt>
@@ -3878,6 +3896,11 @@ full-width (not per-head) Q/K norm and a sigmoid + e_score_correction_bias route
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchitectureAdapter</span></code></a></p>
 <p>Adapter for <code class="docutils literal notranslate"><span class="pre">NativeModel</span></code> — TL-native, split-QKV, pre-LN; feature set
 driven by cfg (gated MLP, RMS norm, rotary, GQA, soft-cap, attn_only).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.bool_4d_mask_is_keep">
+<span class="sig-name descname"><span class="pre">bool_4d_mask_is_keep</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.bool_4d_mask_is_keep" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.prepare_model">
 <span class="sig-name descname"><span class="pre">prepare_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.prepare_model" title="Link to this definition">¶</a></dt>
@@ -5588,6 +5611,7 @@ Mamba-2 step.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter.bool_4d_mask_is_keep"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.bool_4d_mask_is_keep</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.MPTArchitectureAdapter.validate_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">MPTArchitectureAdapter.validate_output_logits_transform()</span></code></a></li>
 </ul>
 </li>
@@ -5640,6 +5664,7 @@ Mamba-2 step.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.bool_4d_mask_is_keep"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.bool_4d_mask_is_keep</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.NativeArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">NativeArchitectureAdapter.prepare_model()</span></code></a></li>
 </ul>
 </li>

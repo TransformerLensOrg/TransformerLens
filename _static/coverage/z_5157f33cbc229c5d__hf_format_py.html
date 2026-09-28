@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_a7558e099fd5010b___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-21 19:27 +0000
+            created at 2026-09-28 15:26 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -97,9 +97,9 @@
     <p class="pln"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t14" href="#t14">14</a></span><span class="t"><span class="key">from</span> <span class="nam">transformers</span> <span class="key">import</span> <span class="nam">PreTrainedTokenizerBase</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t15" href="#t15">15</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">factories</span><span class="op">.</span><span class="nam">architecture_adapter_factory</span> <span class="key">import</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t">    <span class="nam">SUPPORTED_ARCHITECTURES</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t"><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t16" href="#t16">16</a></span><span class="t"><span class="com"># Module import (not a name import): architecture_adapter_factory imports model_bridge,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t17" href="#t17">17</a></span><span class="t"><span class="com"># which imports this module, so its names may not be defined yet at this point.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t18" href="#t18">18</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">factories</span> <span class="key">import</span> <span class="nam">architecture_adapter_factory</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t19" href="#t19">19</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utilities</span> <span class="key">import</span> <span class="nam">get_tokenizer_with_bos</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t20" href="#t20">20</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">utilities</span><span class="op">.</span><span class="nam">heterogeneous_config</span> <span class="key">import</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t">    <span class="nam">het_safe_view</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -491,11 +491,11 @@
     <p class="run"><span class="n"><a id="t407" href="#t407">407</a></span><span class="t">            <span class="nam">architectures</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="nam">model_type_mappings</span><span class="op">[</span><span class="nam">model_type</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t408" href="#t408">408</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t409" href="#t409">409</a></span><span class="t">    <span class="key">for</span> <span class="nam">arch</span> <span class="key">in</span> <span class="nam">architectures</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t410" href="#t410">410</a></span><span class="t">        <span class="key">if</span> <span class="nam">arch</span> <span class="key">in</span> <span class="nam">SUPPORTED_ARCHITECTURES</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t410" href="#t410">410</a></span><span class="t">        <span class="key">if</span> <span class="nam">arch</span> <span class="key">in</span> <span class="nam">architecture_adapter_factory</span><span class="op">.</span><span class="nam">SUPPORTED_ARCHITECTURES</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t411" href="#t411">411</a></span><span class="t">            <span class="key">return</span> <span class="nam">arch</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t412" href="#t412">412</a></span><span class="t">    <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t413" href="#t413">413</a></span><span class="t">        <span class="fst">f"</span><span class="fst">Could not determine supported architecture from config. Available architectures: </span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t414" href="#t414">414</a></span><span class="t">        <span class="fst">f"</span><span class="op">{</span><span class="nam">list</span><span class="op">(</span><span class="nam">SUPPORTED_ARCHITECTURES</span><span class="op">.</span><span class="nam">keys</span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">}</span><span class="fst">, Config architectures: </span><span class="op">{</span><span class="nam">architectures</span><span class="op">}</span><span class="fst">, </span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t414" href="#t414">414</a></span><span class="t">        <span class="fst">f"</span><span class="op">{</span><span class="nam">list</span><span class="op">(</span><span class="nam">architecture_adapter_factory</span><span class="op">.</span><span class="nam">SUPPORTED_ARCHITECTURES</span><span class="op">.</span><span class="nam">keys</span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">}</span><span class="fst">, Config architectures: </span><span class="op">{</span><span class="nam">architectures</span><span class="op">}</span><span class="fst">, </span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t415" href="#t415">415</a></span><span class="t">        <span class="fst">f"</span><span class="fst">Model type: </span><span class="op">{</span><span class="nam">getattr</span><span class="op">(</span><span class="nam">hf_config</span><span class="op">,</span> <span class="str">'model_type'</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t416" href="#t416">416</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t417" href="#t417">417</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -546,7 +546,7 @@
             <a class="nav" href="z_a7558e099fd5010b___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-09-21 19:27 +0000
+            created at 2026-09-28 15:26 +0000
         </p>
     </div>
 </footer>

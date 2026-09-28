@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -689,9 +694,9 @@ the <a class="reference internal" href="migrating_to_v4.html"><span class="std s
 <td><p>A prompt or activation cache, answer token, and optional comparison token → labeled logit contributions.</p></td>
 <td><p>A decomposition of the residual-stream readout for that run.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Which activations should I investigate with patching?</p></td>
+<tr class="row-odd"><td><p>Which activations or paths should I investigate with patching?</p></td>
 <td><p><strong>Attribution Patching</strong></p></td>
-<td><p>Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node scores.</p></td>
+<td><p>Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node or edge scores.</p></td>
 <td><p>A first-order estimate of the effect of replacing corrupt activations with clean ones.</p></td>
 </tr>
 <tr class="row-even"><td><p>Does a particular head-to-head route affect my metric?</p></td>
@@ -741,19 +746,19 @@ available hooks, and the meaning of the selected tensor axes.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>DLA</p></td>
-<td><p>Supports HT and Bridge. Bridge requires compatibility mode and the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected.</p></td>
+<td><p>Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected.</p></td>
 <td><p>One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Attribution Patching</p></td>
-<td><p>Targets Bridge. Clean/corrupt inputs must be <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq]</span></code> token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported.</p></td>
-<td><p>Two forwards and one backward <strong>per prompt pair</strong>; activation and gradient caches. Pair scores are averaged across the batch.</p></td>
+<td><p>Targets TransformerBridge. Clean/corrupt inputs must be <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq]</span></code> token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork, with <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span> <span class="pre">==</span> <span class="pre">n_heads</span></code>; GQA/MQA is not yet supported. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller’s hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported.</p></td>
+<td><p>Two forwards and one backward <strong>per prompt pair</strong>; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as <code class="docutils literal notranslate"><span class="pre">O(seq_len</span> <span class="pre">×</span> <span class="pre">(n_layers</span> <span class="pre">×</span> <span class="pre">n_heads)²)</span></code>, while the cache also gains per-head <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq,</span> <span class="pre">n_heads,</span> <span class="pre">d_model]</span></code> tensors. Pair scores are averaged across the batch.</p></td>
 </tr>
 <tr class="row-even"><td><p>Direct Path Patching</p></td>
-<td><p>Supports HT and Bridge exposing the expected attention weights, Q/K/V hook aliases, source <code class="docutils literal notranslate"><span class="pre">hook_z</span></code>, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but <code class="docutils literal notranslate"><span class="pre">component=&quot;k&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;v&quot;</span></code> currently require <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span> <span class="pre">==</span> <span class="pre">n_heads</span></code>; per-query-head K/V semantics are not yet defined.</p></td>
+<td><p>Requires a TransformerBridge exposing the expected attention weights, Q/K/V hook aliases, source <code class="docutils literal notranslate"><span class="pre">hook_z</span></code>, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but <code class="docutils literal notranslate"><span class="pre">component=&quot;k&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;v&quot;</span></code> currently require <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span> <span class="pre">==</span> <span class="pre">n_heads</span></code>; per-query-head K/V semantics are not yet defined.</p></td>
 <td><p>Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Backward Lens</p></td>
-<td><p>The implementation documented here targets raw GPT-2 Bridge models without compatibility mode. Use one target token and check the restrictions in the <a class="reference internal" href="backward_lens.html"><span class="std std-doc">tool guide</span></a>.</p></td>
+<td><p>Requires a raw decoder-only TransformerBridge with dense, non-gated MLPs and without compatibility mode, such as GPT-2 or Pythia/GPT-NeoX. Use one target token and check the restrictions in the <a class="reference internal" href="backward_lens.html"><span class="std std-doc">tool guide</span></a>.</p></td>
 <td><p>Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory.</p></td>
 </tr>
 <tr class="row-even"><td><p>Jacobian Lens</p></td>
@@ -797,15 +802,18 @@ can change downstream computation, so its DLA score is not its ablation effect.<
 </section>
 <section id="attribution-patching-screen-candidates-then-measure-interventions">
 <h3>Attribution Patching: screen candidates, then measure interventions<a class="headerlink" href="#attribution-patching-screen-candidates-then-measure-interventions" title="Link to this heading">¶</a></h3>
-<p>The score uses <code class="docutils literal notranslate"><span class="pre">(clean_activation</span> <span class="pre">-</span> <span class="pre">corrupt_activation)</span> <span class="pre">·</span> <span class="pre">corrupt_gradient</span></code>.
-A positive value predicts an increase in the chosen metric when moving the corrupt
-activation toward the clean one. Reversing the metric reverses this interpretation.
-Large activation changes and nonlinear downstream behavior can make the estimate
-inaccurate; compare promising candidates with actual activation replacements using
-the <a class="reference internal" href="hook_system.html"><span class="std std-doc">hook system</span></a>.</p>
-<p>The current implementation supports node granularity with <code class="docutils literal notranslate"><span class="pre">ig_steps=1</span></code>.
-<code class="docutils literal notranslate"><span class="pre">granularity=&quot;edge&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code> are declared options but raise
-<code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>; do not treat them as available EAP or EAP-IG workflows.</p>
+<p>At node granularity, the score uses
+<code class="docutils literal notranslate"><span class="pre">(clean_activation</span> <span class="pre">-</span> <span class="pre">corrupt_activation)</span> <span class="pre">·</span> <span class="pre">corrupt_gradient</span></code>. At edge granularity,
+<code class="docutils literal notranslate"><span class="pre">EdgeAttributionConfig(granularity=&quot;edge&quot;)</span></code> scores each writer-to-reader path
+using the writer’s activation difference and the gradient at that reader’s input;
+<code class="docutils literal notranslate"><span class="pre">edge_scores</span></code> and <code class="docutils literal notranslate"><span class="pre">top_edges()</span></code> expose those paths, while <code class="docutils literal notranslate"><span class="pre">node_scores</span></code> aggregates
+the outgoing edge scores for each writer. A positive score predicts an increase
+in the chosen metric when moving the corrupt activation toward the clean one.
+Reversing the metric reverses this interpretation. Large activation changes and
+nonlinear downstream behavior can make the estimate inaccurate; compare promising
+candidates with actual activation replacements using the <a class="reference internal" href="hook_system.html"><span class="std std-doc">hook system</span></a>.</p>
+<p>Both node and edge granularity use plain attribution with <code class="docutils literal notranslate"><span class="pre">ig_steps=1</span></code>.
+<code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code> still raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>; EAP-IG is not available yet.</p>
 <p>API: <a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.attribution_patching.html#transformer_lens.tools.analysis.attribution_patching.attribution_patch" title="transformer_lens.tools.analysis.attribution_patching.attribution_patch"><code class="xref py py-func docutils literal notranslate"><span class="pre">attribution_patch()</span></code></a>.</p>
 </section>
 <section id="direct-path-patching-state-the-path-and-its-approximation">

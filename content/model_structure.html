@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -708,151 +713,178 @@
 </section>
 <section id="canonical-hook-names">
 <h2>Canonical Hook Names<a class="headerlink" href="#canonical-hook-names" title="Link to this heading">¶</a></h2>
-<p>Use these canonical (non-aliased) names when adding hooks or reading from the cache.</p>
+<p>Use these canonical names when adding hooks or reading from the cache. Every name below exists on every <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> from boot, and the legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> names in the <a class="reference internal" href="#legacy-alias-table"><span class="std std-ref">alias table</span></a> resolve to the same <code class="docutils literal notranslate"><span class="pre">HookPoint</span></code> objects whether or not compatibility mode is enabled.</p>
+<p>Hook names fall into three groups, and it matters which group a name belongs to:</p>
+<ol class="arabic simple">
+<li><p><strong>Canonical hooks</strong>: the <code class="docutils literal notranslate"><span class="pre">hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_out</span></code> pair on every component, plus the named intermediates listed here.</p></li>
+<li><p><strong>Aliases</strong>: a legacy name bound to the <em>same</em> <code class="docutils literal notranslate"><span class="pre">HookPoint</span></code> as a canonical name. Same tensor, same shape, one firing.</p></li>
+<li><p><strong>Flag-gated legacy hooks</strong>: <code class="docutils literal notranslate"><span class="pre">HookPoint</span></code>s that carry a legacy name but are <em>not</em> aliases of any canonical hook. They capture a different tensor and fire only when the matching config flag is set: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_in</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_q_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_k_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_v_input</span></code>, and <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_result</span></code>.</p></li>
+</ol>
 <section id="embedding">
 <h3>Embedding<a class="headerlink" href="#embedding" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">embed.hook_in</span></code>: token ids (batch, pos)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">embed.hook_out</span></code>: embeddings (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">hook_embed</span></code></em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">pos_embed.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">pos_embed.hook_out</span></code>: same shapes as above</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">hook_pos_embed</span></code></em></p></li>
-</ul>
-</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">embed.hook_out</span></code>: token embeddings (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">hook_embed</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pos_embed.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">pos_embed.hook_out</span></code>: learned positional embeddings, (batch, pos) / (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">hook_pos_embed</span></code>. Rotary models have no <code class="docutils literal notranslate"><span class="pre">pos_embed</span></code> component; see <code class="docutils literal notranslate"><span class="pre">hook_rot_q</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_rot_k</span></code> under attention.</p></li>
 </ul>
 </section>
 <section id="residual-stream">
 <h3>Residual stream<a class="headerlink" href="#residual-stream" title="Link to this heading">¶</a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_in</span></code>: residual stream into block (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_pre</span></code></em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_out</span></code>: residual stream out of block (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_post</span></code></em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_out</span></code>: residual stream after attention (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_mid</span></code></em></p></li>
-</ul>
-</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_in</span></code>: residual stream into the block (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_pre</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2.hook_in</span></code>: residual stream after the attention output is added back (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_mid</span></code>. This is the sum, not the attention branch output (<code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_out</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_out</span></code>: residual stream out of the block (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_post</span></code>.</p></li>
 </ul>
 </section>
 <section id="attention">
 <h3>Attention<a class="headerlink" href="#attention" title="Link to this heading">¶</a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_in</span></code>: (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_in</span></code></em></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_in</span></code>: the sublayer’s argument, i.e. <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_out</span></code> (batch, pos, d_model). Not an alias of <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_in</span></code>, which is flag-gated and per-head (below).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.k.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.v.hook_in</span></code>: input to each projection (batch, pos, d_model)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_out</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.k.hook_out</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.v.hook_out</span></code>: projected heads (batch, pos, n_heads, d_head); K and V use n_key_value_heads under grouped-query attention. Aliases: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_q</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_k</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_v</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_rot_q</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_rot_k</span></code>: rotary models only; Q and K after the rotation, same shapes as <code class="docutils literal notranslate"><span class="pre">hook_q</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_k</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_attn_scores</span></code>: pre-softmax scores (batch, n_heads, pos, pos)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_pattern</span></code>: post-softmax pattern (batch, n_heads, pos, pos). There is no hook named hook_attention_weights.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.o.hook_in</span></code>: per-head values weighted by the pattern (batch, pos, n_heads, d_head). Alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_z</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.o.hook_out</span></code>: output projection (batch, pos, d_model)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_out</span></code>: attention branch output (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_out</span></code>. On architectures with a post-attention norm (Gemma 2 / 3), <code class="docutils literal notranslate"><span class="pre">hook_attn_out</span></code> aliases <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1_post.hook_out</span></code> instead, matching where <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> placed it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_hidden_states</span></code>: fused-QKV bridges only (GPT-2 family); fires on the tensor that <code class="docutils literal notranslate"><span class="pre">attn.hook_out</span></code> receives, immediately before it. Rotary attention bridges do not fire it. It is not an alias of <code class="docutils literal notranslate"><span class="pre">hook_result</span></code>.</p></li>
 </ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_out</span></code>: (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_out</span></code></em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_hidden_states</span></code>: primary output for caching (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_result</span></code></em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_attn_scores</span></code>: raw attention scores before softmax (batch, n_heads, pos, pos)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_pattern</span></code>: attention pattern after softmax and NaN handling (n_heads, pos, pos)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_attention_weights</span></code></em></p></li>
-</ul>
-</li>
-<li><p>When present, sub-projections: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q/k/v/o.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">.hook_out</span></code> (commonly (batch, pos, d_model))</p>
-<ul>
-<li><p><em>Legacy aliases: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_q_input</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_k_input</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_v_input</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_q</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_k</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_v</span></code></em></p></li>
-</ul>
-</li>
-</ul>
-<section id="individual-q-k-v-hooks">
-<h4>Individual Q/K/V Hooks<a class="headerlink" href="#individual-q-k-v-hooks" title="Link to this heading">¶</a></h4>
-<p>All attention bridges provide access to individual Q, K, V activations through <code class="docutils literal notranslate"><span class="pre">HookPointWrapper</span></code> properties:</p>
+<p>Flag-gated attention hooks. Each exists on every bridge but fires only when its flag is set; all are (batch, pos, n_heads, d_model), with n_key_value_heads for the K/V inputs:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_out</span></code>: Q projection hooks (batch, pos, n_heads, d_head)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.k.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.k.hook_out</span></code>: K projection hooks (batch, pos, n_heads, d_head)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.v.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.v.hook_out</span></code>: V projection hooks (batch, pos, n_heads, d_head)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_attn_in</span></code> (alias <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_in</span></code>): the pre-<code class="docutils literal notranslate"><span class="pre">ln1</span></code> residual replicated per head, with the norm applied per head afterwards. Gated by <code class="docutils literal notranslate"><span class="pre">cfg.use_attn_in</span></code> (<code class="docutils literal notranslate"><span class="pre">bridge.set_use_attn_in(True)</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_q_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_k_input</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_v_input</span></code> (aliases <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_q_input</span></code> etc.): the same per-head pre-<code class="docutils literal notranslate"><span class="pre">ln1</span></code> fork, one copy per projection. Gated by <code class="docutils literal notranslate"><span class="pre">cfg.use_split_qkv_input</span></code> (<code class="docutils literal notranslate"><span class="pre">bridge.set_use_split_qkv_input(True)</span></code>). Not aliases of <code class="docutils literal notranslate"><span class="pre">q.hook_in</span></code> etc.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_result</span></code>: per-head attention output before the sum over heads. Gated by <code class="docutils literal notranslate"><span class="pre">cfg.use_attn_result</span></code> (<code class="docutils literal notranslate"><span class="pre">bridge.set_use_attn_result(True)</span></code>).</p></li>
 </ul>
-</section>
-<section id="joint-qkv-attention-gpt-2-style">
-<h4>Joint QKV Attention (GPT-2 style)<a class="headerlink" href="#joint-qkv-attention-gpt-2-style" title="Link to this heading">¶</a></h4>
-<p>For models using fused QKV projections (like GPT-2), the <code class="docutils literal notranslate"><span class="pre">JointQKVAttentionBridge</span></code> provides additional hooks:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.hook_in</span></code>: input to QKV projection (batch, pos, d_model)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.hook_out</span></code>: output from QKV projection (batch, pos, 3*d_model)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.q_hook_in</span></code>: input to Q projection (batch, pos, d_model)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.q_hook_out</span></code>: output from Q projection (batch, pos, n_heads, d_head)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.k_hook_in</span></code>: input to K projection (batch, pos, d_model)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.k_hook_out</span></code>: output from K projection (batch, pos, n_heads, d_head)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.v_hook_in</span></code>: input to V projection (batch, pos, d_model)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.v_hook_out</span></code>: output from V projection (batch, pos, n_heads, d_head)</p></li>
-</ul>
-</section>
 </section>
 <section id="mlp">
 <h3>MLP<a class="headerlink" href="#mlp" title="Link to this heading">¶</a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_in</span></code>: (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code></em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_pre</span></code>: (batch, pos, d_mlp)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code> (via <code class="docutils literal notranslate"><span class="pre">mlp.in.hook_out</span></code>)</em></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_out</span></code>: (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_out</span></code></em></p></li>
-</ul>
-</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_in</span></code>: the sublayer’s argument, i.e. <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2.hook_out</span></code> (batch, pos, d_model). This is not the legacy <code class="docutils literal notranslate"><span class="pre">hook_mlp_in</span></code>; see below.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_pre</span></code>: pre-activation (batch, pos, d_mlp). Alias of <code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.in.hook_out</span></code>. On gated MLPs (SwiGLU / GeGLU) it aliases <code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.gate.hook_out</span></code>, and <code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_pre_linear</span></code> aliases <code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.in.hook_out</span></code>, the ungated branch.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_post</span></code>: post-activation, the input to the output projection (batch, pos, d_mlp). Alias of <code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.out.hook_in</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_out</span></code>: MLP branch output (batch, pos, d_model). Alias: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_out</span></code>. On architectures with a post-MLP norm, <code class="docutils literal notranslate"><span class="pre">hook_mlp_out</span></code> aliases <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2_post.hook_out</span></code> instead.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code> (flag-gated, on the block): the MLP-branch entry point, which is <code class="docutils literal notranslate"><span class="pre">ln2</span></code>’s input on pre-norm blocks (the same tensor as <code class="docutils literal notranslate"><span class="pre">hook_resid_mid</span></code>) and the MLP’s own input on post-norm blocks. Gated by <code class="docutils literal notranslate"><span class="pre">cfg.use_hook_mlp_in</span></code> (<code class="docutils literal notranslate"><span class="pre">bridge.set_use_hook_mlp_in(True)</span></code>), matching legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>. It sits one norm earlier than <code class="docutils literal notranslate"><span class="pre">mlp.hook_in</span></code> and is not an alias of it or of <code class="docutils literal notranslate"><span class="pre">mlp.hook_pre</span></code>.</p></li>
 </ul>
 </section>
 <section id="normalization">
 <h3>Normalization<a class="headerlink" href="#normalization" title="Link to this heading">¶</a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">.hook_out</span></code>: (batch, pos, d_model)</p>
-<ul>
-<li><p><em>Legacy aliases for <code class="docutils literal notranslate"><span class="pre">.hook_out</span></code>: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_normalized</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_scale</span></code></em></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_in</span></code>: the norm’s input (batch, pos, d_model)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_scale</span></code>: the per-token denominator, (batch, pos, 1): <code class="docutils literal notranslate"><span class="pre">sqrt(var</span> <span class="pre">+</span> <span class="pre">eps)</span></code> of the centered input for LayerNorm, of the raw input for RMSNorm</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_normalized</span></code>: <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">/</span> <span class="pre">scale</span></code> <strong>before</strong> the learned gain and bias (batch, pos, d_model)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1.hook_out</span></code>: the module’s output, gain and bias applied (batch, pos, d_model)</p></li>
 </ul>
-</li>
-<li><p>Similarly for <code class="docutils literal notranslate"><span class="pre">ln2</span></code></p>
-<ul>
-<li><p><em>Legacy aliases for <code class="docutils literal notranslate"><span class="pre">.hook_out</span></code>: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2.hook_normalized</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2.hook_scale</span></code></em></p></li>
-</ul>
-</li>
-</ul>
+<p>These are four distinct tensors; none is an alias of another. <code class="docutils literal notranslate"><span class="pre">hook_scale</span></code> and <code class="docutils literal notranslate"><span class="pre">hook_normalized</span></code> keep their legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> meaning (<code class="docutils literal notranslate"><span class="pre">ActivationCache.apply_ln_to_stack</span></code> divides by the cached <code class="docutils literal notranslate"><span class="pre">hook_scale</span></code>). Legacy <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code> had no post-gain hook, so <code class="docutils literal notranslate"><span class="pre">hook_out</span></code> has no legacy equivalent. The same four hooks exist on <code class="docutils literal notranslate"><span class="pre">ln2</span></code>, <code class="docutils literal notranslate"><span class="pre">ln_final</span></code>, and on post-sublayer norms (<code class="docutils literal notranslate"><span class="pre">ln1_post</span></code> / <code class="docutils literal notranslate"><span class="pre">ln2_post</span></code>) where an architecture has them.</p>
 </section>
 <section id="unembedding-logits">
 <h3>Unembedding / Logits<a class="headerlink" href="#unembedding-logits" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">unembed.hook_in</span></code>: (batch, pos, d_model)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">unembed.hook_out</span></code>: (batch, pos, d_vocab)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">unembed.hook_out</span></code>: logits (batch, pos, d_vocab). Alias: <code class="docutils literal notranslate"><span class="pre">hook_unembed</span></code>.</p></li>
 </ul>
+</section>
+<section id="legacy-alias-table">
+<h3>Legacy alias table<a class="headerlink" href="#legacy-alias-table" title="Link to this heading">¶</a></h3>
+<p>Each row is checked against a tiny GPT-2 bridge and a tiny Gemma 3 bridge by <code class="docutils literal notranslate"><span class="pre">tests/unit/model_bridge/test_model_structure_doc.py</span></code>. To resolve an alias on a live bridge, read <code class="docutils literal notranslate"><span class="pre">bridge.hook_dict[name].name</span></code>.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Legacy name</p></th>
+<th class="head"><p>Resolves to</p></th>
+<th class="head"><p>Note</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hook_embed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">embed.hook_out</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hook_pos_embed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pos_embed.hook_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rotary_emb.hook_out</span></code> on rotary models, where it never fires</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hook_unembed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">unembed.hook_out</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_pre</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_in</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_mid</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2.hook_in</span></code></p></td>
+<td><p>the residual sum, not <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_out</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_post</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_out</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln1_post.hook_out</span></code> when a post-attention norm exists</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.ln2_post.hook_out</span></code> when a post-MLP norm exists</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_q</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_out</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_k</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.k.hook_out</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_v</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.v.hook_out</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_z</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.o.hook_in</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_pre</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.in.hook_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.gate.hook_out</span></code> on gated MLPs</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.hook_post</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.mlp.out.hook_in</span></code></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_attn_in</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_attn_in</span></code></p></td>
+<td><p>flag-gated, per-head; not <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_in</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_q_input</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_q_input</span></code></p></td>
+<td><p>flag-gated, per-head; not <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_in</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_k_input</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_k_input</span></code></p></td>
+<td><p>flag-gated, per-head; not <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.k.hook_in</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_v_input</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_v_input</span></code></p></td>
+<td><p>flag-gated, per-head; not <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.v.hook_in</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Not aliases of anything: <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_mlp_in</span></code> and <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_result</span></code> are their own flag-gated <code class="docutils literal notranslate"><span class="pre">HookPoint</span></code>s; <code class="docutils literal notranslate"><span class="pre">hook_normalized</span></code> and <code class="docutils literal notranslate"><span class="pre">hook_scale</span></code> on every norm are distinct tensors from that norm’s <code class="docutils literal notranslate"><span class="pre">hook_out</span></code>; <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_hidden_states</span></code> is its own hook.</p>
 </section>
 </section>
 <section id="shapes-at-a-glance">
 <h2>Shapes at a Glance<a class="headerlink" href="#shapes-at-a-glance" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p>Residual stream and hidden states: (batch, pos, d_model)</p></li>
-<li><p>Attention scores: (batch, n_heads, pos, pos)</p></li>
-<li><p>Attention patterns: (n_heads, pos, pos) - after batch dimension removal</p></li>
-<li><p>QKV projections: (batch, pos, n_heads, d_head)</p></li>
-<li><p>MLP pre-activation: (batch, pos, d_mlp)</p></li>
+<li><p>Attention scores and patterns: (batch, n_heads, pos, pos)</p></li>
+<li><p>Q/K/V projections and <code class="docutils literal notranslate"><span class="pre">hook_z</span></code>: (batch, pos, n_heads, d_head)</p></li>
+<li><p>Flag-gated per-head inputs and <code class="docutils literal notranslate"><span class="pre">hook_result</span></code>: (batch, pos, n_heads, d_model)</p></li>
+<li><p>MLP pre- and post-activation: (batch, pos, d_mlp)</p></li>
 <li><p>Embeddings: (batch, pos, d_model)</p></li>
 <li><p>Unembedding logits: (batch, pos, d_vocab)</p></li>
-<li><p>LayerNorm normalized / scale: (batch, pos, d_model)</p></li>
+<li><p>Norm <code class="docutils literal notranslate"><span class="pre">hook_normalized</span></code>: (batch, pos, d_model); norm <code class="docutils literal notranslate"><span class="pre">hook_scale</span></code>: (batch, pos, 1)</p></li>
 </ul>
 <p>These shapes are exercised in the multi-model shape test: <code class="docutils literal notranslate"><span class="pre">tests/integration/test_hook_shape_compatibility.py</span></code>.</p>
 </section>
@@ -868,17 +900,11 @@
 </section>
 <section id="fused-qkv-attention">
 <h2>Fused QKV Attention<a class="headerlink" href="#fused-qkv-attention" title="Link to this heading">¶</a></h2>
-<p>Some architectures use a fused QKV projection (like GPT-2). The bridge’s <code class="docutils literal notranslate"><span class="pre">JointQKVAttentionBridge</span></code> provides access to individual Q, K, V activations through the <code class="docutils literal notranslate"><span class="pre">QKVBridge</span></code> submodule. This allows for:</p>
-<ol class="arabic simple">
-<li><p><strong>Individual Q/K/V hooking</strong>: You can hook into <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.q_hook_out</span></code>, <code class="docutils literal notranslate"><span class="pre">k_hook_out</span></code>, or <code class="docutils literal notranslate"><span class="pre">v_hook_out</span></code> to modify individual attention heads</p></li>
-<li><p><strong>Attention pattern creation</strong>: The bridge automatically creates attention patterns from the attention scores and applies them through <code class="docutils literal notranslate"><span class="pre">hook_pattern</span></code></p></li>
-<li><p><strong>Compatibility with legacy code</strong>: Legacy hook names like <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_v</span></code> are aliased to the appropriate QKV hooks</p></li>
-</ol>
-<p>The canonical attention hooks (<code class="docutils literal notranslate"><span class="pre">attn.hook_in/out</span></code>, <code class="docutils literal notranslate"><span class="pre">attn.hook_pattern</span></code>, etc.) retain the shapes listed above, while the QKV-specific hooks provide access to the individual attention components.</p>
+<p>Some architectures use a fused QKV projection (GPT-2, GPT-Neo, Bloom, MPT). The bridge’s <code class="docutils literal notranslate"><span class="pre">JointQKVAttentionBridge</span></code> splits the joint weight at setup into the same <code class="docutils literal notranslate"><span class="pre">q</span></code> / <code class="docutils literal notranslate"><span class="pre">k</span></code> / <code class="docutils literal notranslate"><span class="pre">v</span></code> sub-bridges that split-projection models expose, so <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.q.hook_out</span></code>, the <code class="docutils literal notranslate"><span class="pre">hook_q</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_k</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_v</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_z</span></code> aliases, <code class="docutils literal notranslate"><span class="pre">hook_attn_scores</span></code> and <code class="docutils literal notranslate"><span class="pre">hook_pattern</span></code> all work identically. Fused-QKV bridges additionally fire <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.hook_hidden_states</span></code> on the attention output. The joint projection’s own <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.hook_in</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.{i}.attn.qkv.hook_out</span></code> exist but sit off the live path and never fire.</p>
 </section>
 <section id="aliases-and-backwards-compatibility">
 <h2>Aliases and Backwards Compatibility<a class="headerlink" href="#aliases-and-backwards-compatibility" title="Link to this heading">¶</a></h2>
-<p>A minimal alias layer exists to ease migration from older TransformerLens names (e.g., <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_resid_pre</span></code> → <code class="docutils literal notranslate"><span class="pre">blocks.{i}.hook_in</span></code>). New code should prefer the canonical names documented here.</p>
+<p>Legacy names are registered at boot on every bridge and resolve to the same <code class="docutils literal notranslate"><span class="pre">HookPoint</span></code> as their canonical target, so <code class="docutils literal notranslate"><span class="pre">cache[&quot;blocks.0.hook_resid_pre&quot;]</span></code> and <code class="docutils literal notranslate"><span class="pre">cache[&quot;blocks.0.hook_in&quot;]</span></code> are one tensor. <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode()</span></code> changes the <em>numerics</em> (folded and centered weights, matching <code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>), not the set of names; the flag-gated hooks need their flag in either mode. New code should prefer the canonical names documented here. See <a class="reference internal" href="compatibility_mode.html"><span class="std std-doc">compatibility mode</span></a> for the weight-processing contract.</p>
 </section>
 <section id="example-caching-and-inspecting-hooks">
 <h2>Example: Caching and Inspecting Hooks<a class="headerlink" href="#example-caching-and-inspecting-hooks" title="Link to this heading">¶</a></h2>
@@ -957,14 +983,11 @@
 <li><a class="reference internal" href="#canonical-hook-names">Canonical Hook Names</a><ul>
 <li><a class="reference internal" href="#embedding">Embedding</a></li>
 <li><a class="reference internal" href="#residual-stream">Residual stream</a></li>
-<li><a class="reference internal" href="#attention">Attention</a><ul>
-<li><a class="reference internal" href="#individual-q-k-v-hooks">Individual Q/K/V Hooks</a></li>
-<li><a class="reference internal" href="#joint-qkv-attention-gpt-2-style">Joint QKV Attention (GPT-2 style)</a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#attention">Attention</a></li>
 <li><a class="reference internal" href="#mlp">MLP</a></li>
 <li><a class="reference internal" href="#normalization">Normalization</a></li>
 <li><a class="reference internal" href="#unembedding-logits">Unembedding / Logits</a></li>
+<li><a class="reference internal" href="#legacy-alias-table">Legacy alias table</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#shapes-at-a-glance">Shapes at a Glance</a></li>

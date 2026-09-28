@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -723,22 +728,25 @@
 <tr class="row-even"><td><p>Llama, Mistral, Qwen2, Gemma, OLMo</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">llama.py</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p>Qwen2/Qwen3 (gated config, MLPBridge)</p></td>
+<tr class="row-odd"><td><p>Qwen2/Qwen3 (Llama pattern + Q/K/V biases)</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">qwen2.py</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p>GPT-2, GPT-J, GPT-Neo</p></td>
+<tr class="row-even"><td><p>GPT-2</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">gpt2.py</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p>BLOOM, Falcon</p></td>
+<tr class="row-odd"><td><p>GPT-J, GPT-Neo, GPT-NeoX</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">gptj.py</span></code>, <code class="docutils literal notranslate"><span class="pre">neo.py</span></code>, <code class="docutils literal notranslate"><span class="pre">neox.py</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>BLOOM, Falcon</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">bloom.py</span></code> or <code class="docutils literal notranslate"><span class="pre">falcon.py</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p>T5 / encoder-decoder</p></td>
+<tr class="row-odd"><td><p>T5 / encoder-decoder</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">t5.py</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p>MoE</p></td>
+<tr class="row-even"><td><p>MoE</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">mixtral.py</span></code> or <code class="docutils literal notranslate"><span class="pre">granite_moe.py</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p>Multimodal (vision+text)</p></td>
+<tr class="row-odd"><td><p>Multimodal (vision+text)</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">llava.py</span></code> or <code class="docutils literal notranslate"><span class="pre">gemma3_multimodal.py</span></code></p></td>
 </tr>
 </tbody>
@@ -956,8 +964,7 @@
 <span class="w">  </span>--model<span class="w"> </span>&lt;model-id&gt;<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--max-memory<span class="w"> </span>&lt;GB&gt;<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--device<span class="w"> </span>cpu<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--dtype<span class="w"> </span>float32<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--no-ht-reference
+<span class="w">  </span>--dtype<span class="w"> </span>float32
 </pre></div>
 </div>
 <p>If a model OOMs with float32, retry that single model with <code class="docutils literal notranslate"><span class="pre">--dtype</span> <span class="pre">bfloat16</span></code>. Set <code class="docutils literal notranslate"><span class="pre">--max-memory</span></code> to roughly 75-85% of your device memory, to ensure adequate space for running the benchmarks.</p>
@@ -969,6 +976,7 @@
 <li><p><strong>status=1</strong> — passed, move to the next model</p></li>
 <li><p><strong>status=2</strong> — skipped by <code class="docutils literal notranslate"><span class="pre">verify_models</span></code> (e.g., exceeded the memory pre-check). Note it and move on; not an adapter bug.</p></li>
 <li><p><strong>status=3</strong> — phase score failure. Stop and fix. Read the <code class="docutils literal notranslate"><span class="pre">note</span></code> and the per-phase scores, find the root cause, fix the adapter, re-verify.</p></li>
+<li><p><strong>status=4</strong> — provisional: the run used <code class="docutils literal notranslate"><span class="pre">--no-hf-reference</span></code>, so Phase 1 was structural-only and never compared against HF. Re-run without the flag; an adapter isn’t verified until a real HF-compared run reaches status=1.</p></li>
 </ul>
 </section>
 <section id="lint">

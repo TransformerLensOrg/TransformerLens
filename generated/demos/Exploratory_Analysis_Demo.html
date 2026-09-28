@@ -508,9 +508,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -608,8 +611,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Main_Demo.html#Introduction">Introduction</a></li>
@@ -1037,7 +1042,7 @@ implementation</a> for more on LayerNorm.</p>
 <p>The centering is accounted for with the preprocessing flag <code class="docutils literal notranslate"><span class="pre">center_writing_weights</span></code> which ensures that every weight matrix writing to the residual stream has mean zero.</p>
 <p>The learned scaling is folded into the unembedding weights <code class="docutils literal notranslate"><span class="pre">model.unembed.W_U</span></code> via <code class="docutils literal notranslate"><span class="pre">W_U_fold</span> <span class="pre">=</span> <span class="pre">layer_norm.weights[:,</span> <span class="pre">None]</span> <span class="pre">*</span> <span class="pre">unembed.W_U</span></code></p>
 <p>The learned translation is folded to <code class="docutils literal notranslate"><span class="pre">model.unembed.b_U</span></code>, a bias added to the logits (note that GPT-2 is not trained with an existing <code class="docutils literal notranslate"><span class="pre">b_U</span></code>). This roughly represents unigram statistics. But we can ignore this because each prompt occurs twice with names in the opposite order, so this perfectly cancels out.</p>
-<p>Note that rather than using layernorm scaling we could just study cache[“ln_final.hook_normalised”]</p>
+<p>Note that rather than using layernorm scaling we could just study cache[“ln_final.hook_normalized”]</p>
 </details><div class="nbinput nblast docutils container">
 <div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
 </pre></div>
@@ -1947,7 +1952,7 @@ heads.</p>
 heads.</p>
 <details><summary><p>Technical Implementation Details</p>
 </summary><p>We can do this again by using hooks, this time just to access the attention patterns rather than to intervene on them.</p>
-<p>Our hook function acts on the attention pattern activation. This has the name “blocks.{layer}.{layer_type}.hook_{activation_name}” in general, here it’s “blocks.{layer}.attn.hook_attn”. And it has shape [batch, head_index, query_pos, token_pos]. Our hook function takes in the attention pattern activation, calculates the score for the relevant type of head, and write it to an external cache.</p>
+<p>Our hook function acts on the attention pattern activation. This has the name “blocks.{layer}.{layer_type}.hook_{activation_name}” in general, here it’s “blocks.{layer}.attn.hook_pattern”. And it has shape [batch, head_index, query_pos, token_pos]. Our hook function takes in the attention pattern activation, calculates the score for the relevant type of head, and write it to an external cache.</p>
 <p>We add in hooks using <code class="docutils literal notranslate"><span class="pre">model.run_with_hooks(tokens,</span> <span class="pre">fwd_hooks=[(names_filter,</span> <span class="pre">hook_fn)])</span></code> to temporarily add in the hooks and run the model, getting the resulting output. Previously names_filter was the name of the activation, but here it’s a boolean function mapping activation names to whether we want to hook them or not. Here it’s just whether the name ends with hook_attn. hook_fn must take in the two inputs activation (the activation tensor) and hook (the HookPoint object, which contains
 the name of the activation and some metadata such as the current layer).</p>
 <p>Internally our hooks use the function <code class="docutils literal notranslate"><span class="pre">tensor.diagonal</span></code>, this takes the diagonal between two dimensions, and allows an arbitrary offset - offset by 1 to get previous tokens, seq_len to get duplicate tokens (the distance to earlier copies) and seq_len-1 to get induction heads (the distance to the token <em>after</em> earlier copies). Different offsets give a different length of output tensor, and we can now just average to get a score in [0, 1] for each head</p>
@@ -2039,7 +2044,7 @@ the name of the activation and some metadata such as the current layer).</p>
 </pre></div>
 </div>
 </div>
-<p>The above suggests that it would be a useful bit of infrastructure to have a “wiki” for the heads of a model, giving their scores according to some metrics re head functions, like the ones we’ve seen here. TransformerLens makes this easy to make, as just changing the name input to <code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained</span></code> gives a different model but in the same architecture, so the same code should work. If you want to make this, I’d love to see it!</p>
+<p>The above suggests that it would be a useful bit of infrastructure to have a “wiki” for the heads of a model, giving their scores according to some metrics re head functions, like the ones we’ve seen here. TransformerLens makes this easy to make, as just changing the name input to <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers</span></code> gives a different model but in the same architecture, so the same code should work. If you want to make this, I’d love to see it!</p>
 <p>As a proof of concept, <a class="reference external" href="https://www.neelnanda.io/mosaic">I made a mosaic of all induction heads across the 40 models then in TransformerLens</a>.</p>
 <img alt="induction scores as proof of concept" src="https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2FNeelNanda%2F5vtuFmdzt_.png?alt=media&amp;token=4d613de4-9d14-48d6-ba9d-e591c562d429" />
 </section>

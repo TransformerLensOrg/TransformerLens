@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -699,6 +704,11 @@ It handles both component mapping (for accessing model parts) and weight convers
 Adapters with additional scaling override this method instead of relying
 on similarly named configuration fields used by unrelated architectures.</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.bool_4d_mask_is_keep">
+<span class="sig-name descname"><span class="pre">bool_4d_mask_is_keep</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.bool_4d_mask_is_keep" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.component_mapping">
@@ -1127,6 +1137,7 @@ per the <code class="docutils literal notranslate"><span class="pre">_testing_*<
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.applicable_phases"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.applicable_phases</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.apply_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.apply_output_logits_transform()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.bool_4d_mask_is_keep"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.bool_4d_mask_is_keep</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.component_mapping</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.component_test_skip_suffixes"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.component_test_skip_suffixes</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.components"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.components</span></code></a></li>

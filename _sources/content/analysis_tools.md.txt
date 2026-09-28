@@ -14,7 +14,7 @@ the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` c
 | I want to know… | Start with | Inputs and outputs | What the result establishes |
 |---|---|---|---|
 | Which components contribute to an answer's logit? | **Direct Logit Attribution (DLA)** | A prompt or activation cache, answer token, and optional comparison token → labeled logit contributions. | A decomposition of the residual-stream readout for that run. |
-| Which activations should I investigate with patching? | **Attribution Patching** | Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node scores. | A first-order estimate of the effect of replacing corrupt activations with clean ones. |
+| Which activations or paths should I investigate with patching? | **Attribution Patching** | Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node or edge scores. | A first-order estimate of the effect of replacing corrupt activations with clean ones. |
 | Does a particular head-to-head route affect my metric? | **Direct Path Patching** | Clean/corrupt caches, a source head, and a metric → destination-head patch scores. | The measured effect of the implemented path intervention, subject to its LayerNorm approximation. |
 | What vocabulary directions appear in an MLP's gradient factors? | **Backward Lens** | A prompt, one target token, and selected layers → gradient factors and vocabulary rankings. | A diagnostic of the forward inputs and backward signals composing a weight gradient. |
 | How can I read or edit residuals through a fitted transport map? | **Jacobian Lens** | A matching lens artifact and model, plus prompts or activations → vocabulary readouts, decompositions, or interventions. | Readouts under the fitted map; causal effects require running and measuring an intervention. |
@@ -33,10 +33,10 @@ available hooks, and the meaning of the selected tensor axes.
 
 | Tool | Requirements to check | Main compute or memory cost |
 |---|---|---|
-| DLA | Supports HT and Bridge. Bridge requires compatibility mode and the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
-| Attribution Patching | Targets Bridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. Pair scores are averaged across the batch. |
-| Direct Path Patching | Supports HT and Bridge exposing the expected attention weights, Q/K/V hook aliases, source `hook_z`, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` currently require `n_key_value_heads == n_heads`; per-query-head K/V semantics are not yet defined. | Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension. |
-| Backward Lens | The implementation documented here targets raw GPT-2 Bridge models without compatibility mode. Use one target token and check the restrictions in the [tool guide](backward_lens.md). | Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory. |
+| DLA | Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
+| Attribution Patching | Targets TransformerBridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork, with `n_key_value_heads == n_heads`; GQA/MQA is not yet supported. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller's hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as `O(seq_len × (n_layers × n_heads)²)`, while the cache also gains per-head `[batch, seq, n_heads, d_model]` tensors. Pair scores are averaged across the batch. |
+| Direct Path Patching | Requires a TransformerBridge exposing the expected attention weights, Q/K/V hook aliases, source `hook_z`, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` currently require `n_key_value_heads == n_heads`; per-query-head K/V semantics are not yet defined. | Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension. |
+| Backward Lens | Requires a raw decoder-only TransformerBridge with dense, non-gated MLPs and without compatibility mode, such as GPT-2 or Pythia/GPT-NeoX. Use one target token and check the restrictions in the [tool guide](backward_lens.md). | Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory. |
 | Jacobian Lens | Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Fitting additionally requires all modules in evaluation mode. | Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and `ceil(d_model / dim_batch)` backwards per prompt; larger batches increase memory. |
 | Projection Kernel | The numerical API accepts finite, real floating-point matrices via orthonormal bases. The attention-head wrapper requires Bridge weights with compatible dimensions and ranks. | Basis extraction uses SVD. All-head comparisons allocate basis stacks and a pairwise score grid; they can be large despite requiring no forward pass. |
 | SVD head decomposition | Uses Bridge per-block weight accessors; requires accessible, compatible `W_Q`, `W_K`, `W_V`, and `W_O` for the selected head. No compatibility mode or activation cache is needed. | Factored QK/OV SVD, with rank bounded by `d_head`; the dense `d_model × d_model` product is not materialized. |
@@ -70,16 +70,19 @@ API: {func}`~transformer_lens.tools.analysis.direct_logit_attribution.direct_log
 
 ### Attribution Patching: screen candidates, then measure interventions
 
-The score uses `(clean_activation - corrupt_activation) · corrupt_gradient`.
-A positive value predicts an increase in the chosen metric when moving the corrupt
-activation toward the clean one. Reversing the metric reverses this interpretation.
-Large activation changes and nonlinear downstream behavior can make the estimate
-inaccurate; compare promising candidates with actual activation replacements using
-the [hook system](hook_system.md).
+At node granularity, the score uses
+`(clean_activation - corrupt_activation) · corrupt_gradient`. At edge granularity,
+`EdgeAttributionConfig(granularity="edge")` scores each writer-to-reader path
+using the writer's activation difference and the gradient at that reader's input;
+`edge_scores` and `top_edges()` expose those paths, while `node_scores` aggregates
+the outgoing edge scores for each writer. A positive score predicts an increase
+in the chosen metric when moving the corrupt activation toward the clean one.
+Reversing the metric reverses this interpretation. Large activation changes and
+nonlinear downstream behavior can make the estimate inaccurate; compare promising
+candidates with actual activation replacements using the [hook system](hook_system.md).
 
-The current implementation supports node granularity with `ig_steps=1`.
-`granularity="edge"` and `ig_steps>1` are declared options but raise
-`NotImplementedError`; do not treat them as available EAP or EAP-IG workflows.
+Both node and edge granularity use plain attribution with `ig_steps=1`.
+`ig_steps>1` still raises `NotImplementedError`; EAP-IG is not available yet.
 
 API: {func}`~transformer_lens.tools.analysis.attribution_patching.attribution_patch`.
 

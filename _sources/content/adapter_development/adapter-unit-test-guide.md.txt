@@ -52,7 +52,7 @@ def test_factory_returns_my_adapter(self):
     assert isinstance(factory.select(cfg), MyAdapter)   # already covered globally
 ```
 
-`tests/unit/tools/test_model_registry.py::TestRegistrySyncedWithFactory` bidirectionally checks that every adapter is registered and synced across all four sites. Per-adapter `test_factory_*` / `test_in_supported_architectures` / `test_import_from_init` just re-run that global invariant.
+`tests/unit/tools/test_model_registry.py::TestRegistrySyncedWithFactory` bidirectionally checks the two registry dicts (`HF_SUPPORTED_ARCHITECTURES`, `CANONICAL_AUTHORS_BY_ARCH`) against the factory's `SUPPORTED_ARCHITECTURES`. The fourth registration site, `generate_report.py`'s `ARCHITECTURE_DESCRIPTIONS`, has no global sync check — verify it by eye against the registration checklist. Per-adapter `test_factory_*` / `test_in_supported_architectures` / `test_import_from_init` just re-run that global invariant.
 
 ### 3. Dependency tests
 

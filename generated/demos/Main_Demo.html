@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Exploratory Analysis Demo" href="Exploratory_Analysis_Demo.html" /><link rel="prev" title="Debugging Numerical Divergence" href="../../content/debugging_numerical_divergence.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Exploratory Analysis Demo" href="Exploratory_Analysis_Demo.html" /><link rel="prev" title="Sparse Probing" href="../../content/sparse_probing.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>Transformer Lens Main Demo Notebook - TransformerLens Documentation</title>
@@ -508,9 +508,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -608,8 +611,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="#Introduction">Introduction</a></li>
@@ -1427,7 +1432,7 @@ is the LayerNorm before the unembed.</p>
 <h3>Folding LayerNorm (For the Curious)<a class="headerlink" href="#Folding-LayerNorm-(For-the-Curious)" title="Link to this heading">¶</a></h3>
 <p>(For the curious - this is an important technical detail that’s worth understanding, especially if you have preconceptions about how transformers work, but not necessary to use TransformerLens)</p>
 <p>LayerNorm is a normalization technique used by transformers, analogous to BatchNorm but more friendly to massive parallelisation. No one <em>really</em> knows why it works, but it seems to improve model numerical stability. Unlike BatchNorm, LayerNorm actually changes the functional form of the model, which makes it a massive pain for interpretability!</p>
-<p>Folding LayerNorm is a technique to make it lower overhead to deal with, and the flags <code class="docutils literal notranslate"><span class="pre">center_writing_weights</span></code> and <code class="docutils literal notranslate"><span class="pre">fold_ln</span></code> in <code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained</span></code> apply this automatically (they default to True). These simplify the internal structure without changing the weights.</p>
+<p>Folding LayerNorm is a technique to make it lower overhead to deal with, and the flags <code class="docutils literal notranslate"><span class="pre">fold_ln</span></code> and <code class="docutils literal notranslate"><span class="pre">center_writing_weights</span></code> in <code class="docutils literal notranslate"><span class="pre">model.enable_compatibility_mode()</span></code> apply this automatically (they default to True). These simplify the internal structure without changing the weights.</p>
 <p>Intuitively, LayerNorm acts on each residual stream vector (ie for each batch element and token position) independently, sets their mean to 0 (centering) and standard deviation to 1 (normalizing) (<em>across</em> the residual stream dimension - very weird!), and then applies a learned elementwise scaling and translation to each vector.</p>
 <p>Mathematically, centering is a linear map, normalizing is <em>not</em> a linear map, and scaling and translation are linear maps.</p>
 <ul class="simple">
@@ -1975,7 +1980,7 @@ to have negative real eigenvalues. And “what happens to the eigenvectors” is
 </section>
 <section id="Loading-Pre-Trained-Checkpoints">
 <h2>Loading Pre-Trained Checkpoints<a class="headerlink" href="#Loading-Pre-Trained-Checkpoints" title="Link to this heading">¶</a></h2>
-<p><strong>Note:</strong> <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers</span></code> mainly works with HuggingFace revisions, and is only compatible with checkpoints for a few model families. For other models with saved checkpoints, keep using <code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained</span></code>.</p>
+<p><strong>Note:</strong> <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers</span></code> mainly works with HuggingFace revisions, and is only compatible with checkpoints for a few model families. Legacy TransformerLens-format repos (<code class="docutils literal notranslate"><span class="pre">NeelNanda/*</span></code>, <code class="docutils literal notranslate"><span class="pre">ArthurConmy/*</span></code>, <code class="docutils literal notranslate"><span class="pre">Baidicoot/*</span></code>) have no HF <code class="docutils literal notranslate"><span class="pre">model_type</span></code>, so <code class="docutils literal notranslate"><span class="pre">boot_transformers</span></code> cannot load them; use <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_tl_legacy(model_name,</span> <span class="pre">checkpoint_index=...)</span></code> (or <code class="docutils literal notranslate"><span class="pre">checkpoint_value=...</span></code>) for those, as the code below does.</p>
 <p>There are a lot of interesting questions combining mechanistic interpretability and training dynamics - analysing model capabilities and the underlying circuits that make them possible, and how these change as we train the model.</p>
 <p>TransformerLens supports these by having several model families with checkpoints throughout training. <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers</span></code> can load a checkpoint of a model with the <code class="docutils literal notranslate"><span class="pre">checkpoint_index</span></code> (the label 0 to <code class="docutils literal notranslate"><span class="pre">num_checkpoints-1</span></code>) or <code class="docutils literal notranslate"><span class="pre">checkpoint_value</span></code> (the step or token number, depending on how the checkpoints were labelled).</p>
 <p>Available models:</p>
@@ -2121,14 +2126,14 @@ default just runs it on 4 sequences of 384 tokens repeated twice. These results 
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../../content/debugging_numerical_divergence.html">
+          <a class="prev-page" href="../../content/sparse_probing.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Debugging Numerical Divergence</div>
+                <div class="title">Sparse Probing</div>
                 
               </div>
             </a>

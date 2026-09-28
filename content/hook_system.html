@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -685,7 +690,7 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">logits</span><span class="p">,</span> <span class="n">cache</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">run_with_cache</span><span class="p">(</span><span class="s2">&quot;Hello, world&quot;</span><span class="p">)</span>
 <span class="n">cache</span><span class="p">[</span><span class="s2">&quot;blocks.0.attn.hook_q&quot;</span><span class="p">]</span>           <span class="c1"># Q tensor at layer 0</span>
 <span class="n">cache</span><span class="p">[</span><span class="s2">&quot;blocks.5.hook_resid_post&quot;</span><span class="p">]</span>       <span class="c1"># residual stream after block 5</span>
-<span class="n">cache</span><span class="p">[</span><span class="s2">&quot;ln_final.hook_normalized&quot;</span><span class="p">]</span>       <span class="c1"># post-final-norm activations</span>
+<span class="n">cache</span><span class="p">[</span><span class="s2">&quot;ln_final.hook_normalized&quot;</span><span class="p">]</span>       <span class="c1"># final norm output before its learned gain</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">cache</span></code> is an <code class="docutils literal notranslate"><span class="pre">ActivationCache</span></code> — a dict-like with conveniences (<code class="docutils literal notranslate"><span class="pre">cache.decompose_resid()</span></code>, <code class="docutils literal notranslate"><span class="pre">cache.apply_ln_to_stack(...)</span></code>, etc.). See <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/ActivationCache.py</span></code></a>.</p>
@@ -776,19 +781,15 @@ applies to gradients as well:</p>
 <td><p>Uniform across architectures</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">blocks.5.attn.hook_q</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.5.hook_resid_post</span></code>, <code class="docutils literal notranslate"><span class="pre">hook_embed</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> (default)</p></td>
-<td><p>Architecture-native</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">blocks.5.attn.q.hook_out</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.5.hook_out</span></code>, <code class="docutils literal notranslate"><span class="pre">embed.hook_out</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> + compatibility mode</p></td>
-<td><p>Bridge-native AND HT-style aliases</p></td>
-<td><p>Above + <code class="docutils literal notranslate"><span class="pre">blocks.5.attn.hook_q</span></code> etc.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code></p></td>
+<td><p>Architecture-native canonical names, plus the HT-style names as aliases of the same hook points</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">blocks.5.attn.q.hook_out</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.5.attn.hook_q</span></code>, <code class="docutils literal notranslate"><span class="pre">blocks.5.hook_out</span></code> / <code class="docutils literal notranslate"><span class="pre">blocks.5.hook_resid_post</span></code>, <code class="docutils literal notranslate"><span class="pre">embed.hook_out</span></code> / <code class="docutils literal notranslate"><span class="pre">hook_embed</span></code></p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <p>Full catalogue: <a class="reference internal" href="../generated/demos/Main_Demo.html"><span class="doc std std-doc">Main Demo</span></a>, <a class="reference internal" href="../generated/demos/Exploratory_Analysis_Demo.html"><span class="doc std std-doc">Exploratory Analysis Demo</span></a>. Architecture diagram: <a class="reference download internal" download="" href="../_downloads/ee2d5f417d3b64d0f61ec8a9ede5f15b/TransformerLens_Diagram.svg"><span class="xref download myst">TransformerLens_Diagram.svg</span></a>.</p>
-<p>Porting HT code to Bridge: <code class="docutils literal notranslate"><span class="pre">bridge.enable_compatibility_mode()</span></code> (see <a class="reference internal" href="compatibility_mode.html"><span class="std std-doc">Compatibility Mode</span></a>) registers HT aliases so existing names resolve.</p>
+<p>Porting HT code to Bridge: the HT-style names already resolve on every bridge (see <a class="reference internal" href="model_structure.html"><span class="std std-doc">Model Structure</span></a> for the alias table and the hooks that are <em>not</em> aliases). Enable <code class="docutils literal notranslate"><span class="pre">bridge.enable_compatibility_mode()</span></code> (see <a class="reference internal" href="compatibility_mode.html"><span class="std std-doc">Compatibility Mode</span></a>) when the analysis needs HookedTransformer’s processed-weight numerics, not for the names.</p>
 </section>
 <hr class="docutils" />
 <section id="common-patterns">
@@ -854,7 +855,7 @@ applies to gradients as well:</p>
 <section id="see-also">
 <h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><a class="reference internal" href="compatibility_mode.html"><span class="std std-doc">Compatibility Mode</span></a> — when to enable HT-style hook aliases on a Bridge model.</p></li>
+<li><p><a class="reference internal" href="compatibility_mode.html"><span class="std std-doc">Compatibility Mode</span></a> — when a Bridge model needs HookedTransformer-equivalent numerics.</p></li>
 <li><p><a class="reference internal" href="migrating_to_v3.html"><span class="std std-doc">Migrating to TransformerLens 3</span></a> — porting HookedTransformer hook patterns to TransformerBridge.</p></li>
 <li><p><a class="reference internal" href="../generated/demos/Main_Demo.html"><span class="doc std std-doc">Main Demo</span></a> — end-to-end walkthrough using the hook system.</p></li>
 <li><p><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/hook_points.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/hook_points.py</span></code></a>, <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/ActivationCache.py</span></code></a>, <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/patching.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/patching.py</span></code></a> — source.</p></li>

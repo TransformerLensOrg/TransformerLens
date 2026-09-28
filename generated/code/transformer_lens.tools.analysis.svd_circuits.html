@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.model_registry package" href="transformer_lens.tools.model_registry.html" /><link rel="prev" title="transformer_lens.tools.analysis.projection_kernel module" href="transformer_lens.tools.analysis.projection_kernel.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.model_registry package" href="transformer_lens.tools.model_registry.html" /><link rel="prev" title="transformer_lens.tools.analysis.sparse_probing module" href="transformer_lens.tools.analysis.sparse_probing.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.svd_circuits module - TransformerLens Documentation</title>
@@ -507,9 +507,12 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
@@ -607,8 +610,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/projection_kernel.html">Projection Kernel</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -671,16 +676,25 @@ map <code class="docutils literal notranslate"><span class="pre">W_Q</span> <spa
 <code class="docutils literal notranslate"><span class="pre">W_V</span> <span class="pre">W_O</span></code> that writes the attended value back into the residual stream. This
 tool takes the singular value decomposition of each map for one head and exposes
 the singular values (how much each direction matters) together with the left and
-right singular vectors (the output and input directions they act on).</p>
+right singular vectors that span the map’s input and output spaces.</p>
 <p>The decomposition is weight-space only: it reads <code class="docutils literal notranslate"><span class="pre">W_Q</span></code>/<code class="docutils literal notranslate"><span class="pre">W_K</span></code>/<code class="docutils literal notranslate"><span class="pre">W_V</span></code>/<code class="docutils literal notranslate"><span class="pre">W_O</span></code>
 and needs no forward pass, no activation cache, and no compatibility mode. Each
 map is kept factored through
 <code class="xref py py-class docutils literal notranslate"><span class="pre">FactoredMatrix</span></code>, so the
 <code class="docutils literal notranslate"><span class="pre">d_model</span> <span class="pre">x</span> <span class="pre">d_model</span></code> product is never materialized and the returned rank is
 bounded by <code class="docutils literal notranslate"><span class="pre">d_head</span></code>.</p>
-<p>Right singular vectors are read from <code class="xref py py-attr docutils literal notranslate"><span class="pre">V</span></code>
-(its columns are the right singular vectors). The historical <code class="docutils literal notranslate"><span class="pre">.Vh</span></code> alias is
-deprecated and returns the same tensor, so it is never used here.</p>
+<p>For a factored map <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">&#64;</span> <span class="pre">B</span></code> (<code class="docutils literal notranslate"><span class="pre">A:</span> <span class="pre">[ldim,</span> <span class="pre">mdim]</span></code>, <code class="docutils literal notranslate"><span class="pre">B:</span> <span class="pre">[mdim,</span> <span class="pre">rdim]</span></code>), the SVD’s
+<code class="docutils literal notranslate"><span class="pre">U</span></code> columns live in <code class="docutils literal notranslate"><span class="pre">A</span></code>’s input space (<code class="docutils literal notranslate"><span class="pre">ldim</span></code>) and <code class="docutils literal notranslate"><span class="pre">V</span></code> columns live in
+<code class="docutils literal notranslate"><span class="pre">B</span></code>’s output space (<code class="docutils literal notranslate"><span class="pre">rdim</span></code>): feeding <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">U[:,</span> <span class="pre">i]</span></code> through the map gives
+<code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">&#64;</span> <span class="pre">(A</span> <span class="pre">&#64;</span> <span class="pre">B)</span> <span class="pre">==</span> <span class="pre">S[i]</span> <span class="pre">*</span> <span class="pre">V[:,</span> <span class="pre">i]</span></code>, never the reverse. For OV (<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">W_V_h</span></code>,
+<code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">=</span> <span class="pre">W_O_h</span></code>), <code class="docutils literal notranslate"><span class="pre">U</span></code>’s columns are therefore the value-computation <em>input</em>
+directions this head reads from the residual stream, and <code class="docutils literal notranslate"><span class="pre">V</span></code>’s columns are the
+<em>output</em> directions it writes back into the residual stream - the ones to
+project through <code class="docutils literal notranslate"><span class="pre">W_U</span></code> for a vocab or logit readout. For QK (<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">W_Q_h</span></code>,
+<code class="docutils literal notranslate"><span class="pre">B</span> <span class="pre">=</span> <span class="pre">W_K_h.transpose(-1,</span> <span class="pre">-2)</span></code>), both <code class="docutils literal notranslate"><span class="pre">U</span></code> (destination/query-read) and <code class="docutils literal notranslate"><span class="pre">V</span></code>
+(source/key-read) are read directions; QK only ever produces a scalar attention
+score, so neither is a write direction. The historical <code class="docutils literal notranslate"><span class="pre">.Vh</span></code> alias returns the
+same tensor as <code class="docutils literal notranslate"><span class="pre">.V</span></code> and is never used here.</p>
 <p>Adjacent singular values closer than a relative gap <code class="docutils literal notranslate"><span class="pre">eps</span></code> leave their singular
 directions defined only up to a rotation, so the result carries a per-direction
 degeneracy report. Directions are grouped into contiguous blocks that end only
@@ -702,6 +716,66 @@ tolerance, <code class="docutils literal notranslate"><span class="pre">null_rto
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;direction </span><span class="si">{</span><span class="n">row</span><span class="o">.</span><span class="n">idx</span><span class="si">}</span><span class="s2">: sigma=</span><span class="si">{</span><span class="n">row</span><span class="o">.</span><span class="n">sigma</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> ratio=</span><span class="si">{</span><span class="n">row</span><span class="o">.</span><span class="n">sigma_ratio</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.ActivationProjection">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">ActivationProjection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">head_svd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">coefficients</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">str_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Per-position coefficients of a head’s actual output in its OV output basis.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.ActivationProjection.head_svd">
+<span class="sig-name descname"><span class="pre">head_svd</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection.head_svd" title="Link to this definition">¶</a></dt>
+<dd><p>The OV decomposition this was projected against.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD">transformer_lens.tools.analysis.svd_circuits.HeadSVD</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.ActivationProjection.coefficients">
+<span class="sig-name descname"><span class="pre">coefficients</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection.coefficients" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">[pos,</span> <span class="pre">rank]</span></code>; <code class="docutils literal notranslate"><span class="pre">coefficients[:,</span> <span class="pre">i]</span></code> is the signed amount of
+singular direction <code class="docutils literal notranslate"><span class="pre">i</span></code> (<code class="docutils literal notranslate"><span class="pre">head_svd.V[:,</span> <span class="pre">i]</span></code>) present in the head’s actual
+output at each position. Summing <code class="docutils literal notranslate"><span class="pre">coefficients[:,</span> <span class="pre">i]</span> <span class="pre">*</span> <span class="pre">head_svd.V[:,</span> <span class="pre">i]</span></code>
+over <code class="docutils literal notranslate"><span class="pre">i</span></code> reconstructs the head’s real per-position output to numerical
+precision, since <code class="docutils literal notranslate"><span class="pre">V</span></code>’s columns are orthonormal and this projects onto the
+exact basis the head writes in.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>jaxtyping.Float[Tensor, ‘pos rank’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.ActivationProjection.str_tokens">
+<span class="sig-name descname"><span class="pre">str_tokens</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection.str_tokens" title="Link to this definition">¶</a></dt>
+<dd><p>Tokenized prompt, aligned with the position axis, for display.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">coefficients</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id0" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-name descname"><span class="pre">head_svd</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></em><a class="headerlink" href="#id1" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-name descname"><span class="pre">str_tokens</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id2" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py exception">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError">
 <em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">DegenerateDirectionError</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError" title="Link to this definition">¶</a></dt>
@@ -743,7 +817,7 @@ their input guards.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.HeadSVD">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">HeadSVD</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">which</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'QK'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'OV'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">U</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">S</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank_report</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow" title="transformer_lens.tools.analysis.svd_circuits.RankReportRow"><span class="pre">RankReportRow</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">null_rtol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">HeadSVD</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">which</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'QK'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'OV'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">U</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">S</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rank_report</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow" title="transformer_lens.tools.analysis.svd_circuits.RankReportRow"><span class="pre">RankReportRow</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">null_rtol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">folded_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Factored SVD of one head map (<code class="docutils literal notranslate"><span class="pre">&quot;QK&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;OV&quot;</span></code>) with a degeneracy report.</p>
 <dl class="py attribute">
@@ -782,7 +856,9 @@ their input guards.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.HeadSVD.U">
 <span class="sig-name descname"><span class="pre">U</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.U" title="Link to this definition">¶</a></dt>
-<dd><p>Left singular vectors, <code class="docutils literal notranslate"><span class="pre">[d_model,</span> <span class="pre">rank]</span></code> (column i is output direction i).</p>
+<dd><p>Left singular vectors, <code class="docutils literal notranslate"><span class="pre">[d_model,</span> <span class="pre">rank]</span></code>: column i is the map’s input
+direction i (for OV, the residual-stream direction this head’s value
+computation reads from; for QK, the destination/query-read direction).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>jaxtyping.Float[Tensor, ‘d_model rank’]</p>
@@ -804,8 +880,11 @@ their input guards.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.HeadSVD.V">
 <span class="sig-name descname"><span class="pre">V</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.V" title="Link to this definition">¶</a></dt>
-<dd><p>Right singular vectors, <code class="docutils literal notranslate"><span class="pre">[d_model,</span> <span class="pre">rank]</span></code> (column i is input direction i).
-The reconstruction is <code class="docutils literal notranslate"><span class="pre">U</span> <span class="pre">&#64;</span> <span class="pre">S.diag()</span> <span class="pre">&#64;</span> <span class="pre">V.transpose(-2,</span> <span class="pre">-1)</span></code>.</p>
+<dd><p>Right singular vectors, <code class="docutils literal notranslate"><span class="pre">[d_model,</span> <span class="pre">rank]</span></code>: column i is the map’s output
+direction i for OV (the residual-stream direction this head writes into,
+the one to project through <code class="docutils literal notranslate"><span class="pre">W_U</span></code>), or the source/key-read direction for
+QK (QK produces no write direction). The reconstruction is
+<code class="docutils literal notranslate"><span class="pre">U</span> <span class="pre">&#64;</span> <span class="pre">S.diag()</span> <span class="pre">&#64;</span> <span class="pre">V.transpose(-2,</span> <span class="pre">-1)</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>jaxtyping.Float[Tensor, ‘d_model rank’]</p>
@@ -850,18 +929,33 @@ is numerically null.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id0">
-<span class="sig-name descname"><span class="pre">S</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id0" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.HeadSVD.folded_ln">
+<span class="sig-name descname"><span class="pre">folded_ln</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.folded_ln" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the model’s weights carried a folded final LayerNorm when
+this was decomposed. <code class="docutils literal notranslate"><span class="pre">enable_compatibility_mode</span></code> folds <code class="docutils literal notranslate"><span class="pre">ln1</span></code> into
+<code class="docutils literal notranslate"><span class="pre">W_V</span></code> and centres <code class="docutils literal notranslate"><span class="pre">W_O</span></code>/<code class="docutils literal notranslate"><span class="pre">W_U</span></code>, so a decomposition describes the OV
+map only under the state it was built in; the readout and patch consumers
+refuse a decomposition whose state no longer matches the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id3">
+<span class="sig-name descname"><span class="pre">S</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id3" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id1">
-<span class="sig-name descname"><span class="pre">U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id1" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id4">
+<span class="sig-name descname"><span class="pre">U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id4" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id2">
-<span class="sig-name descname"><span class="pre">V</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id2" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id5">
+<span class="sig-name descname"><span class="pre">V</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">rank'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id5" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -879,13 +973,18 @@ run for a degenerate one.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id3">
-<span class="sig-name descname"><span class="pre">eps</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id3" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id6">
+<span class="sig-name descname"><span class="pre">eps</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id6" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id4">
-<span class="sig-name descname"><span class="pre">head</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id4" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id7">
+<span class="sig-name descname"><span class="pre">folded_ln</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#id7" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id8">
+<span class="sig-name descname"><span class="pre">head</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id8" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -895,18 +994,18 @@ run for a degenerate one.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id5">
-<span class="sig-name descname"><span class="pre">layer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id5" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id9">
+<span class="sig-name descname"><span class="pre">layer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id9" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id6">
-<span class="sig-name descname"><span class="pre">null_rtol</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id6" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id10">
+<span class="sig-name descname"><span class="pre">null_rtol</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id10" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id7">
-<span class="sig-name descname"><span class="pre">rank_report</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow" title="transformer_lens.tools.analysis.svd_circuits.RankReportRow"><span class="pre">RankReportRow</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id7" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id11">
+<span class="sig-name descname"><span class="pre">rank_report</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow" title="transformer_lens.tools.analysis.svd_circuits.RankReportRow"><span class="pre">RankReportRow</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id11" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -918,8 +1017,182 @@ subspace worth attributing while a null block carries no signal.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id8">
-<span class="sig-name descname"><span class="pre">which</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'QK'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'OV'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id8" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id12">
+<span class="sig-name descname"><span class="pre">which</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'QK'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'OV'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id12" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.LogitSignature">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">LogitSignature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'token'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Rank-1-reconstruction logit effect for one OV direction, per requested token.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.LogitSignature.direction">
+<span class="sig-name descname"><span class="pre">direction</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature.direction" title="Link to this definition">¶</a></dt>
+<dd><p>Which <code class="docutils literal notranslate"><span class="pre">HeadSVD</span></code> column this reconstructs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.LogitSignature.values">
+<span class="sig-name descname"><span class="pre">values</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature.values" title="Link to this definition">¶</a></dt>
+<dd><p>Signed logit contribution, aligned with the requested tokens.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>jaxtyping.Float[Tensor, ‘token’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id13">
+<span class="sig-name descname"><span class="pre">direction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id13" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id14">
+<span class="sig-name descname"><span class="pre">values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'token'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id14" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">PatchResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">head_svd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">retained</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">patched_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delta_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline_delta_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gated</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Result of causally patching a head’s output onto a chosen OV singular subspace.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.head_svd">
+<span class="sig-name descname"><span class="pre">head_svd</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.head_svd" title="Link to this definition">¶</a></dt>
+<dd><p>The OV decomposition patched against.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD">transformer_lens.tools.analysis.svd_circuits.HeadSVD</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.retained">
+<span class="sig-name descname"><span class="pre">retained</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.retained" title="Link to this definition">¶</a></dt>
+<dd><p>Direction indices whose span the head’s output was reconstructed
+onto; the complement was zeroed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.original_metric">
+<span class="sig-name descname"><span class="pre">original_metric</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.original_metric" title="Link to this definition">¶</a></dt>
+<dd><p>Metric value on the unmodified prompt.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.patched_metric">
+<span class="sig-name descname"><span class="pre">patched_metric</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.patched_metric" title="Link to this definition">¶</a></dt>
+<dd><p>Metric value after the subspace reconstruction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.delta_metric">
+<span class="sig-name descname"><span class="pre">delta_metric</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.delta_metric" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">patched_metric</span> <span class="pre">-</span> <span class="pre">original_metric</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.baseline_delta_metric">
+<span class="sig-name descname"><span class="pre">baseline_delta_metric</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.baseline_delta_metric" title="Link to this definition">¶</a></dt>
+<dd><p>the mean of the per-draw <code class="docutils literal notranslate"><span class="pre">delta_metric</span></code> magnitudes over
+several random control subspaces of the same width as <code class="docutils literal notranslate"><span class="pre">retained</span></code>, each drawn
+inside the head’s own OV span <code class="docutils literal notranslate"><span class="pre">span(V)</span></code> rather than from the full residual
+stream, so the control is the effect of an arbitrary same-size subspace of this
+head’s output rather than of an unrelated residual-stream direction. Averaging
+the magnitudes rather than the signed deltas keeps this a typical control
+effect that does not shrink when the controls mix sign, so it is non-negative.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.PatchResult.gated">
+<span class="sig-name descname"><span class="pre">gated</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.gated" title="Link to this definition">¶</a></dt>
+<dd><p>whether the retained subspace passed the causal test for the mode it was
+expressed in, comparing <code class="docutils literal notranslate"><span class="pre">abs(delta_metric)</span></code> against <code class="docutils literal notranslate"><span class="pre">baseline_delta_metric</span></code>
+(or an explicit threshold, if one was passed). For <code class="docutils literal notranslate"><span class="pre">ablate</span></code> (retain the complement),
+removing a load-bearing subspace should move the metric more than removing an
+arbitrary same-size one, so <code class="docutils literal notranslate"><span class="pre">gated</span></code> is <code class="docutils literal notranslate"><span class="pre">abs(delta_metric)</span> <span class="pre">&gt;</span> <span class="pre">threshold</span></code>.
+For <code class="docutils literal notranslate"><span class="pre">keep</span></code> (retain only the given subspace), a subspace that reconstructs
+the head’s behavior should move the metric less than keeping an arbitrary
+same-size one, so <code class="docutils literal notranslate"><span class="pre">gated</span></code> is <code class="docutils literal notranslate"><span class="pre">abs(delta_metric)</span> <span class="pre">&lt;</span> <span class="pre">threshold</span></code>. A single
+“moved more than baseline” test cannot answer both, since <code class="docutils literal notranslate"><span class="pre">keep=S</span></code> and
+<code class="docutils literal notranslate"><span class="pre">ablate=complement(S)</span></code> resolve to the same retained set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id15">
+<span class="sig-name descname"><span class="pre">baseline_delta_metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id15" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id16">
+<span class="sig-name descname"><span class="pre">delta_metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id16" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id17">
+<span class="sig-name descname"><span class="pre">gated</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#id17" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id18">
+<span class="sig-name descname"><span class="pre">head_svd</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></em><a class="headerlink" href="#id18" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id19">
+<span class="sig-name descname"><span class="pre">original_metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id19" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id20">
+<span class="sig-name descname"><span class="pre">patched_metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id20" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id21">
+<span class="sig-name descname"><span class="pre">retained</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id21" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -999,33 +1272,33 @@ vector is an arbitrary direction from the map’s null space.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id9">
-<span class="sig-name descname"><span class="pre">block_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id9" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id22">
+<span class="sig-name descname"><span class="pre">block_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id22" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id10">
-<span class="sig-name descname"><span class="pre">idx</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id10" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id23">
+<span class="sig-name descname"><span class="pre">idx</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id23" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id11">
-<span class="sig-name descname"><span class="pre">is_degenerate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#id11" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id24">
+<span class="sig-name descname"><span class="pre">is_degenerate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#id24" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id12">
-<span class="sig-name descname"><span class="pre">is_null</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#id12" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id25">
+<span class="sig-name descname"><span class="pre">is_null</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#id25" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id13">
-<span class="sig-name descname"><span class="pre">sigma</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id13" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id26">
+<span class="sig-name descname"><span class="pre">sigma</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id26" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id14">
-<span class="sig-name descname"><span class="pre">sigma_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id14" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id27">
+<span class="sig-name descname"><span class="pre">sigma_ratio</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id27" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1036,7 +1309,10 @@ vector is an arbitrary direction from the map’s null space.</p>
 <dd><p>Decompose a head’s QK (<code class="docutils literal notranslate"><span class="pre">W_Q</span> <span class="pre">W_K^T</span></code>) and/or OV (<code class="docutils literal notranslate"><span class="pre">W_V</span> <span class="pre">W_O</span></code>) maps via SVD.</p>
 <p>Weight-space only: this reads the head’s per-block weights via the bridge’s
 <code class="docutils literal notranslate"><span class="pre">model.blocks[layer].attn</span></code> accessors and needs no forward pass and no
-compatibility mode. The returned factors are detached from the model.</p>
+compatibility mode. The returned factors are detached from the model. Whether the
+model’s weights carry a folded final LayerNorm is recorded on each returned
+<a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><code class="xref py py-class docutils literal notranslate"><span class="pre">HeadSVD</span></code></a> so the readout and patch consumers can refuse a decomposition
+taken under a different state.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1064,6 +1340,180 @@ counts as numerically null. Defaults to <code class="docutils literal notranslat
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.logit_signature">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">logit_signature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head_svd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature" title="transformer_lens.tools.analysis.svd_circuits.LogitSignature"><span class="pre">LogitSignature</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.logit_signature" title="Link to this definition">¶</a></dt>
+<dd><p>Signed logit effect of one OV direction’s rank-1 reconstruction on the given tokens.</p>
+<p>Pure weight-space computation: reconstructs the head’s OV output along a single
+singular direction (<code class="docutils literal notranslate"><span class="pre">S[direction]</span> <span class="pre">*</span> <span class="pre">V[:,</span> <span class="pre">direction]</span></code>, never <code class="docutils literal notranslate"><span class="pre">U</span></code> - see the
+module docstring) and projects it through <code class="docutils literal notranslate"><span class="pre">W_U</span></code> restricted to <code class="docutils literal notranslate"><span class="pre">tokens</span></code>. Runs
+no forward pass and builds no cache.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> with the final LayerNorm folded into <code class="docutils literal notranslate"><span class="pre">W_U</span></code>;
+only its <code class="docutils literal notranslate"><span class="pre">W_U</span></code> is read.</p></li>
+<li><p><strong>head_svd</strong> – An OV <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><code class="xref py py-class docutils literal notranslate"><span class="pre">HeadSVD</span></code></a> from <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.decompose_head" title="transformer_lens.tools.analysis.svd_circuits.decompose_head"><code class="xref py py-func docutils literal notranslate"><span class="pre">decompose_head()</span></code></a>.</p></li>
+<li><p><strong>direction</strong> – Column index of the singular direction to reconstruct.</p></li>
+<li><p><strong>tokens</strong> – Token id(s) to read the logit effect for.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature" title="transformer_lens.tools.analysis.svd_circuits.LogitSignature"><code class="xref py py-class docutils literal notranslate"><span class="pre">LogitSignature</span></code></a> with one value per requested token.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">!=</span> <span class="pre">&quot;OV&quot;</span></code>, if <code class="docutils literal notranslate"><span class="pre">direction</span></code> is not in
+    <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">rank)</span></code>, if <code class="docutils literal notranslate"><span class="pre">head_svd</span></code> was decomposed under a different
+    folded-LayerNorm state than <code class="docutils literal notranslate"><span class="pre">model</span></code> now has, or if <code class="docutils literal notranslate"><span class="pre">model</span></code> is a
+    <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> whose weights do not carry a folded final
+    LayerNorm.</p></li>
+<li><p><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError" title="transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError"><strong>DegenerateDirectionError</strong></a> – If <code class="docutils literal notranslate"><span class="pre">direction</span></code> is not attributable alone (see
+    <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.require_isolated" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD.require_isolated"><code class="xref py py-meth docutils literal notranslate"><span class="pre">HeadSVD.require_isolated()</span></code></a>).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.patch_along_directions">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">patch_along_directions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head_svd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ablate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Generator</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_baseline</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult" title="transformer_lens.tools.analysis.svd_circuits.PatchResult"><span class="pre">PatchResult</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.patch_along_directions" title="Link to this definition">¶</a></dt>
+<dd><p>Causally validate a claimed OV subfunction by reconstructing the head’s output onto it.</p>
+<p>Requires <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">==</span> <span class="pre">&quot;OV&quot;</span></code>: this reconstructs the write/output basis
+<code class="docutils literal notranslate"><span class="pre">V</span></code>, and QK has no such vector (see the module docstring). Runs the prompt with
+<code class="docutils literal notranslate"><span class="pre">use_attn_result</span></code> enabled once unmodified, once with the head’s <code class="docutils literal notranslate"><span class="pre">hook_result</span></code>
+slice reconstructed onto <code class="docutils literal notranslate"><span class="pre">span(head_svd.V[:,</span> <span class="pre">retained])</span></code>, and once per random
+control subspace. Each control subspace is drawn <em>inside the head’s own OV span</em>
+<code class="docutils literal notranslate"><span class="pre">span(V)</span></code> (not from the full residual stream, where a width-<code class="docutils literal notranslate"><span class="pre">w</span></code> random subspace
+would keep only <code class="docutils literal notranslate"><span class="pre">w/d_model</span></code> of a head output that itself occupies only
+<code class="docutils literal notranslate"><span class="pre">rank/d_model</span></code> of the stream; an in-span control of width <code class="docutils literal notranslate"><span class="pre">w</span></code> keeps <code class="docutils literal notranslate"><span class="pre">w/rank</span></code>
+of it), so a moved metric is compared against the effect of an arbitrary
+subspace of this head’s output of the same width. The per-draw control delta magnitudes
+are averaged over <code class="docutils literal notranslate"><span class="pre">n_baseline</span></code> draws so one lucky or unlucky draw does not decide the
+gate, and so controls that mix sign do not cancel into a smaller threshold. Averaging
+narrows but does not remove the seed dependence of the threshold; see the <code class="docutils literal notranslate"><span class="pre">n_baseline</span></code>
+entry below. Restores the model’s prior <code class="docutils literal notranslate"><span class="pre">use_attn_result</span></code> setting afterward.</p>
+<p>The gate’s success condition depends on the mode the caller expressed, because
+<code class="docutils literal notranslate"><span class="pre">keep=S</span></code> and <code class="docutils literal notranslate"><span class="pre">ablate=complement(S)</span></code> resolve to the same retained set and a single
+“moved more than the control” test would answer only the <code class="docutils literal notranslate"><span class="pre">ablate</span></code> question. See
+<a class="reference internal" href="#id17" title="transformer_lens.tools.analysis.svd_circuits.PatchResult.gated"><code class="xref py py-attr docutils literal notranslate"><span class="pre">PatchResult.gated</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>head_svd</strong> – An OV <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><code class="xref py py-class docutils literal notranslate"><span class="pre">HeadSVD</span></code></a> from <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.decompose_head" title="transformer_lens.tools.analysis.svd_circuits.decompose_head"><code class="xref py py-func docutils literal notranslate"><span class="pre">decompose_head()</span></code></a>.</p></li>
+<li><p><strong>prompt</strong> – A single prompt: a string or a <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">pos]</span></code> token tensor.</p></li>
+<li><p><strong>metric</strong> – A function from the model’s logits to a scalar.</p></li>
+<li><p><strong>keep</strong> – Direction indices to retain; the rest are zeroed. Exactly one of
+<code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">ablate</span></code> must be given.</p></li>
+<li><p><strong>ablate</strong> – Direction indices to zero; the rest are retained.</p></li>
+<li><p><strong>threshold</strong> – Explicit gate threshold. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>, which uses
+<code class="docutils literal notranslate"><span class="pre">baseline_delta_metric</span></code> (already a magnitude) instead.</p></li>
+<li><p><strong>rng</strong> – Optional generator for the random control subspaces, for reproducibility.
+Defaults to a generator seeded with <code class="docutils literal notranslate"><span class="pre">_DEFAULT_BASELINE_SEED</span></code> so a bare
+call is reproducible rather than drawing from the global RNG.</p></li>
+<li><p><strong>n_baseline</strong> – Number of random in-span control subspaces to average the baseline
+delta over. Must be at least 1. The per-draw control magnitudes are
+heavy-tailed, so the averaged threshold still varies with the seed and a
+direction whose delta sits near it can gate either way; pass an explicit
+<code class="docutils literal notranslate"><span class="pre">rng</span></code> for a reproducible verdict and raise <code class="docutils literal notranslate"><span class="pre">n_baseline</span></code> when the verdict
+is close to the threshold. Each draw costs one forward pass.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult" title="transformer_lens.tools.analysis.svd_circuits.PatchResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">PatchResult</span></code></a> describing the patched, baseline, and original metrics.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">!=</span> <span class="pre">&quot;OV&quot;</span></code>, if <code class="docutils literal notranslate"><span class="pre">head_svd</span></code> was decomposed under a
+    different folded-LayerNorm state than <code class="docutils literal notranslate"><span class="pre">model</span></code> now has, if <code class="docutils literal notranslate"><span class="pre">keep</span></code>/<code class="docutils literal notranslate"><span class="pre">ablate</span></code>
+    are both given or both omitted, if any index is out of <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">rank)</span></code>, if the
+    retained set is empty (<code class="docutils literal notranslate"><span class="pre">keep=[]</span></code> or <code class="docutils literal notranslate"><span class="pre">ablate</span></code> over the full rank) or spans the
+    full rank (<code class="docutils literal notranslate"><span class="pre">keep</span></code> over every direction) and no explicit <code class="docutils literal notranslate"><span class="pre">threshold</span></code> is
+    supplied, if <code class="docutils literal notranslate"><span class="pre">n_baseline</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>, or if the model is in training mode.</p></li>
+<li><p><strong>NotImplementedError</strong> – If the model’s attention adapter exposes no per-head result,
+    so <code class="docutils literal notranslate"><span class="pre">set_use_attn_result(True)</span></code> cannot fork the attention output.</p></li>
+<li><p><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError" title="transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError"><strong>DegenerateDirectionError</strong></a> – If the retained directions split a degenerate block
+    (see <code class="xref py py-func docutils literal notranslate"><span class="pre">_validate_retained_blocks()</span></code>).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.project_activations">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">project_activations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head_svd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection" title="transformer_lens.tools.analysis.svd_circuits.ActivationProjection"><span class="pre">ActivationProjection</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.project_activations" title="Link to this definition">¶</a></dt>
+<dd><p>Project a head’s actual per-position output onto its OV singular directions.</p>
+<p>Requires <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">==</span> <span class="pre">&quot;OV&quot;</span></code>: this projects onto the write/output basis
+<code class="docutils literal notranslate"><span class="pre">V</span></code>, and QK has no such vector (see the module docstring). Runs a real forward
+pass with <code class="docutils literal notranslate"><span class="pre">use_attn_result</span></code> enabled to read the per-head output
+(<code class="docutils literal notranslate"><span class="pre">hook_result</span></code>), then projects it onto <code class="docutils literal notranslate"><span class="pre">head_svd.V</span></code>. Restores the model’s
+prior <code class="docutils literal notranslate"><span class="pre">use_attn_result</span></code> setting afterward, since flipping that config flag as a
+side effect of a read-only analysis call would surprise a caller who already had
+hooks or a cache built around its prior state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>.</p></li>
+<li><p><strong>head_svd</strong> – An OV <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><code class="xref py py-class docutils literal notranslate"><span class="pre">HeadSVD</span></code></a> from <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.decompose_head" title="transformer_lens.tools.analysis.svd_circuits.decompose_head"><code class="xref py py-func docutils literal notranslate"><span class="pre">decompose_head()</span></code></a>.</p></li>
+<li><p><strong>prompt</strong> – A single prompt (not a batch): a string or a <code class="docutils literal notranslate"><span class="pre">[pos]</span></code> or <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">pos]</span></code>
+token tensor.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection" title="transformer_lens.tools.analysis.svd_circuits.ActivationProjection"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActivationProjection</span></code></a> with the per-position coefficients.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">!=</span> <span class="pre">&quot;OV&quot;</span></code>, if <code class="docutils literal notranslate"><span class="pre">head_svd</span></code> was decomposed under
+    a different folded-LayerNorm state than <code class="docutils literal notranslate"><span class="pre">model</span></code> now has, if <code class="docutils literal notranslate"><span class="pre">prompt</span></code>
+    is not a single prompt (a tensor that is not 1-D, or is 2-D with a leading
+    dimension greater than one), or if the model is in training mode.</p></li>
+<li><p><strong>NotImplementedError</strong> – If the model’s attention adapter exposes no per-head result,
+    so <code class="docutils literal notranslate"><span class="pre">set_use_attn_result(True)</span></code> cannot fork the attention output.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.svd_circuits.vocab_readout">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.svd_circuits.</span></span><span class="sig-name descname"><span class="pre">vocab_readout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">head_svd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><span class="pre">HeadSVD</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab</span> <span class="pre">k'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.svd_circuits.vocab_readout" title="Link to this definition">¶</a></dt>
+<dd><p>Project the top-k OV output directions through the unembedding.</p>
+<p>Requires <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">==</span> <span class="pre">&quot;OV&quot;</span></code>: QK produces no write direction to project
+(see the module docstring). On a <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code>, the final LayerNorm must
+be folded into <code class="docutils literal notranslate"><span class="pre">W_U</span></code>, which requires the bridge to have processed its weights
+with <code class="docutils literal notranslate"><span class="pre">fold_ln</span></code> enabled on an adapter that supports folding.</p>
+<p>Does not call <code class="docutils literal notranslate"><span class="pre">head_svd.require_isolated</span></code>: a degenerate direction’s vocab
+readout is still a well-defined projection, unlike a per-direction causal claim,
+so it is not gated here. The contract that no direction is reported without a
+passing causal patch is enforced by <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.patch_along_directions" title="transformer_lens.tools.analysis.svd_circuits.patch_along_directions"><code class="xref py py-func docutils literal notranslate"><span class="pre">patch_along_directions()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> with the final LayerNorm folded into <code class="docutils literal notranslate"><span class="pre">W_U</span></code>;
+only its <code class="docutils literal notranslate"><span class="pre">W_U</span></code> is read.</p></li>
+<li><p><strong>head_svd</strong> – An OV <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD" title="transformer_lens.tools.analysis.svd_circuits.HeadSVD"><code class="xref py py-class docutils literal notranslate"><span class="pre">HeadSVD</span></code></a> from <a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.decompose_head" title="transformer_lens.tools.analysis.svd_circuits.decompose_head"><code class="xref py py-func docutils literal notranslate"><span class="pre">decompose_head()</span></code></a>.</p></li>
+<li><p><strong>k</strong> – Number of top singular directions to project.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>column i is
+direction i’s projection through the unembedding.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">W_U.T</span> <span class="pre">&#64;</span> <span class="pre">head_svd.V[:,</span> <span class="pre">:k]</span></code>, shape <code class="docutils literal notranslate"><span class="pre">[d_vocab,</span> <span class="pre">k]</span></code></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">head_svd.which</span> <span class="pre">!=</span> <span class="pre">&quot;OV&quot;</span></code>, if <code class="docutils literal notranslate"><span class="pre">k</span></code> is not in
+    <code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">rank]</span></code>, if <code class="docutils literal notranslate"><span class="pre">head_svd</span></code> was decomposed under a different
+    folded-LayerNorm state than <code class="docutils literal notranslate"><span class="pre">model</span></code> now has, or if <code class="docutils literal notranslate"><span class="pre">model</span></code> is a
+    <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> whose weights do not carry a folded final
+    LayerNorm.</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
         </article>
@@ -1080,14 +1530,14 @@ counts as numerically null. Defaults to <code class="docutils literal notranslat
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="transformer_lens.tools.analysis.projection_kernel.html">
+          <a class="prev-page" href="transformer_lens.tools.analysis.sparse_probing.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">transformer_lens.tools.analysis.projection_kernel module</div>
+                <div class="title">transformer_lens.tools.analysis.sparse_probing module</div>
                 
               </div>
             </a>
@@ -1122,6 +1572,15 @@ counts as numerically null. Defaults to <code class="docutils literal notranslat
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.tools.analysis.svd_circuits module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection"><code class="docutils literal notranslate"><span class="pre">ActivationProjection</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection.head_svd"><code class="docutils literal notranslate"><span class="pre">ActivationProjection.head_svd</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection.coefficients"><code class="docutils literal notranslate"><span class="pre">ActivationProjection.coefficients</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.ActivationProjection.str_tokens"><code class="docutils literal notranslate"><span class="pre">ActivationProjection.str_tokens</span></code></a></li>
+<li><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">ActivationProjection.coefficients</span></code></a></li>
+<li><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">ActivationProjection.head_svd</span></code></a></li>
+<li><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">ActivationProjection.str_tokens</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.DegenerateDirectionError"><code class="docutils literal notranslate"><span class="pre">DegenerateDirectionError</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadDecomposition"><code class="docutils literal notranslate"><span class="pre">HeadDecomposition</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadDecomposition.OV"><code class="docutils literal notranslate"><span class="pre">HeadDecomposition.OV</span></code></a></li>
@@ -1140,19 +1599,45 @@ counts as numerically null. Defaults to <code class="docutils literal notranslat
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.rank_report"><code class="docutils literal notranslate"><span class="pre">HeadSVD.rank_report</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.eps"><code class="docutils literal notranslate"><span class="pre">HeadSVD.eps</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.null_rtol"><code class="docutils literal notranslate"><span class="pre">HeadSVD.null_rtol</span></code></a></li>
-<li><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">HeadSVD.S</span></code></a></li>
-<li><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">HeadSVD.U</span></code></a></li>
-<li><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">HeadSVD.V</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.folded_ln"><code class="docutils literal notranslate"><span class="pre">HeadSVD.folded_ln</span></code></a></li>
+<li><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">HeadSVD.S</span></code></a></li>
+<li><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">HeadSVD.U</span></code></a></li>
+<li><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">HeadSVD.V</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.block_of"><code class="docutils literal notranslate"><span class="pre">HeadSVD.block_of()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.degenerate_blocks"><code class="docutils literal notranslate"><span class="pre">HeadSVD.degenerate_blocks()</span></code></a></li>
-<li><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">HeadSVD.eps</span></code></a></li>
-<li><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">HeadSVD.head</span></code></a></li>
+<li><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">HeadSVD.eps</span></code></a></li>
+<li><a class="reference internal" href="#id7"><code class="docutils literal notranslate"><span class="pre">HeadSVD.folded_ln</span></code></a></li>
+<li><a class="reference internal" href="#id8"><code class="docutils literal notranslate"><span class="pre">HeadSVD.head</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.is_degenerate"><code class="docutils literal notranslate"><span class="pre">HeadSVD.is_degenerate()</span></code></a></li>
-<li><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">HeadSVD.layer</span></code></a></li>
-<li><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">HeadSVD.null_rtol</span></code></a></li>
-<li><a class="reference internal" href="#id7"><code class="docutils literal notranslate"><span class="pre">HeadSVD.rank_report</span></code></a></li>
+<li><a class="reference internal" href="#id9"><code class="docutils literal notranslate"><span class="pre">HeadSVD.layer</span></code></a></li>
+<li><a class="reference internal" href="#id10"><code class="docutils literal notranslate"><span class="pre">HeadSVD.null_rtol</span></code></a></li>
+<li><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">HeadSVD.rank_report</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.HeadSVD.require_isolated"><code class="docutils literal notranslate"><span class="pre">HeadSVD.require_isolated()</span></code></a></li>
-<li><a class="reference internal" href="#id8"><code class="docutils literal notranslate"><span class="pre">HeadSVD.which</span></code></a></li>
+<li><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">HeadSVD.which</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature"><code class="docutils literal notranslate"><span class="pre">LogitSignature</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature.direction"><code class="docutils literal notranslate"><span class="pre">LogitSignature.direction</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.LogitSignature.values"><code class="docutils literal notranslate"><span class="pre">LogitSignature.values</span></code></a></li>
+<li><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">LogitSignature.direction</span></code></a></li>
+<li><a class="reference internal" href="#id14"><code class="docutils literal notranslate"><span class="pre">LogitSignature.values</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult"><code class="docutils literal notranslate"><span class="pre">PatchResult</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.head_svd"><code class="docutils literal notranslate"><span class="pre">PatchResult.head_svd</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.retained"><code class="docutils literal notranslate"><span class="pre">PatchResult.retained</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.original_metric"><code class="docutils literal notranslate"><span class="pre">PatchResult.original_metric</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.patched_metric"><code class="docutils literal notranslate"><span class="pre">PatchResult.patched_metric</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.delta_metric"><code class="docutils literal notranslate"><span class="pre">PatchResult.delta_metric</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.baseline_delta_metric"><code class="docutils literal notranslate"><span class="pre">PatchResult.baseline_delta_metric</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.PatchResult.gated"><code class="docutils literal notranslate"><span class="pre">PatchResult.gated</span></code></a></li>
+<li><a class="reference internal" href="#id15"><code class="docutils literal notranslate"><span class="pre">PatchResult.baseline_delta_metric</span></code></a></li>
+<li><a class="reference internal" href="#id16"><code class="docutils literal notranslate"><span class="pre">PatchResult.delta_metric</span></code></a></li>
+<li><a class="reference internal" href="#id17"><code class="docutils literal notranslate"><span class="pre">PatchResult.gated</span></code></a></li>
+<li><a class="reference internal" href="#id18"><code class="docutils literal notranslate"><span class="pre">PatchResult.head_svd</span></code></a></li>
+<li><a class="reference internal" href="#id19"><code class="docutils literal notranslate"><span class="pre">PatchResult.original_metric</span></code></a></li>
+<li><a class="reference internal" href="#id20"><code class="docutils literal notranslate"><span class="pre">PatchResult.patched_metric</span></code></a></li>
+<li><a class="reference internal" href="#id21"><code class="docutils literal notranslate"><span class="pre">PatchResult.retained</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow"><code class="docutils literal notranslate"><span class="pre">RankReportRow</span></code></a><ul>
@@ -1162,15 +1647,19 @@ counts as numerically null. Defaults to <code class="docutils literal notranslat
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow.is_degenerate"><code class="docutils literal notranslate"><span class="pre">RankReportRow.is_degenerate</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow.is_null"><code class="docutils literal notranslate"><span class="pre">RankReportRow.is_null</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.RankReportRow.block_id"><code class="docutils literal notranslate"><span class="pre">RankReportRow.block_id</span></code></a></li>
-<li><a class="reference internal" href="#id9"><code class="docutils literal notranslate"><span class="pre">RankReportRow.block_id</span></code></a></li>
-<li><a class="reference internal" href="#id10"><code class="docutils literal notranslate"><span class="pre">RankReportRow.idx</span></code></a></li>
-<li><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">RankReportRow.is_degenerate</span></code></a></li>
-<li><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">RankReportRow.is_null</span></code></a></li>
-<li><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">RankReportRow.sigma</span></code></a></li>
-<li><a class="reference internal" href="#id14"><code class="docutils literal notranslate"><span class="pre">RankReportRow.sigma_ratio</span></code></a></li>
+<li><a class="reference internal" href="#id22"><code class="docutils literal notranslate"><span class="pre">RankReportRow.block_id</span></code></a></li>
+<li><a class="reference internal" href="#id23"><code class="docutils literal notranslate"><span class="pre">RankReportRow.idx</span></code></a></li>
+<li><a class="reference internal" href="#id24"><code class="docutils literal notranslate"><span class="pre">RankReportRow.is_degenerate</span></code></a></li>
+<li><a class="reference internal" href="#id25"><code class="docutils literal notranslate"><span class="pre">RankReportRow.is_null</span></code></a></li>
+<li><a class="reference internal" href="#id26"><code class="docutils literal notranslate"><span class="pre">RankReportRow.sigma</span></code></a></li>
+<li><a class="reference internal" href="#id27"><code class="docutils literal notranslate"><span class="pre">RankReportRow.sigma_ratio</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.decompose_head"><code class="docutils literal notranslate"><span class="pre">decompose_head()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.logit_signature"><code class="docutils literal notranslate"><span class="pre">logit_signature()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.patch_along_directions"><code class="docutils literal notranslate"><span class="pre">patch_along_directions()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.project_activations"><code class="docutils literal notranslate"><span class="pre">project_activations()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.svd_circuits.vocab_readout"><code class="docutils literal notranslate"><span class="pre">vocab_readout()</span></code></a></li>
 </ul>
 </li>
 </ul>

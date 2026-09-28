@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.jacobian\_lens\_causal\_swap\_benchmark module
+===============================================================================
+
+.. automodule:: transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark
+   :members:
+   :undoc-members:
+   :show-inheritance:

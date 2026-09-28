@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.sparse\_probing module
+=======================================================
+
+.. automodule:: transformer_lens.tools.analysis.sparse_probing
+   :members:
+   :undoc-members:
+   :show-inheritance:
