@@ -12,6 +12,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
+    VisionProjectionBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
@@ -39,7 +40,12 @@ class MuseGlimmerArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "vision_encoder": GeneralizedComponent(name="model.vision_tower"),
-            "vision_projector": GeneralizedComponent(name="model.vision_projection"),
+            # HF runs ``vision_adapter -> vision_projection -> perception_emb_norm`` and
+            # scatters only the last value into the text embeddings, so the projector
+            # bridge wraps the norm: ``hook_out`` is the merged embedding, as in the
+            # other VLM adapters (Gemma 3's norm lives inside its projector module).
+            # ``hook_in`` is then the projection output rather than the vision-tower one.
+            "vision_projector": VisionProjectionBridge(name="model.perception_emb_norm"),
             "embed": EmbeddingBridge(name="model.language_model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.language_model.rotary_emb"),
             "blocks": BlockBridge(

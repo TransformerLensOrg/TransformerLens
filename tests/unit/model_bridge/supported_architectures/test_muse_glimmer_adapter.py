@@ -81,3 +81,16 @@ def test_run_with_cache_hooks(models):
             assert cache[f"blocks.{i}.{name}"].shape == (batch, seq, 64)
         assert cache[f"blocks.{i}.attn.hook_z"].shape == (batch, seq, 4, 16)
         torch.testing.assert_close(cache[f"blocks.{i}.attn.hook_pattern"], hf_attn[i])
+
+
+def test_vision_projector_hook_out_is_the_merged_embedding(models):
+    """HF scatters ``perception_emb_norm``'s output into the text embeddings.
+
+    The projector bridge therefore wraps that module rather than the raw
+    ``vision_projection`` Linear, so ``vision_projector.hook_out`` is the value
+    HF actually merges (matching the other multimodal adapters).
+    """
+    bridge, _ = models
+    projector = bridge.vision_projector
+    assert projector.name == "model.perception_emb_norm"
+    assert type(projector.original_component).__name__ == "MuseGlimmerRMSNorm"
