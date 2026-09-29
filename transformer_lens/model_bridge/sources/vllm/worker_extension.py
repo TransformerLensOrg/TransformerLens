@@ -204,7 +204,7 @@ class TLWorkerExtension:
 
     def tl_read_batched_captures(
         self, names: Optional[List[str]] = None
-    ) -> Dict[str, Dict[str, torch.Tensor]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """Cat per-request chunks into ``{req_id: {hook: (seq, width)}}`` (token-order).
 
         ``names`` restricts to those hooks (``None`` = all). Note the per-chunk

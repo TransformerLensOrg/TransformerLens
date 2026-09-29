@@ -39,6 +39,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    Union,
 )
 
 import torch
@@ -219,7 +220,7 @@ def select_displacement_matched_control_token(
     source_token_id: int,
     target_token_id: int,
     excluded_ids: Container[int],
-    active_support: Container[int],
+    active_support: Union[Container[int], torch.Tensor],
     *,
     tolerance: float = 0.1,
     seed: int = 0,
