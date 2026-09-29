@@ -1124,7 +1124,7 @@ class ActivationCache:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
         projected = W_out @ project_output_onto
-        if projected.ndim == 1:
+        if project_output_onto.ndim == 1:
             return neuron_acts * projected
         return neuron_acts[..., None] * projected
 

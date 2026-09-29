@@ -61,3 +61,40 @@ def test_batchless_accumulated_resid_matches_batched_row(
     expected = batched[:, batch_index]
     assert batchless.shape == expected.shape
     torch.testing.assert_close(batchless, expected)
+
+
+@pytest.mark.parametrize("neuron_slice", [0, [0]], ids=["integer", "list"])
+@pytest.mark.parametrize("projection_ndim", [1, 2], ids=["vector", "matrix"])
+@pytest.mark.parametrize("has_batch_dim", [True, False], ids=["batched", "batchless"])
+@pytest.mark.parametrize("pos_slice", [None, -1], ids=["all-positions", "last-position"])
+@torch.no_grad()
+def test_get_neuron_results_projection_matches_unprojected(
+    activation_cache: ActivationCache,
+    neuron_slice: int | list[int],
+    projection_ndim: int,
+    has_batch_dim: bool,
+    pos_slice: int | None,
+) -> None:
+    cache = activation_cache if has_batch_dim else activation_cache.apply_slice_to_batch_dim(0)
+    full = cache.get_neuron_results(
+        layer=0,
+        neuron_slice=neuron_slice,
+        pos_slice=pos_slice,
+    )
+    projection_shape = (full.shape[-1],) if projection_ndim == 1 else (full.shape[-1], 2)
+    direction = torch.randn(
+        projection_shape,
+        dtype=full.dtype,
+        device=full.device,
+    )
+    expected = full @ direction
+
+    actual = cache.get_neuron_results(
+        layer=0,
+        neuron_slice=neuron_slice,
+        pos_slice=pos_slice,
+        project_output_onto=direction,
+    )
+
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual, expected)
