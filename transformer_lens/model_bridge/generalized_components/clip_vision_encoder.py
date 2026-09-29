@@ -4,7 +4,6 @@ This module contains the bridge component for CLIP vision encoder layers
 used in multimodal models like LLava.
 """
 
-from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import torch
@@ -21,15 +20,9 @@ from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
-
-
-def _vision_attention_config(config: Any) -> Any:
-    """Return the vision tower dimensions expected by ``AttentionBridge``."""
-    n_heads = getattr(config, "vision_num_heads", None)
-    d_model = getattr(config, "vision_hidden_size", None)
-    if not n_heads or not d_model:
-        return config
-    return SimpleNamespace(n_heads=n_heads, d_model=d_model, d_head=d_model // n_heads)
+from transformer_lens.model_bridge.generalized_components.vision_encoder import (
+    vision_attention_config,
+)
 
 
 class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
@@ -66,10 +59,12 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
             submodules: Dictionary of submodules to register
         """
         default_submodules: Dict[str, GeneralizedComponent] = {
-            "ln1": NormalizationBridge(name="layer_norm1", config=config),
+            "ln1": NormalizationBridge(
+                name="layer_norm1", config=config, use_native_layernorm_autograd=True
+            ),
             "attn": AttentionBridge(
                 name="self_attn",
-                config=_vision_attention_config(config),
+                config=vision_attention_config(config),
                 submodules={
                     "q": LinearBridge(name="q_proj"),
                     "k": LinearBridge(name="k_proj"),
@@ -77,7 +72,9 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
                     "o": LinearBridge(name="out_proj"),
                 },
             ),
-            "ln2": NormalizationBridge(name="layer_norm2", config=config),
+            "ln2": NormalizationBridge(
+                name="layer_norm2", config=config, use_native_layernorm_autograd=True
+            ),
             "mlp": MLPBridge(
                 name="mlp",
                 config=config,

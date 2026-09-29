@@ -123,6 +123,22 @@ def test_clip_layernorms_resolve_to_layernorm_under_rmsnorm_config():
     assert post.uses_rms_norm is False
 
 
+def test_clip_layer_norm_uses_wrapped_vision_epsilon():
+    from transformer_lens.model_bridge.generalized_components.clip_vision_encoder import (
+        CLIPVisionEncoderLayerBridge,
+    )
+
+    layer = CLIPVisionEncoderLayerBridge(
+        name="encoder.layers", config=_Cfg(uses_rms_norm=False, eps=1e-6)
+    )
+    ln = layer.submodules["ln1"]
+    wrapped = nn.LayerNorm(8, eps=1e-3)
+    ln.set_original_component(wrapped)
+    x = torch.randn(2, 5, 8)
+
+    torch.testing.assert_close(ln(x), wrapped(x), rtol=0, atol=0)
+
+
 def test_native_autograd_path_also_respects_override():
     d = 16
     layer = _layernorm(d)
