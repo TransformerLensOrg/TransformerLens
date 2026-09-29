@@ -9,6 +9,7 @@ from transformers import (
     BartConfig,
     BartForConditionalGeneration,
     PreTrainedTokenizerFast,
+    StoppingCriteria,
     StoppingCriteriaList,
     T5Config,
     T5ForConditionalGeneration,
@@ -167,6 +168,35 @@ def test_stream_honors_seq2seq_generation_defaults(seq2seq_bridge, monkeypatch):
     assert len(set(expected[0].tolist())) == expected.shape[1]
 
 
+def test_stream_min_length_suppresses_an_early_eos(seq2seq_bridge, monkeypatch):
+    config = seq2seq_bridge.original_model.generation_config
+    monkeypatch.setattr(config, "min_length", None)
+    source = torch.tensor([[4, 5, 6, 2]])
+    first = seq2seq_bridge.generate(
+        source,
+        max_new_tokens=1,
+        do_sample=False,
+        stop_at_eos=False,
+        return_type="tokens",
+        verbose=False,
+    )
+    would_be_eos = int(first[0, -1])
+    monkeypatch.setattr(config, "min_length", 4)
+    options = dict(
+        max_new_tokens=4,
+        do_sample=False,
+        eos_token_id=would_be_eos,
+        return_type="tokens",
+        verbose=False,
+    )
+    expected = seq2seq_bridge.generate(source, **options)
+    chunks = list(seq2seq_bridge.generate_stream(source, max_tokens_per_yield=2, **options))
+    actual = torch.cat(chunks, dim=1)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    assert expected.shape[1] >= 4
+    assert int(actual[0, 1]) != would_be_eos
+
+
 def test_stream_stops_at_eos(seq2seq_bridge):
     source = torch.tensor([[4, 5, 6, 2]])
     first = seq2seq_bridge.generate(
@@ -199,13 +229,36 @@ def test_shared_decoder_start_fallback(seq2seq_bridge, monkeypatch, bos, eos, ex
     monkeypatch.setattr(config, "bos_token_id", bos, raising=False)
     monkeypatch.setattr(config, "eos_token_id", eos)
     source = torch.tensor([[4, 5], [6, 7]])
-    seed = seq2seq_bridge._encoder_decoder_seed(source, 8)
+    seed, _ = seq2seq_bridge._encoder_decoder_setup(source, 8)
     torch.testing.assert_close(seed, torch.tensor([[expected, 8], [expected, 8]]), rtol=0, atol=0)
 
 
-@pytest.mark.parametrize(
-    "kwargs", ({"stop_strings": "a"}, {"stopping_criteria": StoppingCriteriaList()})
-)
-def test_stream_rejects_unsupported_seq2seq_stopping(seq2seq_bridge, kwargs):
+def test_stream_rejects_unsupported_seq2seq_stopping(seq2seq_bridge):
+    class StopAfterOne(StoppingCriteria):
+        def __call__(self, input_ids, scores, **kwargs):
+            return True
+
     with pytest.raises(NotImplementedError, match="encoder-decoder"):
-        list(seq2seq_bridge.generate_stream(torch.tensor([[4, 5, 2]]), **kwargs))
+        list(
+            seq2seq_bridge.generate_stream(
+                torch.tensor([[4, 5, 2]]), stopping_criteria=StoppingCriteriaList([StopAfterOne()])
+            )
+        )
+
+
+def test_stream_nonempty_stop_strings_requires_tokenizer(seq2seq_bridge):
+    with pytest.raises(ValueError, match="requires a tokenizer"):
+        list(seq2seq_bridge.generate_stream(torch.tensor([[4, 5, 2]]), stop_strings="a"))
+
+
+@pytest.mark.parametrize(
+    "kwargs", ({"stop_strings": []}, {"stopping_criteria": StoppingCriteriaList()})
+)
+def test_stream_accepts_empty_seq2seq_stopping(seq2seq_bridge, kwargs):
+    source = torch.tensor([[4, 5, 2]])
+    options = dict(
+        max_new_tokens=2, do_sample=False, stop_at_eos=False, verbose=False, return_type="tokens"
+    )
+    expected = seq2seq_bridge.generate(source, **options, **kwargs)
+    chunks = list(seq2seq_bridge.generate_stream(source, **options, **kwargs))
+    torch.testing.assert_close(torch.cat(chunks, dim=1), expected, rtol=0, atol=0)

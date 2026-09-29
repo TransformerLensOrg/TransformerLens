@@ -2563,13 +2563,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         return NoRepeatNGramLogitsProcessor(size)
 
-    def _encoder_decoder_seed(
+    def _encoder_decoder_setup(
         self, input_tokens: torch.Tensor, forced_bos_token_id: Optional[int]
-    ) -> torch.Tensor:
-        """Share the decoder prefix between ordinary and streaming generation."""
+    ) -> tuple[torch.Tensor, Optional[int]]:
+        """Share decoder initialization and length defaults across generation paths."""
         config = self.original_model.config
+        generation_config = getattr(self.original_model, "generation_config", None)
+        if forced_bos_token_id is None:
+            # HF defaults such as bart-large-cnn's forced BOS apply to both loops.
+            forced_bos_token_id = getattr(generation_config, "forced_bos_token_id", None)
+        min_decoder_length = getattr(generation_config, "min_length", None)
         start = getattr(config, "decoder_start_token_id", None)
         if start is None:
+            # HF falls back to BOS, then EOS; IndicBART starts decoding from EOS.
             start = getattr(config, "bos_token_id", None)
             if start is None:
                 start = getattr(config, "eos_token_id", None)
@@ -2584,9 +2590,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             device=input_tokens.device,
         )
         if forced_bos_token_id is not None:
+            # Multilingual seq2seq selects the target language after decoder_start.
             forced = torch.full_like(seed, forced_bos_token_id)
             seed = torch.cat([seed, forced], dim=1)
-        return seed
+        return seed, min_decoder_length
 
     def _generate_tokens(
         self,
@@ -3265,14 +3272,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         is_encoder_decoder = hasattr(self.original_model, "config") and getattr(
             self.original_model.config, "is_encoder_decoder", False
         )
-        if forced_bos_token_id is None and is_encoder_decoder:
-            # HF's generate() applies generation_config defaults; bart-large-cnn
-            # pins forced_bos_token_id=0 there and degrades without it.
-            forced_bos_token_id = getattr(
-                getattr(self.original_model, "generation_config", None),
-                "forced_bos_token_id",
-                None,
-            )
         if forced_bos_token_id is not None and not is_encoder_decoder:
             # Raise before any state mutation (_capture_hf_cache) and before
             # the stateful hf_generate early-return would drop the kwarg.
@@ -3429,9 +3428,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         sampled_tokens_list = []
 
         # For encoder-decoder models, keep encoder input fixed and grow decoder input
+        min_decoder_length = None
         if is_encoder_decoder:
             encoder_input = input_tokens.clone()
-            decoder_tokens = self._encoder_decoder_seed(input_tokens, forced_bos_token_id)
+            decoder_tokens, min_decoder_length = self._encoder_decoder_setup(
+                input_tokens, forced_bos_token_id
+            )
 
         try:
             for sampled_tokens, final_logits, all_finished in self._generate_tokens(
@@ -3464,15 +3466,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 verbose=verbose,
                 stopping_criteria_list=stopping_criteria_list,
                 initial_attention_mask=initial_attention_mask,
-                min_decoder_length=(
-                    getattr(
-                        getattr(self.original_model, "generation_config", None),
-                        "min_length",
-                        None,
-                    )
-                    if is_encoder_decoder
-                    else None
-                ),
+                min_decoder_length=min_decoder_length,
                 ngram_processor=(self._encdec_ngram_processor() if is_encoder_decoder else None),
                 encoder_attention_mask=(attention_mask if is_encoder_decoder else None),
             ):
@@ -3489,8 +3483,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         sampled_tokens = torch.cat(sampled_tokens_list, dim=1)
         if is_encoder_decoder:
             # Reconstruct full decoder sequence: start token + generated tokens
-            decoder_seed_len = 2 if forced_bos_token_id is not None else 1
-            output_tokens = torch.cat([decoder_tokens[:, :decoder_seed_len], sampled_tokens], dim=1)
+            output_tokens = torch.cat([decoder_tokens, sampled_tokens], dim=1)
         elif _generate_from_embeds:
             # For inputs_embeds, we only have the generated token IDs (no input token IDs)
             output_tokens = sampled_tokens
@@ -3768,13 +3761,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
 
-        if _encdec_early and (stop_strings is not None or stopping_criteria is not None):
+        stopping_criteria_list = self._resolve_stopping_criteria(stop_strings, stopping_criteria)
+        if _encdec_early and stopping_criteria_list is not None:
             raise NotImplementedError(
                 "stop_strings/stopping_criteria are not supported for encoder-decoder "
                 "generation in TransformerBridge.generate_stream(). Call hf_generate(...) "
                 "for HF-native stopping on those inputs."
             )
-        stopping_criteria_list = self._resolve_stopping_criteria(stop_strings, stopping_criteria)
         if stopping_criteria_list is not None and not stop_at_eos:
             _pad_id = None
             if self.tokenizer is not None:
@@ -3801,11 +3794,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         encoder_input = input_tokens if _encdec_early else None
         decoder_tokens = None
         stream_prefix = input_tokens
+        min_decoder_length = None
         if _encdec_early:
-            forced_bos = getattr(
-                getattr(self.original_model, "generation_config", None), "forced_bos_token_id", None
-            )
-            decoder_tokens = self._encoder_decoder_seed(input_tokens, forced_bos)
+            decoder_tokens, min_decoder_length = self._encoder_decoder_setup(input_tokens, None)
             stream_prefix = decoder_tokens
 
         # --- Streaming loop ---
@@ -3883,15 +3874,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     multimodal_kwargs={},
                     verbose=verbose,
                     stopping_criteria_list=stopping_criteria_list,
-                    min_decoder_length=(
-                        getattr(
-                            getattr(self.original_model, "generation_config", None),
-                            "min_length",
-                            None,
-                        )
-                        if _encdec_early
-                        else None
-                    ),
+                    min_decoder_length=min_decoder_length,
                     ngram_processor=(self._encdec_ngram_processor() if _encdec_early else None),
                     encoder_attention_mask=encoder_attention_mask,
                 )
