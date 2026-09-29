@@ -154,6 +154,8 @@ _HF_PASSTHROUGH_ATTRS = [
     "n_layers_in_coda",
     "injection_type",
     "qk_bias",
+    # Muse Glimmer
+    "output_multiplier",
     # RWKV-7 (attention-free recurrent, generalized delta-rule time-mixing).
     # head_dim is intentionally omitted: it is a read-only alias of d_head on
     # TransformerBridgeConfig, so a passthrough setattr would raise.
