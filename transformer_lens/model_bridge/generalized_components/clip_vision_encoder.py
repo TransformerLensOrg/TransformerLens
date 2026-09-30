@@ -9,11 +9,19 @@ from typing import Any, Dict, Optional
 import torch
 
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge.generalized_components.attention import (
+    AttentionBridge,
+)
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
+from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
+)
+from transformer_lens.model_bridge.generalized_components.vision_encoder import (
+    vision_attention_config,
 )
 
 
@@ -50,7 +58,35 @@ class CLIPVisionEncoderLayerBridge(GeneralizedComponent):
             config: Optional configuration object
             submodules: Dictionary of submodules to register
         """
-        super().__init__(name, config, submodules=submodules or {})
+        default_submodules: Dict[str, GeneralizedComponent] = {
+            "ln1": NormalizationBridge(
+                name="layer_norm1", config=config, use_native_layernorm_autograd=True
+            ),
+            "attn": AttentionBridge(
+                name="self_attn",
+                config=vision_attention_config(config),
+                submodules={
+                    "q": LinearBridge(name="q_proj"),
+                    "k": LinearBridge(name="k_proj"),
+                    "v": LinearBridge(name="v_proj"),
+                    "o": LinearBridge(name="out_proj"),
+                },
+            ),
+            "ln2": NormalizationBridge(
+                name="layer_norm2", config=config, use_native_layernorm_autograd=True
+            ),
+            "mlp": MLPBridge(
+                name="mlp",
+                config=config,
+                submodules={
+                    "in": LinearBridge(name="fc1"),
+                    "out": LinearBridge(name="fc2"),
+                },
+            ),
+        }
+        if submodules:
+            default_submodules.update(submodules)
+        super().__init__(name, config, submodules=default_submodules)
 
     def forward(
         self,
@@ -125,7 +161,9 @@ class CLIPVisionEncoderBridge(GeneralizedComponent):
         default_submodules: Dict[str, GeneralizedComponent] = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
             "pre_layernorm": NormalizationBridge(name="vision_model.pre_layrnorm", config=config),
-            "encoder_layers": CLIPVisionEncoderLayerBridge(name="vision_model.encoder.layers"),
+            "encoder_layers": CLIPVisionEncoderLayerBridge(
+                name="vision_model.encoder.layers", config=config
+            ),
             "post_layernorm": NormalizationBridge(
                 name="vision_model.post_layernorm", config=config
             ),
