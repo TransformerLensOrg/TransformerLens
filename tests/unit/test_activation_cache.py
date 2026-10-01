@@ -98,3 +98,42 @@ def test_get_neuron_results_projection_matches_unprojected(
 
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("incl_remainder", [False, True], ids=["no-remainder", "remainder"])
+@pytest.mark.parametrize(
+    "projection_ndim", [None, 1, 2], ids=["unprojected", "vector-projection", "matrix-projection"]
+)
+@pytest.mark.parametrize("apply_ln", [False, True], ids=["raw", "normalized"])
+@torch.no_grad()
+def test_stack_neuron_results_integer_neuron_slice_matches_list(
+    activation_cache: ActivationCache,
+    apply_ln: bool,
+    projection_ndim: int | None,
+    incl_remainder: bool,
+) -> None:
+    """An int ``neuron_slice`` keeps the neuron axis and matches the one-element list ``[n]``."""
+    n_layers = activation_cache.model.cfg.n_layers
+    d_model = activation_cache.model.cfg.d_model
+    neuron = 3
+    direction = None
+    if projection_ndim is not None:
+        projection_shape = (d_model,) if projection_ndim == 1 else (d_model, 2)
+        direction = torch.randn(projection_shape, generator=torch.Generator().manual_seed(0))
+    kwargs = dict(
+        layer=n_layers,
+        apply_ln=apply_ln,
+        project_output_onto=direction,
+        incl_remainder=incl_remainder,
+        return_labels=True,
+    )
+
+    expected, expected_labels = activation_cache.stack_neuron_results(
+        neuron_slice=[neuron], **kwargs
+    )
+    actual, labels = activation_cache.stack_neuron_results(neuron_slice=neuron, **kwargs)
+
+    assert expected.shape[0] == n_layers + int(incl_remainder)
+    assert labels == expected_labels
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual, expected)
