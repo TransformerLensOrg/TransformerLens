@@ -4,6 +4,7 @@ import torch
 from transformer_lens import ActivationCache
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.utilities import Slice
 
 
 @pytest.fixture(scope="module", params=["LN", "RMS"])
@@ -105,17 +106,20 @@ def test_get_neuron_results_projection_matches_unprojected(
     "projection_ndim", [None, 1, 2], ids=["unprojected", "vector-projection", "matrix-projection"]
 )
 @pytest.mark.parametrize("apply_ln", [False, True], ids=["raw", "normalized"])
+@pytest.mark.parametrize("wrap_in_slice", [False, True], ids=["bare-int", "Slice-int"])
 @torch.no_grad()
 def test_stack_neuron_results_integer_neuron_slice_matches_list(
     activation_cache: ActivationCache,
+    wrap_in_slice: bool,
     apply_ln: bool,
     projection_ndim: int | None,
     incl_remainder: bool,
 ) -> None:
-    """An int ``neuron_slice`` keeps the neuron axis and matches the one-element list ``[n]``."""
+    """An int ``neuron_slice`` (bare or ``Slice(n)``) keeps the neuron axis and matches ``[n]``."""
     n_layers = activation_cache.model.cfg.n_layers
     d_model = activation_cache.model.cfg.d_model
     neuron = 3
+    neuron_slice = Slice(neuron) if wrap_in_slice else neuron
     direction = None
     if projection_ndim is not None:
         projection_shape = (d_model,) if projection_ndim == 1 else (d_model, 2)
@@ -131,9 +135,28 @@ def test_stack_neuron_results_integer_neuron_slice_matches_list(
     expected, expected_labels = activation_cache.stack_neuron_results(
         neuron_slice=[neuron], **kwargs
     )
-    actual, labels = activation_cache.stack_neuron_results(neuron_slice=neuron, **kwargs)
+    actual, labels = activation_cache.stack_neuron_results(neuron_slice=neuron_slice, **kwargs)
 
     assert expected.shape[0] == n_layers + int(incl_remainder)
     assert labels == expected_labels
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("wrap_in_slice", [False, True], ids=["bare-int", "Slice-int"])
+@torch.no_grad()
+def test_stack_neuron_results_integer_neuron_slice_without_labels(
+    activation_cache: ActivationCache,
+    wrap_in_slice: bool,
+) -> None:
+    """With ``return_labels=False`` an int ``neuron_slice`` still returns the ``[n]`` stack."""
+    layer = activation_cache.model.cfg.n_layers
+    neuron = 3
+    neuron_slice = Slice(neuron) if wrap_in_slice else neuron
+
+    expected = activation_cache.stack_neuron_results(layer, neuron_slice=[neuron])
+    actual = activation_cache.stack_neuron_results(layer, neuron_slice=neuron_slice)
+
+    assert isinstance(actual, torch.Tensor) and isinstance(expected, torch.Tensor)
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)

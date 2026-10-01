@@ -1230,7 +1230,8 @@ class ActivationCache:
             pos_slice:
                 Slice of the positions.
             neuron_slice:
-                Slice of the neurons. An int selects a single neuron and is treated like ``[n]``.
+                Slice of the neurons. An int or an integer-mode ``Slice(n)`` selects a single
+                neuron and is treated like ``[n]``.
             return_labels:
                 Whether to also return a list of labels of the form "L0H0" for the heads.
             incl_remainder:
@@ -1248,9 +1249,13 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        # unwrap turns an int into [n]: layers are concatenated along the neuron axis, so it
-        # must not collapse.
+        # Layers are concatenated along the neuron axis, so it must not collapse. unwrap turns an
+        # int into [n] but leaves a Slice as is, so an integer-mode Slice(n) is rebuilt as [n]
+        # here. A new Slice is made, so the caller's Slice still collapses elsewhere.
         neuron_slice = Slice.unwrap(neuron_slice)
+        if neuron_slice.mode == "int":
+            assert isinstance(neuron_slice.slice, int)  # narrow for mypy
+            neuron_slice = Slice([neuron_slice.slice])
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
