@@ -1161,16 +1161,16 @@ class ActivationCache:
         pos_slice: Slice,
         neuron_slice: Slice,
         project_2d: torch.Tensor,
+        mlp_input: bool = False,
     ) -> torch.Tensor:
         """LN-applied neuron stack with projection folded in — no d_mlp×d_model intermediate.
 
         Analytical formula (LN models, cached scale ``s``):
             ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
-        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
-        ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
-
+        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the ln2
+        scale of ``layer`` when ``mlp_input`` is set, else the ln1 scale.
         """
-        scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
+        scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
         apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
         sum_p = project_2d.sum(dim=0) if apply_centering else None  # [n_outs]
@@ -1211,6 +1211,7 @@ class ActivationCache:
         incl_remainder: bool = False,
         apply_ln: bool = False,
         project_output_onto: Optional[torch.Tensor] = None,
+        mlp_input: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[str]]]:
         """Stack Neuron Results
 
@@ -1244,6 +1245,9 @@ class ActivationCache:
                 direction analyses; see ``get_neuron_results``). Combined with ``apply_ln=True``,
                 the projection is folded into the analytical cached-scale LN so the
                 ``[..., d_mlp, d_model]`` intermediate is still never materialized.
+            mlp_input:
+                With ``apply_ln=True``, normalize with the LN scale of the input to ``layer``'s MLP
+                (ln2) instead of its attention (ln1). The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1272,13 +1276,13 @@ class ActivationCache:
             assert project_2d is not None  # narrow for mypy
             # Analytical LN+projection — no d_mlp×d_model intermediate.
             components = self._stack_neuron_results_apply_ln_projected(
-                layer, pos_slice, neuron_slice, project_2d
+                layer, pos_slice, neuron_slice, project_2d, mlp_input=mlp_input
             )
             if incl_remainder:
                 # Linearity of cached-scale LN: remainder is LN_s(resid_post) @ p - sum(neurons).
                 resid_post = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
                 resid_post_ln = self.apply_ln_to_stack(
-                    resid_post[None], layer, pos_slice=pos_slice
+                    resid_post[None], layer, pos_slice=pos_slice, mlp_input=mlp_input
                 )[0]
                 remainder = resid_post_ln @ project_2d
                 if components.shape[0] > 0:
@@ -1322,7 +1326,9 @@ class ActivationCache:
                 components = torch.zeros(0, *empty_shape_src.shape, device=self.model.cfg.device)
 
             if apply_ln:
-                components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
+                components = self.apply_ln_to_stack(
+                    components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                )
 
         if squeeze_projected:
             components = components.squeeze(-1)
@@ -1519,6 +1525,7 @@ class ActivationCache:
                     return_labels=True,
                     apply_ln=ln_folded,
                     project_output_onto=project_2d,
+                    mlp_input=mlp_input,
                 )
                 labels.extend(neuron_labels)
                 components.append(neuron_stack)
