@@ -748,18 +748,25 @@ class ActivationCache:
         be useful if you forget.
 
         Existing per-head results are preserved, including those without a batch dimension.
-        Missing or merged results are recomputed from the corresponding cached attention output.
+        Missing or invalid results are recomputed from cached ``hook_z`` and the model's
+        ``W_O`` weights.
 
         TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
         compatibility shim.
         """
         expected_ndim = 4 if self.has_batch_dim else 3
+        all_cached = True
         for layer in range(self.model.cfg.n_layers):
             result_key = f"blocks.{layer}.attn.hook_result"
             cached_result = self.cache_dict.get(result_key)
             # Batchless per-head results are valid 3D tensors.
-            if isinstance(cached_result, torch.Tensor) and cached_result.ndim == expected_ndim:
+            if (
+                isinstance(cached_result, torch.Tensor)
+                and cached_result.ndim == expected_ndim
+                and cached_result.shape[-2] == self.model.cfg.n_heads
+            ):
                 continue
+            all_cached = False
 
             # Add singleton dimension to match W_O's shape for broadcasting
             z = einops.rearrange(
@@ -773,6 +780,9 @@ class ActivationCache:
 
             # Sum over d_head to get the contribution of each head to the residual stream
             self.cache_dict[result_key] = result.sum(dim=-2)
+
+        if all_cached:
+            logging.warning("Tried to compute head results when they were already cached")
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
         """Return the block indices whose mixer is an SSM / recurrent mixer.

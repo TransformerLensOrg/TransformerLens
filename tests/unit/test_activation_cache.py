@@ -116,6 +116,7 @@ def test_get_neuron_results_projection_matches_unprojected(
 @torch.no_grad()
 def test_compute_head_results_handles_per_layer_cache(
     activation_cache: ActivationCache,
+    caplog: pytest.LogCaptureFixture,
     has_batch_dim: bool,
     valid_layers: tuple[int, ...],
     stale_layer: int | None,
@@ -149,7 +150,11 @@ def test_compute_head_results_handles_per_layer_cache(
         layer: cache.cache_dict[f"blocks.{layer}.attn.hook_result"] for layer in valid_layers
     }
 
-    cache.compute_head_results()
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        cache.compute_head_results()
+    already_cached = "Tried to compute head results when they were already cached"
+    assert (already_cached in caplog.messages) == (len(valid_layers) == cache.model.cfg.n_layers)
 
     for layer, result in enumerate(expected):
         torch.testing.assert_close(cache[("result", layer, "attn")], result)
@@ -180,3 +185,32 @@ def test_compute_head_results_requires_z_for_missing_results(
 
     with pytest.raises(KeyError, match=r"blocks\.0\.attn\.hook_z"):
         cache.compute_head_results()
+
+
+@pytest.mark.parametrize("has_batch_dim", [True, False], ids=["batched", "batchless"])
+@torch.no_grad()
+def test_compute_head_results_recomputes_wrong_head_count(
+    activation_cache: ActivationCache,
+    has_batch_dim: bool,
+) -> None:
+    cache = ActivationCache(
+        {key: value.clone() for key, value in activation_cache.cache_dict.items()},
+        activation_cache.model,
+    )
+    if not has_batch_dim:
+        cache = cache.apply_slice_to_batch_dim(0)
+    expected = torch.einsum(
+        "...hd,hdm->...hm", cache[("z", 0, "attn")], cache.model.blocks[0].attn.W_O
+    )
+    cache.cache_dict["blocks.0.attn.hook_result"] = expected[..., :-1, :].clone()
+    preserved = (
+        torch.einsum("...hd,hdm->...hm", cache[("z", 1, "attn")], cache.model.blocks[1].attn.W_O)
+        + 7
+    )
+    cache.cache_dict["blocks.1.attn.hook_result"] = preserved
+    del cache.cache_dict["blocks.1.attn.hook_z"]
+
+    cache.compute_head_results()
+
+    torch.testing.assert_close(cache[("result", 0, "attn")], expected)
+    assert cache[("result", 1, "attn")] is preserved
