@@ -747,24 +747,19 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
 
+        Existing per-head results are preserved, including those without a batch dimension.
+        Missing or merged results are recomputed from the corresponding cached attention output.
+
         TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
         compatibility shim.
         """
-        # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
-        first_key = "blocks.0.attn.hook_result"
-        if first_key in self.cache_dict:
-            val = self.cache_dict[first_key]
-            if isinstance(val, torch.Tensor) and val.ndim >= 4:
-                logging.warning("Tried to compute head results when they were already cached")
-                return
-            # Remove stale 3D entries before recomputing
-            for layer in range(self.model.cfg.n_layers):
-                key = f"blocks.{layer}.attn.hook_result"
-                if key in self.cache_dict:
-                    del self.cache_dict[key]
+        expected_ndim = 4 if self.has_batch_dim else 3
         for layer in range(self.model.cfg.n_layers):
-            # Note that we haven't enabled set item on this object so we need to edit the underlying
-            # cache_dict directly.
+            result_key = f"blocks.{layer}.attn.hook_result"
+            cached_result = self.cache_dict.get(result_key)
+            # Batchless per-head results are valid 3D tensors.
+            if isinstance(cached_result, torch.Tensor) and cached_result.ndim == expected_ndim:
+                continue
 
             # Add singleton dimension to match W_O's shape for broadcasting
             z = einops.rearrange(
@@ -777,7 +772,7 @@ class ActivationCache:
             result = z * block.attn.W_O
 
             # Sum over d_head to get the contribution of each head to the residual stream
-            self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
+            self.cache_dict[result_key] = result.sum(dim=-2)
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
         """Return the block indices whose mixer is an SSM / recurrent mixer.

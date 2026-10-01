@@ -98,3 +98,85 @@ def test_get_neuron_results_projection_matches_unprojected(
 
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("has_batch_dim", [True, False], ids=["batched", "batchless"])
+@pytest.mark.parametrize(
+    "valid_layers,stale_layer",
+    [
+        ((), None),
+        ((0,), None),
+        ((1,), None),
+        ((0, 1), None),
+        ((0,), 1),
+        ((1,), 0),
+    ],
+    ids=["missing-all", "valid-first", "valid-last", "valid-all", "stale-last", "stale-first"],
+)
+@torch.no_grad()
+def test_compute_head_results_handles_per_layer_cache(
+    activation_cache: ActivationCache,
+    has_batch_dim: bool,
+    valid_layers: tuple[int, ...],
+    stale_layer: int | None,
+) -> None:
+    cache = ActivationCache(
+        {key: value.clone() for key, value in activation_cache.cache_dict.items()},
+        activation_cache.model,
+    )
+    if not has_batch_dim:
+        cache = cache.apply_slice_to_batch_dim(0)
+
+    expected = [
+        torch.einsum(
+            "...hd,hdm->...hm",
+            cache[("z", layer, "attn")],
+            cache.model.blocks[layer].attn.W_O,
+        )
+        for layer in range(cache.model.cfg.n_layers)
+    ]
+    for layer in range(cache.model.cfg.n_layers):
+        cache.cache_dict.pop(f"blocks.{layer}.attn.hook_result", None)
+    for layer in valid_layers:
+        expected[layer] = expected[layer] + 7
+        cache.cache_dict[f"blocks.{layer}.attn.hook_result"] = expected[layer].clone()
+        del cache.cache_dict[f"blocks.{layer}.attn.hook_z"]
+    if stale_layer is not None:
+        cache.cache_dict[f"blocks.{stale_layer}.attn.hook_result"] = expected[stale_layer].sum(
+            dim=-2
+        )
+    preserved = {
+        layer: cache.cache_dict[f"blocks.{layer}.attn.hook_result"] for layer in valid_layers
+    }
+
+    cache.compute_head_results()
+
+    for layer, result in enumerate(expected):
+        torch.testing.assert_close(cache[("result", layer, "attn")], result)
+    for layer, result in preserved.items():
+        assert cache[("result", layer, "attn")] is result
+
+    computed = [cache[("result", layer, "attn")] for layer in range(cache.model.cfg.n_layers)]
+    stacked = cache.stack_head_results()
+    torch.testing.assert_close(stacked, torch.cat(expected, dim=-2).movedim(-2, 0))
+    for layer, result in enumerate(computed):
+        assert cache[("result", layer, "attn")] is result
+
+
+@pytest.mark.parametrize("has_batch_dim", [True, False], ids=["batched", "batchless"])
+@torch.no_grad()
+def test_compute_head_results_requires_z_for_missing_results(
+    activation_cache: ActivationCache,
+    has_batch_dim: bool,
+) -> None:
+    cache = ActivationCache(
+        {key: value.clone() for key, value in activation_cache.cache_dict.items()},
+        activation_cache.model,
+    )
+    if not has_batch_dim:
+        cache = cache.apply_slice_to_batch_dim(0)
+    cache.cache_dict.pop("blocks.0.attn.hook_result", None)
+    del cache.cache_dict["blocks.0.attn.hook_z"]
+
+    with pytest.raises(KeyError, match=r"blocks\.0\.attn\.hook_z"):
+        cache.compute_head_results()
