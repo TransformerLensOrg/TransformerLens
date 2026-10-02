@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import cached_property
 from typing import Any, List, Protocol, Tuple, Union, cast, overload, runtime_checkable
 
+import numpy as np
 import torch
 from jaxtyping import Complex, Float
 
@@ -299,10 +300,37 @@ class FactoredMatrix:
         return sequence
 
     def __getitem__(self, idx: Union[int, Tuple]) -> FactoredMatrix:
-        """Indexing - assumed to only apply to the leading dimensions."""
+        """Index leading dimensions and matrix rows/columns without forming the product.
+
+        Ellipsis expands across the product's dimensions, excluding new axes (``None``).
+        Integer row and column indices retain singleton dimensions in the returned factors.
+        """
         if not isinstance(idx, tuple):
             idx = (idx,)
-        length = len([i for i in idx if i is not None])
+
+        def index_ndim(item: Any) -> int:
+            if item is None or item is Ellipsis:
+                return 0
+            # Boolean masks consume one input axis per mask dimension, unlike integer arrays.
+            if isinstance(item, torch.Tensor) and item.dtype in (torch.bool, torch.uint8):
+                return item.ndim
+            if isinstance(item, np.ndarray) and item.dtype in (np.bool_, np.uint8):
+                return item.ndim
+            return 1
+
+        ellipsis_positions = [i for i, item in enumerate(idx) if item is Ellipsis]
+        if len(ellipsis_positions) > 1:
+            raise IndexError("An index can only have a single ellipsis")
+        if ellipsis_positions:
+            consumed = sum(index_ndim(item) for item in idx)
+            if consumed > self.ndim:
+                raise ValueError(
+                    f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
+                )
+            position = ellipsis_positions[0]
+            # Expand against AB's axes before mapping row/column indices onto the factors.
+            idx = idx[:position] + (slice(None),) * (self.ndim - consumed) + idx[position + 1 :]
+        length = sum(index_ndim(item) for item in idx)
         if length <= len(self.shape) - 2:
             return FactoredMatrix(self.A[idx], self.B[idx])
         elif length == len(self.shape) - 1:
