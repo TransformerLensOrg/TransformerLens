@@ -1,11 +1,11 @@
-"""Integration guard: ``attribution_patch`` yields finite node scores on a real Bridge.
+"""Integration guard: attribution patching and faithfulness on a real Bridge. Bridge.
 
 The model-free unit suite runs against ``_LinearToyBridge``, which overrides
 ``hook_dict``, ``hooks()``, and ``check_hooks_to_add`` — the three behaviours the
 two real-Bridge failures depend on. Its hook points have no conversion and its
 gate check is a no-op, so a green unit suite says nothing about a real Bridge.
 
-This test boots a real GPT-2 Bridge and exercises the two paths the toy bridge
+This test boots a real GPT-2 Bridge and exercises the paths the toy bridge
 hides:
 
 - gradients captured *through* hook conversions — ``blocks.*.attn.hook_z`` hands a
@@ -14,7 +14,9 @@ hides:
   in that converted shape; and
 - the default ``names_filter`` (``None``) falling back to the node hook set on a
   real ``hook_dict``, which also exposes gated points (``hook_mlp_in``,
-  ``attn.hook_result``, split-QKV inputs) that ``add_hook`` would reject.
+  ``attn.hook_result``, split-QKV inputs) that ``add_hook`` would reject; and
+- the edge-ablation rewrite, whose per-head fork hooks and pre-LN placement only
+  exist on a real attention bridge.
 """
 
 from __future__ import annotations
@@ -25,7 +27,11 @@ import pytest
 import torch
 
 from transformer_lens.model_bridge import TransformerBridge
-from transformer_lens.tools.analysis.attribution_patching import attribution_patch
+from transformer_lens.tools.analysis.attribution_patching import (
+    EdgeAttributionConfig,
+    attribution_patch,
+    faithfulness,
+)
 
 CLEAN_PROMPT = "The capital of France is"
 CORRUPT_PROMPT = "The capital of Russia is"
@@ -71,3 +77,102 @@ def test_attribution_patch_scores_every_node_finite_on_real_bridge(gpt2_bridge) 
     # conversion bug broke, mlp_out and embed round out the node graph.
     families = {node.kind for node in result.node_scores}
     assert families == {"embed", "attn_head_out", "mlp_out"}
+
+
+def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> None:
+    """A ranked edge circuit recovers far more of the gap than a random one.
+
+    The ablation rewrites each reader's input at its pre-LN fork hook, so this
+    only works if the real Bridge's split-QKV and MLP-entry hooks sit where the
+    rewrite assumes. A circuit built from the top-ranked edges should recover a
+    large share of the clean-to-corrupt gap; a random edge set of the same size
+    should recover essentially none, which is what makes the number meaningful
+    rather than an artifact of ablating almost nothing.
+
+    Thresholds are set from measured values on this exact model and prompt pair
+    (gpt2-small, fp32, CPU): the top 200 edges recover about 0.62 of the gap,
+    while a random 200 of the 194,946 edges recover about 0.00. Recovery grows
+    with the budget -- roughly 0.29 at 50 edges and 0.997 at 1000 -- so the
+    budget is fixed here rather than left to drift.
+    """
+    clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    assert clean.shape == corrupt.shape, "prompts must tokenize to the same length"
+
+    answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1].item())
+    wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1].item())
+    metric_fn = _logit_diff_metric(answer_id, wrong_id)
+
+    result = attribution_patch(
+        gpt2_bridge,
+        clean,
+        corrupt,
+        metric_fn,
+        config=EdgeAttributionConfig(granularity="edge"),
+    )
+    budget = 200
+    ranked = result.top_edges(k=budget)
+    assert len(ranked) == budget
+
+    report = faithfulness(gpt2_bridge, clean, corrupt, metric_fn, ranked)
+
+    assert math.isfinite(report.recovered)
+    assert report.circuit_size == budget
+    assert report.total_edges > report.circuit_size
+    assert report.full_metric != pytest.approx(report.corrupt_metric)
+    assert report.recovered > 0.5
+
+    # A random edge set of the same size recovers essentially nothing, so the
+    # ranking is doing real work rather than the number being an artifact of the
+    # circuit's size.
+    all_edges = list(result.edge_scores)
+    generator = torch.Generator().manual_seed(0)
+    sampled = torch.randperm(len(all_edges), generator=generator)[:budget].tolist()
+    random_report = faithfulness(
+        gpt2_bridge, clean, corrupt, metric_fn, [all_edges[index] for index in sampled]
+    )
+
+    assert random_report.circuit_size == report.circuit_size
+    assert random_report.recovered < 0.1
+    assert report.recovered > random_report.recovered + 0.4
+
+
+def test_edge_class_breakout_marks_into_qk_as_the_least_faithful_class(gpt2_bridge) -> None:
+    """Removing the into-Q/K edges is what breaks the circuit's faithfulness.
+
+    Edges into Q and K pass through the softmax, so the linearized ranking is
+    least trustworthy there; edges into V, the MLP, and the terminal readout are
+    linear. The breakout measures that by keeping every edge outside one class,
+    so a class whose removal collapses recovery is the one carrying the
+    nonlinearity.
+
+    Thresholds are set from measured values on this exact model and prompt pair
+    (gpt2-small, fp32, CPU): keeping everything except into-Q/K recovers about
+    1.09 of the gap, while removing into-V drops it to about -0.18 and removing
+    into-logits to about 0.00.
+    """
+    clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1].item())
+    wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1].item())
+    metric_fn = _logit_diff_metric(answer_id, wrong_id)
+
+    result = attribution_patch(
+        gpt2_bridge,
+        clean,
+        corrupt,
+        metric_fn,
+        config=EdgeAttributionConfig(granularity="edge"),
+    )
+    report = faithfulness(gpt2_bridge, clean, corrupt, metric_fn, result.top_edges(k=200))
+
+    breakout = report.edge_class_recovered
+    assert set(breakout) == {"into_qk", "into_v", "into_mlp", "into_logits"}
+    assert all(math.isfinite(value) for value in breakout.values())
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+
+    # Dropping the softmax-fed class leaves the circuit intact; dropping the
+    # linear classes does not.
+    assert breakout["into_qk"] > 0.9
+    assert breakout["into_v"] < 0.5
+    assert breakout["into_logits"] < 0.5

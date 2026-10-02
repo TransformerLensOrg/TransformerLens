@@ -86,6 +86,50 @@ Both node and edge granularity use plain attribution with `ig_steps=1`.
 
 API: {func}`~transformer_lens.tools.analysis.attribution_patching.attribution_patch`.
 
+#### Faithfulness: check that a circuit actually explains the behavior
+
+A ranked edge list is a hypothesis, not a result. `faithfulness()` tests it by
+ablating every edge *outside* the candidate circuit and reporting how much of the
+clean-to-corrupt metric gap the circuit recovers:
+
+```python
+from transformer_lens.tools.analysis import (
+    EdgeAttributionConfig,
+    attribution_patch,
+    faithfulness,
+)
+
+ranked = attribution_patch(
+    model, clean, corrupt, metric_fn, config=EdgeAttributionConfig(granularity="edge")
+)
+report = faithfulness(model, clean, corrupt, metric_fn, ranked.top_edges(k=50))
+print(report.recovered, report.circuit_size, report.total_edges)
+```
+
+`recovered` is a fraction, not a percentage: `1.0` means the circuit reproduces
+the clean metric, `0.0` means it reproduces the corrupt metric. Values outside
+`[0, 1]` are possible and meaningful, since a circuit can overshoot.
+
+The residual stream is a running sum, so each reader's input is rebuilt exactly
+by subtracting the excluded writers' live contributions and adding their
+replacements. This is a forward-only measurement: it takes no gradient, so it is
+independent of the linearization that ranked the edges in the first place.
+
+`FaithfulnessConfig(ablation=...)` selects the replacement. The default,
+`"corrupt"`, substitutes the corrupt run's own contribution, which is the
+evaluation the external EAP-IG reference reports; `"mean"` substitutes the
+dataset mean of that writer's contribution instead. Compare against a random
+edge set of the same size before claiming a circuit is meaningful.
+
+`report.edge_class_recovered` breaks the result out by edge class, measured
+leave-one-out: each entry is the recovery with that class's edges removed, so a
+class whose removal collapses recovery is load-bearing. Edges into Q and K pass
+through the softmax, so they are the least faithfully ranked; edges into V, the
+MLP, and the terminal readout are linear. `report.edge_class_counts` reports how
+many edges each class holds, so a small class is not over-read.
+
+API: {func}`~transformer_lens.tools.analysis.attribution_patching.faithfulness`.
+
 ### Direct Path Patching: state the path and its approximation
 
 `get_act_patch_direct_path` fixes a source head and sweeps later destination heads,

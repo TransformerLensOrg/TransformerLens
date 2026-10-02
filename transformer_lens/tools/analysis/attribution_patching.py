@@ -23,17 +23,37 @@ Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.
 
 Scope: this build ships node and edge granularity with plain attribution
-(``ig_steps=1``). The integrated-gradient path (EAP-IG, ``ig_steps>1``) and
-ablate-outside faithfulness are not implemented yet; their API is declared here,
-and ``ig_steps>1`` raises :class:`NotImplementedError`, so downstream code can pin
+(``ig_steps=1``), plus ablate-outside faithfulness. The integrated-gradient path
+(EAP-IG, ``ig_steps>1``) is not implemented yet; its API is declared here, and
+``ig_steps>1`` raises :class:`NotImplementedError`, so downstream code can pin
 against a stable surface now.
+
+Faithfulness intervenes rather than estimating: it ablates every edge outside a
+candidate circuit and reports how much of the clean-to-corrupt metric gap the
+circuit recovers. The residual stream is a running sum, so a reader's input is
+exactly the sum of its writers' contributions, and rebuilding that input from
+the included writers plus replacements for the excluded ones is an exact
+correction rather than an approximation. The reader's fork hooks
+(``attn.hook_q_input`` / ``hook_k_input`` / ``hook_v_input``, ``hook_mlp_in``)
+fire before the layer norm, so the correction is a plain add and subtract in
+``d_model`` space with no norm scale to divide out.
 """
 
 from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator, Literal, Optional, Sequence, Union
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Iterator,
+    Literal,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 import torch
 
@@ -46,6 +66,8 @@ NodeKind = Literal[
     "embed", "attn_head_out", "mlp_out", "q_input", "k_input", "v_input", "mlp_in", "logits"
 ]
 Granularity = Literal["node", "edge"]
+AblationMode = Literal["corrupt", "mean"]
+EdgeClass = Literal["into_qk", "into_v", "into_mlp", "into_logits"]
 
 
 @dataclass
@@ -236,6 +258,60 @@ class AttributionResult:
         """
         ranked = sorted(self.edge_scores.items(), key=lambda item: abs(item[1]), reverse=True)
         return [(writer, reader, score) for (writer, reader), score in ranked[:k]]
+
+
+@dataclass(frozen=True)
+class FaithfulnessConfig:
+    """Configuration for an ablate-outside faithfulness measurement.
+
+    Attributes:
+        ablation: How an out-of-circuit edge's writer is replaced.
+            ``"corrupt"`` substitutes the corrupt run's own contribution, which
+            is the evaluation the pinned external reference reports and the
+            default here so the two compare like quantities. ``"mean"``
+            substitutes the dataset mean of that writer's contribution over the
+            clean/corrupt batch, which is the usual choice when no single
+            corrupt run is meaningful.
+    """
+
+    ablation: AblationMode = "corrupt"
+
+
+@dataclass
+class FaithfulnessResult:
+    """How much of the clean-to-corrupt metric gap a candidate circuit recovers.
+
+    Attributes:
+        recovered: Fraction of the clean-to-corrupt metric gap the circuit
+            recovers, ``(m_ablated - m_corrupt) / (m_clean - m_corrupt)``. A
+            fraction, not a percentage: ``1.0`` means ablating every edge
+            outside the circuit reproduces the clean metric, ``0.0`` means it
+            reproduces the corrupt metric. Values outside ``[0, 1]`` are
+            possible and meaningful -- a circuit can overshoot the clean run.
+        full_metric: The clean run's metric, the top of the gap.
+        corrupt_metric: The corrupt run's metric, the bottom of the gap.
+        circuit_size: Number of edges kept.
+        total_edges: Number of edges in the graph, so the budget is visible.
+        edge_class_recovered: Recovered fraction when every edge *outside* this
+            class is kept, keyed by class. A class whose removal collapses
+            recovery is load-bearing; one whose removal leaves recovery near
+            ``1.0`` is not. Keeping only the class instead would report roughly
+            ``0.0`` for every class, since no single class alone reconstructs
+            the behavior, so the leave-one-out form is the informative one.
+            Edges into Q and K pass through the softmax, so ``"into_qk"`` is
+            expected to be the least faithful class; edges into V, the MLP, and
+            the terminal logits readout are linear.
+        edge_class_counts: Number of edges in each class, so a class with few
+            edges is not over-read.
+    """
+
+    recovered: float
+    full_metric: float
+    corrupt_metric: float
+    circuit_size: int
+    total_edges: int
+    edge_class_recovered: dict[EdgeClass, float] = field(default_factory=dict)
+    edge_class_counts: dict[EdgeClass, int] = field(default_factory=dict)
 
 
 def _required_hook_names(n_layers: int, granularity: Granularity = "node") -> list[str]:
@@ -451,6 +527,40 @@ def _edge_hook_names(n_layers: int) -> list[str]:
     return _required_hook_names(n_layers, granularity="edge") + _required_edge_reader_hook_names(
         n_layers
     )
+
+
+def _writer_hook_names(n_layers: int) -> list[str]:
+    """The hook points holding a writer's own residual-stream contribution.
+
+    The three writer families an edge sweep scores: the token embedding write,
+    each attention head's per-head output (``attn.hook_result``, the
+    decomposition of the head's contribution after it is projected into the
+    residual stream), and each layer's MLP output. These are the hook points
+    :func:`_writer_hook_name` resolves a single writer node to, listed as a
+    family so a capture can filter to exactly them.
+    """
+    names = ["hook_embed"]
+    for layer in range(n_layers):
+        names.append(f"blocks.{layer}.attn.hook_result")
+        names.append(f"blocks.{layer}.hook_mlp_out")
+    return names
+
+
+def _reader_hook_names(n_layers: int) -> list[str]:
+    """The hook points holding a reader's input.
+
+    The residual each reader consumes: the split ``attn.hook_q_input`` /
+    ``hook_k_input`` / ``hook_v_input`` per head, and each layer's MLP entry
+    ``hook_mlp_in``. The terminal logits reader reads the final
+    ``hook_resid_post``, which :func:`_required_edge_reader_hook_names` lists.
+    """
+    names: list[str] = []
+    for layer in range(n_layers):
+        names.append(f"blocks.{layer}.attn.hook_q_input")
+        names.append(f"blocks.{layer}.attn.hook_k_input")
+        names.append(f"blocks.{layer}.attn.hook_v_input")
+        names.append(f"blocks.{layer}.hook_mlp_in")
+    return names
 
 
 def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]:
@@ -707,6 +817,76 @@ def cache_activation_and_gradient(
     return GradientCache(activations=activations, gradients=gradients, metric=metric.detach())
 
 
+def capture_writer_outputs(
+    model: Any,
+    tokens: torch.Tensor,
+    names_filter: NamesFilter = None,
+) -> dict[str, torch.Tensor]:
+    """Capture writer contributions in one forward-only pass.
+
+    Rewriting a reader's input during a live forward pass needs the writers'
+    *current* contributions rather than a gradient estimate. This runs a single
+    forward under :func:`torch.no_grad` with forward hooks only: no backward is
+    driven and no gradient is retained. That is the opposite contract from
+    :func:`cache_activation_and_gradient`, which exists to retain gradients and
+    refuses to run without autograd, so the two are kept as separate helpers
+    rather than one helper with a mode switch.
+
+    The default filter is the writer-output family only -- ``hook_embed``,
+    ``blocks.*.attn.hook_result``, and ``blocks.*.hook_mlp_out``. Caching the
+    reader-input family as well would roughly double the captured memory for no
+    benefit here, since a caller rewriting a reader's input reads that input
+    from the live forward rather than from a cache.
+
+    Memory caveat: ``attn.hook_result`` is a per-head
+    ``[batch, seq, n_heads, d_model]`` tensor, so the capture is fine on a model
+    the size of gpt2-small and does not scale to models with many heads or
+    layers. The hook point only fires while ``cfg.use_attn_result`` is on; see
+    :func:`_edge_hook_flags`.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
+            ``hook_dict``, and the ``hooks()`` context manager.
+        tokens: Input token ids for a single forward pass.
+        names_filter: Restricts which hook points are captured. ``None`` (the
+            default) captures the writer-output family. On a real Bridge the
+            gated points (``attn.hook_result``, the split-QKV inputs,
+            ``hook_mlp_in``) raise in ``add_hook`` unless their ``set_use_*``
+            flag is on, so a filter reaching them must be paired with
+            :func:`_edge_hook_flags`.
+
+    Returns:
+        Detached activation tensors keyed by hook name, for every hook point
+        matching ``names_filter``.
+
+    Raises:
+        ValueError: if ``names_filter`` matches no hook point.
+    """
+    if names_filter is None:
+        names_filter = _writer_hook_names(int(model.cfg.n_layers))
+    predicate = _as_predicate(names_filter)
+    names = [name for name in model.hook_dict if predicate(name)]
+    if not names:
+        raise ValueError("names_filter matched no hook points")
+
+    captured: dict[str, torch.Tensor] = {}
+
+    def make_fwd_hook(name: str) -> Callable[..., None]:
+        def hook(tensor: torch.Tensor, *, hook: Any) -> None:
+            del hook
+            if isinstance(tensor, torch.Tensor):
+                captured[name] = tensor.detach().clone()
+            return None
+
+        return hook
+
+    fwd_hooks = [(name, make_fwd_hook(name)) for name in names]
+    with torch.no_grad(), model.hooks(fwd_hooks=fwd_hooks):
+        model(tokens)
+
+    return captured
+
+
 def _node_effects(
     clean_cache: GradientCache,
     corrupt_cache: GradientCache,
@@ -846,6 +1026,170 @@ def _aggregate_edge_scores_to_writer_nodes(
     return totals
 
 
+def _writer_contribution_slice(writer: Node, tensor: torch.Tensor) -> torch.Tensor:
+    """The writer's own contribution at its position, and head if it has one.
+
+    A captured writer tensor holds every position (and, for an attention head,
+    every head); an edge carries only the writer's contribution at the edge's
+    position, so this selects that slice. The result is a ``d_model`` vector,
+    which broadcasts into a reader's input -- a per-head reader receives the
+    writer once per head.
+    """
+    if writer.kind == "attn_head_out":
+        return tensor[0, writer.position, writer.head]
+    return tensor[0, writer.position]
+
+
+def _excluded_writers_by_reader(
+    edges: Sequence[tuple[Node, Node]],
+    circuit: Collection[tuple[Node, Node]],
+) -> dict[Node, list[Node]]:
+    """Group the out-of-circuit writers feeding each reader node.
+
+    A reader node's input is rebuilt once, from the writers whose edges into it
+    lie outside ``circuit``. Grouping by reader node keeps that rebuild to a
+    single hook per node: one hook per excluded edge would apply the correction
+    once per edge instead of once per node.
+    """
+    circuit_set = set(circuit)
+    excluded: dict[Node, list[Node]] = {}
+    for writer, reader in edges:
+        if (writer, reader) not in circuit_set:
+            excluded.setdefault(reader, []).append(writer)
+    return excluded
+
+
+def _make_writer_capture_hook(name: str, sink: dict[str, torch.Tensor]) -> Callable[..., None]:
+    """Record a writer's live contribution for the reader hooks that follow it.
+
+    A writer always precedes the readers it feeds, so by the time a reader's
+    fork hook fires the contributions it needs are already in ``sink``. The
+    tensor is detached rather than cloned: it is only read, and the reader hook
+    clones its own input before rewriting it.
+    """
+
+    def hook(tensor: torch.Tensor, *, hook: Any) -> None:
+        del hook
+        if isinstance(tensor, torch.Tensor):
+            sink[name] = tensor.detach()
+        return None
+
+    return hook
+
+
+def _make_edge_ablation_hook(
+    reader: Node,
+    excluded_writers: Sequence[Node],
+    live_writers: dict[str, torch.Tensor],
+    replacement_writers: dict[str, torch.Tensor],
+) -> Callable[..., torch.Tensor]:
+    """Rebuild one reader's input with its out-of-circuit writers replaced.
+
+    The residual stream is a running sum, so a reader's input is exactly the sum
+    of its writers' contributions. Removing an edge therefore means subtracting
+    that writer's live contribution and adding its replacement -- an exact
+    correction rather than an approximation. The reader's fork hook fires before
+    the layer norm, so the correction is a plain add and subtract in ``d_model``
+    space with no norm scale to divide out.
+
+    A per-head reader's input is the residual replicated across heads, so the
+    correction is applied to that reader's own head slot. Several reader nodes
+    share one hook point (one per head, one per position), and each rewrites a
+    disjoint slice, so no writer's contribution is subtracted twice.
+
+    Args:
+        reader: The reader whose input is rebuilt.
+        excluded_writers: Writers whose edges into ``reader`` lie outside the
+            circuit.
+        live_writers: Contributions captured during the current forward, keyed
+            by writer hook name.
+        replacement_writers: The value standing in for each excluded writer,
+            keyed by writer hook name.
+
+    Returns:
+        A forward hook returning the rebuilt input.
+
+    Raises:
+        ValueError: if an excluded writer's contribution was not captured, which
+            means its hook family was not enabled for this forward.
+    """
+    if reader.kind in ("q_input", "k_input", "v_input"):
+        # Node.__post_init__ guarantees a head for the per-head reader kinds.
+        index: tuple[int, ...] = (0, reader.position, cast(int, reader.head))
+    else:
+        index = (0, reader.position)
+
+    def hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        rebuilt = tensor.clone()
+        for writer in excluded_writers:
+            name = _writer_hook_name(writer)
+            live = live_writers.get(name)
+            replacement = replacement_writers.get(name)
+            if live is None or replacement is None:
+                raise ValueError(
+                    f"cannot ablate the edge from {writer} into {reader}: no "
+                    f"contribution captured at {name!r}. Enable the writer's hook "
+                    "family before running the ablation."
+                )
+            rebuilt[index] = (
+                rebuilt[index]
+                - _writer_contribution_slice(writer, live)
+                + _writer_contribution_slice(writer, replacement)
+            )
+        return rebuilt
+
+    return hook
+
+
+def _ablate_edges(
+    model: Any,
+    tokens: torch.Tensor,
+    edges: Sequence[tuple[Node, Node]],
+    circuit: Collection[tuple[Node, Node]],
+    replacement_writers: dict[str, torch.Tensor],
+) -> torch.Tensor:
+    """Run one forward with every edge outside ``circuit`` ablated.
+
+    Captures each writer's live contribution and rewrites each reader's input at
+    its fork hook, so the forward sees a model in which only the circuit's edges
+    carry the run's own values. Forward-only: no gradient is involved, and the
+    caller must have the writer and reader hook families enabled (see
+    :func:`_edge_hook_flags`).
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible).
+        tokens: Input token ids for the ablated forward.
+        edges: The full edge list, as :func:`enumerate_edges` returns it.
+        circuit: The edges to keep. Every other edge is ablated.
+        replacement_writers: The value standing in for each ablated writer,
+            keyed by writer hook name.
+
+    Returns:
+        The model's logits under the ablation, detached. The rewrite is a
+        forward-only intervention, so the pass runs under :func:`torch.no_grad`
+        and no gradient is retained.
+    """
+    excluded_by_reader = _excluded_writers_by_reader(edges, circuit)
+
+    live_writers: dict[str, torch.Tensor] = {}
+    fwd_hooks: list[tuple[str, Callable[..., Any]]] = [
+        (name, _make_writer_capture_hook(name, live_writers))
+        for name in _writer_hook_names(int(model.cfg.n_layers))
+    ]
+    fwd_hooks.extend(
+        (
+            reader.hook_name,
+            _make_edge_ablation_hook(reader, writers, live_writers, replacement_writers),
+        )
+        for reader, writers in excluded_by_reader.items()
+    )
+
+    with torch.no_grad(), model.hooks(fwd_hooks=fwd_hooks):
+        logits = model(tokens)
+    return logits
+
+
 def attribution_patch(
     model: Any,
     clean: torch.Tensor,
@@ -975,3 +1319,214 @@ def attribution_patch(
 
     node_scores = {node: total / batch for node, total in totals.items()}
     return AttributionResult(node_scores=node_scores)
+
+
+def _normalize_circuit(
+    circuit: Sequence[tuple[Node, Node]] | Sequence[tuple[Node, Node, float]],
+) -> list[tuple[Node, Node]]:
+    """Reduce a circuit to ``(writer, reader)`` pairs, dropping any scores.
+
+    Accepts either the bare edge list :func:`enumerate_edges` returns or the
+    ranked ``(writer, reader, score)`` triples ``AttributionResult.top_edges``
+    returns, so a discovered edge set feeds straight into
+    :func:`faithfulness` without reshaping.
+    """
+    normalized: list[tuple[Node, Node]] = []
+    for entry in circuit:
+        if len(entry) == 2:
+            writer, reader = entry
+        elif len(entry) == 3:
+            writer, reader, _score = entry
+        else:
+            raise ValueError(
+                f"circuit entries must be (writer, reader) or (writer, reader, score), "
+                f"got a {len(entry)}-tuple"
+            )
+        normalized.append((writer, reader))
+    return normalized
+
+
+def _edge_class(edge: tuple[Node, Node]) -> EdgeClass:
+    """The class an edge belongs to, keyed by what its reader consumes.
+
+    Q and K share a class because both feed the attention score, so both pass
+    through the same softmax nonlinearity; V, the MLP entry, and the terminal
+    logits readout are each linear in the residual they read. The split exists
+    to make that asymmetry measurable rather than hidden in one aggregate.
+    """
+    reader = edge[1]
+    if reader.kind in ("q_input", "k_input"):
+        return "into_qk"
+    if reader.kind == "v_input":
+        return "into_v"
+    if reader.kind == "mlp_in":
+        return "into_mlp"
+    if reader.kind == "logits":
+        return "into_logits"
+    raise ValueError(f"{reader.kind} is a writer kind and has no edge class")
+
+
+def _mean_writer_contributions(
+    model: Any,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    """The dataset mean of each writer's contribution over the prompt pairs.
+
+    Averages the clean and corrupt runs together, since a replacement stands in
+    for an out-of-circuit edge regardless of which direction the run moves.
+    """
+    totals: dict[str, torch.Tensor] = {}
+    count = 0
+    for tokens in (clean, corrupt):
+        for index in range(int(tokens.shape[0])):
+            captured = capture_writer_outputs(model, tokens[index : index + 1])
+            for name, tensor in captured.items():
+                running = totals.get(name)
+                totals[name] = tensor if running is None else running + tensor
+            count += 1
+    if count == 0:
+        raise ValueError("faithfulness needs at least one clean/corrupt pair")
+    return {name: total / count for name, total in totals.items()}
+
+
+def faithfulness(
+    model: Any,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric_fn: MetricFn,
+    circuit: Sequence[tuple[Node, Node]] | Sequence[tuple[Node, Node, float]],
+    config: FaithfulnessConfig = FaithfulnessConfig(),
+) -> FaithfulnessResult:
+    """Measure how much of the clean-to-corrupt metric gap a circuit recovers.
+
+    Ablates every edge *outside* ``circuit`` and reports the metric the model
+    then produces. The residual stream is a running sum, so each reader's input
+    is rebuilt exactly -- subtracting the excluded writers' live contributions
+    and adding their replacements -- rather than approximated. A circuit that
+    recovers most of the gap is a faithful account of the behavior; one that
+    recovers little is not, however well it ranks.
+
+    This is a forward-only measurement: no gradient is taken, so it is
+    independent of the linearization :func:`attribution_patch` uses to rank
+    edges. Feed a ranked edge set straight in from
+    ``attribution_patch(..., config=EdgeAttributionConfig(granularity="edge")).top_edges(k=...)``.
+
+    Args:
+        model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
+            ``hook_dict``, and ``hooks()``.
+        clean: Clean token ids, shape ``[batch, seq]``.
+        corrupt: Corrupt token ids, shape ``[batch, seq]``, paired row-by-row
+            with ``clean``.
+        metric_fn: Maps single-example logits to a scalar.
+        circuit: The edges to keep, as ``(writer, reader)`` pairs or the
+            ``(writer, reader, score)`` triples ``top_edges`` returns. Every
+            other edge in the graph is ablated.
+        config: Ablation configuration. Defaults to replacing an ablated writer
+            with the corrupt run's own contribution.
+
+    Returns:
+        A :class:`FaithfulnessResult` with the recovered fraction, the clean and
+        corrupt metrics bounding it, the circuit's size against the graph's, and
+        a per-edge-class breakout. The breakout measures each class
+        leave-one-out, so it costs one extra ablation per class; edges into Q and
+        K are expected to be the least faithful, since they pass through the
+        softmax.
+
+    Raises:
+        ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number
+            of pairs, hold more than one pair, a pair tokenizes to different
+            lengths, the model or a submodule is in training mode, a circuit edge
+            is not in the graph, or the clean and corrupt metrics are equal (so
+            the recovered fraction is undefined).
+    """
+    if clean.ndim != 2 or corrupt.ndim != 2:
+        raise ValueError(
+            "faithfulness expects 2D [batch, seq] token tensors, got clean "
+            f"{tuple(clean.shape)} and corrupt {tuple(corrupt.shape)}"
+        )
+    if clean.shape[0] != corrupt.shape[0]:
+        raise ValueError(
+            "clean and corrupt must hold the same number of prompt pairs, got "
+            f"{clean.shape[0]} and {corrupt.shape[0]}"
+        )
+    if clean.shape[0] != 1:
+        raise ValueError(
+            "faithfulness measures one clean/corrupt pair at a time, since the "
+            f"metric reads a single example; got {clean.shape[0]} pairs. Loop over "
+            "pairs and aggregate the recovered fractions yourself."
+        )
+    if clean.shape[1] != corrupt.shape[1]:
+        raise ValueError(
+            "each clean/corrupt pair must tokenize to the same length; got clean "
+            f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
+            "Faithfulness aligns activations position-by-position."
+        )
+
+    require_eval_mode(model, operation="faithfulness()")
+
+    kept = _normalize_circuit(circuit)
+    n_layers = int(model.cfg.n_layers)
+    hook_names = _edge_hook_names(n_layers)
+
+    with _edge_hook_flags(model):
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric_fn, names_filter=hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        graph = set(edges)
+        unknown = [edge for edge in kept if edge not in graph]
+        if unknown:
+            raise ValueError(
+                f"circuit holds {len(unknown)} edge(s) that are not in the graph, "
+                f"starting with {unknown[0]}; a stale or mistyped circuit would "
+                "otherwise ablate nothing."
+            )
+
+        if config.ablation == "mean":
+            replacements = _mean_writer_contributions(model, clean, corrupt)
+        else:
+            replacements = capture_writer_outputs(model, corrupt)
+
+        # Forward-only throughout: no gradient is taken, so the clean endpoint
+        # is evaluated without building a graph.
+        with torch.no_grad():
+            clean_metric = float(metric_fn(model(clean)))
+        corrupt_metric = float(corrupt_cache.metric)
+        gap = clean_metric - corrupt_metric
+        if gap == 0.0:
+            raise ValueError(
+                "the clean and corrupt runs produce the same metric, so the recovered "
+                "fraction is undefined; choose a pair the metric separates."
+            )
+        ablated_metric = float(metric_fn(_ablate_edges(model, clean, edges, kept, replacements)))
+
+        # Break the report out by edge class, so the attention nonlinearity's
+        # cost is measured rather than hidden in the aggregate. Each class is
+        # measured leave-one-out: keep every edge outside it, so the value says
+        # how much of the gap survives without that class. One extra ablation
+        # per class.
+        class_counts: dict[EdgeClass, int] = {}
+        class_edges: dict[EdgeClass, list[tuple[Node, Node]]] = {}
+        for edge in edges:
+            edge_class = _edge_class(edge)
+            class_counts[edge_class] = class_counts.get(edge_class, 0) + 1
+            class_edges.setdefault(edge_class, []).append(edge)
+
+        class_recovered: dict[EdgeClass, float] = {}
+        for edge_class in class_edges:
+            outside = [edge for edge in edges if _edge_class(edge) != edge_class]
+            class_metric = float(
+                metric_fn(_ablate_edges(model, clean, edges, outside, replacements))
+            )
+            class_recovered[edge_class] = (class_metric - corrupt_metric) / gap
+
+    return FaithfulnessResult(
+        recovered=(ablated_metric - corrupt_metric) / gap,
+        full_metric=clean_metric,
+        corrupt_metric=corrupt_metric,
+        circuit_size=len(kept),
+        total_edges=len(edges),
+        edge_class_recovered=class_recovered,
+        edge_class_counts=class_counts,
+    )
