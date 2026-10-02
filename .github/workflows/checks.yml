@@ -443,6 +443,7 @@ jobs:
           - "Patchscopes_Generation_Demo"
           - "Santa_Coder"
           # - "stable_lm"
+          - "SVD_Circuits_Demo"
           - "T5"
         requires_hf_token: [false]
         include:
