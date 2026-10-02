@@ -252,13 +252,37 @@ class TestNemotronHMixerSubmodules:
 # ---------------------------------------------------------------------------
 
 
+def _hf_model_with_real_config() -> MagicMock:
+    """Mock HF model carrying a real NemotronHConfig.
+
+    DynamicCache reads layer types and numeric fields off the config, so a
+    bare MagicMock config breaks on newer transformers.
+    """
+    from transformers.models.nemotron_h.configuration_nemotron_h import NemotronHConfig
+
+    hf_model = MagicMock()
+    hf_model.config = NemotronHConfig(
+        hidden_size=32,
+        mamba_num_heads=4,
+        mamba_head_dim=8,
+        ssm_state_size=8,
+        n_groups=1,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        vocab_size=64,
+        intermediate_size=64,
+        layers_block_type=["mamba", "attention"],
+    )
+    return hf_model
+
+
 class TestNemotronHStatefulCache:
     """create_stateful_cache returns a DynamicCache instance."""
 
     def test_returns_dynamic_cache(self, adapter: NemotronHArchitectureAdapter) -> None:
         from transformers.cache_utils import DynamicCache
 
-        hf_model = MagicMock()
+        hf_model = _hf_model_with_real_config()
         cache = adapter.create_stateful_cache(
             hf_model=hf_model, batch_size=1, device="cpu", dtype=None
         )
@@ -266,7 +290,7 @@ class TestNemotronHStatefulCache:
 
     def test_cache_independent_per_call(self, adapter: NemotronHArchitectureAdapter) -> None:
         """Each call returns a fresh cache object."""
-        hf_model = MagicMock()
+        hf_model = _hf_model_with_real_config()
         c1 = adapter.create_stateful_cache(hf_model, 1, "cpu", None)
         c2 = adapter.create_stateful_cache(hf_model, 1, "cpu", None)
         assert c1 is not c2

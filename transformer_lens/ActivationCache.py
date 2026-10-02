@@ -29,7 +29,6 @@ from typing import (
 )
 
 import einops
-import numpy as np
 import torch
 from jaxtyping import Float, Int
 from typing_extensions import Literal
@@ -1236,7 +1235,8 @@ class ActivationCache:
             pos_slice:
                 Slice of the positions.
             neuron_slice:
-                Slice of the neurons.
+                Slice of the neurons. An int or an integer-mode ``Slice(n)`` selects a single
+                neuron and is treated like ``[n]``.
             return_labels:
                 Whether to also return a list of labels of the form "L0H0" for the heads.
             incl_remainder:
@@ -1254,8 +1254,13 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        if not isinstance(neuron_slice, Slice):
-            neuron_slice = Slice(neuron_slice)
+        # Layers are concatenated along the neuron axis, so it must not collapse. unwrap turns an
+        # int into [n] but leaves a Slice as is, so an integer-mode Slice(n) is rebuilt as [n]
+        # here. A new Slice is made, so the caller's Slice still collapses elsewhere.
+        neuron_slice = Slice.unwrap(neuron_slice)
+        if neuron_slice.mode == "int":
+            assert isinstance(neuron_slice.slice, int)  # narrow for mypy
+            neuron_slice = Slice([neuron_slice.slice])
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
@@ -1263,11 +1268,7 @@ class ActivationCache:
 
         d_mlp = self.model.cfg.d_mlp
         assert d_mlp is not None, "model.cfg.d_mlp must be set"
-        neuron_labels: Union[torch.Tensor, np.ndarray] = neuron_slice.apply(
-            torch.arange(d_mlp), dim=0
-        )
-        if isinstance(neuron_labels, int):
-            neuron_labels = np.array([neuron_labels])
+        neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
         labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
         components: Any
