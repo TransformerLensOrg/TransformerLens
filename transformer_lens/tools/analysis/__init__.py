@@ -10,8 +10,8 @@ Tools:
       a names-filtered manual-backward gradient cache, and signed node and edge
       scores (EAP). Integrated gradients (EAP-IG) and ablate-outside faithfulness
       are not implemented yet.
-    - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
-      space with explicit raw-gradient sign semantics.
+    - backward_lens: Dense and gated MLP weight-gradient factors projected into
+      vocabulary space with explicit raw-gradient sign semantics.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
       layers, or attention heads.
     - direct_path_patching: Direct path patching for head-to-head circuit
