@@ -18,7 +18,10 @@ received downstream in the real graph.
 
 import pytest
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import Whitespace
+from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFast
 
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRules,
@@ -38,6 +41,7 @@ from transformer_lens.model_bridge.supported_architectures.phi3 import (
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
+from transformer_lens.tools.analysis import RelevanceLens
 
 TOKENS = torch.tensor([[1, 5, 7, 42, 9]])
 N_LAYERS = 2
@@ -54,9 +58,39 @@ TINY_DIMS = dict(
     eos_token_id=2,
 )
 
+# Fitting needs prompts long enough to contain a valid source position, so these
+# are word lists rather than short phrases.
+FIT_CORPUS = "integration-fit-corpus"
+FIT_SKIP_FIRST = 2
+FIT_PROMPTS = [
+    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+    "omicron pi rho sigma tau upsilon phi chi psi omega",
+    "one two three four five six seven eight nine ten eleven twelve thirteen "
+    "fourteen fifteen sixteen seventeen eighteen nineteen twenty",
+    "red orange yellow green blue indigo violet cyan magenta amber teal olive "
+    "maroon navy silver gold bronze copper crimson scarlet azure",
+    "north south east west up down left right forward backward inside outside "
+    "above below near far early late always never",
+]
+
 
 class _MockTokenizer:
     """Stand-in to satisfy TransformerBridge(tokenizer=...)."""
+
+
+def _offline_tokenizer(prompts: list[str]) -> PreTrainedTokenizerFast:
+    """Word-level tokenizer over the prompts' own vocabulary, built offline."""
+    words = sorted({word for prompt in prompts for word in prompt.split()})
+    vocabulary = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3}
+    vocabulary.update({word: index + 4 for index, word in enumerate(words)})
+    backend = Tokenizer(WordLevel(vocabulary, unk_token="<unk>"))
+    backend.pre_tokenizer = Whitespace()
+    return PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        eos_token="<eos>",
+        pad_token="<pad>",
+        unk_token="<unk>",
+    )
 
 
 def _build_qwen2_bridge() -> TransformerBridge:
@@ -220,3 +254,100 @@ class TestGradientMatchesClosedFormOracle:
         torch.testing.assert_close(
             captured["mlp_grad_in"], expected_mlp_grad_in, atol=1e-5, rtol=1e-4
         )
+
+
+def _fit_bridge() -> TransformerBridge:
+    """A tiny Qwen2 with a real offline tokenizer, so fit() can tokenize."""
+    hf_config = AutoConfig.for_model("qwen2", **TINY_DIMS)
+    torch.manual_seed(0)
+    hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf_model.config, "Qwen2ForCausalLM", "qwen2-tiny", torch.float32
+    )
+    adapter = Qwen2ArchitectureAdapter(bridge_config)
+    return TransformerBridge(
+        model=hf_model,
+        adapter=adapter,
+        tokenizer=_offline_tokenizer(FIT_PROMPTS),
+    )
+
+
+def _fit_relevance(bridge: TransformerBridge, prompts: list[str], *, corpus: str) -> RelevanceLens:
+    return RelevanceLens.fit(
+        bridge,
+        prompts,
+        corpus=corpus,
+        source_layers=[0],
+        dim_batch=8,
+        skip_first_positions=FIT_SKIP_FIRST,
+        show_progress=False,
+    )
+
+
+class TestRelevanceLensFitOnRealBridge:
+    def test_full_requested_rule_coverage_is_installed(self) -> None:
+        bridge = _fit_bridge()
+
+        lens = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        expected = {
+            f"blocks.{layer}.{mount}"
+            for layer in range(N_LAYERS)
+            for mount in ("ln1", "ln2", "mlp")
+        }
+        assert set(lens.rule_coverage.installed) == expected
+        assert lens.rule_coverage.skipped == ()
+
+    def test_fit_leaves_the_forward_pass_bit_identical(self) -> None:
+        bridge = _fit_bridge()
+        with torch.no_grad():
+            before = bridge(TOKENS)
+
+        _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        with torch.no_grad():
+            after = bridge(TOKENS)
+        assert torch.equal(after, before)
+
+    def test_fit_records_rule_provenance(self) -> None:
+        bridge = _fit_bridge()
+
+        lens = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        assert lens.estimator == "relevance_lens"
+        assert lens.metadata["estimator"] == "relevance_lens"
+        assert lens.metadata["corpus"] == FIT_CORPUS
+        assert lens.metadata["enabled_rules"] == [
+            "normalization",
+            "activation",
+            "multiplicative_gate",
+        ]
+        assert lens.metadata["relevance_rule_version"] == lens.relevance_rule_version
+
+
+class TestJointFitEqualsWeightedMerge:
+    def test_joint_fit_matches_prompt_count_weighted_merge(self) -> None:
+        bridge = _fit_bridge()
+        # Deliberately unequal shards: an unweighted mean of the two shard
+        # matrices would differ from the joint fit, so this only passes when the
+        # merge really weights by prompt count.
+        split = 1
+        first, second = FIT_PROMPTS[:split], FIT_PROMPTS[split:]
+
+        joint = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+        shard_a = _fit_relevance(bridge, first, corpus=FIT_CORPUS)
+        shard_b = _fit_relevance(bridge, second, corpus=FIT_CORPUS)
+        merged = RelevanceLens.merge([shard_a, shard_b])
+
+        assert shard_a.n_prompts != shard_b.n_prompts
+        assert merged.n_prompts == joint.n_prompts
+        assert merged.estimator == joint.estimator
+        assert merged.relevance_rule_version == joint.relevance_rule_version
+        assert merged.enabled_rules == joint.enabled_rules
+        for layer in joint.source_layers:
+            torch.testing.assert_close(
+                merged.jacobians[layer],
+                joint.jacobians[layer],
+                atol=1e-6,
+                rtol=1e-5,
+            )

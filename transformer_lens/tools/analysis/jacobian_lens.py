@@ -157,6 +157,11 @@ def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
 DEFAULT_SKIP_FIRST_POSITIONS = 16
 DEFAULT_TOP_K = 10
 
+# Estimator identity recorded on every fitted lens. The transport matrices of two
+# lenses are only comparable when their estimators agree, so merge() compares this
+# value alongside the rest of the provenance.
+ESTIMATOR_JACOBIAN = "jacobian_lens"
+
 # Keys written by fit() that must not appear in converted-lens metadata so that
 # merge() can refuse to mix TL-fitted lenses with externally converted ones.
 # Note: "target_layer" is intentionally NOT listed here — it must survive
@@ -258,6 +263,11 @@ class JacobianLens:
             from the reference implementation load with empty metadata.
     """
 
+    # Whether from_pretrained() resolves short model names through the bundled
+    # artifact registry. An estimator whose artifacts live in a different
+    # registry sets this False and accepts only explicit paths or Hub repo ids.
+    _uses_artifact_registry: bool = True
+
     def __init__(
         self,
         jacobians: Dict[int, Float[torch.Tensor, "d_model d_model"]],
@@ -280,6 +290,10 @@ class JacobianLens:
         self.n_prompts = int(n_prompts)
         self.d_model = int(d_model)
         self.metadata: Dict[str, Any] = dict(metadata or {})
+        recorded_estimator = self.metadata.get("estimator")
+        self.estimator: str = (
+            recorded_estimator if isinstance(recorded_estimator, str) else ESTIMATOR_JACOBIAN
+        )
         self._device_jacobians: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._dictionary_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._unembedding_snapshots: Dict[torch.device, torch.Tensor] = {}
@@ -295,6 +309,15 @@ class JacobianLens:
             f"JacobianLens(layers={layers[0]}..{layers[-1]} ({len(layers)}), "
             f"d_model={self.d_model}, n_prompts={self.n_prompts})"
         )
+
+    def _merge_identity(self) -> Dict[str, Any]:
+        """Estimator-specific identity that must match across merged shards.
+
+        Subclasses extend this with the configuration that changes their
+        transport matrices, so merge() refuses to combine shards whose matrices
+        were estimated differently.
+        """
+        return {"estimator": self.estimator}
 
     # ------------------------------------------------------------------ #
     # persistence                                                        #
@@ -479,7 +502,9 @@ class JacobianLens:
            ``"gemma-2-2b"`` or ``"google/gemma-2-2b"``), the corresponding
            artifact in ``neuronpedia/jacobian-lens`` is fetched automatically.
            The *filename* argument is ignored in this case because the registry
-           already encodes the correct subpath.
+           already encodes the correct subpath. Subclasses that set
+           ``_uses_artifact_registry = False`` skip this step and refuse a bare
+           short name, since the registry holds only Jacobian lens artifacts.
         4. **Explicit Hub repo** — otherwise *name_or_path* is treated as a Hub
            repo id and *filename* is used as-is, preserving full backward
            compatibility (e.g. ``from_pretrained("neuronpedia/jacobian-lens",
@@ -526,7 +551,16 @@ class JacobianLens:
         else:
             from huggingface_hub import hf_hub_download
 
-            resolved = _resolve_registry_entry(name_or_path)
+            if cls._uses_artifact_registry:
+                resolved = _resolve_registry_entry(name_or_path)
+            else:
+                if "/" not in name_or_path:
+                    raise ValueError(
+                        f"{cls.__name__} does not resolve short names from the "
+                        "Jacobian lens registry; pass an explicit path or a Hub "
+                        f"repo id (owner/name) instead of {name_or_path!r}."
+                    )
+                resolved = None
             if resolved is not None:
                 repo_id, resolved_filename = resolved
             else:
@@ -552,15 +586,18 @@ class JacobianLens:
         parallelized across processes or machines and merged afterwards.
         Provenance must match across shards (apart from ``n_prompts``), so a
         merge cannot silently relabel matrices fitted with different models,
-        corpora, dtypes, or estimator settings. The merged count replaces the
-        per-shard count.
+        corpora, dtypes, or estimator settings. The estimator and its
+        configuration must also match, so shards from different estimators or
+        rule configurations are refused even when their provenance is empty.
+        The merged count replaces the per-shard count.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
                 ``d_model``.
 
         Raises:
-            ValueError: On an empty sequence or mismatched lenses.
+            ValueError: On an empty sequence, mismatched lenses, or shards from
+                different estimators.
         """
         if not lenses:
             raise ValueError("cannot merge an empty sequence of lenses")
@@ -575,6 +612,7 @@ class JacobianLens:
         first = lenses[0]
         for lens in lenses:
             _validate_metadata(lens.metadata)
+        _require_matching_merge_identity(lenses)
         first_provenance = {
             key: value for key, value in first.metadata.items() if key != "n_prompts"
         }
@@ -628,7 +666,7 @@ class JacobianLens:
                 out-of-range source layers, compatibility mode, unsupported
                 attention/output paths, or a non-final target convention.
         """
-        _require_raw_bridge(model)
+        _require_raw_bridge(model, estimator=type(self).__name__)
         artifact_model_name = self.metadata.get("model_name")
         current_model_name = getattr(model.cfg, "model_name", None)
         if artifact_model_name is not None and artifact_model_name != current_model_name:
@@ -1701,7 +1739,7 @@ class JacobianLens:
             ValueError: On compatibility mode, training mode, invalid provenance
                 or layer indices, or if no prompt was long enough to fit on.
         """
-        _require_raw_bridge(model)
+        _require_raw_bridge(model, estimator=cls.__name__)
         require_eval_mode(model, operation="JacobianLens.fit()")
         if not isinstance(corpus, str) or not corpus.strip():
             raise ValueError("corpus must be a non-empty provenance identifier")
@@ -1750,6 +1788,7 @@ class JacobianLens:
             "model_revision": _get_model_revision(model),
             "transformer_lens_version": version("transformer-lens"),
             "model_system": "TransformerBridge",
+            "estimator": ESTIMATOR_JACOBIAN,
             "processing": {
                 "compatibility_mode": False,
                 "weight_basis": "raw_huggingface",
@@ -1796,13 +1835,17 @@ def _get_model_revision(model: Any) -> Optional[str]:
     return revision if isinstance(revision, str) and revision else None
 
 
-def _require_raw_bridge(model: Any) -> None:
-    """Require the causal raw-Bridge contract used by fit and readout."""
+def _require_raw_bridge(model: Any, *, estimator: str) -> None:
+    """Require the causal raw-Bridge contract used by fit and readout.
+
+    ``estimator`` names the calling estimator in diagnostics, since this guard
+    is shared by every matrix-lens estimator.
+    """
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):
         raise TypeError(
-            "JacobianLens supports TransformerBridge only; load a fresh model with "
+            f"{estimator} supports TransformerBridge only; load a fresh model with "
             "TransformerBridge.boot_transformers(...)."
         )
     if getattr(model, "compatibility_mode", False):
@@ -1820,7 +1863,7 @@ def _require_raw_bridge(model: Any) -> None:
     adapter = model.adapter
     if not adapter.supports_generation:
         raise ValueError(
-            "JacobianLens requires a causal decoder-only Bridge whose adapter "
+            f"{estimator} requires a causal decoder-only Bridge whose adapter "
             f"supports text generation; {type(adapter).__name__} declares "
             "supports_generation=False."
         )
@@ -1828,14 +1871,14 @@ def _require_raw_bridge(model: Any) -> None:
     attention_dir = getattr(model.cfg, "attention_dir", "causal")
     if attention_dir != "causal":
         raise ValueError(
-            "JacobianLens requires causal attention because its estimator relies on "
+            f"{estimator} requires causal attention because its estimator relies on "
             "causality to exclude target positions before each source position; "
             f"got attention_dir={attention_dir!r}."
         )
     total_ut_steps = int(getattr(model.cfg, "total_ut_steps", 1) or 1)
     if total_ut_steps != 1:
         raise ValueError(
-            "JacobianLens requires each physical block hook to fire once per forward; "
+            f"{estimator} requires each physical block hook to fire once per forward; "
             f"this looped-depth Bridge runs total_ut_steps={total_ut_steps}."
         )
     component_mapping = adapter.get_component_mapping()
@@ -1847,26 +1890,50 @@ def _require_raw_bridge(model: Any) -> None:
     ]
     if missing_components:
         raise ValueError(
-            "JacobianLens requires the standard direct ln_final -> unembed output path; "
+            f"{estimator} requires the standard direct ln_final -> unembed output path; "
             f"this Bridge is missing {missing_components}."
         )
     blocks_component = component_mapping["blocks"]
     if not getattr(blocks_component, "hook_out_is_single_residual_stream", False):
         raise ValueError(
-            "JacobianLens requires single-stream [batch, position, d_model] block "
-            f"outputs; {type(blocks_component).__name__} does not provide that contract."
+            f"{estimator} requires single-stream [batch, position, d_model] block "
+            f"outputs; {type(blocks_component).__name__} does not provide that "
+            "contract."
         )
     if "project_out" in component_mapping:
         raise ValueError(
-            "JacobianLens does not yet support a final output projection between "
+            f"{estimator} does not yet support a final output projection between "
             "the residual stream and unembedding."
         )
     unembed_width = model.W_U.shape[0]
     if unembed_width != model.cfg.d_model:
         raise ValueError(
-            "JacobianLens requires a direct d_model-width unembedding after ln_final; "
+            f"{estimator} requires a direct d_model-width unembedding after ln_final; "
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
+        )
+
+
+def _require_matching_merge_identity(lenses: Sequence["JacobianLens"]) -> None:
+    """Reject a merge whose shards disagree on estimator-specific identity.
+
+    Transport matrices are only comparable when the estimator and its
+    configuration agree, so a merge across estimators or across rule
+    configurations would silently average incompatible quantities. The identity
+    is compared explicitly rather than through the provenance dict, so the guard
+    holds for lenses constructed without provenance metadata.
+    """
+    identities = [lens._merge_identity() for lens in lenses]
+    first = identities[0]
+    for index, other in enumerate(identities[1:], start=1):
+        if other == first:
+            continue
+        differing = sorted(
+            key for key in set(first) | set(other) if first.get(key) != other.get(key)
+        )
+        raise ValueError(
+            "all lenses being merged must share the same estimator provenance; "
+            f"shard 0 and shard {index} differ on {differing}"
         )
 
 
