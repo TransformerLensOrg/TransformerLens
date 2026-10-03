@@ -228,3 +228,38 @@ def test_stack_neuron_results_projected_ln_honours_mlp_input(
 
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("apply_ln", [False, True], ids=["raw", "ln"])
+@pytest.mark.parametrize("project", [False, True], ids=["unprojected", "projected"])
+@torch.no_grad()
+def test_stack_neuron_results_mlp_input_remainder_fills_to_resid_mid(
+    activation_cache: ActivationCache,
+    apply_ln: bool,
+    project: bool,
+) -> None:
+    """With ``mlp_input=True`` the stack sums to the MLP input ``resid_mid``, like ``decompose_resid``.
+
+    With ``apply_ln=True`` that is ``LN2(resid_mid)``; with a projection, its projection.
+    """
+    layer = 1
+    direction = None
+    if project:
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            direction = torch.randn(activation_cache.model.cfg.d_model)
+
+    stack = activation_cache.stack_neuron_results(
+        layer,
+        apply_ln=apply_ln,
+        incl_remainder=True,
+        project_output_onto=direction,
+        mlp_input=True,
+    )
+
+    target = activation_cache[("resid_mid", layer)]
+    if apply_ln:
+        target = activation_cache.apply_ln_to_stack(target[None], layer, mlp_input=True)[0]
+    if direction is not None:
+        target = target @ direction
+    torch.testing.assert_close(stack.sum(dim=0), target)

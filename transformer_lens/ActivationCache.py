@@ -1246,8 +1246,10 @@ class ActivationCache:
                 the projection is folded into the analytical cached-scale LN so the
                 ``[..., d_mlp, d_model]`` intermediate is still never materialized.
             mlp_input:
-                With ``apply_ln=True``, normalize with the LN scale of the input to ``layer``'s MLP
-                (ln2) instead of its attention (ln1). The neurons stacked are unchanged.
+                Treat the stack as the input to ``layer``'s MLP rather than its attention, as in
+                ``decompose_resid``: with ``incl_remainder=True`` the remainder fills the stack up to
+                ``resid_mid`` instead of ``resid_pre``, and with ``apply_ln=True`` the LN scale of
+                ln2 is used instead of ln1. The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1270,6 +1272,9 @@ class ActivationCache:
         neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
         labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
+        # The remainder fills the stack up to the residual stream that layer's LN normalizes:
+        # resid_mid (the MLP input) with mlp_input, else resid_pre (resid_post of layer - 1).
+        remainder_target = ("resid_mid", layer) if mlp_input else ("resid_post", layer - 1)
         components: Any
         ln_folded = apply_ln and project_2d is not None
         if ln_folded:
@@ -1279,12 +1284,12 @@ class ActivationCache:
                 layer, pos_slice, neuron_slice, project_2d, mlp_input=mlp_input
             )
             if incl_remainder:
-                # Linearity of cached-scale LN: remainder is LN_s(resid_post) @ p - sum(neurons).
-                resid_post = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
-                resid_post_ln = self.apply_ln_to_stack(
-                    resid_post[None], layer, pos_slice=pos_slice, mlp_input=mlp_input
+                # Linearity of cached-scale LN: remainder is LN_s(target) @ p - sum(neurons).
+                target = pos_slice.apply(self[remainder_target], dim=-2)
+                target_ln = self.apply_ln_to_stack(
+                    target[None], layer, pos_slice=pos_slice, mlp_input=mlp_input
                 )[0]
-                remainder = resid_post_ln @ project_2d
+                remainder = target_ln @ project_2d
                 if components.shape[0] > 0:
                     remainder = remainder - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
@@ -1307,14 +1312,14 @@ class ActivationCache:
                     "... concat_neuron_index d_model -> concat_neuron_index ... d_model",
                 )
                 if incl_remainder:
-                    remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                    remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                     if project_2d is not None:
                         remainder_full = remainder_full @ project_2d
                     remainder = remainder_full - components.sum(dim=0)
                     components = torch.cat([components, remainder[None]], dim=0)
                     labels.append("remainder")
             elif incl_remainder:
-                remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                 if project_2d is not None:
                     remainder_full = remainder_full @ project_2d
                 components = torch.cat([remainder_full[None]], dim=0)
