@@ -184,9 +184,9 @@ def test_getitem_ellipsis_does_not_materialize_product(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize("mask_ndim", [1, 2], ids=["one-axis", "two-axes"])
-@pytest.mark.parametrize("numpy_mask", [False, True], ids=["tensor", "numpy"])
+@pytest.mark.parametrize("mask_format", ["tensor", "numpy", "list", "tuple"])
 @pytest.mark.parametrize("selection", ["leading", "column", "row", "explicit-column", "newaxis"])
-def test_getitem_bool_mask_matches_dense(mask_ndim: int, numpy_mask: bool, selection: str) -> None:
+def test_getitem_bool_mask_matches_dense(mask_ndim: int, mask_format: str, selection: str) -> None:
     matrix = FactoredMatrix(
         torch.randn(2, 3, 5, 2, dtype=torch.float64),
         torch.randn(2, 3, 2, 7, dtype=torch.float64),
@@ -196,9 +196,14 @@ def test_getitem_bool_mask_matches_dense(mask_ndim: int, numpy_mask: bool, selec
         if mask_ndim == 1
         else torch.tensor([[True, False, True], [False, True, False]])
     )
-    if numpy_mask:
-        mask = mask.numpy()
     selected = matrix.AB[mask]
+    if mask_format == "numpy":
+        mask = mask.numpy()
+    elif mask_format == "list":
+        mask = mask.tolist()
+    elif mask_format == "tuple":
+        values = mask.tolist()
+        mask = tuple(tuple(row) for row in values) if mask_ndim == 2 else tuple(values)
     if selection == "leading":
         index = (mask, Ellipsis)
         expected = selected
@@ -230,4 +235,16 @@ def test_getitem_ellipsis_preserves_legacy_byte_mask(numpy_mask: bool) -> None:
         mask = mask.numpy()
     with pytest.warns(UserWarning, match="uint8"):
         result = matrix[mask, ...]
+    assert_close(result.AB, expected)
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["one-dimensional", "two-dimensional"])
+@pytest.mark.parametrize("as_tuple", [False, True], ids=["list", "tuple"])
+def test_getitem_integer_sequence_consumes_one_axis(nested: bool, as_tuple: bool) -> None:
+    matrix = FactoredMatrix(torch.randn(2, 3, 5, 2), torch.randn(2, 3, 2, 7))
+    index = [[1, 0], [0, 1]] if nested else [1, 0]
+    expected = matrix.AB[torch.tensor(index), ..., 1:2]
+    if as_tuple:
+        index = tuple(tuple(row) for row in index) if nested else tuple(index)
+    result = matrix[index, ..., 1]
     assert_close(result.AB, expected)

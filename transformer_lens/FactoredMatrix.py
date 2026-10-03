@@ -311,6 +311,10 @@ class FactoredMatrix:
         def index_ndim(item: Any) -> int:
             if item is None or item is Ellipsis:
                 return 0
+            # Infer nested sequence masks as PyTorch does, leaving the actual index unchanged.
+            if isinstance(item, (list, tuple)):
+                sequence = torch.as_tensor(item, device="cpu")
+                return sequence.ndim if sequence.dtype == torch.bool else 1
             # Boolean masks consume one input axis per mask dimension, unlike integer arrays.
             if isinstance(item, torch.Tensor) and item.dtype in (torch.bool, torch.uint8):
                 return item.ndim
