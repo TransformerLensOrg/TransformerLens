@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import math
 import threading
 import warnings
 from typing import Any, Mapping, Optional, Sequence, Union
@@ -74,6 +75,7 @@ class VLLMDriver(DriverBase):
         # runs — a per-forward re-fetch clones a d_vocab×d_model tensor to CPU every call.
         self._unembed: tuple[torch.Tensor, Any] | None = None
         self._unembed_probed = False
+        self._logits_transform: tuple[float, float | None] | None = None
         # fp32 reciprocal of the guarded final-norm weight; None after a failed probe.
         self._lnf_inv_denom: torch.Tensor | None = None
         self._lnf_probed = False
@@ -540,19 +542,45 @@ class VLLMDriver(DriverBase):
 
     def probe_logit_reconstruction(self) -> bool:
         """One-time unembedding fetch + cache; downgrades ``provides_sequence_logits``
-        honestly when no unembedding is reachable (the fallback path is final-position
-        log-probs, which cannot back a loss). Idempotent — later calls return the
-        cached availability."""
+        honestly when no unembedding or logits processor is reachable (the fallback
+        path is final-position log-probs, which cannot back a loss). Idempotent — later
+        calls return the cached availability."""
         if self._unembed_probed:
             return self._unembed is not None
-        self._unembed_probed = True
         # Gathered reads: under TP the unembedding is vocab-sharded per rank.
         weight = self._gather_param("lm_head.weight")
         if weight is None:  # tied embeddings expose no separate lm_head
             weight = self._gather_param("model.embed_tokens.weight")
         if weight is None:
+            self._unembed_probed = True
             self.provides_sequence_logits = False
             return False
+        # Config fields alone miss architecture composition and runtime overrides.
+        processors = [
+            p for p in self._llm.collective_rpc("tl_get_logits_processor") if p is not None
+        ]
+        if not processors:
+            self._unembed_probed = True
+            self.provides_sequence_logits = False
+            warnings.warn(
+                "vLLM logits processor is unavailable; disabling full-sequence logit reconstruction.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return False
+        if any(p != processors[0] for p in processors[1:]):
+            raise RuntimeError("vLLM logits processor metadata disagrees across ranks.")
+        if (
+            not isinstance(processors[0], Mapping)
+            or not {"scale", "soft_cap"} <= processors[0].keys()
+        ):
+            raise RuntimeError("vLLM logits processor returned malformed metadata.")
+        scale = float(processors[0]["scale"])
+        cap_value = processors[0]["soft_cap"]
+        cap = float(cap_value) if cap_value is not None else None
+        if not math.isfinite(scale) or (cap is not None and (not math.isfinite(cap) or cap <= 0)):
+            raise RuntimeError("vLLM logits processor has an invalid scale or soft_cap.")
+        self._logits_transform = (scale, cap)
         bias = self._gather_param("lm_head.bias")
         d_vocab = int(self.bridge_config.d_vocab)
         # Slice vLLM's vocab-pad rows at cache time; fp32 residency (~2× checkpoint
@@ -562,11 +590,12 @@ class VLLMDriver(DriverBase):
             bias.to(torch.float32)[:d_vocab] if bias is not None else None,
         )
         self.provides_sequence_logits = True
+        self._unembed_probed = True
         return True
 
     def _reconstruct_logits(self, ln_final: Any) -> torch.Tensor | None:
         """Rebuild real logits from the captured post-weight ln_final:
-        ``ln_final @ lm_head.weight.T`` (+ bias, + Gemma-family tanh soft-cap).
+        ``ln_final @ lm_head.weight.T`` (+ bias), then the engine's softcap and scale.
 
         vLLM's ``ln_final.hook_normalized`` is the POST-weight RMSNorm value lm_head
         consumes (verified empirically: it equals HF's pre-weight value times the norm
@@ -589,9 +618,12 @@ class VLLMDriver(DriverBase):
             # org_vocab_size before sampling — mirror that, or pad columns (zero-filled
             # at load) become phantom argmax candidates and bias softmax denominators.
             logits = logits[..., :d_vocab]
-        cap = getattr(self.bridge_config, "output_logits_soft_cap", None)
-        if cap is not None and cap > 0:  # Gemma-family cap; -1.0 is the "disabled" sentinel
-            logits = float(cap) * torch.tanh(logits / float(cap))
+        assert self._logits_transform is not None
+        scale, cap = self._logits_transform
+        if cap is not None:
+            logits = cap * torch.tanh(logits / cap)
+        if scale != 1.0:
+            logits = logits * scale
         if logits.shape[-1] < d_vocab:  # pad the padded-vocab tail (never predicted)
             pad = logits.new_full((*logits.shape[:-1], d_vocab - logits.shape[-1]), float("-inf"))
             logits = torch.cat([logits, pad], dim=-1)
@@ -641,6 +673,7 @@ class VLLMDriver(DriverBase):
             log.debug("tl_remove_hooks failed during close(): %s", e)
         self._llm = None
         self._unembed = None
+        self._logits_transform = None
         self._lnf_inv_denom = None
 
         global _LIVE_DRIVERS

@@ -56,6 +56,8 @@ def fake_collective_rpc(absent_per_rank):
     def rpc(method, *args, **kwargs):
         if method == "tl_absent_hooks":
             return absent_per_rank
+        if method == "tl_get_logits_processor":
+            return [{"scale": 1.0, "soft_cap": None}]
         return [torch.ones(16, 4)]
 
     return MagicMock(side_effect=rpc)

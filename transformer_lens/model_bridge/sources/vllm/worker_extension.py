@@ -93,6 +93,8 @@ def decode_tensor(payload: Dict[str, Any]) -> torch.Tensor:
 class TLWorkerExtension:
     """Mixed into vLLM's ``Worker`` via ``worker_extension_cls``."""
 
+    model_runner: Any
+
     _tl_hook_handles: list
     _tl_buffers: Dict[str, torch.Tensor]
     _tl_scale_buffers: Dict[str, torch.Tensor]
@@ -175,6 +177,23 @@ class TLWorkerExtension:
         """
         target = resolve_dot_path(getattr(self, "model_runner").model, dotted_name)
         return encode_tensor(target) if isinstance(target, torch.Tensor) else None
+
+    def tl_get_logits_processor(self) -> Optional[Dict[str, Any]]:
+        """Read the engine's post-unembedding transform; absent on non-final PP stages."""
+        processor = resolve_dot_path(self.model_runner.model, "logits_processor")
+        if processor is None:
+            return None
+        if not hasattr(processor, "scale") or not hasattr(processor, "soft_cap"):
+            raise NotImplementedError(
+                "Unsupported vLLM logits processor: missing scale or soft_cap."
+            )
+        if bool(getattr(processor, "logits_as_input", False)):
+            raise NotImplementedError("Cannot reconstruct logits_as_input processors from lm_head.")
+        cap = processor.soft_cap
+        return {
+            "scale": float(processor.scale),
+            "soft_cap": float(cap) if cap is not None else None,
+        }
 
     def tl_reset_counter(self) -> None:
         """Zero the shared hook-fire counter before a forward."""

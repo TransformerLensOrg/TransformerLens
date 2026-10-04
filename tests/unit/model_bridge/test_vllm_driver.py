@@ -111,7 +111,7 @@ def _driver(
     if captures is not None:
         llm.collective_rpc = MagicMock(return_value=[captures])
     llm.generate = MagicMock(return_value=[_fake_request_output(generated_token, top_logprobs)])
-    return VLLMDriver(
+    driver = VLLMDriver(
         llm=llm,
         adapter=_adapter(),
         tokenizer=None,
@@ -120,6 +120,8 @@ def _driver(
         max_num_batched_tokens=max_num_batched_tokens,
         enable_position_interventions=enable_position_interventions,
     )
+    driver._logits_transform = (1.0, None)
+    return driver
 
 
 class TestVLLMDriverProtocolConformance:
@@ -478,7 +480,7 @@ def _batched_driver(*, outputs, captures_by_req, hf_config=None) -> VLLMDriver:
     # collective_rpc("tl_read_batched_captures")[0] is the only indexed call; the
     # reset/set calls ignore the return value.
     llm.collective_rpc = MagicMock(return_value=[captures_by_req])
-    return VLLMDriver(
+    driver = VLLMDriver(
         llm=llm,
         adapter=_adapter(),
         tokenizer=None,
@@ -487,6 +489,8 @@ def _batched_driver(*, outputs, captures_by_req, hf_config=None) -> VLLMDriver:
         max_num_batched_tokens=2048,
         enable_batching=True,
     )
+    driver._logits_transform = (1.0, None)
+    return driver
 
 
 class TestNormalizeInputIdsBatched:
@@ -776,6 +780,101 @@ class TestVLLMDriverSpecKeyValidation:
 class TestVLLMDriverLogitReconstruction:
     """Boot-time probe caches the unembedding; reconstruction slices padded vocab."""
 
+    @pytest.mark.parametrize(
+        "scale,cap", [(0.0625, None), (0.5, None), (2.0, 3.0), (0.0, 3.0), (-1.0, None)]
+    )
+    def test_runtime_scale_softcap_order_bias_and_batched_shape(self, scale, cap):
+        driver = _driver(captures={})
+        driver.bridge_config.output_logits_soft_cap = 100.0
+        weight = torch.arange(64, dtype=torch.float32).reshape(16, 4) / 16
+        bias = torch.linspace(-1, 1, 16)
+        metadata = {"scale": scale, "soft_cap": cap}
+
+        def rpc(method, args=()):
+            if method == "tl_get_logits_processor":
+                return [None, metadata, metadata]  # non-final PP stage, two TP replicas
+            return [{"lm_head.weight": weight, "lm_head.bias": bias}.get(args[0])]
+
+        driver._llm.collective_rpc = MagicMock(side_effect=rpc)
+        hidden = torch.ones(2, 3, 4)
+        expected = hidden @ weight.T + bias
+        if cap is not None:
+            expected = cap * torch.tanh(expected / cap)
+        expected *= scale
+        torch.testing.assert_close(driver._reconstruct_logits(hidden), expected)
+        calls = driver._llm.collective_rpc.call_count
+        driver._reconstruct_logits(hidden)
+        assert driver._llm.collective_rpc.call_count == calls
+
+    def test_missing_processor_disables_reconstruction(self):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(
+            side_effect=lambda method, **kwargs: [None, None]
+            if method == "tl_get_logits_processor"
+            else [torch.ones(16, 4)]
+        )
+        with pytest.warns(UserWarning, match="logits processor is unavailable"):
+            assert driver.probe_logit_reconstruction() is False
+        assert driver.provides_sequence_logits is False
+        assert driver._unembed is None
+        assert driver._reconstruct_logits(torch.ones(3, 4)) is None
+
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_scaled_logits_reach_remote_bridge_both_return(self, vllm_prompt_api, batched):
+        hidden = torch.arange(12, dtype=torch.float32).reshape(3, 4) / 10
+        weight = torch.arange(64, dtype=torch.float32).reshape(16, 4) / 10
+        captures = {"ln_final.hook_normalized": hidden}
+        if batched:
+            outputs = [_batched_request_output("a"), _batched_request_output("b")]
+            driver = _batched_driver(
+                outputs=outputs, captures_by_req={"a": captures, "b": captures}
+            )
+        else:
+            driver = _driver(captures=captures)
+
+        def rpc(method, args=()):
+            if method == "tl_get_logits_processor":
+                return [{"scale": 0.5, "soft_cap": None}]
+            if method == "tl_get_param":
+                return [weight if args[0] == "lm_head.weight" else None]
+            if method == "tl_read_captures":
+                return [captures]
+            if method == "tl_read_batched_captures":
+                return [{"a": captures, "b": captures}]
+            return [None]
+
+        driver._llm.collective_rpc = MagicMock(side_effect=rpc)
+        driver.probe_logit_reconstruction()
+        bridge = RemoteBridge(_adapter(), None, driver)
+        tokens = torch.tensor([[1, 2, 3]] * (2 if batched else 1))
+        expected = (hidden @ weight.T * 0.5).unsqueeze(0).expand(tokens.shape[0], -1, -1)
+        try:
+            logits, loss = bridge.forward(tokens, return_type="both")
+            torch.testing.assert_close(logits, expected)
+            torch.testing.assert_close(loss, lm_cross_entropy_loss(expected, tokens))
+        finally:
+            bridge.close()
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            [{"scale": 1.0, "soft_cap": None}, {"scale": 0.5, "soft_cap": None}],
+            [{"scale": float("nan"), "soft_cap": None}],
+            [{"scale": 1.0, "soft_cap": 0.0}],
+            [{"scale": 1.0, "soft_cap": float("inf")}],
+            [{}],
+        ],
+    )
+    def test_bad_processor_metadata_fails_loud(self, metadata):
+        driver = _driver(captures={})
+        driver._llm.collective_rpc = MagicMock(
+            side_effect=lambda method, **kwargs: metadata
+            if method == "tl_get_logits_processor"
+            else [torch.ones(16, 4)]
+        )
+        with pytest.raises(RuntimeError, match="logits processor"):
+            driver.probe_logit_reconstruction()
+
     def test_probe_unavailable_downgrades_sequence_logits(self):
         driver = _driver(captures={})
         driver._llm.collective_rpc = MagicMock(return_value=[None])
@@ -785,7 +884,11 @@ class TestVLLMDriverLogitReconstruction:
 
     def test_probe_available_caches_weight(self):
         driver = _driver(captures={})
-        driver._llm.collective_rpc = MagicMock(return_value=[torch.ones(16, 4)])
+        driver._llm.collective_rpc = MagicMock(
+            side_effect=lambda method, **kwargs: [{"scale": 1.0, "soft_cap": None}]
+            if method == "tl_get_logits_processor"
+            else [torch.ones(16, 4)]
+        )
         assert driver.probe_logit_reconstruction() is True
         assert driver.provides_sequence_logits is True
         weight32, _bias = driver._unembed
@@ -1077,6 +1180,8 @@ class TestGatherParam:
                 return [shard0, shard1]
             if method == "tl_get_param":
                 return [None, None]  # no bias; no tied-embedding fallback needed
+            if method == "tl_get_logits_processor":
+                return [{"scale": 1.0, "soft_cap": None}] * 2
             return [[]]
 
         driver._llm.collective_rpc = MagicMock(side_effect=rpc)
