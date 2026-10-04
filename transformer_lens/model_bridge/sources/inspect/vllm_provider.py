@@ -194,6 +194,8 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
         single-token generate (vLLM's prefill populates the capture buffers), read them
         back via ``collective_rpc``, and return the wire-format ``metadata["activations"]``
         + synthesized ``tl_logits`` the InspectDriver expects."""
+        if extra_args.get("attention_mask") is not None:
+            raise NotImplementedError("tl_bridge_vllm does not support attention_mask.")
         from vllm import SamplingParams
         from vllm.inputs import TokensPrompt
 

@@ -61,6 +61,11 @@ def boot_inspect(
     default) and eager attention. Full-sequence logits ride on ``return_logits=True`` (the
     default); pass ``return_logits=False`` to skip the (seq × d_vocab) payload for pure
     activation capture (``run_with_cache`` keeps them since it returns logits).
+
+    ``tl_bridge`` accepts a binary, single-row ``attention_mask`` matching the input
+    length. Masked forwards use padding-aware positions where the model accepts 2-D
+    position IDs; model-owned position derivation is left intact. The vLLM Inspect
+    providers reject masks rather than silently ignore them.
     """
     from inspect_ai.model import get_model
     from transformers import AutoConfig, AutoTokenizer
@@ -118,7 +123,11 @@ def boot_inspect(
             kinds = api.supported_kinds() if hasattr(api, "supported_kinds") else None
             note = api.capability_note() if hasattr(api, "capability_note") else ""
             psl = bool(getattr(api, "provides_sequence_logits", True))
-        profile = profiles.TLBridgeProfile(supported_kinds=kinds, provides_sequence_logits=psl)
+        profile = profiles.TLBridgeProfile(
+            supported_kinds=kinds,
+            provides_sequence_logits=psl,
+            supports_attention_mask=provider == "tl_bridge",
+        )
         if note:
             warnings.warn(note, UserWarning, stacklevel=2)
     else:
