@@ -1181,16 +1181,16 @@ class ActivationCache:
         pos_slice: Slice,
         neuron_slice: Slice,
         project_2d: torch.Tensor,
+        mlp_input: bool = False,
     ) -> torch.Tensor:
         """LN-applied neuron stack with projection folded in — no d_mlp×d_model intermediate.
 
         Analytical formula (LN models, cached scale ``s``):
             ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
-        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
-        ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
-
+        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the ln2
+        scale of ``layer`` when ``mlp_input`` is set, else the ln1 scale.
         """
-        scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
+        scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
         apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
         sum_p = project_2d.sum(dim=0) if apply_centering else None  # [n_outs]
@@ -1231,6 +1231,7 @@ class ActivationCache:
         incl_remainder: bool = False,
         apply_ln: bool = False,
         project_output_onto: Optional[torch.Tensor] = None,
+        mlp_input: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[str]]]:
         """Stack Neuron Results
 
@@ -1264,6 +1265,11 @@ class ActivationCache:
                 direction analyses; see ``get_neuron_results``). Combined with ``apply_ln=True``,
                 the projection is folded into the analytical cached-scale LN so the
                 ``[..., d_mlp, d_model]`` intermediate is still never materialized.
+            mlp_input:
+                Treat the stack as the input to ``layer``'s MLP rather than its attention, as in
+                ``decompose_resid``: with ``incl_remainder=True`` the remainder fills the stack up to
+                ``resid_mid`` instead of ``resid_pre``, and with ``apply_ln=True`` the LN scale of
+                ln2 is used instead of ln1. The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1286,21 +1292,24 @@ class ActivationCache:
         neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
         labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
+        # The remainder fills the stack up to the residual stream that layer's LN normalizes:
+        # resid_mid (the MLP input) with mlp_input, else resid_pre (resid_post of layer - 1).
+        remainder_target = ("resid_mid", layer) if mlp_input else ("resid_post", layer - 1)
         components: Any
         ln_folded = apply_ln and project_2d is not None
         if ln_folded:
             assert project_2d is not None  # narrow for mypy
             # Analytical LN+projection — no d_mlp×d_model intermediate.
             components = self._stack_neuron_results_apply_ln_projected(
-                layer, pos_slice, neuron_slice, project_2d
+                layer, pos_slice, neuron_slice, project_2d, mlp_input=mlp_input
             )
             if incl_remainder:
-                # Linearity of cached-scale LN: remainder is LN_s(resid_post) @ p - sum(neurons).
-                resid_post = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
-                resid_post_ln = self.apply_ln_to_stack(
-                    resid_post[None], layer, pos_slice=pos_slice
+                # Linearity of cached-scale LN: remainder is LN_s(target) @ p - sum(neurons).
+                target = pos_slice.apply(self[remainder_target], dim=-2)
+                target_ln = self.apply_ln_to_stack(
+                    target[None], layer, pos_slice=pos_slice, mlp_input=mlp_input
                 )[0]
-                remainder = resid_post_ln @ project_2d
+                remainder = target_ln @ project_2d
                 if components.shape[0] > 0:
                     remainder = remainder - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
@@ -1323,14 +1332,14 @@ class ActivationCache:
                     "... concat_neuron_index d_model -> concat_neuron_index ... d_model",
                 )
                 if incl_remainder:
-                    remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                    remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                     if project_2d is not None:
                         remainder_full = remainder_full @ project_2d
                     remainder = remainder_full - components.sum(dim=0)
                     components = torch.cat([components, remainder[None]], dim=0)
                     labels.append("remainder")
             elif incl_remainder:
-                remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                 if project_2d is not None:
                     remainder_full = remainder_full @ project_2d
                 components = torch.cat([remainder_full[None]], dim=0)
@@ -1342,7 +1351,9 @@ class ActivationCache:
                 components = torch.zeros(0, *empty_shape_src.shape, device=self.model.cfg.device)
 
             if apply_ln:
-                components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
+                components = self.apply_ln_to_stack(
+                    components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                )
 
         if squeeze_projected:
             components = components.squeeze(-1)
@@ -1539,6 +1550,7 @@ class ActivationCache:
                     return_labels=True,
                     apply_ln=ln_folded,
                     project_output_onto=project_2d,
+                    mlp_input=mlp_input,
                 )
                 labels.extend(neuron_labels)
                 components.append(neuron_stack)

@@ -377,3 +377,106 @@ def test_logit_attrs_preserves_other_target_layouts(
     expected = torch.stack(expected_positions, dim=-1)
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("projection_ndim", [1, 2], ids=["vector", "matrix"])
+@torch.no_grad()
+def test_full_resid_decomposition_projected_ln_uses_mlp_input_scale(
+    activation_cache: ActivationCache,
+    projection_ndim: int,
+) -> None:
+    """With ``mlp_input=True`` the fused LN+projection path must use the ln2 scale.
+
+    ``project_output_onto`` only folds the projection into the decomposition, so the result
+    must equal the unprojected ``apply_ln=True`` stack projected afterwards, and the stack
+    must still sum to the normalized MLP input ``LN2(resid_mid)`` projected onto the same
+    directions.
+    """
+    layer = 1
+    d_model = activation_cache.model.cfg.d_model
+    projection_shape = (d_model,) if projection_ndim == 1 else (d_model, 2)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        direction = torch.randn(projection_shape)
+
+    unprojected = activation_cache.get_full_resid_decomposition(
+        layer=layer, mlp_input=True, apply_ln=True
+    )
+    expected = unprojected @ direction
+
+    actual = activation_cache.get_full_resid_decomposition(
+        layer=layer, mlp_input=True, apply_ln=True, project_output_onto=direction
+    )
+
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual, expected)
+
+    normalized_mlp_input = activation_cache.apply_ln_to_stack(
+        activation_cache[("resid_mid", layer)][None], layer, mlp_input=True
+    )[0]
+    torch.testing.assert_close(actual.sum(dim=0), normalized_mlp_input @ direction)
+
+
+@pytest.mark.parametrize("incl_remainder", [False, True], ids=["neurons", "with-remainder"])
+@torch.no_grad()
+def test_stack_neuron_results_projected_ln_honours_mlp_input(
+    activation_cache: ActivationCache,
+    incl_remainder: bool,
+) -> None:
+    """The fused LN+projection neuron stack matches the unfused one for ``mlp_input=True``."""
+    layer = 1
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        direction = torch.randn(activation_cache.model.cfg.d_model)
+
+    expected = (
+        activation_cache.stack_neuron_results(
+            layer, apply_ln=True, incl_remainder=incl_remainder, mlp_input=True
+        )
+        @ direction
+    )
+    actual = activation_cache.stack_neuron_results(
+        layer,
+        apply_ln=True,
+        incl_remainder=incl_remainder,
+        project_output_onto=direction,
+        mlp_input=True,
+    )
+
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("apply_ln", [False, True], ids=["raw", "ln"])
+@pytest.mark.parametrize("project", [False, True], ids=["unprojected", "projected"])
+@torch.no_grad()
+def test_stack_neuron_results_mlp_input_remainder_fills_to_resid_mid(
+    activation_cache: ActivationCache,
+    apply_ln: bool,
+    project: bool,
+) -> None:
+    """With ``mlp_input=True`` the stack sums to the MLP input ``resid_mid``, like ``decompose_resid``.
+
+    With ``apply_ln=True`` that is ``LN2(resid_mid)``; with a projection, its projection.
+    """
+    layer = 1
+    direction = None
+    if project:
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            direction = torch.randn(activation_cache.model.cfg.d_model)
+
+    stack = activation_cache.stack_neuron_results(
+        layer,
+        apply_ln=apply_ln,
+        incl_remainder=True,
+        project_output_onto=direction,
+        mlp_input=True,
+    )
+
+    target = activation_cache[("resid_mid", layer)]
+    if apply_ln:
+        target = activation_cache.apply_ln_to_stack(target[None], layer, mlp_input=True)[0]
+    if direction is not None:
+        target = target @ direction
+    torch.testing.assert_close(stack.sum(dim=0), target)
