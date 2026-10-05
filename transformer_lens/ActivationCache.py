@@ -579,8 +579,11 @@ class ActivationCache:
                 Stack of components of residual stream to get logit attributions for.
             tokens:
                 Tokens to compute logit attributions on. A [batch] tensor selects one token
-                per example across all retained positions; [batch, position] selects one token
-                per position. Token tensors should already match any batch/position slices.
+                per example across all retained positions. A 1-D tensor whose length differs
+                from the batch size selects one token per position, shared across examples.
+                Use [1, position] to share per-position targets when batch and position sizes
+                are equal; [batch, position] selects targets for each example and position.
+                Token tensors should already match any batch/position slices.
             incorrect_tokens:
                 If provided, compute attributions on logit difference between tokens and
                 incorrect_tokens. Must have the same shape as tokens.
@@ -650,6 +653,7 @@ class ActivationCache:
             and batch_slice.mode != "int"
             and scaled_residual_stack.ndim == 4
             and logit_directions.ndim == 2
+            and logit_directions.shape[0] == scaled_residual_stack.shape[1]
         ):
             # Per-example directions must broadcast over positions, not across the batch.
             logit_directions = logit_directions.unsqueeze(-2)

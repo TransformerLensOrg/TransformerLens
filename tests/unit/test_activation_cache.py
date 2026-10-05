@@ -297,6 +297,7 @@ def test_logit_attrs_per_example_targets_match_individual_examples(
             incorrect = incorrect[batch_slice]
 
     residual = activation_cache.decompose_resid(pos_slice=pos_slice)
+    assert isinstance(residual, torch.Tensor)
     actual = activation_cache.logit_attrs(
         residual,
         tokens=targets,
@@ -309,6 +310,7 @@ def test_logit_attrs_per_example_targets_match_individual_examples(
     for index in batch_indices.reshape(-1).tolist():
         single_cache = activation_cache.apply_slice_to_batch_dim(index)
         single_residual = single_cache.decompose_resid(pos_slice=pos_slice)
+        assert isinstance(single_residual, torch.Tensor)
         expected_rows.append(
             single_cache.logit_attrs(
                 single_residual,
@@ -325,10 +327,21 @@ def test_logit_attrs_per_example_targets_match_individual_examples(
     torch.testing.assert_close(actual, expected)
 
 
-@pytest.mark.parametrize("target_layout", ["scalar", "per-position", "batchless-per-position"])
+@pytest.mark.parametrize(
+    "target_layout",
+    [
+        "scalar",
+        "per-position",
+        "batchless-per-position",
+        "shared-per-position",
+        "single-prompt-per-position",
+    ],
+)
+@pytest.mark.parametrize("logit_difference", [False, True])
 def test_logit_attrs_preserves_other_target_layouts(
     activation_cache: ActivationCache,
     target_layout: str,
+    logit_difference: bool,
 ) -> None:
     cache = activation_cache
     targets = torch.tensor([[10, 11, 12, 13], [14, 15, 16, 17], [18, 19, 20, 21]])
@@ -337,8 +350,16 @@ def test_logit_attrs_preserves_other_target_layouts(
     elif target_layout == "batchless-per-position":
         cache = cache.apply_slice_to_batch_dim(1)
         targets = targets[1]
+    elif target_layout in ("shared-per-position", "single-prompt-per-position"):
+        targets = targets[1]
+        if target_layout == "single-prompt-per-position":
+            cache = cache.apply_slice_to_batch_dim([1])
+    incorrect = targets + 1 if logit_difference else None
     residual = cache.decompose_resid()
-    actual = cache.logit_attrs(residual, targets, has_batch_dim=cache.has_batch_dim)
+    assert isinstance(residual, torch.Tensor)
+    actual = cache.logit_attrs(
+        residual, targets, incorrect_tokens=incorrect, has_batch_dim=cache.has_batch_dim
+    )
 
     # A scalar target at each position is independent of target broadcasting.
     expected_positions = []
@@ -348,6 +369,7 @@ def test_logit_attrs_preserves_other_target_layouts(
             cache.logit_attrs(
                 residual[..., position, :],
                 position_targets,
+                incorrect_tokens=position_targets + 1 if logit_difference else None,
                 pos_slice=position,
                 has_batch_dim=cache.has_batch_dim,
             )
