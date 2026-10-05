@@ -1781,7 +1781,8 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
                 grad_vec = grad[0, reader.position]
             shift = float((perturbation * grad_vec).sum())
             expected = baseline_scores[edge] + shift
-            assert mutated_scores[edge] == pytest.approx(expected)
+            # float32: baseline and shift partly cancel, so the default rel=1e-6 is too tight
+            assert mutated_scores[edge] == pytest.approx(expected, abs=1e-6)
             changed += 1
             if abs(shift) > 1e-6:
                 assert mutated_scores[edge] != pytest.approx(baseline_scores[edge])
