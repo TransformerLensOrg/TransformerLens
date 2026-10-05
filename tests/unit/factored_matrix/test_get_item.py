@@ -227,14 +227,24 @@ def test_getitem_bool_mask_matches_dense(mask_ndim: int, mask_format: str, selec
 
 
 @pytest.mark.parametrize("numpy_mask", [False, True], ids=["tensor", "numpy"])
-def test_getitem_ellipsis_preserves_legacy_byte_mask(numpy_mask: bool) -> None:
+@pytest.mark.parametrize("selection", ["leading", "row", "column"])
+def test_getitem_ellipsis_preserves_legacy_byte_mask(numpy_mask: bool, selection: str) -> None:
     matrix = FactoredMatrix(torch.randn(2, 3, 5, 2), torch.randn(2, 3, 2, 7))
     mask = torch.tensor([[1, 0, 1], [0, 1, 0]], dtype=torch.uint8)
     expected = matrix.AB[mask.bool()]
+    if selection == "row":
+        index = (mask, Ellipsis, 1, slice(None))
+        expected = expected[..., 1:2, :]
+    elif selection == "column":
+        index = (mask, Ellipsis, 1)
+        expected = expected[..., 1:2]
+    else:
+        index = (mask, Ellipsis)
     if numpy_mask:
         mask = mask.numpy()
+        index = (mask,) + index[1:]
     with pytest.warns(UserWarning, match="uint8"):
-        result = matrix[mask, ...]
+        result = matrix[index]
     assert_close(result.AB, expected)
 
 
@@ -248,3 +258,63 @@ def test_getitem_integer_sequence_consumes_one_axis(nested: bool, as_tuple: bool
         index = tuple(tuple(row) for row in index) if nested else tuple(index)
     result = matrix[index, ..., 1]
     assert_close(result.AB, expected)
+
+
+@pytest.mark.parametrize("leading_shape", [(), (3,), (2, 3)])
+@pytest.mark.parametrize(
+    "index,expected_index",
+    [
+        ((Ellipsis, None), (Ellipsis, None)),
+        ((Ellipsis, None, 1), (Ellipsis, None, slice(1, 2))),
+        ((Ellipsis, None, slice(1, 3)), (Ellipsis, None, slice(1, 3))),
+        ((Ellipsis, None, None), (Ellipsis, None, None)),
+        ((Ellipsis, None, slice(None), None), (Ellipsis, None, slice(None), None)),
+        ((Ellipsis, None, slice(None), slice(None)), (Ellipsis, None, slice(None), slice(None))),
+    ],
+    ids=[
+        "trailing",
+        "before-column-int",
+        "before-column-slice",
+        "two-trailing",
+        "around-column",
+        "before-row",
+    ],
+)
+def test_getitem_matrix_newaxes_match_dense(
+    leading_shape: tuple[int, ...], index: tuple, expected_index: tuple
+) -> None:
+    matrix = FactoredMatrix(
+        torch.randn(*leading_shape, 5, 2, dtype=torch.float64),
+        torch.randn(*leading_shape, 2, 7, dtype=torch.float64),
+    )
+    expected = matrix.AB[expected_index]
+    result = matrix[index]
+    assert result.mdim == matrix.mdim
+    assert_close(result.AB, expected)
+
+
+def test_getitem_newaxis_after_row_preserves_existing_selection() -> None:
+    matrix = FactoredMatrix(torch.randn(2, 3, 5, 2), torch.randn(2, 3, 2, 7))
+    result = matrix[0, 1, :, None, ...]
+    assert_close(result.AB, matrix.AB[0, 1, :, None, ...])
+
+
+def test_getitem_trailing_newaxis_does_not_materialize_product(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = FactoredMatrix(torch.randn(3, 5, 2), torch.randn(3, 2, 7))
+    expected = matrix.AB[..., None]
+
+    def forbid_product(self):
+        raise AssertionError("Indexing must not materialize the product")
+
+    with monkeypatch.context() as context:
+        context.setattr(FactoredMatrix, "AB", property(forbid_product))
+        result = matrix[..., None]
+    assert_close(result.AB, expected)
+
+
+def test_getitem_too_many_indices_with_newaxis_raises() -> None:
+    matrix = FactoredMatrix(torch.randn(5, 2), torch.randn(2, 7))
+    with pytest.raises(ValueError, match="too long an index"):
+        _ = matrix[..., None, 0, 0, 0]

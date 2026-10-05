@@ -304,6 +304,7 @@ class FactoredMatrix:
 
         Ellipsis expands across the product's dimensions, excluding new axes (``None``).
         Integer row and column indices retain singleton dimensions in the returned factors.
+        New axes next to matrix rows/columns reshape the factors without forming the product.
         """
         if not isinstance(idx, tuple):
             idx = (idx,)
@@ -327,27 +328,46 @@ class FactoredMatrix:
             raise IndexError("An index can only have a single ellipsis")
         if ellipsis_positions:
             consumed = sum(index_ndim(item) for item in idx)
-            if consumed > self.ndim:
-                raise ValueError(
-                    f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
-                )
             position = ellipsis_positions[0]
             # Expand against AB's axes before mapping row/column indices onto the factors.
             idx = idx[:position] + (slice(None),) * (self.ndim - consumed) + idx[position + 1 :]
-        length = sum(index_ndim(item) for item in idx)
+        factor_indices = []
+        matrix_newaxes = []
+        length = 0
+        for item in idx:
+            if item is None and length >= self.ndim - 2:
+                matrix_newaxes.append(length - (self.ndim - 2))
+            else:
+                factor_indices.append(item)
+            length += index_ndim(item)
+        idx = tuple(factor_indices)
         if length <= len(self.shape) - 2:
-            return FactoredMatrix(self.A[idx], self.B[idx])
+            result = FactoredMatrix(self.A[idx], self.B[idx])
         elif length == len(self.shape) - 1:
             idx = self._convert_to_slice(idx, -1)
-            return FactoredMatrix(self.A[idx], self.B[idx[:-1]])
+            result = FactoredMatrix(self.A[idx], self.B[idx[:-1]])
         elif length == len(self.shape):
             idx = self._convert_to_slice(idx, -1)
             idx = self._convert_to_slice(idx, -2)
-            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
+            result = FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
         else:
             raise ValueError(
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
             )
+
+        for position in matrix_newaxes:
+            if position == 0:
+                axis = result.ndim - 2
+                result = FactoredMatrix(result.A.unsqueeze(axis), result.B.unsqueeze(axis))
+            elif position == 1:
+                # Promote the row axis to a leading dimension, keeping the contraction intact.
+                result = FactoredMatrix(result.A.unsqueeze(-2), result.B.unsqueeze(-3))
+            else:
+                # A trailing axis makes the old column axis the new row axis.
+                result = FactoredMatrix(
+                    result.B.transpose(-2, -1).unsqueeze(-3), result.A.unsqueeze(-1)
+                )
+        return result
 
     def norm(self) -> Float[torch.Tensor, "*leading_dims"]:
         """
