@@ -98,6 +98,17 @@ def test_enumerate_blocks_ignores_modulelists_without_the_marker():
     assert stub._enumerate_blocks() == []
 
 
+def test_enumerate_blocks_skips_mixed_lists_instead_of_leaking_non_blocks():
+    """A ModuleList is only a block list if *every* item is a residual-stream
+    block. Checking just the first item let a mixed list through whole, leaking
+    unrelated modules into every consumer of _enumerate_blocks()."""
+    first_is_block = nn.ModuleList([_opaque_block_with_attn("mixed.0"), nn.Linear(2, 2)])
+    last_is_block = nn.ModuleList([nn.Linear(2, 2), _opaque_block_with_attn("mixed2.1")])
+    stub = _stub({"first_is_block": first_is_block, "last_is_block": last_is_block})
+
+    assert stub._enumerate_blocks() == []
+
+
 def test_enumerate_blocks_known_names_keep_priority_and_order():
     """Known names (here just "blocks") are still enumerated via the fixed
     priority list, ahead of any structurally-discovered extra list, and the

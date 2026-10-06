@@ -1297,12 +1297,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         ``core_block`` / ``coda``) register block lists under other names
         entirely, so ``_BLOCK_LIST_ATTRS`` alone would silently enumerate zero
         blocks for them (#1791). After the known names, any other
-        ``nn.ModuleList`` in ``_modules`` whose items are residual-stream
+        ``nn.ModuleList`` in ``_modules`` whose items are *all* residual-stream
         blocks -- ``GeneralizedComponent``s with ``hook_out_is_single_residual_stream``
         set, the marker ``JacobianLens.validate_model`` already uses to require a
         single-stream block stack -- is discovered structurally and appended in
         registration order, so a new adapter's block lists are picked up
-        automatically without a name to add here.
+        automatically without a name to add here. A list mixing blocks with
+        other modules is skipped whole rather than partly enumerated.
         """
         pairs: List[Tuple[int, Any]] = []
         modules = self.__dict__.get("_modules") or {}
@@ -1316,8 +1317,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         for list_name, block_list in modules.items():
             if list_name in known_names or not isinstance(block_list, nn.ModuleList):
                 continue
-            if len(block_list) == 0 or not getattr(
-                block_list[0], "hook_out_is_single_residual_stream", False
+            if len(block_list) == 0 or not all(
+                getattr(block, "hook_out_is_single_residual_stream", False) for block in block_list
             ):
                 continue
             for block in block_list:
