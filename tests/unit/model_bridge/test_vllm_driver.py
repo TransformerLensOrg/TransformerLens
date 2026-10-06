@@ -120,7 +120,6 @@ def _driver(
         max_num_batched_tokens=max_num_batched_tokens,
         enable_position_interventions=enable_position_interventions,
     )
-    driver._logits_transform = (1.0, None)
     return driver
 
 
@@ -489,7 +488,6 @@ def _batched_driver(*, outputs, captures_by_req, hf_config=None) -> VLLMDriver:
         max_num_batched_tokens=2048,
         enable_batching=True,
     )
-    driver._logits_transform = (1.0, None)
     return driver
 
 
@@ -859,10 +857,6 @@ class TestVLLMDriverLogitReconstruction:
         "metadata",
         [
             [{"scale": 1.0, "soft_cap": None}, {"scale": 0.5, "soft_cap": None}],
-            [{"scale": float("nan"), "soft_cap": None}],
-            [{"scale": 1.0, "soft_cap": 0.0}],
-            [{"scale": 1.0, "soft_cap": float("inf")}],
-            [{}],
         ],
     )
     def test_bad_processor_metadata_fails_loud(self, metadata):
@@ -891,7 +885,7 @@ class TestVLLMDriverLogitReconstruction:
         )
         assert driver.probe_logit_reconstruction() is True
         assert driver.provides_sequence_logits is True
-        weight32, _bias = driver._unembed
+        weight32, _bias, _scale, _cap = driver._unembed
         assert weight32.dtype == torch.float32
         # Idempotent: a second probe answers from the cache, no extra RPC.
         calls_after_first = driver._llm.collective_rpc.call_count
@@ -901,7 +895,7 @@ class TestVLLMDriverLogitReconstruction:
     def test_reconstruct_uses_cached_weight_without_rpc(self):
         """After the probe, per-forward reconstruction must not re-fetch the weight."""
         driver = _driver(captures={})
-        driver._unembed = (torch.eye(4, dtype=torch.float32).repeat(4, 1), None)
+        driver._unembed = (torch.eye(4, dtype=torch.float32).repeat(4, 1), None, 1.0, None)
         driver._unembed_probed = True
         driver._llm.collective_rpc = MagicMock(
             side_effect=AssertionError("reconstruction must not RPC")
@@ -916,7 +910,7 @@ class TestVLLMDriverLogitReconstruction:
         driver = _driver(captures={})
         weight = torch.zeros(24, 4, dtype=torch.float32)
         weight[:16] = -1.0  # real vocab rows: all-negative logits
-        driver._unembed = (weight, None)
+        driver._unembed = (weight, None, 1.0, None)
         driver._unembed_probed = True
         out = driver._reconstruct_logits(torch.ones(3, 4))
         assert out.shape == (3, 16)
@@ -1011,7 +1005,7 @@ class TestVLLMDriverCloseRefcount:
     def test_close_drops_weight_caches(self, monkeypatch):
         self._patch_distributed(monkeypatch)
         driver = _driver(captures={})
-        driver._unembed = (torch.ones(16, 4), None)
+        driver._unembed = (torch.ones(16, 4), None, 1.0, None)
         driver._lnf_inv_denom = torch.ones(4)
         driver.close()
         assert driver._unembed is None and driver._lnf_inv_denom is None
@@ -1065,7 +1059,7 @@ class TestBatchedForwardPaddingSemantics:
             "full": {"ln_final.hook_normalized": torch.full((4, 4), 2.0)},
         }
         driver = _batched_driver(outputs=outputs, captures_by_req=captures)
-        driver._unembed = (torch.ones(16, 4), None)
+        driver._unembed = (torch.ones(16, 4), None, 1.0, None)
         driver._unembed_probed = True
         tokens = torch.tensor([[0, 0, 7, 8], [3, 4, 5, 6]])
         mask = torch.tensor([[0, 0, 1, 1], [1, 1, 1, 1]])
@@ -1102,7 +1096,7 @@ class TestBatchedForwardPaddingSemantics:
             "req-B": {"ln_final.hook_normalized": torch.ones(2, 4)},
         }
         driver = _batched_driver(outputs=outputs, captures_by_req=captures_by_req)
-        driver._unembed = (torch.ones(16, 4, dtype=torch.float32), None)
+        driver._unembed = (torch.ones(16, 4, dtype=torch.float32), None, 1.0, None)
         driver._unembed_probed = True
         result = driver.forward([[1, 2, 3], [4, 5]])
         assert result.logits.shape == (2, 3, 16)

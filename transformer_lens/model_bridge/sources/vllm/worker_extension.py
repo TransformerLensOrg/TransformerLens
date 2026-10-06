@@ -16,6 +16,7 @@ Two capture modes, selected at boot:
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Set
 
 import torch
@@ -189,11 +190,14 @@ class TLWorkerExtension:
             )
         if bool(getattr(processor, "logits_as_input", False)):
             raise NotImplementedError("Cannot reconstruct logits_as_input processors from lm_head.")
-        cap = processor.soft_cap
-        return {
-            "scale": float(processor.scale),
-            "soft_cap": float(cap) if cap is not None else None,
-        }
+        try:
+            scale = float(processor.scale)
+            cap = float(processor.soft_cap) if processor.soft_cap is not None else None
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError("vLLM logits processor has an invalid scale or soft_cap.") from exc
+        if not math.isfinite(scale) or (cap is not None and (not math.isfinite(cap) or cap <= 0)):
+            raise RuntimeError("vLLM logits processor has an invalid scale or soft_cap.")
+        return {"scale": scale, "soft_cap": cap}
 
     def tl_reset_counter(self) -> None:
         """Zero the shared hook-fire counter before a forward."""

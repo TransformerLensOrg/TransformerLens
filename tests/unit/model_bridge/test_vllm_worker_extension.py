@@ -36,6 +36,28 @@ class TestGetLogitsProcessor:
         ext.model_runner = SimpleNamespace(model=SimpleNamespace())
         assert ext.tl_get_logits_processor() is None
 
+    @pytest.mark.parametrize(
+        "scale,cap",
+        [
+            (float("nan"), None),
+            (float("inf"), None),
+            (1.0, 0.0),
+            (1.0, -1.0),
+            (1.0, float("inf")),
+            (1.0, float("nan")),
+            ("invalid", None),
+            (None, None),
+            (1.0, "invalid"),
+        ],
+    )
+    def test_invalid_transform_rejected(self, scale, cap):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(
+            model=SimpleNamespace(logits_processor=SimpleNamespace(scale=scale, soft_cap=cap))
+        )
+        with pytest.raises(RuntimeError, match="invalid scale or soft_cap"):
+            ext.tl_get_logits_processor()
+
     def test_logits_as_input_rejected(self):
         ext = TLWorkerExtension()
         ext.model_runner = SimpleNamespace(
