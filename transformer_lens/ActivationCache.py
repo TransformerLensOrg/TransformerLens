@@ -748,15 +748,14 @@ class ActivationCache:
 
         Existing per-head results are preserved, including those without a batch dimension.
         Missing or invalid results are recomputed from cached ``hook_z`` and the model's
-        ``W_O`` weights. Large inputs are processed in chunks to limit the temporary broadcast
-        product. When weight gradients are needed, chunks contain whole attention heads to
-        preserve the reduction over tokens; otherwise, chunks contain whole tokens.
+        ``W_O`` weights. A per-head contraction avoids materializing the broadcast product
+        over both ``d_head`` and ``d_model``. As in the bridge forward pass, the contraction
+        follows active autocast settings.
 
         TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
         compatibility shim.
         """
         expected_ndim = 4 if self.has_batch_dim else 3
-        max_intermediate_elements = 8 * 1024 * 1024
         all_cached = True
         for layer in range(self.model.cfg.n_layers):
             result_key = f"blocks.{layer}.attn.hook_result"
@@ -772,39 +771,28 @@ class ActivationCache:
 
             z = self[("z", layer, "attn")]
             weights = self.model.blocks[layer].attn.W_O
-            if torch.is_grad_enabled() and weights.requires_grad:
-                # Token chunks can overflow low-precision partial weight gradients before cancellation.
-                elements_per_head = z.numel() // z.shape[-2] * weights.shape[-1]
-                head_chunk_size = max(1, max_intermediate_elements // max(elements_per_head, 1))
-                if z.shape[-2] <= head_chunk_size:
-                    self.cache_dict[result_key] = (z.unsqueeze(-1) * weights).sum(dim=-2)
-                else:
-                    self.cache_dict[result_key] = torch.cat(
-                        [
-                            (z_chunk.unsqueeze(-1) * weight_chunk).sum(dim=-2)
-                            for z_chunk, weight_chunk in zip(
-                                z.split(head_chunk_size, dim=-2),
-                                weights.split(head_chunk_size, dim=0),
-                            )
-                        ],
-                        dim=-2,
-                    )
-                continue
-
-            # Bound the broadcast product, retaining at least one token per chunk.
-            chunk_size = max(1, max_intermediate_elements // weights.numel())
-            if z.numel() <= chunk_size * z.shape[-2] * z.shape[-1]:
-                self.cache_dict[result_key] = (z.unsqueeze(-1) * weights).sum(dim=-2)
-            else:
-                # Keep the explicit reduction over d_head for numerical consistency.
-                flat_z = z.reshape(-1, *z.shape[-2:])
-                self.cache_dict[result_key] = torch.cat(
+            if z.dtype != weights.dtype:
+                # Preserve broadcast promotion for caches collected under autocast.
+                dtype = torch.promote_types(z.dtype, weights.dtype)
+                z, weights = z.to(dtype), weights.to(dtype)
+            if (
+                z.is_cuda
+                and z.dtype == torch.float32
+                and torch.is_grad_enabled()
+                and z.requires_grad
+                and not torch.is_autocast_enabled("cuda")
+                and z.shape[-2] == weights.shape[0] != 0
+            ):
+                # Per-head GEMMs avoid less accurate CUDA batched activation-gradient reductions.
+                self.cache_dict[result_key] = torch.stack(
                     [
-                        (chunk.unsqueeze(-1) * weights).sum(dim=-2)
-                        for chunk in flat_z.split(chunk_size)
+                        head_z @ head_weights
+                        for head_z, head_weights in zip(z.unbind(-2), weights.unbind(0))
                     ],
-                    dim=0,
-                ).reshape(*z.shape[:-1], weights.shape[-1])
+                    dim=-2,
+                )
+            else:
+                self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
 
         if all_cached:
             logging.warning("Tried to compute head results when they were already cached")

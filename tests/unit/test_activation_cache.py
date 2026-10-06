@@ -9,6 +9,45 @@ from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.utilities import Slice
 
 
+def _head_results_reference(z: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    # Independent per-head matmuls keep the float64 reference small at wide model widths.
+    return torch.stack(
+        [z[..., head, :] @ weights[head] for head in range(weights.shape[0])], dim=-2
+    )
+
+
+@torch.enable_grad()
+def test_compute_head_results_preserves_wide_float32_activation_gradients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    generator = torch.Generator(device=device).manual_seed(20261005)
+    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
+    z = torch.randn(1, 32, 32, 128, device=device, generator=generator, requires_grad=True)
+    weights = torch.randn(32, 128, 4096, device=device, generator=generator, requires_grad=True)
+    model = SimpleNamespace(
+        cfg=SimpleNamespace(n_layers=1, n_heads=32),
+        blocks=[SimpleNamespace(attn=SimpleNamespace(W_O=weights))],
+    )
+    cache = ActivationCache({"blocks.0.attn.hook_z": z}, model)
+    # Freeze a head-major cotangent independently of the implementation's output layout.
+    grad_output = torch.randn(32, 1, 32, 4096, device=device, generator=generator).movedim(0, -2)
+    reference_z = z.detach().double().cpu().requires_grad_()
+    reference_weights = weights.detach().double().cpu().requires_grad_()
+    expected = _head_results_reference(reference_z, reference_weights)
+    expected_grads = torch.autograd.grad(
+        expected, (reference_z, reference_weights), grad_output.double().cpu()
+    )
+
+    cache.compute_head_results()
+
+    actual = cache["blocks.0.attn.hook_result"]
+    actual_grads = torch.autograd.grad(actual, (z, weights), grad_output)
+    torch.testing.assert_close(actual.double().cpu(), expected, rtol=2e-5, atol=2e-4)
+    for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+        torch.testing.assert_close(actual_grad.double().cpu(), expected_grad, rtol=2e-5, atol=2e-4)
+
+
 @torch.enable_grad()
 def test_compute_head_results_preserves_cancelling_float16_weight_gradients() -> None:
     z = torch.full((32, 4, 32), 5000, dtype=torch.float16)
@@ -19,14 +58,15 @@ def test_compute_head_results_preserves_cancelling_float16_weight_gradients() ->
         blocks=[SimpleNamespace(attn=SimpleNamespace(W_O=weights))],
     )
     cache = ActivationCache({"blocks.0.attn.hook_z": z}, model, has_batch_dim=False)
-    expected = (z.unsqueeze(-1) * weights).sum(dim=-2)
-    expected_grad = torch.autograd.grad(expected.sum(), weights)[0]
+    reference_weights = weights.detach().double().requires_grad_()
+    expected = _head_results_reference(z.double(), reference_weights)
+    expected_grad = torch.autograd.grad(expected.sum(), reference_weights)[0]
     assert torch.count_nonzero(expected_grad) == 0
 
     cache.compute_head_results()
 
     actual_grad = torch.autograd.grad(cache["blocks.0.attn.hook_result"].sum(), weights)[0]
-    torch.testing.assert_close(actual_grad, expected_grad, rtol=0, atol=0)
+    torch.testing.assert_close(actual_grad.double(), expected_grad, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("weight_grad", [False, True])
@@ -40,7 +80,7 @@ def test_compute_head_results_preserves_cancelling_float16_weight_gradients() ->
     ],
 )
 @torch.enable_grad()
-def test_compute_head_results_preserves_chunked_values_and_gradients(
+def test_compute_head_results_matches_float64_values_and_gradients(
     has_batch_dim: bool,
     dtype: torch.dtype,
     noncontiguous: bool,
@@ -59,23 +99,79 @@ def test_compute_head_results_preserves_chunked_values_and_gradients(
         blocks=[SimpleNamespace(attn=SimpleNamespace(W_O=weights))],
     )
     cache = ActivationCache({"blocks.0.attn.hook_z": z}, model, has_batch_dim=has_batch_dim)
-    expected = (z.unsqueeze(-1) * weights).sum(dim=-2)
+    reference_z = z.detach().double().requires_grad_()
+    reference_weights = weights.detach().double().requires_grad_(weight_grad)
+    expected = _head_results_reference(reference_z, reference_weights)
+    tolerances = {
+        torch.float64: (1e-12, 1e-12),
+        torch.float32: (2e-5, 2e-4),
+        torch.float16: (1e-3, 1e-3),
+        torch.bfloat16: (1e-2, 1e-2),
+    }
+    rtol, atol = tolerances[dtype]
 
     cache.compute_head_results()
 
     actual = cache["blocks.0.attn.hook_result"]
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-    grad_output = torch.randn_like(expected)
+    assert actual.dtype == dtype
+    torch.testing.assert_close(actual.double(), expected, rtol=rtol, atol=atol)
+    grad_output = torch.randn_like(actual)
     inputs = (z, weights) if weight_grad else (z,)
-    expected_grads = torch.autograd.grad(expected, inputs, grad_output)
+    reference_inputs = (reference_z, reference_weights) if weight_grad else (reference_z,)
+    expected_grads = torch.autograd.grad(expected, reference_inputs, grad_output.double())
     actual_grads = torch.autograd.grad(actual, inputs, grad_output)
     for actual_grad, expected_grad in zip(actual_grads, expected_grads):
-        torch.testing.assert_close(actual_grad, expected_grad, rtol=0, atol=0)
+        torch.testing.assert_close(actual_grad.double(), expected_grad, rtol=rtol, atol=atol)
+
+
+@pytest.mark.parametrize(
+    "z_dtype,weight_dtype",
+    [
+        (torch.float16, torch.float32),
+        (torch.bfloat16, torch.float32),
+        (torch.float32, torch.float64),
+    ],
+)
+@pytest.mark.parametrize("has_batch_dim", [False, True])
+@torch.enable_grad()
+def test_compute_head_results_promotes_mixed_dtypes(
+    z_dtype: torch.dtype, weight_dtype: torch.dtype, has_batch_dim: bool
+) -> None:
+    shape = (2, 5, 3, 8) if has_batch_dim else (5, 3, 8)
+    z = torch.randn(shape, dtype=z_dtype, requires_grad=True)
+    weights = torch.randn(3, 8, 17, dtype=weight_dtype, requires_grad=True)
+    model = SimpleNamespace(
+        cfg=SimpleNamespace(n_layers=1, n_heads=3),
+        blocks=[SimpleNamespace(attn=SimpleNamespace(W_O=weights))],
+    )
+    cache = ActivationCache({"blocks.0.attn.hook_z": z}, model, has_batch_dim=has_batch_dim)
+    reference_z = z.detach().double().requires_grad_()
+    reference_weights = weights.detach().double().requires_grad_()
+    expected = _head_results_reference(reference_z, reference_weights)
+
+    cache.compute_head_results()
+
+    actual = cache["blocks.0.attn.hook_result"]
+    assert actual.dtype == torch.promote_types(z_dtype, weight_dtype)
+    torch.testing.assert_close(actual.double(), expected, rtol=2e-5, atol=2e-5)
+    grad_output = torch.randn_like(actual)
+    actual_grads = torch.autograd.grad(actual, (z, weights), grad_output)
+    expected_grads = torch.autograd.grad(
+        expected, (reference_z, reference_weights), grad_output.double()
+    )
+    for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+        # The original leaf dtype determines gradient rounding after promotion.
+        torch.testing.assert_close(actual_grad, expected_grad.to(actual_grad.dtype))
 
 
 @pytest.mark.parametrize(
     "n_heads,d_head,n_tokens,grad_enabled",
-    [(4, 32, 96, False), (32, 128, 2, False), (4, 32, 64, True), (4, 32, 96, True)],
+    [
+        (4, 32, 96, False),
+        (32, 128, 2, False),
+        (4, 32, 64, True),
+        (32, 128, 2, True),
+    ],
 )
 def test_compute_head_results_limits_temporary_allocation(
     n_heads: int, d_head: int, n_tokens: int, grad_enabled: bool
@@ -95,13 +191,10 @@ def test_compute_head_results_limits_temporary_allocation(
             cache.compute_head_results()
 
     allocations = [event.cpu_memory_usage for event in profile.events()]
-    minimum_chunk_elements = n_tokens * d_head * 4096 if grad_enabled else weights.numel()
-    assert max(allocations) <= max(
-        32 * 1024 * 1024, minimum_chunk_elements * weights.element_size()
-    )
-    torch.testing.assert_close(
-        cache["blocks.0.attn.hook_result"], (z.unsqueeze(-1) * weights).sum(dim=-2)
-    )
+    actual = cache["blocks.0.attn.hook_result"]
+    assert max(allocations) <= actual.numel() * actual.element_size()
+    expected = _head_results_reference(z.double(), weights.detach().double())
+    torch.testing.assert_close(actual.double(), expected, rtol=2e-5, atol=2e-4)
 
 
 @pytest.fixture(scope="module", params=["LN", "RMS"])
