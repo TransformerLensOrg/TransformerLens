@@ -969,6 +969,9 @@ class BridgeCore:
             key = hook.name + "_grad" if is_backward else hook.name
             stored = tensor.detach().to(device)
             if remove_batch_dim:
+                assert (
+                    stored.size(0) == 1
+                ), f"Cannot remove batch dimension from cache with batch size {stored.size(0)}"
                 stored = stored[0]
             if pos_slice_obj is not None and stored.dim() >= 2:
                 stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
@@ -1710,8 +1713,6 @@ class BridgeCore:
             return (output, activation_cache)
         else:
             if remove_batch_dim:
-                for key in cache:
-                    if cache[key] is not None and isinstance(cache[key], torch.Tensor):
-                        if cache[key].size(0) == 1:
-                            cache[key] = cache[key][0]
+                # Same batch-size check and squeeze as the ActivationCache path; edits `cache` in place
+                ActivationCache(cache, self, has_batch_dim=True).remove_batch_dim()
             return (output, cache)

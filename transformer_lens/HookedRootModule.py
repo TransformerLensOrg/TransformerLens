@@ -362,6 +362,9 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             if is_backward:
                 hook_name += "_grad"
             if remove_batch_dim:
+                assert (
+                    tensor.size(0) == 1
+                ), f"Cannot remove batch dimension from cache with batch size {tensor.size(0)}"
                 cache[hook_name] = tensor.detach().to(device)[0]
             else:
                 cache[hook_name] = tensor.detach().to(device)
@@ -493,6 +496,9 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
                 hook_name += "_grad"
             resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
+                assert (
+                    resid_stream.size(0) == 1
+                ), f"Cannot remove batch dimension from cache with batch size {resid_stream.size(0)}"
                 resid_stream = resid_stream[0]
 
             if (
