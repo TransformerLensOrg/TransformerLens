@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import cached_property
 from typing import Any, List, Protocol, Tuple, Union, cast, overload, runtime_checkable
 
+import numpy as np
 import torch
 from jaxtyping import Complex, Float
 
@@ -299,23 +300,74 @@ class FactoredMatrix:
         return sequence
 
     def __getitem__(self, idx: Union[int, Tuple]) -> FactoredMatrix:
-        """Indexing - assumed to only apply to the leading dimensions."""
+        """Index leading dimensions and matrix rows/columns without forming the product.
+
+        Ellipsis expands across the product's dimensions, excluding new axes (``None``).
+        Integer row and column indices retain singleton dimensions in the returned factors.
+        New axes next to matrix rows/columns reshape the factors without forming the product.
+        """
         if not isinstance(idx, tuple):
             idx = (idx,)
-        length = len([i for i in idx if i is not None])
+
+        def index_ndim(item: Any) -> int:
+            if item is None or item is Ellipsis:
+                return 0
+            # Infer nested sequence masks as PyTorch does, leaving the actual index unchanged.
+            if isinstance(item, (list, tuple)):
+                sequence = torch.as_tensor(item, device="cpu")
+                return sequence.ndim if sequence.dtype == torch.bool else 1
+            # Boolean masks consume one input axis per mask dimension, unlike integer arrays.
+            if isinstance(item, torch.Tensor) and item.dtype in (torch.bool, torch.uint8):
+                return item.ndim
+            if isinstance(item, np.ndarray) and item.dtype in (np.bool_, np.uint8):
+                return item.ndim
+            return 1
+
+        ellipsis_positions = [i for i, item in enumerate(idx) if item is Ellipsis]
+        if len(ellipsis_positions) > 1:
+            raise IndexError("An index can only have a single ellipsis")
+        if ellipsis_positions:
+            consumed = sum(index_ndim(item) for item in idx)
+            position = ellipsis_positions[0]
+            # Expand against AB's axes before mapping row/column indices onto the factors.
+            idx = idx[:position] + (slice(None),) * (self.ndim - consumed) + idx[position + 1 :]
+        factor_indices = []
+        matrix_newaxes = []
+        length = 0
+        for item in idx:
+            if item is None and length >= self.ndim - 2:
+                matrix_newaxes.append(length - (self.ndim - 2))
+            else:
+                factor_indices.append(item)
+            length += index_ndim(item)
+        idx = tuple(factor_indices)
         if length <= len(self.shape) - 2:
-            return FactoredMatrix(self.A[idx], self.B[idx])
+            result = FactoredMatrix(self.A[idx], self.B[idx])
         elif length == len(self.shape) - 1:
             idx = self._convert_to_slice(idx, -1)
-            return FactoredMatrix(self.A[idx], self.B[idx[:-1]])
+            result = FactoredMatrix(self.A[idx], self.B[idx[:-1]])
         elif length == len(self.shape):
             idx = self._convert_to_slice(idx, -1)
             idx = self._convert_to_slice(idx, -2)
-            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
+            result = FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
         else:
             raise ValueError(
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
             )
+
+        for position in matrix_newaxes:
+            if position == 0:
+                axis = result.ndim - 2
+                result = FactoredMatrix(result.A.unsqueeze(axis), result.B.unsqueeze(axis))
+            elif position == 1:
+                # Promote the row axis to a leading dimension, keeping the contraction intact.
+                result = FactoredMatrix(result.A.unsqueeze(-2), result.B.unsqueeze(-3))
+            else:
+                # A trailing axis makes the old column axis the new row axis.
+                result = FactoredMatrix(
+                    result.B.transpose(-2, -1).unsqueeze(-3), result.A.unsqueeze(-1)
+                )
+        return result
 
     def norm(self) -> Float[torch.Tensor, "*leading_dims"]:
         """
