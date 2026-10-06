@@ -125,6 +125,31 @@ def test_all_ones_mask_preserves_unmasked_forward(inspect_models):
     )
 
 
+def test_kwargs_forward_uses_shared_position_gate(inspect_models, monkeypatch):
+    from transformer_lens.utilities.position_ids import (
+        accepts_mask_derived_position_ids,
+    )
+
+    bridge, _ = inspect_models
+    model = bridge._driver._model.api._hf
+    original_forward = model.forward
+    positions = []
+
+    def kwargs_forward(input_ids, **kwargs):
+        positions.append(kwargs.get("position_ids"))
+        return original_forward(input_ids, **kwargs)
+
+    monkeypatch.setattr(model, "forward", kwargs_forward)
+    tokens = torch.tensor([[0, 0, 7, 8, 9]])
+    mask = torch.tensor([[0, 0, 1, 1, 1]])
+    bridge.forward(tokens, attention_mask=mask)
+    assert len(positions) == 1
+    if accepts_mask_derived_position_ids(model):
+        torch.testing.assert_close(positions[0], (mask.cumsum(-1) - 1).clamp_min(0))
+    else:
+        assert positions[0] is None
+
+
 @pytest.mark.parametrize("mask", [[[1, 1]], [[1, 0.5, 1]], [[0, 0, 0]], [[[1, 1, 1]]]])
 def test_invalid_masks_fail_at_public_and_provider_boundaries(inspect_models, mask):
     from inspect_ai.model import GenerateConfig

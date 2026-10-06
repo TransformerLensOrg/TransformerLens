@@ -80,7 +80,7 @@ def _driver(model=None) -> InspectDriver:
     return InspectDriver(model=model or _fake_model(), adapter=_adapter(), tokenizer=None)
 
 
-@pytest.mark.parametrize("provider", ["tl_bridge_vllm", "vllm-lens"])
+@pytest.mark.parametrize("provider", ["tl_bridge", "tl_bridge_vllm", "vllm-lens"])
 def test_unsupported_provider_rejects_attention_mask(provider):
     driver = InspectDriver(_fake_model(), _adapter(), None, profiles.for_provider(provider))
     try:

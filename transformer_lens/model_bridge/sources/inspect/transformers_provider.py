@@ -11,7 +11,6 @@ plus the full-sequence logits.
 from __future__ import annotations
 
 import contextvars
-import inspect
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
@@ -29,6 +28,8 @@ from inspect_ai.model import (
     StopReason,
     modelapi,
 )
+
+from transformer_lens.utilities.position_ids import accepts_mask_derived_position_ids
 
 from . import hooks, wire
 from ._provider_base import (
@@ -85,6 +86,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
 
     # Real per-position logits via direct HF forward — loss/both via RemoteBridge work.
     provides_sequence_logits = True
+    supports_attention_mask = True
 
     def __init__(
         self,
@@ -158,7 +160,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
             positions = (attention_mask.cumsum(-1) - 1).clamp_min(0)
             default_positions = torch.arange(len(input_ids), device=self._device)
             needs_positions = bool(((positions != default_positions) & attention_mask.bool()).any())
-            if needs_positions and _accepts_mask_positions(self._hf):
+            if needs_positions and accepts_mask_derived_position_ids(self._hf):
                 forward_kwargs["position_ids"] = positions
         # capture/interventions are keyed by "<layer>:<kind>" (hooks.wire_key).
         capture_keys = list(extra_args.get("capture", []))
@@ -816,29 +818,6 @@ def _resid_mid_derivable(
     # (2) perturbing attn moves mlp's input (sequential, not parallel).
     causal_ok = (mlp_in_clean - mlp_in_perturbed).abs().max().item() > 1e-6
     return bool(identity_ok and causal_ok)
-
-
-def _accepts_mask_positions(model: torch.nn.Module) -> bool:
-    """Leave model-owned positions (mRoPE and mask-consuming embeddings) alone."""
-    parameters = inspect.signature(model.forward).parameters
-    if "position_ids" not in parameters:
-        return False
-    for module in (model, getattr(model, "model", None), getattr(model, "language_model", None)):
-        if module is not None and hasattr(module, "get_rope_index"):
-            return False
-    config = getattr(model, "config", None)
-    for candidate in (config, getattr(config, "text_config", None)):
-        scaling = getattr(candidate, "rope_scaling", None)
-        if isinstance(scaling, dict) and "mrope_section" in scaling:
-            return False
-    for module in model.modules():
-        if (
-            isinstance(module, torch.nn.Embedding)
-            and type(module).forward is not torch.nn.Embedding.forward
-        ):
-            if "attention_mask" in inspect.signature(module.forward).parameters:
-                return False
-    return True
 
 
 def _locate_layers(model: Any) -> Any:

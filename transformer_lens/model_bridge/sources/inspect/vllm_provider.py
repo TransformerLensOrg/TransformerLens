@@ -85,6 +85,7 @@ class TransformerLensVLLMModelAPI(_InspectModelAPIBase):
     # so earlier positions are -inf and loss would be NaN. RemoteBridge.forward must reject
     # return_type ∈ {loss, both} — read by source.py → TLBridgeProfile → InspectDriver.
     provides_sequence_logits = False
+    supports_attention_mask = False
 
     def __init__(
         self,

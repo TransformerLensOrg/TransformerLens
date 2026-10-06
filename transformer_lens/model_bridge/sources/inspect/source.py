@@ -126,7 +126,7 @@ def boot_inspect(
         profile = profiles.TLBridgeProfile(
             supported_kinds=kinds,
             provides_sequence_logits=psl,
-            supports_attention_mask=provider == "tl_bridge",
+            supports_attention_mask=bool(getattr(api, "supports_attention_mask", False)),
         )
         if note:
             warnings.warn(note, UserWarning, stacklevel=2)

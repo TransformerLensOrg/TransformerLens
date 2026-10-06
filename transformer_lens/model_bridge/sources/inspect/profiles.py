@@ -149,7 +149,7 @@ def for_provider(provider: str) -> Any:
     if provider.startswith("vllm-lens"):
         return VLLMLensProfile()
     if provider in ("tl_bridge", "tl_bridge_vllm"):
-        return TLBridgeProfile(supports_attention_mask=provider == "tl_bridge")
+        return TLBridgeProfile(supports_attention_mask=False)
     # An unknown provider would otherwise get full-capability codec and NaN downstream.
     raise ValueError(
         f"No Inspect codec for provider {provider!r}. Known providers: 'tl_bridge', "
