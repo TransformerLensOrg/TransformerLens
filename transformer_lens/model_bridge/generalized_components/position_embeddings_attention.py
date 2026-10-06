@@ -108,7 +108,25 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         super().set_original_component(component)
         self._validate_submodule_declarations(component)
         self._qk_norm_phase = self._decide_qk_norm_phase(component)
+        self._mark_post_reshape_norm_hooks()
         self._own_scaled_hook_k(component)
+
+    def _mark_post_reshape_norm_hooks(self) -> None:
+        """Post-reshape norms (Gemma-3/Cohere) fire on ``[batch, heads, pos, d_head]``.
+
+        Declare the position axis on the normed hooks and on the norm submodules'
+        own hooks so ``pos_slice`` slices positions rather than heads there.
+        """
+        if self._qk_norm_phase != "post_reshape":
+            return
+        for norm_name, hook_name in (("q_norm", "hook_q_normed"), ("k_norm", "hook_k_normed")):
+            hook = getattr(self, hook_name, None)
+            if isinstance(hook, HookPoint):
+                hook.pos_dim = 2
+            norm = self.submodules.get(norm_name)
+            if norm is not None:
+                norm.hook_in.pos_dim = 2
+                norm.hook_out.pos_dim = 2
 
     def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
         """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.

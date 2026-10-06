@@ -939,8 +939,18 @@ class BridgeCore:
         raise ValueError("names_filter must be None, a string, a list of strings, or a callable")
 
     @staticmethod
-    def _pos_slice_dim(name: str) -> int:
-        """Position dimension for a hook's activation (see ``run_with_cache``)."""
+    def _pos_slice_dim(name: str, hook_point: Any = None) -> int:
+        """Position axis of a hook's activation in its batched layout.
+
+        Position is dim 1 for most bridge activations (resid ``[b, p, d]``, per-head
+        ``[b, p, h, d]``, token ids ``[b, p]``) and -2 for attention patterns/scores
+        (``[b, h, q_pos, k_pos]``). Hooks fired on another layout, such as a
+        post-reshape qk-norm (``[b, h, p, d]``) or a Mamba conv input
+        (``[b, channels, p]``), declare their axis via ``HookPoint.pos_dim``.
+        """
+        pos_dim = getattr(hook_point, "pos_dim", None)
+        if pos_dim is not None:
+            return pos_dim
         return -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
 
     def get_caching_hooks(
@@ -969,9 +979,9 @@ class BridgeCore:
             key = hook.name + "_grad" if is_backward else hook.name
             stored = tensor.detach().to(device)
             # Slice before dropping the batch dim: _pos_slice_dim indexes the
-            # batched layout (dim 1), so the order must match run_with_cache.
+            # batched layout, so the order must match run_with_cache.
             if pos_slice_obj is not None and stored.dim() >= 2:
-                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name, hook))
             if remove_batch_dim:
                 stored = stored[0]
             cache[key] = stored
@@ -1388,8 +1398,9 @@ class BridgeCore:
         (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
         match HookedTransformer. ``pos_slice`` slices each cached activation along
         its position dimension (dim 1 for resid/per-head/token-id activations; the
-        query position ``-2`` for attention patterns/scores). ``incl_bwd`` also
-        caches gradients under ``"<name>_grad"`` by running ``output.backward()``;
+        query position ``-2`` for attention patterns/scores; ``HookPoint.pos_dim``
+        for hooks fired on another layout). ``incl_bwd`` also caches gradients
+        under ``"<name>_grad"`` by running ``output.backward()``;
         the caller must request a scalar output (``return_type="loss"``) and the
         model must be on the gradients-capable transformers driver.
         ``reset_hooks_end`` removes the hooks this call added when it finishes —
@@ -1448,14 +1459,12 @@ class BridgeCore:
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
 
-        def _store(name: str, value: torch.Tensor, suffix: str = "") -> None:
+        def _store(name: str, value: torch.Tensor, hook: Any, suffix: str = "") -> None:
             stored = value.detach().to(cache_device)
             if pos_slice_obj is not None and stored.dim() >= 2:
-                # Position is dim 1 for every bridge activation (resid [b,p,d], per-head
-                # [b,p,h,d], token ids [b,p]) except attention patterns/scores, which
-                # slice the query position at -2 — see _pos_slice_dim. A gradient has its
-                # activation's layout, so the axis comes from the unsuffixed name.
-                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name))
+                # A gradient has its activation's layout, so the axis comes from
+                # the unsuffixed name — see _pos_slice_dim.
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name, hook))
             cache[name + suffix] = stored
 
         def make_cache_hook(name: str):
@@ -1463,16 +1472,16 @@ class BridgeCore:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    _store(name, tensor)
+                    _store(name, tensor, hook)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        _store(name, tensor[0])
+                        _store(name, tensor[0], hook)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            _store(name, tensor)
+                            _store(name, tensor, hook)
                     except:
                         pass
                 return tensor
@@ -1521,7 +1530,7 @@ class BridgeCore:
         def make_grad_cache_hook(name: str):
             def grad_hook(tensor: torch.Tensor, *, hook: Any) -> None:
                 if isinstance(tensor, torch.Tensor):
-                    _store(name, tensor, suffix="_grad")
+                    _store(name, tensor, hook, suffix="_grad")
                 # A non-None return from a backward hook replaces grad_input; stay read-only.
                 return None
 
