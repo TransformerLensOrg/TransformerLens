@@ -385,6 +385,10 @@ class ActivationCache:
         style analysis, where it can be thought of as what the model "believes" at each point in the
         residual stream.
 
+        :meth:`logit_lens` does the whole projection below in one call (final norm, ``W_U``,
+        ``b_U`` and the adapter's output transform, chunked over the vocabulary); the recipe
+        here shows what it computes.
+
         To project this into the vocabulary space, remember that there is a final layer norm in most
         decoder-only transformers. Therefore, you need to first apply the final layer norm (which
         can be done with `apply_ln`), and then multiply by the unembedding matrix (:math:`W_U`)
@@ -526,6 +530,20 @@ class ActivationCache:
             return components, labels
         else:
             return components
+
+    def logit_lens(self, **kwargs: Any) -> Any:
+        """One-call logit lens over this cache's accumulated residual stream.
+
+        Delegates to :func:`transformer_lens.tools.analysis.logit_lens.logit_lens`
+        with this cache; see it for the keyword arguments (``layers``,
+        ``positions``, ``targets``, ``top_k``, ``vocab``, ``return_type`` ...).
+        The final stack entry reproduces the model's logits through the real
+        final norm, ``W_U``, ``b_U`` and the adapter's output transform.
+        """
+        # Lazy import: tools.analysis imports this module.
+        from transformer_lens.tools.analysis.logit_lens import logit_lens
+
+        return logit_lens(self.model, cache=self, **kwargs)
 
     def logit_attrs(
         self,
