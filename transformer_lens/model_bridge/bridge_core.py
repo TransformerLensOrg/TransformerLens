@@ -968,10 +968,12 @@ class BridgeCore:
             assert hook.name is not None
             key = hook.name + "_grad" if is_backward else hook.name
             stored = tensor.detach().to(device)
-            if remove_batch_dim:
-                stored = stored[0]
+            # Slice before dropping the batch dim: _pos_slice_dim indexes the
+            # batched layout (dim 1), so the order must match run_with_cache.
             if pos_slice_obj is not None and stored.dim() >= 2:
                 stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
+            if remove_batch_dim:
+                stored = stored[0]
             cache[key] = stored
 
         fwd_hooks: list = []
