@@ -781,7 +781,9 @@ class ActivationCache:
 
         Existing per-head results are preserved, including those without a batch dimension.
         Missing or invalid results are recomputed from cached ``hook_z`` and the model's
-        ``W_O`` weights.
+        ``W_O`` weights. A per-head contraction avoids materializing the broadcast product
+        over both ``d_head`` and ``d_model``. As in the bridge forward pass, the contraction
+        follows active autocast settings.
 
         TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
         compatibility shim.
@@ -800,18 +802,13 @@ class ActivationCache:
                 continue
             all_cached = False
 
-            # Add singleton dimension to match W_O's shape for broadcasting
-            z = einops.rearrange(
-                self[("z", layer, "attn")],
-                "... head_index d_head -> ... head_index d_head 1",
-            )
-
-            # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            block = self.model.blocks[layer]
-            result = z * block.attn.W_O
-
-            # Sum over d_head to get the contribution of each head to the residual stream
-            self.cache_dict[result_key] = result.sum(dim=-2)
+            z = self[("z", layer, "attn")]
+            weights = self.model.blocks[layer].attn.W_O
+            if z.dtype != weights.dtype:
+                # Preserve broadcast promotion for caches collected under autocast.
+                dtype = torch.promote_types(z.dtype, weights.dtype)
+                z, weights = z.to(dtype), weights.to(dtype)
+            self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
 
         if all_cached:
             logging.warning("Tried to compute head results when they were already cached")
