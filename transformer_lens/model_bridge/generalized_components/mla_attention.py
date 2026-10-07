@@ -126,6 +126,11 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         self.hook_v = HookPoint()  # V from kv_b_proj split
         self.hook_rot_q = HookPoint()  # Q rope portion after RoPE
         self.hook_rot_k = HookPoint()  # K rope portion after RoPE
+        # hook_q/k/v fire after the head transpose, on [batch, heads, pos, d]; the
+        # rotary hooks are transposed back to [batch, pos, heads, d] for the user
+        # by the TransposeRotaryHeads conversion, so they keep the default axis.
+        for hook in (self.hook_q, self.hook_k, self.hook_v):
+            hook.pos_dim = 2
 
         # MLA params lazy-initialized from HF module (bridge config lacks these fields)
         self._mla_params_initialized = False

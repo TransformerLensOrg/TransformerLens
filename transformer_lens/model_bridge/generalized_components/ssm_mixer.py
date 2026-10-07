@@ -56,6 +56,8 @@ class SSMMixerBridge(SSMStateHookMixin, GeneralizedComponent):
         super().__init__(*args, **kwargs)  # mixin adds hook_ssm_state + eager_scan
         # Real per-step write term dt·x·B, per-channel [batch, channels, seq, state].
         self.hook_ssm_write = HookPoint()
+        self.hook_ssm_write.pos_dim = 2
+        self.hook_ssm_state.pos_dim = 2
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Hook the input, run HF slow_forward (or the eager scan), hook the output."""

@@ -70,6 +70,7 @@ from transformer_lens.model_bridge.generalized_components.moe import (
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
 from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.devices import move_to_and_update_config
+from transformer_lens.utilities.position_ids import accepts_mask_derived_position_ids
 from transformer_lens.utilities.quantization import require_readable_weight
 
 if TYPE_CHECKING:
@@ -1979,44 +1980,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if cached is not None and cached[0] is underlying:
             return bool(cached[1])
 
-        def verdict() -> bool:
-            fwd_params = inspect.signature(underlying.forward).parameters
-            if "position_ids" not in fwd_params and not any(
-                p.kind is inspect.Parameter.VAR_KEYWORD for p in fwd_params.values()
-            ):
-                return False
-
-            # ``get_rope_index`` lives on the inner text model, not the
-            # ForConditionalGeneration wrapper that is usually original_model.
-            for module in (
-                underlying,
-                getattr(underlying, "model", None),
-                getattr(underlying, "language_model", None),
-            ):
-                if module is not None and hasattr(module, "get_rope_index"):
-                    return False
-
-            # Config-level backstop for mRoPE models that spell the derivation
-            # differently; the section list is what makes positions 3-D.
-            config = getattr(underlying, "config", None)
-            for candidate in (config, getattr(config, "text_config", None)):
-                scaling = getattr(candidate, "rope_scaling", None)
-                if isinstance(scaling, dict) and "mrope_section" in scaling:
-                    return False
-
-            # A positional embedding that takes the mask derives positions for
-            # itself. Only embeddings that override nn.Embedding.forward are
-            # worth inspecting, which keeps this to a handful per model.
-            for module in underlying.modules():
-                if not isinstance(module, nn.Embedding):
-                    continue
-                if type(module).forward is nn.Embedding.forward:
-                    continue
-                if "attention_mask" in inspect.signature(module.forward).parameters:
-                    return False
-            return True
-
-        accepts = verdict()
+        accepts = accepts_mask_derived_position_ids(underlying)
         self.__dict__["_derived_position_ids_ok"] = (underlying, accepts)
         return accepts
 
