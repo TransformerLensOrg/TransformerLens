@@ -775,24 +775,7 @@ class ActivationCache:
                 # Preserve broadcast promotion for caches collected under autocast.
                 dtype = torch.promote_types(z.dtype, weights.dtype)
                 z, weights = z.to(dtype), weights.to(dtype)
-            if (
-                z.is_cuda
-                and z.dtype == torch.float32
-                and torch.is_grad_enabled()
-                and z.requires_grad
-                and not torch.is_autocast_enabled("cuda")
-                and z.shape[-2] == weights.shape[0] != 0
-            ):
-                # Per-head GEMMs avoid less accurate CUDA batched activation-gradient reductions.
-                self.cache_dict[result_key] = torch.stack(
-                    [
-                        head_z @ head_weights
-                        for head_z, head_weights in zip(z.unbind(-2), weights.unbind(0))
-                    ],
-                    dim=-2,
-                )
-            else:
-                self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
+            self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
 
         if all_cached:
             logging.warning("Tried to compute head results when they were already cached")
