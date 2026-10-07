@@ -48,6 +48,22 @@ _BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "
 _SELF_ATTENTION_NAMES = {"attn": ("attn", "self_attn")}
 
 
+def _input_batch_size(*inputs: Any) -> Optional[int]:
+    """The batch size of the first input that states it (a string, list of strings or tensor).
+
+    A 1-D tensor is one sequence. Returns None when no input says, so the caller can fall
+    back to inferring it from what was cached.
+    """
+    for value in inputs:
+        if isinstance(value, str):
+            return 1
+        if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+            return len(value)
+        if isinstance(value, torch.Tensor) and value.ndim > 0:
+            return 1 if value.ndim == 1 else int(value.shape[0])
+    return None
+
+
 def build_alias_to_canonical_map(hook_dict: Any, prefix: str = "") -> dict:
     """Map alias hook names to their canonical names (where ``.name`` differs from the key)."""
     aliases: dict = {}
@@ -961,6 +977,8 @@ class BridgeCore:
         it is, so a batch larger than 1 keeps its batch dimension instead of losing examples.
         Unlike ``run_with_cache``, which raises for a batch larger than 1, a hook sees one tensor
         at a time and cannot tell a batch dimension from a flattened ``[batch * pos, ...]`` one.
+        Hooks that run under ``run_with_hooks(remove_batch_dim=True)`` already receive tensors
+        without a batch dimension, so set the flag on only one of the two.
 
         Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
         ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
@@ -1712,14 +1730,25 @@ class BridgeCore:
                         if single_target + suffix in cache:
                             cache[alias_name + suffix] = cache[single_target + suffix]
                             break
+        # The input states the batch size; inferring it from the cached shapes goes wrong
+        # when the filter selects only flattened or position-indexed hooks.
+        batch_size = _input_batch_size(
+            processed_args[0] if processed_args else None,
+            filtered_kwargs.get("input_ids"),
+            filtered_kwargs.get("inputs_embeds"),
+        )
         if return_cache_object:
             activation_cache = ActivationCache(cache, self, has_batch_dim=True)
             if remove_batch_dim:
-                activation_cache.remove_batch_dim()
+                activation_cache.remove_batch_dim(batch_size=batch_size)
             return (output, activation_cache)
         else:
             if remove_batch_dim:
                 # Same batch-size check and squeeze rule as the ActivationCache path.
                 tensors = {k: v for k, v in cache.items() if isinstance(v, torch.Tensor)}
-                cache.update(ActivationCache(tensors, self).remove_batch_dim().cache_dict)
+                cache.update(
+                    ActivationCache(tensors, self)
+                    .remove_batch_dim(batch_size=batch_size)
+                    .cache_dict
+                )
             return (output, cache)

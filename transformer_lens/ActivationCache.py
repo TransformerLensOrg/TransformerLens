@@ -166,14 +166,21 @@ class ActivationCache:
         counts = Counter(v.size(0) for v in self.cache_dict.values() if v.ndim > 0)
         return counts.most_common(1)[0][0] if counts else 1
 
-    def remove_batch_dim(self) -> ActivationCache:
+    def remove_batch_dim(self, batch_size: Optional[int] = None) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
+
+        Args:
+            batch_size:
+                The true batch size, when the caller knows it. By default it is inferred from
+                the most common leading dimension of the cached entries, which is wrong for a
+                cache holding only flattened or position-indexed activations.
 
         Returns:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
-            batch_size = self._batch_size()
+            if batch_size is None:
+                batch_size = self._batch_size()
             assert (
                 batch_size == 1
             ), f"Cannot remove batch dimension from cache with batch size {batch_size}"

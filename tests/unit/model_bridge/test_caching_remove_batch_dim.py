@@ -2,7 +2,8 @@
 
 The hook paths (``get_caching_hooks`` / ``add_caching_hooks``) drop a leading dimension of
 size 1 and leave every other tensor alone. ``run_with_cache`` raises for a batch larger than 1
-whether it returns an ``ActivationCache`` or a plain dict.
+on both models, whether the bridge returns an ``ActivationCache`` or a plain dict, and takes the
+batch size from its input rather than from the cached shapes.
 """
 
 from __future__ import annotations
@@ -11,9 +12,11 @@ import pytest
 import torch
 
 from transformer_lens import HookedRootModule
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.bridge_core import _input_batch_size
 from transformer_lens.utilities import remove_batch_dim
 
 NAMES = ["embed.hook_in", "blocks.0.hook_out", "blocks.0.attn.hook_pattern"]
@@ -128,17 +131,20 @@ class _Toy(HookedRootModule):
         return self.hook_act(x) + 1
 
 
-def test_hooked_root_module_keeps_every_example_of_a_larger_batch():
+def test_hooked_root_module_hook_path_keeps_every_example_of_a_larger_batch():
     model = _Toy()
     x = torch.randn(3, 4)
 
     cache = model.add_caching_hooks(remove_batch_dim=True)
     model(x)
     model.reset_hooks()
-    _, run_cache = model.run_with_cache(x, remove_batch_dim=True)
 
     torch.testing.assert_close(cache["hook_act"], x)
-    torch.testing.assert_close(run_cache["hook_act"], x)
+
+
+def test_hooked_root_module_run_with_cache_raises_for_a_larger_batch():
+    with pytest.raises(AssertionError, match="batch size 3"):
+        _Toy().run_with_cache(torch.randn(3, 4), remove_batch_dim=True)
 
 
 def test_hooked_root_module_drops_a_batch_of_one():
@@ -156,3 +162,76 @@ def test_remove_batch_dim_utility_accepts_a_scalar():
     assert remove_batch_dim(scalar) is scalar
     assert remove_batch_dim(torch.zeros(1, 3)).shape == (3,)
     assert remove_batch_dim(torch.zeros(2, 3)).shape == (2, 3)
+
+
+@pytest.mark.parametrize("return_cache_object", [True, False])
+def test_run_with_cache_takes_the_batch_size_from_its_input(
+    bridge, monkeypatch, return_cache_object
+):
+    # Caching only flattened or position-indexed hooks makes the cached shapes suggest a
+    # batch size equal to the sequence length.
+    monkeypatch.setattr(ActivationCache, "_batch_size", lambda self: 6)
+
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(
+            _tokens(bridge, 1),
+            names_filter="blocks.0.hook_out",
+            remove_batch_dim=True,
+            return_cache_object=return_cache_object,
+        )
+        with pytest.raises(AssertionError, match="batch size 2"):
+            bridge.run_with_cache(
+                _tokens(bridge, 2),
+                names_filter="blocks.0.hook_out",
+                remove_batch_dim=True,
+                return_cache_object=return_cache_object,
+            )
+
+    assert cache["blocks.0.hook_out"].shape == (6, bridge.cfg.d_model)
+
+
+def test_activation_cache_remove_batch_dim_uses_a_given_batch_size():
+    def position_indexed_cache() -> ActivationCache:
+        return ActivationCache({"rel_pos_bias": torch.randn(5, 5)}, model=None, has_batch_dim=True)
+
+    with pytest.raises(AssertionError, match="batch size 5"):
+        position_indexed_cache().remove_batch_dim()
+    with pytest.raises(AssertionError, match="batch size 2"):
+        position_indexed_cache().remove_batch_dim(batch_size=2)
+
+    cache = position_indexed_cache()
+    bias = cache["rel_pos_bias"].clone()
+    cache.remove_batch_dim(batch_size=1)
+
+    assert not cache.has_batch_dim
+    assert torch.equal(cache["rel_pos_bias"], bias)
+
+
+@pytest.mark.parametrize(
+    "inputs, expected",
+    [
+        (("some text",), 1),
+        ((["a", "b", "c"],), 3),
+        ((torch.zeros(7, dtype=torch.long),), 1),
+        ((torch.zeros(4, 7, dtype=torch.long),), 4),
+        ((None, torch.zeros(2, 7, dtype=torch.long)), 2),
+        (([1, 2, 3],), None),
+        ((None,), None),
+        ((torch.tensor(1),), None),
+    ],
+)
+def test_input_batch_size(inputs, expected):
+    assert _input_batch_size(*inputs) == expected
+
+
+def test_hook_path_leaves_a_tensor_that_already_lost_its_batch_dimension_alone(bridge):
+    # run_with_hooks(remove_batch_dim=True) hands every hook a tensor without the batch
+    # dimension, so with the flag set on both, the caching hook must not squeeze a second time.
+    name = "blocks.0.hook_out"
+    cache, fwd_hooks, _ = bridge.get_caching_hooks(names_filter=name, remove_batch_dim=True)
+    batch_free = torch.randn(6, bridge.cfg.d_model)
+
+    _, save_hook = fwd_hooks[0]
+    save_hook(batch_free, hook=bridge.get_hook_point(name))
+
+    torch.testing.assert_close(cache[name], batch_free)

@@ -397,7 +397,8 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
                 model device. WARNING: Setting a different device than the one used by the model leads to
                 significant performance degradation.
             remove_batch_dim (bool, optional): If True, removes the batch dimension when caching. Only
-                makes sense with batch_size=1 inputs. Defaults to False.
+                makes sense with batch_size=1 inputs: an AssertionError is raised when the first
+                positional input has a larger batch. Defaults to False.
             incl_bwd (bool, optional): If True, calls backward on the model output and caches gradients
                 as well. Assumes that the model outputs a scalar (e.g., return_type="loss"). Custom loss
                 functions are not supported. Defaults to False.
@@ -414,6 +415,12 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             tuple: A tuple containing the model output and a Cache object.
 
         """
+
+        if remove_batch_dim and model_args and isinstance(model_args[0], Tensor):
+            batch_size = model_args[0].shape[0] if model_args[0].ndim > 0 else 1
+            assert (
+                batch_size == 1
+            ), f"Cannot remove batch dimension from cache with batch size {batch_size}"
 
         pos_slice = Slice.unwrap(pos_slice)
 
