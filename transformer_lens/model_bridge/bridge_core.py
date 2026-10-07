@@ -1262,7 +1262,7 @@ class BridgeCore:
                         if tensor.shape[0] == 1:
                             tensor_no_batch = tensor.squeeze(0)
                             result = _orig_fn(tensor_no_batch, hook)
-                            if result.dim() == tensor_no_batch.dim():
+                            if result is not None and result.dim() == tensor_no_batch.dim():
                                 result = result.unsqueeze(0)
                             return result
                         else:
