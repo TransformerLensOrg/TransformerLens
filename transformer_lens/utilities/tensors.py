@@ -41,11 +41,11 @@ def get_corner(tensor, n=3):
     return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
 
 
-def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
+def remove_batch_dim(tensor: torch.Tensor) -> torch.Tensor:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
-    if tensor.shape[0] == 1:
+    if tensor.ndim > 0 and tensor.shape[0] == 1:
         return tensor.squeeze(0)
     else:
         return tensor

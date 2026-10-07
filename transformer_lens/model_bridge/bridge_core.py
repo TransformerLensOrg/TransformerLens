@@ -36,6 +36,9 @@ from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 from transformer_lens.utilities.slice import Slice, SliceInput
 
+# Aliased: the caching methods take a ``remove_batch_dim`` flag that would shadow it.
+from transformer_lens.utilities.tensors import remove_batch_dim as drop_batch_dim
+
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 # Block-list container attributes a bridge may expose.
@@ -954,6 +957,11 @@ class BridgeCore:
     ) -> Tuple[dict, list, list]:
         """Build caching hooks without adding them. Mirrors ``HookedRootModule.get_caching_hooks``.
 
+        ``remove_batch_dim`` drops a leading dimension of size 1 and leaves any other tensor as
+        it is, so a batch larger than 1 keeps its batch dimension instead of losing examples.
+        Unlike ``run_with_cache``, which raises for a batch larger than 1, a hook sees one tensor
+        at a time and cannot tell a batch dimension from a flattened ``[batch * pos, ...]`` one.
+
         Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
         ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
         Activations are keyed by the HookPoint's canonical name; backward hooks
@@ -969,7 +977,7 @@ class BridgeCore:
             key = hook.name + "_grad" if is_backward else hook.name
             stored = tensor.detach().to(device)
             if remove_batch_dim:
-                stored = stored[0]
+                stored = drop_batch_dim(stored)
             if pos_slice_obj is not None and stored.dim() >= 2:
                 stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
             cache[key] = stored
@@ -1002,7 +1010,8 @@ class BridgeCore:
         """Attach caching hooks to the model (does not run it). Returns the cache dict.
 
         Mirrors ``HookedRootModule.add_caching_hooks``. The hooks persist until
-        ``reset_hooks()``.
+        ``reset_hooks()``. ``remove_batch_dim`` behaves as in :meth:`get_caching_hooks`: a leading
+        dimension of size 1 is dropped and a larger batch keeps its batch dimension.
         """
         cache, fwd_hooks, bwd_hooks = self.get_caching_hooks(
             names_filter,
@@ -1710,8 +1719,7 @@ class BridgeCore:
             return (output, activation_cache)
         else:
             if remove_batch_dim:
-                for key in cache:
-                    if cache[key] is not None and isinstance(cache[key], torch.Tensor):
-                        if cache[key].size(0) == 1:
-                            cache[key] = cache[key][0]
+                # Same batch-size check and squeeze rule as the ActivationCache path.
+                tensors = {k: v for k, v in cache.items() if isinstance(v, torch.Tensor)}
+                cache.update(ActivationCache(tensors, self).remove_batch_dim().cache_dict)
             return (output, cache)
