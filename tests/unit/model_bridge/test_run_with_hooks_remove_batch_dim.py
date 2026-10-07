@@ -76,6 +76,20 @@ def test_hook_that_replaces_the_activation_gets_its_batch_dimension_back(bridge)
 
 
 @torch.no_grad()
+def test_caching_hooks_run_under_remove_batch_dim_store_tensors_without_a_batch_dimension(bridge):
+    # Caching hooks return None, so this is the observe-only case. Under the flag they already
+    # receive the batch-free tensor, which is what run_with_cache(remove_batch_dim=True) stores.
+    tokens = _tokens(bridge, 1)
+    _, expected = bridge.run_with_cache(tokens, names_filter=HOOK, remove_batch_dim=True)
+    cache, fwd_hooks, _ = bridge.get_caching_hooks(names_filter=HOOK)
+
+    bridge.run_with_hooks(tokens, fwd_hooks=fwd_hooks, remove_batch_dim=True)
+
+    assert cache[HOOK].shape == (6, bridge.cfg.d_model)
+    torch.testing.assert_close(cache[HOOK], expected[HOOK])
+
+
+@torch.no_grad()
 def test_a_larger_batch_reaches_the_hook_unchanged(bridge):
     tokens = _tokens(bridge, 2)
     seen = []
