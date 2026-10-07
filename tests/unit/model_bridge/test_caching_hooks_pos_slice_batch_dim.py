@@ -186,6 +186,50 @@ def _assert_slices_position(bridge, tokens, names, pos_dim, forward_kwargs=None)
             torch.testing.assert_close(cache[name], expected)
 
 
+def _tiny_mla_bridge(kind: str) -> TransformerBridge:
+    """DeepSeek-V3 / GLM-MoE-DSA fire hook_q/k/v after the head transpose."""
+    import transformers
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_from_module,
+    )
+
+    cfg_cls, model_cls = {
+        "DeepseekV3": (transformers.DeepseekV3Config, transformers.DeepseekV3ForCausalLM),
+        "GlmMoeDsa": (transformers.GlmMoeDsaConfig, transformers.GlmMoeDsaForCausalLM),
+    }[kind]
+    cfg = cfg_cls(
+        vocab_size=64,
+        hidden_size=32,
+        intermediate_size=48,
+        moe_intermediate_size=16,
+        num_hidden_layers=1,
+        num_attention_heads=4,
+        num_key_value_heads=4,
+        q_lora_rank=16,
+        kv_lora_rank=12,
+        qk_nope_head_dim=8,
+        qk_rope_head_dim=4,
+        v_head_dim=8,
+        first_k_dense_replace=1,
+        n_routed_experts=4,
+        n_shared_experts=1,
+        num_experts_per_tok=2,
+        n_group=1,
+        topk_group=1,
+        max_position_embeddings=32,
+        pad_token_id=0,
+        eos_token_id=1,
+        bos_token_id=2,
+    )
+    cfg._attn_implementation = "eager"
+    torch.manual_seed(0)
+    hf = model_cls(cfg).eval()
+    return build_bridge_from_module(
+        hf, model_cls.__name__, hf_config=copy.deepcopy(cfg), tokenizer=None, device="cpu"
+    ).eval()
+
+
 def test_post_reshape_qk_norm_hooks_slice_position():
     bridge = _tiny_gemma3_bridge()
     assert bridge.blocks[0].attn._qk_norm_phase == "post_reshape"
@@ -194,9 +238,22 @@ def test_post_reshape_qk_norm_hooks_slice_position():
         "blocks.0.attn.hook_q_normed",
         "blocks.0.attn.hook_k_normed",
         "blocks.0.attn.q_norm.hook_in",
+        "blocks.0.attn.q_norm.hook_scale",
+        "blocks.0.attn.k_norm.hook_normalized",
         "blocks.0.attn.k_norm.hook_out",
     ]
     _assert_slices_position(bridge, tokens, names, pos_dim=2)
+
+
+@pytest.mark.parametrize("kind", ["DeepseekV3", "GlmMoeDsa"])
+def test_mla_head_major_hooks_slice_position(kind):
+    bridge = _tiny_mla_bridge(kind)
+    tokens = torch.randint(3, 64, (1, 6))
+    head_major = ["blocks.0.attn.hook_q", "blocks.0.attn.hook_k", "blocks.0.attn.hook_v"]
+    _assert_slices_position(bridge, tokens, head_major, pos_dim=2)
+    # The rotary hooks reach the user as [batch, pos, heads, d] via their conversion.
+    rotary = ["blocks.0.attn.hook_rot_q", "blocks.0.attn.hook_rot_k"]
+    _assert_slices_position(bridge, tokens, rotary, pos_dim=1)
 
 
 def test_mamba_channel_first_hooks_slice_position():

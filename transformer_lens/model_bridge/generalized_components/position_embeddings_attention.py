@@ -125,8 +125,8 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
                 hook.pos_dim = 2
             norm = self.submodules.get(norm_name)
             if norm is not None:
-                norm.hook_in.pos_dim = 2
-                norm.hook_out.pos_dim = 2
+                # hook_in/hook_out plus the norm's own hook_normalized/hook_scale.
+                norm.mark_pos_dim(2)
 
     def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
         """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.
