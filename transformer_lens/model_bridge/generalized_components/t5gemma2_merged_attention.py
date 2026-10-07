@@ -34,6 +34,8 @@ class T5Gemma2MergedAttentionBridge(AttentionBridge):
         kwargs.setdefault("requires_position_embeddings", True)
         super().__init__(*args, **kwargs)
         self.hook_cross_pattern = HookPoint()
+        # [batch, heads, q_pos, k_pos]: slice the query position like hook_pattern.
+        self.hook_cross_pattern.pos_dim = -2
 
     def get_random_inputs(
         self,
