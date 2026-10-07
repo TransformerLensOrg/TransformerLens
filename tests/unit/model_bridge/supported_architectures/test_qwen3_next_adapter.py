@@ -6,7 +6,11 @@ through the adapter, so there are no config-conversion tests here.
 
 import pytest
 
-from tests.unit.model_bridge.supported_architectures.helpers import DENSE_KEYS
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DENSE_KEYS,
+    identity_hook_logit_error,
+    randomize_rmsnorm_weights,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import MoEBridge
 
@@ -367,3 +371,22 @@ class TestQwen3NextIntegration:
             seq,
             d_model,
         ), f"Expected MLP output shape ({batch}, {seq}, {d_model}), got {output.shape}"
+
+
+@pytest.mark.skipif(
+    not _QWEN3NEXT_AVAILABLE,
+    reason="Qwen3NextForCausalLM not available in installed transformers",
+)
+class TestQwen3NextRMSNormOffset:
+    """Norm paths the bridge computes itself must apply HF's (1 + weight) scale."""
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        bridge, hf_model = _make_tiny_bridge()
+        randomize_rmsnorm_weights(hf_model)
+        return bridge
+
+    @pytest.mark.parametrize("norm", ["blocks.0.ln1", "blocks.3.attn.q_norm", "ln_final"])
+    def test_identity_scale_edit_preserves_logits(self, bridge, norm):
+        error = identity_hook_logit_error(bridge, f"{norm}.hook_scale")
+        assert error < 1e-5
