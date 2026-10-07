@@ -26,6 +26,10 @@ Tools:
       intervals, and a versioned, fingerprinted JSON artifact schema. Its
       ``_cli`` sibling is the artifact-generation entry point and is deliberately
       not imported here, so ``python -m`` runs it once.
+    - logit_lens: One-call logit lens over the accumulated residual stream and
+      the ``logit_readout`` kernel that reads any ``d_model`` vector through the
+      real final norm, unembedding and adapter output transform, chunked over
+      the vocabulary with target ranks, top-k and vocabulary subsets.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
@@ -84,6 +88,12 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceVarianceProfile,
     estimate_occupancy,
     get_sparse_decomposition,
+)
+from transformer_lens.tools.analysis.logit_lens import (
+    LogitLensResult,
+    LogitReadout,
+    logit_lens,
+    logit_readout,
 )
 from transformer_lens.tools.analysis.projection_kernel import (
     AttentionHeadRef,
@@ -145,6 +155,8 @@ __all__ = [
     "JacobianLens",
     "JacobianLensReadout",
     "LinearGradientFactors",
+    "LogitLensResult",
+    "LogitReadout",
     "LogitSignature",
     "Node",
     "PatchResult",
@@ -170,6 +182,8 @@ __all__ = [
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
     "load_artifact",
+    "logit_lens",
+    "logit_readout",
     "logit_signature",
     "orthonormal_subspace",
     "patch_along_directions",

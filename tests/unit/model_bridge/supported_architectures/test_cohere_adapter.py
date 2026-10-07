@@ -481,3 +481,23 @@ class TestLogitScaleFoldIsIdempotent:
 
         assert bridge.original_model.logit_scale == 1.0
         assert getattr(adapter.cfg, "logit_scale") == pytest.approx(0.0625)
+
+
+class TestCohereOutputLogitsTransform:
+    """The declared transform applies logit_scale exactly once across the fold."""
+
+    def test_scale_applied_before_fold(self) -> None:
+        adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.25))
+        logits = torch.arange(4.0)
+        torch.testing.assert_close(adapter.apply_output_logits_transform(logits), logits * 0.25)
+
+    def test_scale_skipped_after_fold(self) -> None:
+        adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.25))
+        state = {"unembed.weight": torch.ones(8, 4), "unembed.bias": torch.ones(8)}
+        folded = adapter.preprocess_weights(state)
+        torch.testing.assert_close(folded["unembed.weight"], torch.full((8, 4), 0.25))
+        adapter._logit_scale_already_folded = True  # what postprocess_weights records
+        logits = torch.arange(4.0)
+        torch.testing.assert_close(adapter.apply_output_logits_transform(logits), logits)
+        # cfg.logit_scale itself stays the declared constant for other readers.
+        assert adapter.cfg.logit_scale == 0.25

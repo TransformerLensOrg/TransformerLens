@@ -16,6 +16,7 @@ the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` c
 | Which components contribute to an answer's logit? | **Direct Logit Attribution (DLA)** | A prompt or activation cache, answer token, and optional comparison token → labeled logit contributions. | A decomposition of the residual-stream readout for that run. |
 | Which activations or paths should I investigate with patching? | **Attribution Patching** | Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node or edge scores. | A first-order estimate of the effect of replacing corrupt activations with clean ones. |
 | Does a particular head-to-head route affect my metric? | **Direct Path Patching** | Clean/corrupt caches, a source head, and a metric → destination-head patch scores. | The measured effect of the implemented path intervention, subject to its LayerNorm approximation. |
+| What does each layer "predict", and where does a token's rank change? | **Logit Lens** | A prompt or activation cache, optional target tokens, top-k or a vocabulary subset → per-layer logits, log-probabilities, ranks and entropy. | What the residual stream reads as through the real final norm and unembedding; the final entry reproduces the model's own logits. |
 | What vocabulary directions appear in an MLP's gradient factors? | **Backward Lens** | A prompt, one target token, and selected layers → gradient factors and vocabulary rankings. | A diagnostic of the forward inputs and backward signals composing a weight gradient. |
 | How can I read or edit residuals through a fitted transport map? | **Jacobian Lens** | A matching lens artifact and model, plus prompts or activations → vocabulary readouts, decompositions, or interventions. | Readouts under the fitted map; causal effects require running and measuring an intervention. |
 | How much do two subspaces overlap? | **Projection Kernel** | Two subspace bases, or Bridge attention-head weight spaces → overlap scores and principal-angle information. | Shared geometric support, independent of the choice of basis within each subspace. |
@@ -36,6 +37,7 @@ available hooks, and the meaning of the selected tensor axes.
 | DLA | Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
 | Attribution Patching | Targets TransformerBridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork, with `n_key_value_heads == n_heads`; GQA/MQA is not yet supported. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller's hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as `O(seq_len × (n_layers × n_heads)²)`, while the cache also gains per-head `[batch, seq, n_heads, d_model]` tensors. Pair scores are averaged across the batch. |
 | Direct Path Patching | Requires a TransformerBridge exposing the expected attention weights, Q/K/V hook aliases, source `hook_z`, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` currently require `n_key_value_heads == n_heads`; per-query-head K/V semantics are not yet defined. | Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension. |
+| Logit Lens | Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an `ln_final` component (or no final norm) and `W_U`; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings. Hybrid SSM stacks work with `incl_mid=False`. Run the model in evaluation mode. | One cached forward pass over the residual hooks, or reuse of a cache. Logits are produced in chunks of `chunk_size` rows; full-vocabulary output is materialized only when no `targets`, `top_k` or `vocab` selector is given. |
 | Backward Lens | Requires a raw decoder-only TransformerBridge with dense, non-gated MLPs and without compatibility mode, such as GPT-2 or Pythia/GPT-NeoX. Use one target token and check the restrictions in the [tool guide](backward_lens.md). | Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory. |
 | Jacobian Lens | Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Fitting additionally requires all modules in evaluation mode. | Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and `ceil(d_model / dim_batch)` backwards per prompt; larger batches increase memory. |
 | Projection Kernel | The numerical API accepts finite, real floating-point matrices via orthonormal bases. The attention-head wrapper requires Bridge weights with compatible dimensions and ranks. | Basis extraction uses SVD. All-head comparisons allocate basis stacks and a pairwise score grid; they can be large despite requiring no forward pass. |
@@ -100,6 +102,33 @@ source layer are zero placeholders, not measured interventions. State the source
 destination input, prompt pair, and normalization convention when reporting a path.
 
 API: {func}`~transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path`.
+
+### Logit Lens: read the stream through the real norm
+
+`logit_lens(model, prompt)` (or `cache.logit_lens()`) applies the model's own
+`ln_final` with recomputed statistics, then `W_U`, `b_U` and the adapter's output
+transform (Gemma-style softcap, Cohere logit scale) to every entry of the
+accumulated residual stream. Its final entry equals the model's logits on a raw
+bridge; in compatibility mode `center_unembed` shifts every logit by a per-position
+constant, so compare `return_type="log_probs"` or ranks across processing modes, not
+raw logits. `apply_ln=False` reads the unnormalized stream and does not reproduce the
+model.
+
+`targets=` reports each token's logit and its full-vocabulary rank at every layer
+(`result.rank_trajectory(" Paris")`); a `[batch, pos]` tensor of next-token ids
+instead gives the rank of the *actual* next token at every position and layer,
+without materializing the full vocabulary; `top_k=` keeps the leading tokens with
+their ids; `vocab=` keeps a subset. Ranks, entropy and log-probabilities are always
+computed over the full vocabulary, whatever was selected. `logit_readout` is the
+same kernel for any `d_model` vector: a head output, a steering direction, a
+sparse-coder decoder column.
+
+Intermediate-layer readouts are observations, not interventions. A token ranked
+first at layer 6 is what the unembedding would say *if the model stopped there*; it
+does not establish that later layers are inert, and the recomputed norm can magnify a
+small early residual. Pair a lens trajectory with patching or DLA before making a
+causal claim. For a fitted per-layer map instead of the identity, see
+[Jacobian Lens](#jacobian-lens-distinguish-readout-reconstruction-and-intervention).
 
 ### Backward Lens: preserve the gradient sign
 
