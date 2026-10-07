@@ -47,6 +47,22 @@ def test_hook_that_only_observes_runs_at_batch_size_one(bridge):
 
 
 @torch.no_grad()
+def test_hook_that_edits_the_activation_in_place_and_returns_none_reaches_the_model(bridge):
+    tokens = _tokens(bridge, 1)
+
+    def zero_first_position(tensor, hook):
+        tensor[..., 0, :] = 0
+
+    expected = bridge.run_with_hooks(tokens, fwd_hooks=[(HOOK, zero_first_position)])
+    hooked = bridge.run_with_hooks(
+        tokens, fwd_hooks=[(HOOK, zero_first_position)], remove_batch_dim=True
+    )
+
+    torch.testing.assert_close(hooked, expected)
+    assert not torch.allclose(hooked, bridge(tokens))
+
+
+@torch.no_grad()
 def test_hook_that_replaces_the_activation_gets_its_batch_dimension_back(bridge):
     tokens = _tokens(bridge, 1)
 
