@@ -27,6 +27,19 @@ class TestNemotronBridgeCreation:
         assert type(ln).__name__ == "NemotronLayerNorm1P"
 
 
+class TestNemotronLayerNorm1POffset:
+    @pytest.mark.filterwarnings("ignore:A forward hook edited")
+    @pytest.mark.parametrize("norm", ["blocks.0.ln1", "ln_final"])
+    def test_identity_norm_edit_preserves_logits(self, bridge, sample_tokens, norm):
+        """LayerNorm1P scales by (weight + 1); the bridge's edit fallback must too."""
+        with torch.no_grad():
+            clean = bridge(sample_tokens)
+            edited = bridge.run_with_hooks(
+                sample_tokens, fwd_hooks=[(f"{norm}.hook_scale", lambda t, hook: t.clone())]
+            )
+        assert ((edited - clean).norm() / clean.norm()).item() < 1e-5
+
+
 class TestNemotronForwardEquivalence:
     def test_forward_matches_hf(self, bridge, sample_tokens):
         hf_model = bridge.original_model
