@@ -135,6 +135,19 @@ class GeneralizedComponent(nn.Module):
             self.hook_aliases = self.__class__.hook_aliases.copy()
             self.hook_aliases.update(hook_alias_overrides)
 
+    def mark_pos_dim(self, pos_dim: int) -> None:
+        """Declare the position axis of every HookPoint this component owns.
+
+        Call it on a component whose activations do not carry position on dim 1
+        of the batched layout (e.g. a norm applied to ``[batch, heads, pos, d_head]``)
+        so ``pos_slice`` slices positions on all of its hooks, including ones a
+        subclass adds (``hook_normalized`` / ``hook_scale`` on a norm). Submodule
+        components are not touched; they declare their own layout.
+        """
+        for child in self.children():
+            if isinstance(child, HookPoint):
+                child.pos_dim = pos_dim
+
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Run forward(), materializing the wrapped component's params first if offloaded.
 

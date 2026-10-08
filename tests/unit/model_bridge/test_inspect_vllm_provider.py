@@ -672,7 +672,7 @@ class TestBootInspectVLLMDtype:
     """boot_inspect must forward the resolved dtype to the tl_bridge_vllm provider so
     bridge_config.dtype matches what the engine loads."""
 
-    def _boot(self, monkeypatch, **boot_kwargs):
+    def _boot(self, monkeypatch, mask_support=None, **boot_kwargs):
         import inspect_ai.model as inspect_ai_model
         import torch
 
@@ -705,6 +705,8 @@ class TestBootInspectVLLMDtype:
                 capability_note=lambda: "",
                 provides_sequence_logits=False,
             )
+            if mask_support is not None:
+                api.supports_attention_mask = mask_support
             return SimpleNamespace(api=api)
 
         from transformers import AutoConfig
@@ -750,3 +752,11 @@ class TestBootInspectVLLMDtype:
 
         _, captured = self._boot(monkeypatch, dtype=torch.float16)
         assert captured["dtype"] is torch.float16
+
+    @pytest.mark.parametrize("mask_support", [None, False, True])
+    def test_mask_support_comes_from_api(self, monkeypatch, mask_support):
+        bridge, _ = self._boot(monkeypatch, mask_support=mask_support)
+        try:
+            assert bridge._driver._profile.supports_attention_mask is bool(mask_support)
+        finally:
+            bridge.close()
