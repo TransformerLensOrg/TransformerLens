@@ -14,6 +14,7 @@ the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` c
 | I want to know… | Start with | Inputs and outputs | What the result establishes |
 |---|---|---|---|
 | Which components contribute to an answer's logit? | **Direct Logit Attribution (DLA)** | A prompt or activation cache, answer token, and optional comparison token → labeled logit contributions. | A decomposition of the residual-stream readout for that run. |
+| Which activation, if restored from the clean run, recovers the answer, and how sure am I per cell? | **Activation Patching** | Corrupted tokens, a clean cache and a metric → a grid of patched-metric values; with `reduce="none"` the per-example values plus mean, standard error, bootstrap interval and permutation p-value per cell. | The measured effect of one causal intervention per cell, with its uncertainty across the prompt batch. |
 | Which activations or paths should I investigate with patching? | **Attribution Patching** | Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node or edge scores. | A first-order estimate of the effect of replacing corrupt activations with clean ones. |
 | Does a particular head-to-head route affect my metric? | **Direct Path Patching** | Clean/corrupt caches, a source head, and a metric → destination-head patch scores. | The measured effect of the implemented path intervention, subject to its LayerNorm approximation. |
 | What does each layer "predict", and where does a token's rank change? | **Logit Lens** | A prompt or activation cache, optional target tokens, top-k or a vocabulary subset → per-layer logits, log-probabilities, ranks and entropy. | What the residual stream reads as through the real final norm and unembedding; the final entry reproduces the model's own logits. |
@@ -35,6 +36,7 @@ available hooks, and the meaning of the selected tensor axes.
 | Tool | Requirements to check | Main compute or memory cost |
 |---|---|---|
 | DLA | Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
+| Activation Patching | Any bridge whose activation names resolve (`resid_pre`, `attn_out`, `mlp_out`, `z`, `q`/`k`/`v`, `pattern`). The metric returns a scalar by default and a `[batch]` tensor under `reduce="mean"` or `"none"`; several metrics can be passed as a mapping and share one sweep. Run the model in evaluation mode. | One forward of the corrupted batch per swept cell (plus one for `baseline=True`); per-example storage is `cells × batch` floats per metric. Statistics are computed afterwards from the stored values and add no forwards. |
 | Attribution Patching | Targets TransformerBridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork, with `n_key_value_heads == n_heads`; GQA/MQA is not yet supported. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller's hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as `O(seq_len × (n_layers × n_heads)²)`, while the cache also gains per-head `[batch, seq, n_heads, d_model]` tensors. Pair scores are averaged across the batch. |
 | Direct Path Patching | Requires a TransformerBridge exposing the expected attention weights, Q/K/V hook aliases, source `hook_z`, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` currently require `n_key_value_heads == n_heads`; per-query-head K/V semantics are not yet defined. | Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension. |
 | Logit Lens | Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an `ln_final` component (or no final norm) and `W_U`; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings. Hybrid SSM stacks work with `incl_mid=False`. Run the model in evaluation mode. | One cached forward pass over the residual hooks, or reuse of a cache. Logits are produced in chunks of `chunk_size` rows; full-vocabulary output is materialized only when no `targets`, `top_k` or `vocab` selector is given. |
@@ -69,6 +71,25 @@ residual contribution, so the unembedding bias `b_U` is excluded. Removing a com
 can change downstream computation, so its DLA score is not its ablation effect.
 
 API: {func}`~transformer_lens.tools.analysis.direct_logit_attribution.direct_logit_attribution`.
+
+### Activation Patching: per-example cells, then intervals
+
+Every `get_act_patch_*` sweep runs the whole corrupted batch for each patched
+cell, so the per-example values are free. Pass a metric that returns a `[batch]`
+tensor and `reduce="none"` to keep them: the result is a `PatchingResult` whose
+`values` end in a batch axis, with `mean()`, `stderr()`, `bootstrap_ci()` and, when
+the sweep was run with `baseline=True`, `effect()` (patched minus unpatched
+corrupted run) and `permutation_pvalue()`. `reduce="mean"` averages a `[batch]`
+metric back to the plain tensor the sweeps have always returned, and a mapping of
+metrics is evaluated on each patched forward so two metrics cost one sweep.
+
+Read the statistics for what they are. The bootstrap interval describes how the
+cell's mean would move across resamples of *these* prompts; with four to eight
+prompts it is wide, and a constant column collapses it to a point. The sign-flip
+permutation test asks whether the per-example effects are symmetric about zero;
+it is exact for twelve or fewer prompts and a Monte Carlo estimate above that.
+Neither says anything about prompts outside the batch, and neither changes what a
+single cell establishes: the measured effect of one intervention.
 
 ### Attribution Patching: screen candidates, then measure interventions
 

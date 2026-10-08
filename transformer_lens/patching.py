@@ -50,8 +50,19 @@ within the model, rather than just the end.
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Optional, Sequence, Tuple, Union, overload
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    overload,
+)
 
 import einops
 import pandas as pd
@@ -63,6 +74,12 @@ from typing_extensions import Literal
 import transformer_lens.utilities as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.model_protocol import TransformerLensModel
+from transformer_lens.utilities.statistics import (
+    bootstrap_ci,
+    derive_generator,
+    sign_flip_permutation_pvalue,
+    standard_error,
+)
 
 # %%
 Logits = torch.Tensor
@@ -86,6 +103,179 @@ def make_df_from_ranges(
 # %%
 CorruptedActivation = torch.Tensor
 PatchedActivation = torch.Tensor
+MetricFn = Callable[[Float[torch.Tensor, "batch pos d_vocab"]], torch.Tensor]
+Reduce = Literal["scalar", "mean", "none"]
+_REDUCE_MODES = ("scalar", "mean", "none")
+_RESULT_AXIS_RENAMES = {"head_index": "head", "dest_pos": "pos"}
+
+
+@dataclass
+class PatchingResult:
+    """Per-example (or per-metric) activation-patching results with statistics on top.
+
+    Returned by :func:`generic_activation_patch` and every ``get_act_patch_*``
+    function when ``reduce="none"``, ``baseline=True`` or several metrics are
+    requested. ``values`` is laid out ``[metric?, *axes | n_rows, batch?]``: the
+    metric axis exists only when a mapping of metrics was passed
+    (``has_metric_axis``), the middle axes are ``axis_names`` (or one flat
+    ``n_rows`` axis when an ``index_df`` was supplied), and the trailing batch
+    axis exists only when ``reduced`` is ``False``.
+
+    Attributes:
+        values: The patched metric values.
+        axis_names: Names of the swept axes, ``[]`` in flat ``index_df`` mode.
+        index_df: One row per swept cell, in the order the cells were run.
+        metric_names: Metric names, ``["metric"]`` for a single callable.
+        reduced: ``True`` when the batch axis has been averaged away.
+        baseline: Unpatched corrupted-run metric, ``[metric?, batch]`` (or
+            ``[metric?]`` when reduced), when the sweep was run with
+            ``baseline=True``.
+        has_metric_axis: Whether ``values`` carries a leading metric axis.
+        patch_type_names: Names of the ``patch_type`` axis entries when the
+            result came from a ``*_every`` helper (``"out"``, ``"q"``, ...).
+            GQA ``k``/``v`` sweeps are zero-padded to ``n_heads`` there, so the
+            padded cells appear as zero-valued rows in ``index_df`` and
+            :meth:`to_dataframe`.
+    """
+
+    values: torch.Tensor
+    axis_names: List[str]
+    index_df: pd.DataFrame
+    metric_names: List[str]
+    reduced: bool
+    baseline: Optional[torch.Tensor] = None
+    has_metric_axis: bool = False
+    patch_type_names: Optional[List[str]] = None
+
+    def __getitem__(self, metric_name: str) -> "PatchingResult":
+        """One metric's result, with the metric axis dropped."""
+        if metric_name not in self.metric_names:
+            raise KeyError(f"unknown metric {metric_name!r}; have {self.metric_names}")
+        if not self.has_metric_axis:
+            return self
+        i = self.metric_names.index(metric_name)
+        return PatchingResult(
+            values=self.values[i],
+            axis_names=list(self.axis_names),
+            index_df=self.index_df,
+            metric_names=[metric_name],
+            reduced=self.reduced,
+            baseline=None if self.baseline is None else self.baseline[i],
+            has_metric_axis=False,
+            patch_type_names=self.patch_type_names,
+        )
+
+    def _require_per_example(self, what: str) -> None:
+        if self.reduced:
+            raise ValueError(f"{what} needs per-example values; run the sweep with reduce='none'")
+
+    def mean(self) -> torch.Tensor:
+        """Batch mean per cell (``values`` itself when already reduced)."""
+        return self.values if self.reduced else self.values.mean(dim=-1)
+
+    def stderr(self) -> torch.Tensor:
+        """Standard error of the batch mean per cell."""
+        self._require_per_example("stderr")
+        return standard_error(self.values, dim=-1)
+
+    def _broadcast_baseline(self) -> torch.Tensor:
+        if self.baseline is None:
+            raise ValueError("effect needs a baseline; run the sweep with baseline=True")
+        lead = 1 if self.has_metric_axis else 0
+        middle = self.values.ndim - lead - (0 if self.reduced else 1)
+        shape = (
+            tuple(self.baseline.shape[:lead]) + (1,) * middle + tuple(self.baseline.shape[lead:])
+        )
+        return self.baseline.reshape(shape)
+
+    def effect(self) -> torch.Tensor:
+        """``values - baseline``: the change each patch makes to the corrupted run, per example."""
+        return self.values - self._broadcast_baseline()
+
+    def normalized(self, clean_baseline: torch.Tensor) -> torch.Tensor:
+        """``(values - corrupted) / (clean - corrupted)`` per example.
+
+        ``clean_baseline`` is the same metric evaluated on the unpatched clean run,
+        shaped like ``baseline``. 0 means the patch did nothing, 1 means it
+        restored the clean metric. A prompt whose clean and corrupted metrics
+        coincide has no recovery scale and yields ``inf`` / ``nan`` for that
+        example; filter such prompts out before normalizing.
+        """
+        corrupted = self._broadcast_baseline()
+        baseline = self.baseline
+        assert baseline is not None  # _broadcast_baseline raised otherwise
+        clean = torch.as_tensor(clean_baseline, dtype=self.values.dtype, device=self.values.device)
+        if clean.shape != baseline.shape:
+            raise ValueError(
+                f"clean_baseline must match baseline shape {tuple(baseline.shape)}, "
+                f"got {tuple(clean.shape)}"
+            )
+        clean = clean.reshape(corrupted.shape)
+        return (self.values - corrupted) / (clean - corrupted)
+
+    def bootstrap_ci(
+        self,
+        *,
+        confidence: float = 0.95,
+        n_resamples: int = 1000,
+        seed: int = 0,
+        statistic: str = "mean",
+        of_effect: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Percentile bootstrap interval of the batch ``statistic`` per cell.
+
+        ``of_effect=True`` bootstraps ``effect()`` instead of ``values``. Seeded
+        through :func:`~transformer_lens.utilities.statistics.derive_generator`.
+        """
+        self._require_per_example("bootstrap_ci")
+        data = self.effect() if of_effect else self.values
+        return bootstrap_ci(
+            data,
+            dim=-1,
+            statistic=statistic,
+            confidence=confidence,
+            n_resamples=n_resamples,
+            generator=derive_generator(seed, "bootstrap", statistic),
+        )
+
+    def permutation_pvalue(
+        self,
+        *,
+        n_permutations: int = 1000,
+        seed: int = 0,
+        alternative: str = "two-sided",
+    ) -> torch.Tensor:
+        """Sign-flip permutation p-value that each cell's mean effect is zero.
+
+        Uses ``effect()`` (needs ``baseline=True``); exact for 12 or fewer
+        examples, Monte Carlo above that.
+        """
+        self._require_per_example("permutation_pvalue")
+        return sign_flip_permutation_pvalue(
+            self.effect(),
+            dim=-1,
+            n_permutations=n_permutations,
+            generator=derive_generator(seed, "permutation"),
+            alternative=alternative,
+        )
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Long form: one row per (metric, swept cell, example) with the value."""
+        rows = []
+        n_metrics = len(self.metric_names)
+        values = self.values if self.has_metric_axis else self.values.unsqueeze(0)
+        flat_cells = values.reshape(n_metrics, len(self.index_df), -1).detach().cpu()
+        for m, name in enumerate(self.metric_names):
+            for c, (_, index_row) in enumerate(self.index_df.iterrows()):
+                for b in range(flat_cells.shape[-1]):
+                    row = {"metric": name, **index_row.to_dict()}
+                    if self.patch_type_names is not None and "patch_type" in row:
+                        row["patch_type_name"] = self.patch_type_names[int(row["patch_type"])]
+                    if not self.reduced:
+                        row["example"] = b
+                    row["value"] = flat_cells[m, c, b].item()
+                    rows.append(row)
+        return pd.DataFrame(rows)
 
 
 @overload
@@ -93,7 +283,7 @@ def generic_activation_patch(
     model: TransformerLensModel,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
+    patching_metric: MetricFn,
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -101,6 +291,9 @@ def generic_activation_patch(
     index_axis_names: Optional[Sequence[AxisNames]] = None,
     index_df: Optional[pd.DataFrame] = None,
     return_index_df: Literal[False] = False,
+    *,
+    reduce: Literal["scalar", "mean"] = "scalar",
+    baseline: Literal[False] = False,
 ) -> torch.Tensor:
     ...
 
@@ -110,7 +303,7 @@ def generic_activation_patch(
     model: TransformerLensModel,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
+    patching_metric: MetricFn,
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -118,15 +311,19 @@ def generic_activation_patch(
     index_axis_names: Optional[Sequence[AxisNames]],
     index_df: Optional[pd.DataFrame],
     return_index_df: Literal[True],
+    *,
+    reduce: Literal["scalar", "mean"] = "scalar",
+    baseline: Literal[False] = False,
 ) -> Tuple[torch.Tensor, pd.DataFrame]:
     ...
 
 
+@overload
 def generic_activation_patch(
     model: TransformerLensModel,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
+    patching_metric: Union[MetricFn, Mapping[str, MetricFn]],
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -134,7 +331,69 @@ def generic_activation_patch(
     index_axis_names: Optional[Sequence[AxisNames]] = None,
     index_df: Optional[pd.DataFrame] = None,
     return_index_df: bool = False,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, pd.DataFrame]]:
+    *,
+    reduce: Literal["none"],
+    baseline: bool = False,
+) -> PatchingResult:
+    ...
+
+
+@overload
+def generic_activation_patch(
+    model: TransformerLensModel,
+    corrupted_tokens: Int[torch.Tensor, "batch pos"],
+    clean_cache: ActivationCache,
+    patching_metric: MetricFn,
+    patch_setter: Callable[
+        [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
+    ],
+    activation_name: str,
+    index_axis_names: Optional[Sequence[AxisNames]] = None,
+    index_df: Optional[pd.DataFrame] = None,
+    return_index_df: bool = False,
+    *,
+    reduce: Reduce = "scalar",
+    baseline: Literal[True],
+) -> PatchingResult:
+    ...
+
+
+@overload
+def generic_activation_patch(
+    model: TransformerLensModel,
+    corrupted_tokens: Int[torch.Tensor, "batch pos"],
+    clean_cache: ActivationCache,
+    patching_metric: Mapping[str, MetricFn],
+    patch_setter: Callable[
+        [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
+    ],
+    activation_name: str,
+    index_axis_names: Optional[Sequence[AxisNames]] = None,
+    index_df: Optional[pd.DataFrame] = None,
+    return_index_df: bool = False,
+    *,
+    reduce: Reduce = "scalar",
+    baseline: bool = False,
+) -> PatchingResult:
+    ...
+
+
+def generic_activation_patch(
+    model: TransformerLensModel,
+    corrupted_tokens: Int[torch.Tensor, "batch pos"],
+    clean_cache: ActivationCache,
+    patching_metric: Union[MetricFn, Mapping[str, MetricFn]],
+    patch_setter: Callable[
+        [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
+    ],
+    activation_name: str,
+    index_axis_names: Optional[Sequence[AxisNames]] = None,
+    index_df: Optional[pd.DataFrame] = None,
+    return_index_df: bool = False,
+    *,
+    reduce: str = "scalar",  # Reduce; widened so the ValueError below fires before beartype
+    baseline: bool = False,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, pd.DataFrame], PatchingResult]:
     """
     A generic function to do activation patching, will be specialised to specific use cases.
 
@@ -146,25 +405,55 @@ def generic_activation_patch(
 
     This function then iterates over every tuple of indices, does the relevant patch, and stores it
 
+    Every patched forward runs the whole corrupted batch, so per-example values are
+    available for free: ``reduce="none"`` keeps them (the metric must then return a
+    ``[batch]`` tensor) and returns a :class:`PatchingResult` with mean, standard
+    error, bootstrap intervals and permutation p-values on top; ``reduce="mean"``
+    averages a ``[batch]`` metric back to today's tensor; a mapping of metrics
+    evaluates all of them on each patched forward. ``baseline=True`` adds one
+    unpatched corrupted forward so effects and normalized recovery can be reported.
+
     Args:
         model: The relevant model
         corrupted_tokens: The input tokens for the corrupted run
         clean_cache: The cached activations from the clean run
-        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc), or a mapping of names to such functions. Must return a scalar under ``reduce="scalar"`` and a ``[batch]`` tensor otherwise.
         patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
         activation_name: The name of the activation being patched
         index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
         index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-        return_index_df: A Boolean flag for whether to return the dataframe of indices too
+        return_index_df: A Boolean flag for whether to return the dataframe of indices too (tensor return only; a ``PatchingResult`` always carries ``index_df``)
+        reduce: ``"scalar"`` (default, metric returns a scalar, tensor return), ``"mean"`` (metric returns ``[batch]``, averaged, tensor return) or ``"none"`` (metric returns ``[batch]``, kept, ``PatchingResult`` return)
+        baseline: Also evaluate the metric on the unpatched corrupted run and return a ``PatchingResult`` carrying it
 
     Returns:
         patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
         index_df *optional*: The dataframe of indices
+        Or a :class:`PatchingResult` when ``reduce="none"``, ``baseline=True`` or a metric mapping was given.
     """
+    # Lazy import: tools.analysis imports this module's neighbours at package import.
+    from transformer_lens.tools.analysis._model_state import require_eval_mode
+
+    require_eval_mode(model, operation="activation patching")
+    if reduce not in _REDUCE_MODES:
+        raise ValueError(f"reduce must be one of {_REDUCE_MODES}, got {reduce!r}")
+    metrics: Dict[str, MetricFn]
+    if isinstance(patching_metric, Mapping):
+        has_metric_axis = True
+        metrics = dict(patching_metric)
+        if not metrics:
+            raise ValueError("patching_metric mapping must contain at least one metric")
+    else:
+        has_metric_axis = False
+        metrics = {"metric": patching_metric}
+    want_result = has_metric_axis or reduce == "none" or baseline
+    if want_result and return_index_df:
+        raise ValueError(
+            "return_index_df only applies to the tensor return; a PatchingResult carries index_df"
+        )
 
     if index_df is None:
         assert index_axis_names is not None
-
         number_of_heads = model.cfg.n_heads
         # For some models, the number of key value heads is not the same as the number of attention heads
         if activation_name in ["k", "v"] and model.cfg.n_key_value_heads is not None:
@@ -191,14 +480,39 @@ def generic_activation_patch(
         # A dataframe of indices was provided. Verify that we did not *also* receive index_axis_names
         assert index_axis_names is None
         index_axis_max_range = index_df.max().to_list()
-
         flattened_output = True
 
+    batch_size = int(corrupted_tokens.shape[0])
+    per_example = reduce != "scalar"
+    cell_shape = (len(index_df),) if flattened_output else tuple(index_axis_max_range)
+    store_shape = (len(metrics),) + cell_shape + ((batch_size,) if per_example else ())
     # Create an empty tensor to show the patched metric for each patch
-    if flattened_output:
-        patched_metric_output = torch.zeros(len(index_df), device=model.cfg.device)
-    else:
-        patched_metric_output = torch.zeros(index_axis_max_range, device=model.cfg.device)
+    store = torch.zeros(store_shape, device=model.cfg.device)
+
+    def evaluate(logits: torch.Tensor) -> torch.Tensor:
+        """Every metric on one set of logits, shaped [metric, batch?] after validation."""
+        rows = []
+        for name, fn in metrics.items():
+            out = torch.as_tensor(fn(logits))
+            if per_example:
+                if out.ndim != 1 or out.shape[0] != batch_size:
+                    raise ValueError(
+                        f"patching_metric {name!r} must return a [batch] tensor of length "
+                        f"{batch_size} under reduce={reduce!r}, got shape {tuple(out.shape)}"
+                    )
+            elif out.ndim != 0:
+                raise ValueError(
+                    f"patching_metric {name!r} must return a scalar under reduce='scalar', got "
+                    f"shape {tuple(out.shape)}; return a [batch] tensor and pass reduce='mean' "
+                    "or reduce='none' to keep per-example values"
+                )
+            rows.append(out.detach())
+        return torch.stack(rows).to(store.dtype)
+
+    baseline_values: Optional[torch.Tensor] = None
+    if baseline:
+        # Same entry point as the patched runs, with no hooks attached.
+        baseline_values = evaluate(model.run_with_hooks(corrupted_tokens, fwd_hooks=[]))
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
@@ -222,16 +536,34 @@ def generic_activation_patch(
         patched_logits = model.run_with_hooks(
             corrupted_tokens, fwd_hooks=[(current_activation_name, current_hook)]
         )
-
+        values = evaluate(patched_logits)
         if flattened_output:
-            patched_metric_output[c] = patching_metric(patched_logits).item()
+            store[:, c] = values
         else:
-            patched_metric_output[tuple(index)] = patching_metric(patched_logits).item()
+            store[(slice(None), *index)] = values
 
-    if return_index_df:
-        return patched_metric_output, index_df
-    else:
+    if reduce == "mean":
+        store = store.mean(dim=-1)
+        if baseline_values is not None:
+            baseline_values = baseline_values.mean(dim=-1)
+
+    if not want_result:
+        patched_metric_output = store[0]
+        if return_index_df:
+            return patched_metric_output, index_df
         return patched_metric_output
+
+    return PatchingResult(
+        values=store if has_metric_axis else store[0],
+        axis_names=[] if flattened_output else list(index_axis_names or []),
+        index_df=index_df,
+        metric_names=list(metrics),
+        reduced=reduce != "none",
+        baseline=None
+        if baseline_values is None
+        else (baseline_values if has_metric_axis else baseline_values[0]),
+        has_metric_axis=has_metric_axis,
+    )
 
 
 # %%
@@ -655,9 +987,118 @@ get_act_patch_attn_head_pattern_all_pos.__doc__ = """
 # %%
 
 
+_HEAD_TYPES = ("out", "q", "k", "v", "pattern")
+_BLOCK_TYPES = ("resid_pre", "attn_out", "mlp_out")
+_PER_EXAMPLE_NOTE = """
+    Keyword-only ``reduce`` ("scalar" | "mean" | "none") and ``baseline`` are forwarded to
+    generic_activation_patch; with reduce="none", baseline=True or a mapping of metrics the
+    return is a PatchingResult carrying per-example values and statistics instead of a tensor.
+"""
+for _fn in (
+    get_act_patch_resid_pre,
+    get_act_patch_resid_mid,
+    get_act_patch_attn_out,
+    get_act_patch_mlp_out,
+    get_act_patch_attn_head_out_by_pos,
+    get_act_patch_attn_head_q_by_pos,
+    get_act_patch_attn_head_k_by_pos,
+    get_act_patch_attn_head_v_by_pos,
+    get_act_patch_attn_head_pattern_by_pos,
+    get_act_patch_attn_head_pattern_dest_src_pos,
+    get_act_patch_attn_head_out_all_pos,
+    get_act_patch_attn_head_q_all_pos,
+    get_act_patch_attn_head_k_all_pos,
+    get_act_patch_attn_head_v_all_pos,
+    get_act_patch_attn_head_pattern_all_pos,
+):
+    _fn.__doc__ = (_fn.__doc__ or "") + _PER_EXAMPLE_NOTE
+
+
+def _wrap_tensor_result(tensor: torch.Tensor, axis_names: Sequence[str]) -> PatchingResult:
+    """Give a default tensor sweep the result shape so it can be stacked with typed ones."""
+    return PatchingResult(
+        values=tensor,
+        axis_names=list(axis_names),
+        index_df=make_df_from_ranges(list(tensor.shape), list(axis_names)),
+        metric_names=["metric"],
+        reduced=True,
+    )
+
+
+def _stack_patch_types(
+    results: Sequence[Union[torch.Tensor, PatchingResult]],
+    *,
+    axis_order: Sequence[str],
+    n_heads: int,
+    type_names: Sequence[str],
+) -> Union[torch.Tensor, PatchingResult]:
+    """Stack per-activation sweeps on a leading ``patch_type`` axis.
+
+    Tensors (the default return) are stacked as-is after the caller padded and
+    rearranged them. ``PatchingResult`` values are first permuted to
+    ``axis_order`` (``head_index`` / ``dest_pos`` renamed to ``head`` / ``pos``)
+    and the head axis zero-padded to ``n_heads`` for GQA ``k``/``v`` sweeps,
+    keeping the metric axis first and the batch axis last. ``index_df`` is
+    rebuilt from the padded grid so it stays one row per cell of ``values``;
+    padded GQA cells therefore appear as zero-valued rows.
+    """
+    if all(isinstance(r, torch.Tensor) for r in results):
+        return torch.stack([r for r in results if isinstance(r, torch.Tensor)], dim=0)
+    typed = [r for r in results if isinstance(r, PatchingResult)]
+    if len(typed) != len(results):
+        raise TypeError("cannot stack tensor and PatchingResult sweeps together")
+    first = typed[0]
+    for r in typed[1:]:
+        if r.metric_names != first.metric_names or r.reduced != first.reduced:
+            raise ValueError("every sweep must use the same metrics and reduce mode to be stacked")
+    head_axis = list(axis_order).index("head") if "head" in axis_order else None
+    values = []
+    for r in typed:
+        names = [_RESULT_AXIS_RENAMES.get(n, n) for n in r.axis_names]
+        if sorted(names) != sorted(axis_order):
+            raise ValueError(f"sweep axes {names} do not match {list(axis_order)}")
+        lead = 1 if r.has_metric_axis else 0
+        perm = list(range(lead)) + [lead + names.index(n) for n in axis_order]
+        tail = list(range(lead + len(names), r.values.ndim))
+        v = r.values.permute(*perm, *tail)
+        pad = 0 if head_axis is None else n_heads - v.shape[lead + head_axis]
+        if head_axis is not None and pad > 0:
+            pad_shape = list(v.shape)
+            pad_shape[lead + head_axis] = pad
+            v = torch.cat([v, v.new_zeros(pad_shape)], dim=lead + head_axis)
+        values.append(v)
+    stacked = torch.stack(values, dim=1 if first.has_metric_axis else 0)
+    lead = 1 if first.has_metric_axis else 0
+    cell_shape = list(stacked.shape[lead : lead + 1 + len(axis_order)])
+    return PatchingResult(
+        values=stacked,
+        axis_names=["patch_type", *axis_order],
+        index_df=make_df_from_ranges(cell_shape, ["patch_type", *axis_order]),
+        metric_names=list(first.metric_names),
+        reduced=first.reduced,
+        baseline=first.baseline,
+        has_metric_axis=first.has_metric_axis,
+        patch_type_names=list(type_names),
+    )
+
+
+def _run_sweeps(sweeps, axis_names_per_sweep, model, corrupted_tokens, clean_cache, metric, kwargs):
+    """Run a helper's sweeps, computing a requested baseline once rather than once per sweep."""
+    baseline = bool(kwargs.pop("baseline", False))
+    results: List[Union[torch.Tensor, PatchingResult]] = []
+    for i, (sweep, axis_names) in enumerate(zip(sweeps, axis_names_per_sweep)):
+        out = sweep(
+            model, corrupted_tokens, clean_cache, metric, baseline=baseline and i == 0, **kwargs
+        )
+        if baseline and isinstance(out, torch.Tensor):
+            out = _wrap_tensor_result(out, axis_names)
+        results.append(out)
+    return results
+
+
 def get_act_patch_attn_head_all_pos_every(
-    model, corrupted_tokens, clean_cache, metric
-) -> Float[torch.Tensor, "patch_type layer head"]:
+    model, corrupted_tokens, clean_cache, metric, **kwargs
+) -> Union[Float[torch.Tensor, "patch_type layer head"], PatchingResult]:
     """Helper function to get activation patching results for every head (across all positions) for every act type (output, query, key, value, pattern). Wrapper around each's patching function, returns a stacked tensor of shape [5, n_layers, n_heads]
 
     Args:
@@ -665,37 +1106,41 @@ def get_act_patch_attn_head_all_pos_every(
         corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
         clean_cache (ActivationCache): The cached activations from the clean run
         metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+        **kwargs: ``reduce`` / ``baseline`` forwarded to each sweep; a ``PatchingResult`` is then returned with a leading ``patch_type`` axis (``patch_type_names`` = out, q, k, v, pattern)
 
     Returns:
         patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [5, n_layers, n_heads]
     """
-    act_patch_results: list[torch.Tensor] = []
-    act_patch_results.append(
-        get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, metric)
+    results = _run_sweeps(
+        (
+            get_act_patch_attn_head_out_all_pos,
+            get_act_patch_attn_head_q_all_pos,
+            get_act_patch_attn_head_k_all_pos,
+            get_act_patch_attn_head_v_all_pos,
+            get_act_patch_attn_head_pattern_all_pos,
+        ),
+        (("layer", "head"),) * 4 + (("layer", "head_index"),),
+        model,
+        corrupted_tokens,
+        clean_cache,
+        metric,
+        kwargs,
     )
-    act_patch_results.append(
-        get_act_patch_attn_head_q_all_pos(model, corrupted_tokens, clean_cache, metric)
+    if all(isinstance(r, torch.Tensor) for r in results):
+        tensors = [r for r in results if isinstance(r, torch.Tensor)]
+        n_heads = tensors[0].size(-1)
+        # Reshape k and v to be compatible with the rest of the results in case of n_key_value_heads != n_heads
+        for i in (2, 3):
+            tensors[i] = torch.nn.functional.pad(tensors[i], (0, n_heads - tensors[i].size(-1)))
+        return torch.stack(tensors, dim=0)
+    return _stack_patch_types(
+        results, axis_order=("layer", "head"), n_heads=model.cfg.n_heads, type_names=_HEAD_TYPES
     )
-
-    # Reshape k and v to be compatible with the rest of the results in case of n_key_value_heads != n_heads
-    k_results = get_act_patch_attn_head_k_all_pos(model, corrupted_tokens, clean_cache, metric)
-    act_patch_results.append(
-        torch.nn.functional.pad(k_results, (0, act_patch_results[-1].size(-1) - k_results.size(-1)))
-    )
-    v_results = get_act_patch_attn_head_v_all_pos(model, corrupted_tokens, clean_cache, metric)
-    act_patch_results.append(
-        torch.nn.functional.pad(v_results, (0, act_patch_results[-1].size(-1) - v_results.size(-1)))
-    )
-
-    act_patch_results.append(
-        get_act_patch_attn_head_pattern_all_pos(model, corrupted_tokens, clean_cache, metric)
-    )
-    return torch.stack(act_patch_results, dim=0)
 
 
 def get_act_patch_attn_head_by_pos_every(
-    model, corrupted_tokens, clean_cache, metric
-) -> Float[torch.Tensor, "patch_type layer pos head"]:
+    model, corrupted_tokens, clean_cache, metric, **kwargs
+) -> Union[Float[torch.Tensor, "patch_type layer pos head"], PatchingResult]:
     """Helper function to get activation patching results for every head (by position) for every act type (output, query, key, value, pattern). Wrapper around each's patching function, returns a stacked tensor of shape [5, n_layers, pos, n_heads]
 
     Args:
@@ -703,39 +1148,46 @@ def get_act_patch_attn_head_by_pos_every(
         corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
         clean_cache (ActivationCache): The cached activations from the clean run
         metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+        **kwargs: ``reduce`` / ``baseline`` forwarded to each sweep; a ``PatchingResult`` is then returned with a leading ``patch_type`` axis (``patch_type_names`` = out, q, k, v, pattern)
 
     Returns:
         patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [5, n_layers, pos, n_heads]
     """
-    act_patch_results = []
-    act_patch_results.append(
-        get_act_patch_attn_head_out_by_pos(model, corrupted_tokens, clean_cache, metric)
+    results = _run_sweeps(
+        (
+            get_act_patch_attn_head_out_by_pos,
+            get_act_patch_attn_head_q_by_pos,
+            get_act_patch_attn_head_k_by_pos,
+            get_act_patch_attn_head_v_by_pos,
+            get_act_patch_attn_head_pattern_by_pos,
+        ),
+        (("layer", "pos", "head"),) * 4 + (("layer", "head_index", "dest_pos"),),
+        model,
+        corrupted_tokens,
+        clean_cache,
+        metric,
+        kwargs,
     )
-    act_patch_results.append(
-        get_act_patch_attn_head_q_by_pos(model, corrupted_tokens, clean_cache, metric)
+    if all(isinstance(r, torch.Tensor) for r in results):
+        tensors = [r for r in results if isinstance(r, torch.Tensor)]
+        n_heads = tensors[0].size(-1)
+        # Reshape k and v to be compatible with the rest of the results in case of n_key_value_heads != n_heads
+        for i in (2, 3):
+            tensors[i] = torch.nn.functional.pad(tensors[i], (0, n_heads - tensors[i].size(-1)))
+        # Reshape pattern to be compatible with the rest of the results
+        tensors[4] = einops.rearrange(tensors[4], "batch head pos -> batch pos head")
+        return torch.stack(tensors, dim=0)
+    return _stack_patch_types(
+        results,
+        axis_order=("layer", "pos", "head"),
+        n_heads=model.cfg.n_heads,
+        type_names=_HEAD_TYPES,
     )
-
-    # Reshape k and v to be compatible with the rest of the results in case of n_key_value_heads != n_heads
-    k_results = get_act_patch_attn_head_k_by_pos(model, corrupted_tokens, clean_cache, metric)
-    act_patch_results.append(
-        torch.nn.functional.pad(k_results, (0, act_patch_results[-1].size(-1) - k_results.size(-1)))
-    )
-    v_results = get_act_patch_attn_head_v_by_pos(model, corrupted_tokens, clean_cache, metric)
-    act_patch_results.append(
-        torch.nn.functional.pad(v_results, (0, act_patch_results[-1].size(-1) - v_results.size(-1)))
-    )
-
-    # Reshape pattern to be compatible with the rest of the results
-    pattern_results = get_act_patch_attn_head_pattern_by_pos(
-        model, corrupted_tokens, clean_cache, metric
-    )
-    act_patch_results.append(einops.rearrange(pattern_results, "batch head pos -> batch pos head"))
-    return torch.stack(act_patch_results, dim=0)
 
 
 def get_act_patch_block_every(
-    model, corrupted_tokens, clean_cache, metric
-) -> Float[torch.Tensor, "patch_type layer pos"]:
+    model, corrupted_tokens, clean_cache, metric, **kwargs
+) -> Union[Float[torch.Tensor, "patch_type layer pos"], PatchingResult]:
     """Helper function to get activation patching results for the residual stream (at the start of each block), output of each Attention layer and output of each MLP layer. Wrapper around each's patching function, returns a stacked tensor of shape [3, n_layers, pos]
 
     Args:
@@ -743,12 +1195,22 @@ def get_act_patch_block_every(
         corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
         clean_cache (ActivationCache): The cached activations from the clean run
         metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+        **kwargs: ``reduce`` / ``baseline`` forwarded to each sweep; a ``PatchingResult`` is then returned with a leading ``patch_type`` axis (``patch_type_names`` = resid_pre, attn_out, mlp_out)
 
     Returns:
         patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [3, n_layers, pos]
     """
-    act_patch_results = []
-    act_patch_results.append(get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, metric))
-    act_patch_results.append(get_act_patch_attn_out(model, corrupted_tokens, clean_cache, metric))
-    act_patch_results.append(get_act_patch_mlp_out(model, corrupted_tokens, clean_cache, metric))
-    return torch.stack(act_patch_results, dim=0)
+    results = _run_sweeps(
+        (get_act_patch_resid_pre, get_act_patch_attn_out, get_act_patch_mlp_out),
+        (("layer", "pos"),) * 3,
+        model,
+        corrupted_tokens,
+        clean_cache,
+        metric,
+        kwargs,
+    )
+    if all(isinstance(r, torch.Tensor) for r in results):
+        return torch.stack([r for r in results if isinstance(r, torch.Tensor)], dim=0)
+    return _stack_patch_types(
+        results, axis_order=("layer", "pos"), n_heads=0, type_names=_BLOCK_TYPES
+    )

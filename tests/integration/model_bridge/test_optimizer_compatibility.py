@@ -125,45 +125,51 @@ def test_bridge_hooked_parity_multi_step_optimization():
     - Parameter updates: unembed weights remain close after each step
 
     We focus on the unembed layer as it's a directly comparable component between
-    both models with matching shapes.
+    both models with matching shapes. Runs in fp64: in fp32, AdamW amplifies ulp-level
+    gradient differences into a hardware-dependent step-10 gap (0.10 vs 0.21 across CI CPUs).
     """
     from transformers import AutoModelForCausalLM
 
-    # Define thresholds for each step (rounded to next magnitude above observed + 30%)
+    # ~1000x above the worst fp64 gap observed across 1-8 BLAS threads
     step_thresholds = [
         StepThresholds(
             step=1,
-            initial_fwd=StageThresholds(logits_max=1e-3, logits_mean=1e-4, loss_relative=1e-6),
-            # GitHub CPU runners repeatedly produce a 1.032e-3 mean difference here.
-            post_update_fwd=StageThresholds(logits_max=2.0, logits_mean=2e-3, loss_relative=1e-5),
-            param_update=StageThresholds(params_max=1e-2, params_mean=1e-6),
+            initial_fwd=StageThresholds(logits_max=1e-10, logits_mean=1e-11, loss_relative=1e-12),
+            post_update_fwd=StageThresholds(
+                logits_max=1e-10, logits_mean=1e-11, loss_relative=1e-12
+            ),
+            param_update=StageThresholds(params_max=1e-13, params_mean=1e-16),
         ),
         StepThresholds(
             step=10,
-            # logits_mean recalibrated vs the raw-HF reference (observed 0.104 + 30%,
-            # rounded up) — 10 AdamW steps amplify ulp-level gradient differences.
-            initial_fwd=StageThresholds(logits_max=20.0, logits_mean=0.2, loss_relative=2e-3),
-            post_update_fwd=StageThresholds(logits_max=20.0, logits_mean=0.1, loss_relative=1e-4),
-            param_update=StageThresholds(params_max=1e-1, params_mean=1e-5),
+            initial_fwd=StageThresholds(logits_max=1e-5, logits_mean=1e-6, loss_relative=1e-11),
+            post_update_fwd=StageThresholds(logits_max=1e-5, logits_mean=1e-6, loss_relative=1e-10),
+            param_update=StageThresholds(params_max=1e-10, params_mean=1e-13),
         ),
     ]
 
     # Set seed for reproducibility
     torch.manual_seed(42)
 
-    # Load the reference raw HF model exactly as the bridge does (fp32 + eager attn)
+    # Load the reference raw HF model exactly as the bridge does (eager attn)
     # eval() matches the bridge (distilgpt2 has dropout; gradients still flow in eval)
     hooked = AutoModelForCausalLM.from_pretrained(
-        "distilgpt2", torch_dtype=torch.float32, attn_implementation="eager"
+        "distilgpt2", torch_dtype=torch.float64, attn_implementation="eager"
     )
     hooked.eval()
 
-    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu", dtype=torch.float64)
     bridge.enable_compatibility_mode(no_processing=True)
+
+    # The bridge gives a bias-less lm_head a zero b_U; HF has no counterpart to train, and
+    # AdamW would shift every logit by lr per step.
+    injected_b_U = bridge.unembed._original_component.bias
+    assert hooked.lm_head.bias is None and injected_b_U is not None
+    bridge_params = [p for p in bridge.parameters() if p is not injected_b_U]
 
     # Create optimizers with same settings
     hooked_optimizer = torch.optim.AdamW(hooked.parameters(), lr=1e-3)
-    bridge_optimizer = torch.optim.AdamW(bridge.parameters(), lr=1e-3)
+    bridge_optimizer = torch.optim.AdamW(bridge_params, lr=1e-3)
 
     # Create identical input with fixed seed
     torch.manual_seed(42)
@@ -213,17 +219,17 @@ def test_bridge_hooked_parity_multi_step_optimization():
                 loss_relative_diff = loss_diff / (abs(hooked_loss.item()) + 1e-8)
 
                 assert logits_max_diff < step_config.initial_fwd.logits_max, (
-                    f"Step {current_step}: Initial logits max diff {logits_max_diff:.6f} "
-                    f"exceeds threshold {step_config.initial_fwd.logits_max:.6f}"
+                    f"Step {current_step}: Initial logits max diff {logits_max_diff:.3e} "
+                    f"exceeds threshold {step_config.initial_fwd.logits_max:.3e}"
                 )
                 assert logits_mean_diff < step_config.initial_fwd.logits_mean, (
-                    f"Step {current_step}: Initial logits mean diff {logits_mean_diff:.6f} "
-                    f"exceeds threshold {step_config.initial_fwd.logits_mean:.6f}"
+                    f"Step {current_step}: Initial logits mean diff {logits_mean_diff:.3e} "
+                    f"exceeds threshold {step_config.initial_fwd.logits_mean:.3e}"
                 )
 
                 assert loss_relative_diff < step_config.initial_fwd.loss_relative, (
-                    f"Step {current_step}: Initial loss relative diff {loss_relative_diff:.6f} "
-                    f"exceeds threshold {step_config.initial_fwd.loss_relative:.6f}"
+                    f"Step {current_step}: Initial loss relative diff {loss_relative_diff:.3e} "
+                    f"exceeds threshold {step_config.initial_fwd.loss_relative:.3e}"
                 )
 
             # Compute loss for backward
@@ -306,12 +312,12 @@ def test_bridge_hooked_parity_multi_step_optimization():
                 logits_mean_diff_after = logits_diff_after.mean().item()
 
                 assert logits_max_diff_after < step_config.post_update_fwd.logits_max, (
-                    f"Step {current_step}: Post-update logits max diff {logits_max_diff_after:.6f} "
-                    f"exceeds threshold {step_config.post_update_fwd.logits_max:.6f}"
+                    f"Step {current_step}: Post-update logits max diff {logits_max_diff_after:.3e} "
+                    f"exceeds threshold {step_config.post_update_fwd.logits_max:.3e}"
                 )
                 assert logits_mean_diff_after < step_config.post_update_fwd.logits_mean, (
-                    f"Step {current_step}: Post-update logits mean diff {logits_mean_diff_after:.6f} "
-                    f"exceeds threshold {step_config.post_update_fwd.logits_mean:.6f}"
+                    f"Step {current_step}: Post-update logits mean diff {logits_mean_diff_after:.3e} "
+                    f"exceeds threshold {step_config.post_update_fwd.logits_mean:.3e}"
                 )
 
                 # Compare losses after update
@@ -322,6 +328,6 @@ def test_bridge_hooked_parity_multi_step_optimization():
 
                 assert loss_relative_diff_after < step_config.post_update_fwd.loss_relative, (
                     f"Step {current_step}: Post-update loss relative diff "
-                    f"{loss_relative_diff_after:.6f} exceeds threshold "
-                    f"{step_config.post_update_fwd.loss_relative:.6f}"
+                    f"{loss_relative_diff_after:.3e} exceeds threshold "
+                    f"{step_config.post_update_fwd.loss_relative:.3e}"
                 )
