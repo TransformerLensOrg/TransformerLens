@@ -164,6 +164,12 @@ class HookPoint(nn.Module):
         # This scales the SUM of gradients, not element-wise (to avoid PyTorch bugs)
         self.backward_scale: float = 1.0
 
+        # Position axis of the activation in its batched layout, for ``pos_slice``.
+        # None means the default (dim 1, or -2 for attention patterns/scores); a
+        # component sets it when it fires a hook on a layout whose position axis
+        # is elsewhere, e.g. [batch, heads, pos, d_head] or [batch, channels, pos].
+        self.pos_dim: Optional[int] = None
+
     def __repr__(self) -> str:
         bits = [f"name={self.name!r}"] if self.name is not None else []
         if self.fwd_hooks:

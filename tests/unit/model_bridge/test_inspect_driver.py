@@ -80,6 +80,28 @@ def _driver(model=None) -> InspectDriver:
     return InspectDriver(model=model or _fake_model(), adapter=_adapter(), tokenizer=None)
 
 
+@pytest.mark.parametrize("provider", ["tl_bridge", "tl_bridge_vllm", "vllm-lens"])
+def test_unsupported_provider_rejects_attention_mask(provider):
+    driver = InspectDriver(_fake_model(), _adapter(), None, profiles.for_provider(provider))
+    try:
+        with pytest.raises(NotImplementedError, match="attention_mask"):
+            driver.forward(np.array([[7, 8]]), attention_mask=np.array([[1, 1]]))
+    finally:
+        driver.close()
+
+
+def test_vllm_provider_direct_capture_rejects_attention_mask():
+    from inspect_ai.model import GenerateConfig
+
+    from transformer_lens.model_bridge.sources.inspect.vllm_provider import (
+        TransformerLensVLLMModelAPI,
+    )
+
+    api = object.__new__(TransformerLensVLLMModelAPI)
+    with pytest.raises(NotImplementedError, match="attention_mask"):
+        api._generate_capture([], {"input_ids": [7, 8], "attention_mask": [1, 1]}, GenerateConfig())
+
+
 class TestProtocolConformance:
     def test_is_driver_and_validates(self):
         driver = _driver()

@@ -23,6 +23,12 @@ class DepthwiseConv1DBridge(GeneralizedComponent):
     ``forward()`` instead of ``generate()``.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Channel-first: the sequence axis is dim 2 (see the class docstring).
+        self.hook_in.pos_dim = 2
+        self.hook_out.pos_dim = 2
+
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         if self.original_component is None:
             raise RuntimeError(
