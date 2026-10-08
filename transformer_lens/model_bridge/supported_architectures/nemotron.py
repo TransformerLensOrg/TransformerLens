@@ -40,6 +40,8 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
         # fold the stored weight without the offset. Keep raw weights.
         self.supports_fold_ln = False
         self.supports_center_writing_weights = False
+        # The bridge's own norm paths (hook edits, backward hooks, LN-rule) need the offset too.
+        self.cfg.rmsnorm_uses_offset = True
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
