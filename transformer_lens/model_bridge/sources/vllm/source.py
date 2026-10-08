@@ -171,7 +171,8 @@ def boot_vllm(
 
     **Returned logits are reconstructed full-sequence logits.** vLLM's sampler
     bypasses ``lm_head``, so the driver rebuilds real logits host-side as
-    ``ln_final @ lm_head.weight.T`` (+ bias, + Gemma soft-cap) from the captured
+    ``ln_final @ lm_head.weight.T`` (+ bias), followed by the engine's softcap and scale,
+    from the captured
     final-norm activation — valid at every position, so ``return_type`` in
     ``{"loss", "both"}`` works. If the unembedding weight is unreachable the
     driver falls back to the sampler's final-position log-probs (earlier
