@@ -36,6 +36,9 @@ from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 from transformer_lens.utilities.slice import Slice, SliceInput
 
+# Aliased: the caching methods take a ``remove_batch_dim`` flag that would shadow it.
+from transformer_lens.utilities.tensors import remove_batch_dim as drop_batch_dim
+
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 # Block-list container attributes a bridge may expose.
@@ -43,6 +46,22 @@ _BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "
 # Encoder blocks name self-attention ``attn``; decoder blocks name it ``self_attn``
 # (``cross_attn`` is a separate submodule, deliberately excluded from stacking).
 _SELF_ATTENTION_NAMES = {"attn": ("attn", "self_attn")}
+
+
+def _input_batch_size(*inputs: Any) -> Optional[int]:
+    """The batch size of the first input that states it (a string, list of strings or tensor).
+
+    A 1-D tensor is one sequence. Returns None when no input says, so the caller can fall
+    back to inferring it from what was cached.
+    """
+    for value in inputs:
+        if isinstance(value, str):
+            return 1
+        if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+            return len(value)
+        if isinstance(value, torch.Tensor) and value.ndim > 0:
+            return 1 if value.ndim == 1 else int(value.shape[0])
+    return None
 
 
 def build_alias_to_canonical_map(hook_dict: Any, prefix: str = "") -> dict:
@@ -964,6 +983,13 @@ class BridgeCore:
     ) -> Tuple[dict, list, list]:
         """Build caching hooks without adding them. Mirrors ``HookedRootModule.get_caching_hooks``.
 
+        ``remove_batch_dim`` drops a leading dimension of size 1 and leaves any other tensor as
+        it is, so a batch larger than 1 keeps its batch dimension instead of losing examples.
+        Unlike ``run_with_cache``, which raises for a batch larger than 1, a hook sees one tensor
+        at a time and cannot tell a batch dimension from a flattened ``[batch * pos, ...]`` one.
+        Hooks that run under ``run_with_hooks(remove_batch_dim=True)`` already receive tensors
+        without a batch dimension, so set the flag on only one of the two.
+
         Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
         ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
         Activations are keyed by the HookPoint's canonical name, and also by any
@@ -987,7 +1013,7 @@ class BridgeCore:
             if pos_slice_obj is not None and stored.dim() >= 2:
                 stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name, hook))
             if remove_batch_dim:
-                stored = stored[0]
+                stored = drop_batch_dim(stored)
             for key in (hook.name, *alias_names):
                 cache[key + suffix] = stored
 
@@ -1031,7 +1057,8 @@ class BridgeCore:
         """Attach caching hooks to the model (does not run it). Returns the cache dict.
 
         Mirrors ``HookedRootModule.add_caching_hooks``. The hooks persist until
-        ``reset_hooks()``.
+        ``reset_hooks()``. ``remove_batch_dim`` behaves as in :meth:`get_caching_hooks`: a leading
+        dimension of size 1 is dropped and a larger batch keeps its batch dimension.
         """
         cache, fwd_hooks, bwd_hooks = self.get_caching_hooks(
             names_filter,
@@ -1731,15 +1758,25 @@ class BridgeCore:
                         if single_target + suffix in cache:
                             cache[alias_name + suffix] = cache[single_target + suffix]
                             break
+        # The input states the batch size; inferring it from the cached shapes goes wrong
+        # when the filter selects only flattened or position-indexed hooks.
+        batch_size = _input_batch_size(
+            processed_args[0] if processed_args else None,
+            filtered_kwargs.get("input_ids"),
+            filtered_kwargs.get("inputs_embeds"),
+        )
         if return_cache_object:
             activation_cache = ActivationCache(cache, self, has_batch_dim=True)
             if remove_batch_dim:
-                activation_cache.remove_batch_dim()
+                activation_cache.remove_batch_dim(batch_size=batch_size)
             return (output, activation_cache)
         else:
             if remove_batch_dim:
-                for key in cache:
-                    if cache[key] is not None and isinstance(cache[key], torch.Tensor):
-                        if cache[key].size(0) == 1:
-                            cache[key] = cache[key][0]
+                # Same batch-size check and squeeze rule as the ActivationCache path.
+                tensors = {k: v for k, v in cache.items() if isinstance(v, torch.Tensor)}
+                cache.update(
+                    ActivationCache(tensors, self)
+                    .remove_batch_dim(batch_size=batch_size)
+                    .cache_dict
+                )
             return (output, cache)
