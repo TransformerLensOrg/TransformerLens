@@ -30,6 +30,8 @@ class Qwen3_5MultimodalArchitectureAdapter(Qwen3ArchitectureAdapter):
         # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
         # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
+        # HF's Qwen3_5RMSNorm scales by (1 + weight), not weight (cf. Gemma).
+        setattr(cfg, "rmsnorm_uses_offset", True)
         super().__init__(cfg, hybrid=True, lm_prefix="model.language_model")
 
         self.cfg.is_multimodal = True

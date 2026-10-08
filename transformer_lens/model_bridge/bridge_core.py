@@ -992,17 +992,21 @@ class BridgeCore:
 
         Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
         ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
-        Activations are keyed by the HookPoint's canonical name; backward hooks
-        append ``"_grad"``. ``bwd_hooks`` is empty unless ``incl_bwd``.
+        Activations are keyed by the HookPoint's canonical name, and also by any
+        alias spelling that ``names_filter`` matched, as ``run_with_cache`` does;
+        backward hooks append ``"_grad"``. ``bwd_hooks`` is empty unless
+        ``incl_bwd``.
         """
         if cache is None:
             cache = {}
         pos_slice_obj = Slice.unwrap(pos_slice)
         filter_fn = self._normalize_names_filter(names_filter)
 
-        def save_hook(tensor: Any, hook: Any, is_backward: bool = False) -> None:
+        def save_hook(
+            tensor: Any, hook: Any, is_backward: bool = False, alias_names: Tuple[str, ...] = ()
+        ) -> None:
             assert hook.name is not None
-            key = hook.name + "_grad" if is_backward else hook.name
+            suffix = "_grad" if is_backward else ""
             stored = tensor.detach().to(device)
             # Slice before dropping the batch dim: _pos_slice_dim indexes the
             # batched layout, so the order must match run_with_cache.
@@ -1010,25 +1014,36 @@ class BridgeCore:
                 stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name, hook))
             if remove_batch_dim:
                 stored = drop_batch_dim(stored)
-            if pos_slice_obj is not None and stored.dim() >= 2:
-                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
-            cache[key] = stored
+            for key in (hook.name, *alias_names):
+                cache[key + suffix] = stored
+
+        # One hook point can be reachable under several names (canonical + aliases).
+        # Gather every name the filter matched so the cache has an entry under the
+        # spelling the caller asked for, not just the canonical one.
+        matched: Dict[int, Tuple[str, HookPoint, List[str]]] = {}
+        for name, hook_point in self.hook_dict.items():
+            if not filter_fn(name):
+                continue
+            entry = matched.setdefault(id(hook_point), (name, hook_point, []))
+            if name != hook_point.name:
+                entry[2].append(name)
 
         fwd_hooks: list = []
         bwd_hooks: list = []
-        seen: set = set()
-        for name, hook_point in self.hook_dict.items():
-            if filter_fn(name) and id(hook_point) not in seen:
-                seen.add(id(hook_point))
-                # The default sweep must not emit gated-off points: they never
-                # fire (empty cache entries at best), and feeding them to
-                # hooks()/run_with_hooks — the advertised composition — would
-                # raise. An explicit filter keeps them so downstream can warn.
-                if names_filter is None and self._gated_hook_reason(hook_point.name or name):
-                    continue
-                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
-                if incl_bwd:
-                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
+        for name, hook_point, alias_names in matched.values():
+            # The default sweep must not emit gated-off points: they never
+            # fire (empty cache entries at best), and feeding them to
+            # hooks()/run_with_hooks — the advertised composition — would
+            # raise. An explicit filter keeps them so downstream can warn.
+            if names_filter is None and self._gated_hook_reason(hook_point.name or name):
+                continue
+            # The unfiltered sweep matches every alias too; keep it canonical-only.
+            extra_names = () if names_filter is None else tuple(alias_names)
+            fwd_hooks.append((name, partial(save_hook, is_backward=False, alias_names=extra_names)))
+            if incl_bwd:
+                bwd_hooks.append(
+                    (name, partial(save_hook, is_backward=True, alias_names=extra_names))
+                )
         return cache, fwd_hooks, bwd_hooks
 
     def add_caching_hooks(

@@ -9,6 +9,10 @@ from types import SimpleNamespace
 import pytest
 import torch.nn as nn
 
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    identity_hook_logit_error,
+    randomize_rmsnorm_weights,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.factories.architecture_adapter_factory import (
     SUPPORTED_ARCHITECTURES,
@@ -696,6 +700,49 @@ class TestQwen3_5Integration:
                 f"Expected {hook_name} shape ({batch}, {seq}, {d_model}), "
                 f"got {activations[0].shape}"
             )
+
+
+@pytest.mark.skipif(
+    not _QWEN3_5_AVAILABLE,
+    reason="Qwen3_5TextConfig / Qwen3_5ForCausalLM not available in installed transformers",
+)
+class TestQwen3_5RMSNormOffset:
+    """Norm paths the bridge computes itself must apply HF's (1 + weight) scale."""
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        # Translated cfg: the python-norm fallback reads eps from cfg, not the HF module.
+        bridge, hf_model = _make_tiny_processable_bridge()
+        randomize_rmsnorm_weights(hf_model)
+        return bridge
+
+    @pytest.mark.parametrize("norm", ["blocks.0.ln1", "blocks.3.attn.q_norm", "ln_final"])
+    def test_identity_scale_edit_preserves_logits(self, bridge, norm):
+        error = identity_hook_logit_error(bridge, f"{norm}.hook_scale")
+        assert error < 1e-5
+
+    def test_backward_hook_preserves_forward_logits(self, bridge):
+        error = identity_hook_logit_error(bridge, "ln_final.hook_scale", backward=True)
+        assert error < 1e-5
+
+    def test_ln_rule_backward_scales_by_offset_weight(self, bridge):
+        """The LN-rule VJP of an RMSNorm is (1 + weight) / denom, with denom held constant."""
+        import torch
+
+        from transformer_lens.model_bridge._relevance_rules import (
+            RelevanceRules,
+            use_relevance_rules,
+        )
+
+        ln1 = bridge.blocks[0].ln1
+        hf_norm = ln1.original_component
+        x = torch.randn(1, 4, 128, generator=torch.Generator().manual_seed(0), requires_grad=True)
+        with use_relevance_rules(bridge, RelevanceRules(normalization=True)):
+            ln1(x).sum().backward()
+
+        denom = (x.detach().pow(2).mean(-1, keepdim=True) + hf_norm.eps).sqrt()
+        expected = ((1.0 + hf_norm.weight.detach()) / denom).expand_as(x)
+        torch.testing.assert_close(x.grad, expected)
 
 
 @pytest.mark.skipif(
