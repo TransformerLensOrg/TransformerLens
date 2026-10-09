@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 import torch
+from transformers import AutoModelForCausalLM
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
 
@@ -161,15 +162,12 @@ def test_bridge_hooked_parity_multi_step_optimization():
     bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu", dtype=torch.float64)
     bridge.enable_compatibility_mode(no_processing=True)
 
-    # The bridge gives a bias-less lm_head a zero b_U; HF has no counterpart to train, and
-    # AdamW would shift every logit by lr per step.
-    injected_b_U = bridge.unembed._original_component.bias
-    assert hooked.lm_head.bias is None and injected_b_U is not None
-    bridge_params = [p for p in bridge.parameters() if p is not injected_b_U]
+    assert hooked.lm_head.bias is None
+    assert not bridge.b_U.requires_grad
 
     # Create optimizers with same settings
     hooked_optimizer = torch.optim.AdamW(hooked.parameters(), lr=1e-3)
-    bridge_optimizer = torch.optim.AdamW(bridge_params, lr=1e-3)
+    bridge_optimizer = torch.optim.AdamW(bridge.parameters(), lr=1e-3)
 
     # Create identical input with fixed seed
     torch.manual_seed(42)
@@ -331,3 +329,87 @@ def test_bridge_hooked_parity_multi_step_optimization():
                     f"{loss_relative_diff_after:.3e} exceeds threshold "
                     f"{step_config.post_update_fwd.loss_relative:.3e}"
                 )
+
+
+def test_bridge_hf_float32_training_step():
+    """Compare FP32 logits and output-weight gradients across an SGD step."""
+    reference = AutoModelForCausalLM.from_pretrained(
+        "distilgpt2", torch_dtype=torch.float32, attn_implementation="eager"
+    ).eval()
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    bridge.enable_compatibility_mode(no_processing=True)
+    reference_optimizer = torch.optim.SGD(reference.parameters(), lr=1e-3)
+    bridge_optimizer = torch.optim.SGD(bridge.parameters(), lr=1e-3)
+    input_ids = torch.tensor([[10, 20, 30, 40, 50]])
+    reference_logits = reference(input_ids).logits
+    bridge_logits = bridge(input_ids)
+    torch.testing.assert_close(bridge_logits, reference_logits, rtol=1e-5, atol=1e-4)
+    targets = input_ids[:, 1:].reshape(-1)
+    for logits in (reference_logits, bridge_logits):
+        torch.nn.functional.cross_entropy(
+            logits[:, :-1].reshape(-1, bridge.cfg.d_vocab), targets
+        ).backward()
+    torch.testing.assert_close(
+        bridge.unembed.original_component.weight.grad,
+        reference.lm_head.weight.grad,
+        rtol=1e-4,
+        atol=1e-6,
+    )
+    reference_optimizer.step()
+    bridge_optimizer.step()
+    with torch.no_grad():
+        torch.testing.assert_close(
+            bridge(input_ids), reference(input_ids).logits, rtol=1e-5, atol=1e-4
+        )
+    assert not bridge.b_U.requires_grad
+
+
+def test_bridge_hf_cross_entropy_multi_step_optimization():
+    """Compare next-token training in float64 without FP32 AdamW amplification."""
+    torch.manual_seed(42)
+    reference = (
+        AutoModelForCausalLM.from_pretrained(
+            "distilgpt2", torch_dtype=torch.float32, attn_implementation="eager"
+        )
+        .double()
+        .eval()
+    )
+    bridge = TransformerBridge.boot_transformers("distilgpt2", device="cpu").double()
+    bridge.enable_compatibility_mode(no_processing=True)
+    assert reference.lm_head.bias is None
+    assert not bridge.b_U.requires_grad
+    assert bridge.unembed.original_component.weight is bridge.embed.original_component.weight
+
+    reference_optimizer = torch.optim.AdamW(reference.parameters(), lr=1e-3)
+    bridge_optimizer = torch.optim.AdamW(bridge.parameters(), lr=1e-3)
+    torch.manual_seed(42)
+    input_ids = torch.randint(0, bridge.cfg.d_vocab, (1, 10))
+    reference_weight = reference.lm_head.weight
+    bridge_weight = bridge.unembed.original_component.weight
+    torch.testing.assert_close(bridge_weight, reference_weight, rtol=0, atol=0)
+
+    for _ in range(10):
+        reference_logits = reference(input_ids).logits
+        bridge_logits = bridge(input_ids)
+        torch.testing.assert_close(bridge_logits, reference_logits, rtol=1e-8, atol=1e-8)
+        targets = input_ids[:, 1:].reshape(-1)
+        reference_loss = torch.nn.functional.cross_entropy(
+            reference_logits[:, :-1].reshape(-1, bridge.cfg.d_vocab), targets
+        )
+        bridge_loss = torch.nn.functional.cross_entropy(
+            bridge_logits[:, :-1].reshape(-1, bridge.cfg.d_vocab), targets
+        )
+        torch.testing.assert_close(bridge_loss, reference_loss, rtol=1e-9, atol=1e-9)
+        reference_loss.backward()
+        bridge_loss.backward()
+        torch.testing.assert_close(bridge_weight.grad, reference_weight.grad, rtol=1e-7, atol=1e-9)
+        reference_optimizer.step()
+        bridge_optimizer.step()
+        torch.testing.assert_close(bridge_weight, reference_weight, rtol=1e-8, atol=1e-8)
+        reference_optimizer.zero_grad()
+        bridge_optimizer.zero_grad()
+
+    with torch.no_grad():
+        torch.testing.assert_close(
+            bridge(input_ids), reference(input_ids).logits, rtol=1e-8, atol=1e-8
+        )
