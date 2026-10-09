@@ -66,6 +66,9 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         # --- Parallel block: single norm, no post_attention_layernorm ---
         self.cfg.parallel_attn_mlp = True
 
+        # CohereRotaryEmbedding repeat_interleaves cos/sin and rotate_half pairs adjacent elements.
+        self.cfg.rotary_interleaved_cos_sin = True
+
         # --- Tokenizer: BOS is prepended by default ---
         # CohereTokenizerFast has add_bos_token=False but HF's __call__ with
         # add_special_tokens=True (the default) prepends BOS. Verified against
