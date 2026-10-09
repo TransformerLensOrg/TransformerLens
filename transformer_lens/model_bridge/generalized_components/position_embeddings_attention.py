@@ -427,8 +427,11 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             key_states = key_states.view(hidden_shape).transpose(1, 2)
             value_states = value_states.view(hidden_shape).transpose(1, 2)
 
+        # HunYuan rotates first and normalises after RoPE, every other post-reshape arch before.
+        qk_norm_after_rope = bool(getattr(self.config, "qk_norm_after_rope", False))
+
         # Post-reshape phase (Gemma-3/Cohere): norm on [B, H, S, D].
-        if has_q_norm and self._qk_norm_phase == "post_reshape":
+        if has_q_norm and self._qk_norm_phase == "post_reshape" and not qk_norm_after_rope:
             query_states = self.hook_q_normed(self.q_norm(query_states))
             if has_k_norm:
                 key_states = self.hook_k_normed(self.k_norm(key_states))
@@ -510,6 +513,11 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             query_states = self.hook_rot_q(query_states)
         if hasattr(self, "hook_rot_k"):
             key_states = self.hook_rot_k(key_states)
+
+        if has_q_norm and self._qk_norm_phase == "post_reshape" and qk_norm_after_rope:
+            query_states = self.hook_q_normed(self.q_norm(query_states))
+            if has_k_norm:
+                key_states = self.hook_k_normed(self.k_norm(key_states))
 
         # --- KV cache: extend K/V with cached positions ---
         key_states, value_states = self._update_kv_cache(key_states, value_states, **kwargs)
