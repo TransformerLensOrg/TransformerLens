@@ -22,6 +22,8 @@ class HunYuanDenseV1ArchitectureAdapter(ArchitectureAdapter):
 
         self._set_rms_rotary_defaults()
 
+        self.cfg.qk_norm_after_rope = True
+
         self.cfg.attn_implementation = "eager"
 
         self.weight_processing_conversions = {
