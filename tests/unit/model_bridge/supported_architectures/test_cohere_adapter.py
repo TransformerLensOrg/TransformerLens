@@ -65,6 +65,14 @@ def adapter(cfg: TransformerBridgeConfig) -> CohereArchitectureAdapter:
 class TestCohereAdapterConfig:
     """Adapter sets cfg.* attributes correctly."""
 
+    def test_rotary_interleaved_cos_sin(self, adapter: CohereArchitectureAdapter) -> None:
+        """Cohere's rotary module returns interleaved cos/sin and rotates adjacent pairs."""
+        assert adapter.cfg.rotary_interleaved_cos_sin is True
+
+    def test_rotary_interleaved_cos_sin_defaults_to_false(self) -> None:
+        # a fresh config, the class-scoped fixture is changed by the adapter
+        assert _make_cfg().rotary_interleaved_cos_sin is False
+
     def test_parallel_attn_mlp_is_true(self, adapter: CohereArchitectureAdapter) -> None:
         # Single input_layernorm; attn and MLP run in parallel on same normed input.
         assert adapter.cfg.parallel_attn_mlp is True
@@ -501,3 +509,42 @@ class TestCohereOutputLogitsTransform:
         torch.testing.assert_close(adapter.apply_output_logits_transform(logits), logits)
         # cfg.logit_scale itself stays the declared constant for other readers.
         assert adapter.cfg.logit_scale == 0.25
+
+
+class TestCohereParity:
+    """The bridge must reproduce Hugging Face logits, which needs Cohere's own RoPE convention."""
+
+    def test_logits_match_hf(self) -> None:
+        import copy
+
+        from transformers import CohereConfig, CohereForCausalLM
+
+        from tests.tiny_checkpoints import assert_tiny_parity
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        torch.manual_seed(0)
+        hf_config = CohereConfig(
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            intermediate_size=64,
+            vocab_size=64,
+            max_position_embeddings=64,
+            tie_word_embeddings=False,
+        )
+        hf_model = CohereForCausalLM(hf_config).eval()
+        with torch.no_grad():
+            # Wide weights so that a wrong rotation changes the logits clearly.
+            for param in hf_model.parameters():
+                param.add_(0.3 * torch.randn_like(param))
+        # The bridge wraps the modules of the model it is given, so keep an untouched reference.
+        reference = copy.deepcopy(hf_model)
+        tokens = torch.randint(3, 60, (2, 10))
+        with torch.no_grad():
+            hf_logits = reference(tokens).logits
+            bridge = build_bridge_from_module(
+                hf_model, architecture="CohereForCausalLM", hf_config=hf_config
+            )
+            bridge_logits = bridge(tokens, return_type="logits")
+        assert_tiny_parity(bridge_logits, hf_logits, "CohereForCausalLM")
