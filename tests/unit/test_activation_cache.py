@@ -718,20 +718,32 @@ def test_stack_head_results_does_not_warn_when_results_cached(
     assert already_cached in caplog.messages
 
 
-@pytest.mark.parametrize(
-    "layer,mlp_input",
-    [(0, False), (-2, False), (-2, True)],
-    ids=["zero-attn-input", "negative-attn-input", "negative-mlp-input"],
-)
+@pytest.mark.parametrize("mlp_input", [False, True], ids=["attn-input", "mlp-input"])
 @torch.no_grad()
 def test_stack_neuron_results_rejects_out_of_contract_remainder_layer(
     activation_cache: ActivationCache,
-    layer: int,
     mlp_input: bool,
 ) -> None:
     """Layers below the remainder contract raise instead of wrapping to a late layer's residual."""
     with pytest.raises(ValueError, match="incl_remainder=True"):
-        activation_cache.stack_neuron_results(layer, incl_remainder=True, mlp_input=mlp_input)
+        activation_cache.stack_neuron_results(-2, incl_remainder=True, mlp_input=mlp_input)
+
+
+@torch.no_grad()
+def test_stack_neuron_results_layer_zero_remainder_is_the_whole_model(
+    activation_cache: ActivationCache,
+) -> None:
+    """``layer=0`` decomposes the final residual stream: no neurons, remainder = resid_post[-1]."""
+    stack, labels = activation_cache.stack_neuron_results(
+        0, incl_remainder=True, return_labels=True
+    )
+    assert labels == ["remainder"]
+    n_layers = activation_cache.model.cfg.n_layers
+    torch.testing.assert_close(stack[0], activation_cache[("resid_post", n_layers - 1)])
+    empty, empty_labels = activation_cache.stack_neuron_results(
+        0, incl_remainder=False, return_labels=True
+    )
+    assert empty_labels == [] and empty.shape[0] == 0
 
 
 @torch.no_grad()

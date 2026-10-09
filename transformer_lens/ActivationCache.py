@@ -1273,7 +1273,9 @@ class ActivationCache:
         Args:
             layer:
                 Layer index - heads at all layers strictly before this are included. layer must be
-                in [1, n_layers]
+                in [1, n_layers]. ``layer=0`` follows the negative-index convention: the neuron
+                stack is empty and with ``incl_remainder=True`` the remainder is the final layer's
+                residual stream (``resid_post`` of layer ``n_layers - 1``), i.e. the whole model.
             pos_slice:
                 Slice of the positions.
             neuron_slice:
@@ -1301,13 +1303,12 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        # Below these bounds the remainder target's negative layer index would wrap around to a
-        # late layer via __getitem__, silently returning the wrong residual stream.
-        min_layer = 0 if mlp_input else 1
-        if incl_remainder and layer < min_layer:
+        # layer=0 is the documented whole-model case (remainder reads resid_post of layer -1, the
+        # final layer). Anything below it would wrap the remainder target to an arbitrary late
+        # layer via __getitem__, silently returning the wrong residual stream.
+        if incl_remainder and layer < 0:
             raise ValueError(
-                f"layer must be >= {min_layer} with incl_remainder=True and "
-                f"mlp_input={mlp_input}; got {layer}."
+                f"layer must be >= 0 with incl_remainder=True (-1/None mean n_layers); got {layer}."
             )
 
         # Layers are concatenated along the neuron axis, so it must not collapse. unwrap turns an
