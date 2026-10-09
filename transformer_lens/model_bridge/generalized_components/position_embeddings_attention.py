@@ -51,6 +51,29 @@ def _apply_rotary_pos_emb_adjacent_pairs(
     return q_embed.to(original_dtype), k_embed.to(original_dtype)
 
 
+def _apply_rotary_pos_emb_interleaved_cos_sin(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Cohere-style RoPE: adjacent pairs rotated with cos/sin that are already interleaved.
+
+    The rotary module returns cos/sin with each frequency repeated twice
+    ([c0, c0, c1, c1, ...]), so they are used as given, unlike the GLM/ERNIE
+    convention above that interleaves the half-duplicated layout itself.
+    """
+    original_dtype = q.dtype
+    cos = cos.unsqueeze(1)
+    sin = sin.unsqueeze(1)
+
+    def _rotate(x: torch.Tensor) -> torch.Tensor:
+        x1 = x[..., 0::2]
+        x2 = x[..., 1::2]
+        return torch.stack((-x2, x1), dim=-1).flatten(-2)
+
+    q_embed = (q.float() * cos) + (_rotate(q).float() * sin)
+    k_embed = (k.float() * cos) + (_rotate(k).float() * sin)
+    return q_embed.to(original_dtype), k_embed.to(original_dtype)
+
+
 class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     """Attention bridge for models that require position embeddings (e.g., Gemma-3).
 
@@ -435,7 +458,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if position_embeddings is not None:
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
-            if getattr(self.config, "rotary_adjacent_pairs", False):
+            if getattr(self.config, "rotary_interleaved_cos_sin", False):
+                # Cohere convention: adjacent pairs, cos/sin already interleaved.
+                apply_rotary_pos_emb = _apply_rotary_pos_emb_interleaved_cos_sin
+            elif getattr(self.config, "rotary_adjacent_pairs", False):
                 # GLM/ERNIE convention: rotate adjacent element pairs in fp32,
                 # with cos/sin halves expanded by repeat_interleave.
                 apply_rotary_pos_emb = _apply_rotary_pos_emb_adjacent_pairs
