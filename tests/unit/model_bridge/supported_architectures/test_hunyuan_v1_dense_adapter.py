@@ -126,6 +126,13 @@ class TestHunYuanDenseV1AdapterConfig:
         """Adapter forces eager attention so component-level activations are hookable."""
         assert adapter.cfg.attn_implementation == "eager"
 
+    def test_qk_norm_after_rope(self, adapter: HunYuanDenseV1ArchitectureAdapter) -> None:
+        """HunYuan rotates Q/K first and applies query/key_layernorm after RoPE."""
+        assert adapter.cfg.qk_norm_after_rope is True
+
+    def test_qk_norm_after_rope_defaults_to_false(self, cfg: TransformerBridgeConfig) -> None:
+        assert cfg.qk_norm_after_rope is False
+
 
 # ---------------------------------------------------------------------------
 # Component mapping structure tests
@@ -398,3 +405,44 @@ class TestHunYuanDenseV1SetupComponentTesting:
         adapter.setup_component_testing(_fake_hf_model(rotary_emb), bridge_model=bridge_model)
 
         assert bridge_model.blocks[0].attn.rotary_emb is rotary_emb
+
+
+# ---------------------------------------------------------------------------
+# Numerical parity with Hugging Face
+# ---------------------------------------------------------------------------
+
+
+class TestHunYuanDenseV1Parity:
+    """The bridge must reproduce HF logits, which needs QK-norm after RoPE."""
+
+    def test_logits_match_hf(self) -> None:
+        import torch
+        from transformers import HunYuanDenseV1Config, HunYuanDenseV1ForCausalLM
+
+        from tests.tiny_checkpoints import assert_tiny_parity
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        torch.manual_seed(0)
+        hf_config = HunYuanDenseV1Config(
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=8,
+            intermediate_size=64,
+            vocab_size=64,
+            max_position_embeddings=64,
+            tie_word_embeddings=False,
+        )
+        hf_model = HunYuanDenseV1ForCausalLM(hf_config).eval()
+        with torch.no_grad():
+            # Wide weights so that applying the QK norm before or after RoPE changes the logits.
+            for param in hf_model.parameters():
+                param.add_(0.3 * torch.randn_like(param))
+            tokens = torch.randint(3, 60, (2, 10))
+            hf_logits = hf_model(tokens).logits
+            bridge = build_bridge_from_module(
+                hf_model, architecture="HunYuanDenseV1ForCausalLM", hf_config=hf_config
+            )
+            bridge_logits = bridge(tokens, return_type="logits")
+        assert_tiny_parity(bridge_logits, hf_logits, "HunYuanDenseV1")

@@ -83,6 +83,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         rotary_base: int | float = 10000,
         trust_remote_code: bool = False,
         rotary_adjacent_pairs: bool = False,
+        qk_norm_after_rope: bool = False,
         rotary_interleaved_cos_sin: bool = False,
         load_in_4bit: bool = False,
         num_experts: Optional[int] = None,
@@ -184,6 +185,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.rotary_base = int(rotary_base)
         self.trust_remote_code = trust_remote_code
         self.rotary_adjacent_pairs = rotary_adjacent_pairs
+        self.qk_norm_after_rope = qk_norm_after_rope
         self.rotary_interleaved_cos_sin = rotary_interleaved_cos_sin
         self.load_in_4bit = load_in_4bit
         self.num_experts = num_experts
