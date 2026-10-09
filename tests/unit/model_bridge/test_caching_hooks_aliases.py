@@ -77,6 +77,8 @@ def test_default_sweep_still_caches_canonical_names(bridge, tokens):
     with torch.no_grad(), bridge.hooks(fwd_hooks=fwd_hooks):
         bridge.forward(tokens)
     assert CANONICAL in cache
+    # The unfiltered sweep stays canonical-only; aliases appear only when a filter asks.
+    assert ALIAS not in cache
 
 
 def test_alias_filter_applies_to_gradients(bridge, tokens):

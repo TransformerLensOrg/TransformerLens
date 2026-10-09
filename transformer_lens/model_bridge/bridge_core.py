@@ -985,6 +985,8 @@ class BridgeCore:
 
         ``remove_batch_dim`` drops a leading dimension of size 1 and leaves any other tensor as
         it is, so a batch larger than 1 keeps its batch dimension instead of losing examples.
+        The check is per tensor, so a broadcast activation with a size-1 leading dimension
+        (e.g. rotary ``hook_cos``/``hook_sin``) is squeezed even when the batch is larger.
         Unlike ``run_with_cache``, which raises for a batch larger than 1, a hook sees one tensor
         at a time and cannot tell a batch dimension from a flattened ``[batch * pos, ...]`` one.
         Hooks that run under ``run_with_hooks(remove_batch_dim=True)`` already receive tensors
@@ -993,9 +995,11 @@ class BridgeCore:
         Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
         ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
         Activations are keyed by the HookPoint's canonical name, and also by any
-        alias spelling that ``names_filter`` matched, as ``run_with_cache`` does;
-        backward hooks append ``"_grad"``. ``bwd_hooks`` is empty unless
-        ``incl_bwd``.
+        alias spelling that ``names_filter`` matched. This is broader than
+        ``run_with_cache`` for callable filters: one that matches only an alias
+        yields both the canonical and alias keys here, while ``run_with_cache``
+        stores only the alias. Backward hooks append ``"_grad"``. ``bwd_hooks``
+        is empty unless ``incl_bwd``.
         """
         if cache is None:
             cache = {}
@@ -1245,7 +1249,10 @@ class BridgeCore:
         (KV cache cleaned up on stop). ``start_at_layer`` treats ``input`` as the
         residual entering block ``k`` (see :meth:`forward`); hooks on blocks below
         ``k`` are skipped to match HookedTransformer. ``remove_batch_dim``
-        squeezes/unsqueezes the batch dim around hook callbacks (batch_size==1 only).
+        squeezes/unsqueezes the leading dim around each hook callback whenever
+        that tensor's leading dim is 1 — a per-tensor rule, so broadcast
+        activations such as rotary ``hook_cos``/``hook_sin`` lose their size-1
+        leading dim even at batch > 1.
         ``reset_hooks_end`` removes the hooks this call added when it finishes —
         hooks the caller attached beforehand are left alone either way;
         ``clear_contexts`` also wipes the touched hook points' ``ctx``.

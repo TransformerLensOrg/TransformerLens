@@ -83,6 +83,30 @@ def test_generation_config_forced_bos_applied_by_default():
     assert out[0, 1].item() == forced
 
 
+def test_explicit_forced_bos_overrides_generation_config():
+    """HF lets a generate() kwarg beat the generation_config default; the
+    bridge must seed the caller's language token, not the config's."""
+    from transformer_lens.model_bridge import TransformerBridge
+
+    try:
+        bridge = TransformerBridge.boot_transformers(
+            "hf-internal-testing/tiny-random-M2M100ForConditionalGeneration", device="cpu"
+        )
+    except (OSError, ConnectionError, TimeoutError) as exc:
+        pytest.skip(f"tiny-random-m2m100 unavailable offline: {exc}")
+
+    bridge.original_model.generation_config.forced_bos_token_id = 7
+    explicit = 9
+    out = bridge.generate(
+        "Ik moet nu echt gaan slapen.",
+        max_new_tokens=4,
+        temperature=0.0,
+        return_type="tokens",
+        forced_bos_token_id=explicit,
+    )
+    assert out[0, 1].item() == explicit
+
+
 def test_generation_config_min_length_suppresses_early_eos():
     """bart-large-cnn pins min_length=56 in its generation config; HF's
     generate() suppresses EOS until then. Without it the bridge loop can EOS

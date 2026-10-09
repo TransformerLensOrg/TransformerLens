@@ -14,6 +14,7 @@ import torch
 from jaxtyping import Complex, Float
 
 import transformer_lens.utilities.tensors as tensor_utils
+from transformer_lens.utilities.slice import to_python_int
 
 
 @runtime_checkable
@@ -288,8 +289,11 @@ class FactoredMatrix:
         """
         if isinstance(idx, int):
             sequence = list(sequence)
-            if isinstance(sequence[idx], int):
-                value = sequence[idx]
+            entry = sequence[idx]
+            # bool keeps its legacy int-index treatment here, so check plain int
+            # before the int-like coercion.
+            value = int(entry) if isinstance(entry, int) else to_python_int(entry)
+            if value is not None:
                 # `value + 1` selects the single requested element, except when
                 # value == -1: there `value + 1 == 0` yields the empty slice(-1, 0).
                 # Use `None` as the stop so the final element is kept.

@@ -129,3 +129,24 @@ class TestDeepSeekAttentionHooks:
         _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
         assert any("hook_q_latent" in k for k in cache.keys())
         assert any("hook_kv_latent" in k for k in cache.keys())
+
+
+class TestDeepSeekAttnResult:
+    """use_attn_result must expose a genuine per-head hook_result on MLA, not
+    the already-summed attention output."""
+
+    def test_run_with_cache_returns_per_head_result(self, tiny_deepseek_bridge):
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        tiny_deepseek_bridge.set_use_attn_result(True)
+        try:
+            _, cache = tiny_deepseek_bridge.run_with_cache(tokens)
+        finally:
+            tiny_deepseek_bridge.set_use_attn_result(False)
+        hf_config = tiny_deepseek_bridge.original_model.config
+        result = cache["blocks.0.attn.hook_result"]
+        assert result.shape == (1, 4, hf_config.num_attention_heads, hf_config.hidden_size)
+        summed = result.sum(dim=-2)
+        bias = tiny_deepseek_bridge.blocks[0].attn.o.original_component.bias
+        if bias is not None:
+            summed = summed + bias
+        torch.testing.assert_close(summed, cache["blocks.0.attn.hook_out"], atol=1e-5, rtol=1e-4)

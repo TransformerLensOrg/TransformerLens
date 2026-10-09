@@ -134,7 +134,7 @@ class GiddArchitectureAdapter(ArchitectureAdapter):
             model_class = force_import_remote_class(
                 model_name,
                 "modeling_gidd.GiddForDiffusionLM",
-                revision=model_kwargs.get("revision"),
+                revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
             )
             if model_class is not None:
                 disable_tied_weights_lookup(model_class)

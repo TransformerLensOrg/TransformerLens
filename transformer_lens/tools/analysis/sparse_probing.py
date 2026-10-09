@@ -19,12 +19,21 @@ from jaxtyping import Bool, Float, Int, Integer
 
 PreprocessMode = Literal["none", "standardize"]
 ClassWeightMode = Literal["balanced"] | None
+ArmMode = Literal["random_coordinate", "label_shuffle"]
 _SUPPORTED_FEATURE_DTYPES = (
     torch.float16,
     torch.bfloat16,
     torch.float32,
     torch.float64,
 )
+
+
+class SparseProbeConvergenceError(RuntimeError):
+    """A probe fit failed to converge or produced non-finite output.
+
+    Distinct from other ``RuntimeError``s so the sweep's control-rejection path
+    swallows only convergence failures, never unrelated runtime faults.
+    """
 
 
 @dataclass(frozen=True)
@@ -97,11 +106,8 @@ class SparseProbeResult:
 class SparseProbeControl:
     """Raw held-out metric distributions for one control at one sparsity.
 
-    Rows are the control repeats that converged; a repeat whose fit was rejected
-    is excluded here (its coordinates and reason live in ``SparseProbeSweep.rejections``),
-    so the row count can be below the requested repeat count. These are raw metrics
-    only and carry no per-fit convergence diagnostics (``newton_decrement`` etc.) —
-    those live on ``SparseProbeResult`` for the main fits.
+    Rows cover only converged repeats, so the row count can be below the request;
+    rejected repeats live in ``SparseProbeSweep.rejections``.
     """
 
     supports: Int[torch.Tensor, "repeat selected_feature"]
@@ -117,14 +123,10 @@ class SparseProbeControl:
 class SparseProbeRejection:
     """A control fit excluded from the sweep because it did not converge.
 
-    The sweep records rejected control fits here instead of aborting, so completed
-    main probes and other controls survive. ``arm`` is ``"random_coordinate"`` or
-    ``"label_shuffle"``, ``support`` is the coordinate set the rejected fit used, and
-    ``reason`` is the convergence-failure message. Main-probe fits are not made
-    partial this way — they still raise (see ``sweep_sparse_probe``).
+    Recorded instead of aborting so completed main probes and other controls survive.
     """
 
-    arm: str
+    arm: ArmMode
     k: int
     repeat: int
     support: Int[torch.Tensor, "selected_feature"]
@@ -133,11 +135,7 @@ class SparseProbeRejection:
 
 @dataclass(frozen=True)
 class SparseProbeSweep:
-    """Probe results and aligned controls over a strictly increasing k-grid.
-
-    ``rejections`` lists control fits that did not converge and were excluded; it is
-    empty when every requested control fit converged.
-    """
+    """Probe results and aligned controls over a strictly increasing k-grid."""
 
     ks: tuple[int, ...]
     results: tuple[SparseProbeResult, ...]
@@ -435,14 +433,14 @@ def _newton_direction(
     scaled.diagonal().add_(_NEWTON_RIDGE)
     factor, info = torch.linalg.cholesky_ex(scaled)
     if int(info.item()) != 0:
-        raise RuntimeError(
+        raise SparseProbeConvergenceError(
             "sparse probe optimizer did not converge: "
             "Hessian factorization failed during Newton refinement"
         )
     direction = scale * torch.cholesky_solve((scale * gradient)[:, None], factor)[:, 0]
     decrement = 0.5 * float((gradient @ direction).item())
     if not math.isfinite(decrement) or decrement < 0.0:
-        raise RuntimeError(
+        raise SparseProbeConvergenceError(
             "sparse probe optimizer did not converge: "
             f"Newton decrement {decrement!r} is not a finite nonnegative number"
         )
@@ -470,7 +468,7 @@ def _refine_with_newton(
         if decrement <= decrement_tolerance:
             return current, decrement, steps
         if steps >= max_refinement_steps:
-            raise RuntimeError(
+            raise SparseProbeConvergenceError(
                 "sparse probe optimizer did not converge: "
                 f"Newton decrement {decrement:.6g} exceeds {decrement_tolerance:.6g} "
                 f"after {steps} refinement steps"
@@ -488,7 +486,7 @@ def _refine_with_newton(
                 break
             step *= 0.5
         else:
-            raise RuntimeError(
+            raise SparseProbeConvergenceError(
                 "sparse probe optimizer did not converge: "
                 "Newton refinement line search found no descent step"
             )
@@ -530,12 +528,12 @@ def _fit_logistic(
     try:
         optimizer.step(closure)
     except RuntimeError as error:
-        raise RuntimeError("sparse probe optimizer failed") from error
+        raise SparseProbeConvergenceError("sparse probe optimizer failed") from error
     detached = parameters.detach()
     lbfgs_gradient = _objective_gradient(features, labels, detached, sample_weights, l2_strength)
     lbfgs_gradient_inf_norm = float(lbfgs_gradient.abs().max().item())
     if not math.isfinite(lbfgs_gradient_inf_norm):
-        raise RuntimeError("sparse probe optimizer produced non-finite output")
+        raise SparseProbeConvergenceError("sparse probe optimizer produced non-finite output")
     state = optimizer.state[parameters]
     iterations = int(state.get("n_iter", 0))
     function_evaluations = int(state.get("func_evals", 0))
@@ -562,7 +560,7 @@ def _fit_logistic(
     gradient = _objective_gradient(features, labels, refined, sample_weights, l2_strength)
     gradient_inf_norm = float(gradient.abs().max().item())
     if not math.isfinite(objective) or not math.isfinite(gradient_inf_norm):
-        raise RuntimeError("sparse probe optimizer produced non-finite output")
+        raise SparseProbeConvergenceError("sparse probe optimizer produced non-finite output")
     return _FitOutcome(
         coefficients=refined[:-1].clone(),
         intercept=refined[-1].clone(),
@@ -808,7 +806,8 @@ def fit_sparse_probe(
 
     Raises:
         ValueError: If inputs or options violate the binary-probe contract.
-        RuntimeError: If the optimizer fails or misses its convergence threshold.
+        SparseProbeConvergenceError: If the optimizer fails or misses its
+            convergence threshold.
     """
     validated = _validate_inputs(
         features,
@@ -845,15 +844,12 @@ def fit_sparse_probe(
     )
 
 
-def _control_generator(seed: int, k: int, arm: str, repeat: int) -> torch.Generator:
-    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``.
-
-    Each control draw gets its own generator so a draw depends only on its own
-    coordinates, not on how many draws earlier k values or the other arm
-    consumed from a shared stream. SHA-256 (not Python ``hash``) keeps the seed
-    stable across processes; the mask keeps it in torch's accepted int64 range.
-    """
-    key = f"{seed}:{k}:{arm}:{repeat}".encode()
+def _control_generator(seed: int, k: int, arm: ArmMode, repeat: int) -> torch.Generator:
+    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``; SHA-256 rather than
+    Python ``hash`` keeps each draw's seed stable across processes."""
+    # The key keeps the pre-ArmMode short arm names so released control draws reproduce.
+    key_arm = "random" if arm == "random_coordinate" else "shuffle"
+    key = f"{seed}:{k}:{key_arm}:{repeat}".encode()
     derived = int.from_bytes(hashlib.sha256(key).digest()[:8], "little") & 0x7FFFFFFFFFFFFFFF
     return torch.Generator(device="cpu").manual_seed(derived)
 
@@ -915,8 +911,9 @@ def sweep_sparse_probe(
 
     Raises:
         ValueError: If the grid, controls, inputs, or options are invalid.
-        RuntimeError: If a main-probe fit fails to converge. Control-fit failures
-            do not raise here — they are collected in ``SparseProbeSweep.rejections``.
+        SparseProbeConvergenceError: If a main-probe fit fails to converge.
+            Control-fit convergence failures do not raise here — they are collected
+            in ``SparseProbeSweep.rejections``; any other error still propagates.
     """
     if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence):
         raise ValueError("ks must be a non-empty sequence of positive integers")
@@ -971,16 +968,14 @@ def sweep_sparse_probe(
         random_supports = []
         random_metrics = []
         for repeat in range(random_count):
-            draw_generator = _control_generator(validated.seed, k, "random", repeat)
+            draw_generator = _control_generator(validated.seed, k, "random_coordinate", repeat)
             support = torch.randperm(feature_count, generator=draw_generator)[:k].sort().values
-            # A control fit that fails to converge is recorded and skipped, not fatal:
-            # losing one auxiliary draw must not discard the completed main probes and
-            # other controls. Main fits above are the primary output and still raise.
+            # A failed control draw is recorded, not fatal: main probes and other controls survive.
             try:
                 metrics = _fit_control(
                     validated, train_indices, test_indices, support, train_labels
                 )
-            except RuntimeError as error:
+            except SparseProbeConvergenceError as error:
                 rejections.append(
                     SparseProbeRejection("random_coordinate", k, repeat, support, str(error))
                 )
@@ -992,7 +987,7 @@ def sweep_sparse_probe(
         shuffle_supports = []
         shuffle_metrics = []
         for repeat in range(shuffle_count):
-            draw_generator = _control_generator(validated.seed, k, "shuffle", repeat)
+            draw_generator = _control_generator(validated.seed, k, "label_shuffle", repeat)
             permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
             shuffled_labels = train_labels[permutation]
             shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
@@ -1001,7 +996,7 @@ def sweep_sparse_probe(
                 metrics = _fit_control(
                     validated, train_indices, test_indices, support, shuffled_labels
                 )
-            except RuntimeError as error:
+            except SparseProbeConvergenceError as error:
                 rejections.append(
                     SparseProbeRejection("label_shuffle", k, repeat, support, str(error))
                 )

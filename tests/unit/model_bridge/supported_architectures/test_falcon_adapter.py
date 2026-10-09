@@ -309,3 +309,56 @@ class TestFalconGQASupport:
         for slot in ("k", "v"):
             conv = adapter.weight_processing_conversions[f"blocks.{{i}}.attn.{slot}"]
             assert conv.tensor_conversion.axes_lengths["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# ALiBi cached generation
+# ---------------------------------------------------------------------------
+
+
+class TestFalconALiBiCachedGeneration:
+    """Cached decoding must see the prompt, so it has to match HF and uncached decoding."""
+
+    def test_cached_generation_matches_hf(self) -> None:
+        import copy
+
+        import torch
+        from transformers import FalconConfig, FalconForCausalLM
+
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        torch.manual_seed(4)
+        # falcon-rw layout: ALiBi + sequential block; eager to match the
+        # bridge's reimplemented attention path.
+        hf_config = FalconConfig(
+            hidden_size=32,
+            num_attention_heads=4,
+            num_hidden_layers=2,
+            vocab_size=64,
+            alibi=True,
+            new_decoder_architecture=False,
+            multi_query=False,
+            parallel_attn=False,
+            attn_implementation="eager",
+        )
+        hf_model = FalconForCausalLM(hf_config).eval()
+        with torch.no_grad():
+            # Wide weights so that ignoring the cached tokens changes the generated ids.
+            for param in hf_model.parameters():
+                param.add_(0.3 * torch.randn_like(param))
+        # The bridge wraps the modules of the model it is given, so keep an untouched reference.
+        reference = copy.deepcopy(hf_model)
+        tokens = torch.randint(3, 60, (2, 5))
+        with torch.no_grad():
+            expected = reference.generate(tokens, max_new_tokens=6, do_sample=False, pad_token_id=0)
+            bridge = build_bridge_from_module(
+                hf_model, architecture="FalconForCausalLM", hf_config=hf_config
+            )
+            kwargs = dict(max_new_tokens=6, do_sample=False, stop_at_eos=False, verbose=False)
+            cached = bridge.generate(tokens, use_past_kv_cache=True, **kwargs)
+            uncached = bridge.generate(tokens, use_past_kv_cache=False, **kwargs)
+        # A degenerate single-token continuation could match by accident.
+        continuation = expected[:, tokens.shape[1] :]
+        assert all(len(set(row.tolist())) > 1 for row in continuation)
+        assert torch.equal(torch.as_tensor(uncached), expected)
+        assert torch.equal(torch.as_tensor(cached), expected)

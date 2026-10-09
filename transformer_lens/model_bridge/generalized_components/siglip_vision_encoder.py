@@ -57,8 +57,12 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
             config: Optional configuration object
             submodules: Dictionary of submodules to register
         """
+        # use_native_layernorm_autograd makes the bridge run the wrapped LayerNorm's
+        # own forward, so the vision tower's eps applies instead of the LM config's.
         default_submodules: Dict[str, GeneralizedComponent] = {
-            "ln1": NormalizationBridge(name="layer_norm1", config=config),
+            "ln1": NormalizationBridge(
+                name="layer_norm1", config=config, use_native_layernorm_autograd=True
+            ),
             "attn": AttentionBridge(
                 name="self_attn",
                 config=vision_attention_config(config),
@@ -70,7 +74,9 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
                     "o": LinearBridge(name="out_proj"),
                 },
             ),
-            "ln2": NormalizationBridge(name="layer_norm2", config=config),
+            "ln2": NormalizationBridge(
+                name="layer_norm2", config=config, use_native_layernorm_autograd=True
+            ),
             "mlp": MLPBridge(
                 name="mlp",
                 config=config,
@@ -151,7 +157,8 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         # SiglipVisionModel wraps a SiglipVisionTransformer as .vision_model till
         # transformers version 5.6.0
         # post_layernorm is nn.LayerNorm; NormalizationBridge introspects the
-        # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak.
+        # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak,
+        # and the native-autograd flag keeps the vision eps over the LM config's.
         default_submodules = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
             # Pass config down: without it the layer's attention bridge inherits the
@@ -161,7 +168,9 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
                 name="vision_model.encoder.layers", config=config
             ),
             "post_layernorm": NormalizationBridge(
-                name="vision_model.post_layernorm", config=config
+                name="vision_model.post_layernorm",
+                config=config,
+                use_native_layernorm_autograd=True,
             ),
         }
 

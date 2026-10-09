@@ -221,6 +221,18 @@ class TestCohereAdapterComponentMapping:
         assert isinstance(attn, PositionEmbeddingsAttentionBridge)
         assert attn.submodules["o"].name == "o_proj"
 
+    def test_attn_declares_optional_qk_norms(self, adapter: CohereArchitectureAdapter) -> None:
+        # use_qk_norm=True checkpoints need these declared or validation refuses to load;
+        # optional=True lets the default use_qk_norm=False checkpoints drop them at setup.
+        assert adapter.component_mapping is not None
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn, PositionEmbeddingsAttentionBridge)
+        for key in ("q_norm", "k_norm"):
+            norm = attn.submodules[key]
+            assert isinstance(norm, NormalizationBridge)
+            assert norm.name == key
+            assert norm.optional is True
+
     def test_attn_q_is_linear_bridge(self, adapter: CohereArchitectureAdapter) -> None:
         assert adapter.component_mapping is not None
         attn = adapter.component_mapping["blocks"].submodules["attn"]

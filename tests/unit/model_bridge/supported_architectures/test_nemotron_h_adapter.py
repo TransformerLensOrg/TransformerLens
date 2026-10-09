@@ -287,6 +287,11 @@ class TestNemotronHStatefulCache:
             hf_model=hf_model, batch_size=1, device="cpu", dtype=None
         )
         assert isinstance(cache, DynamicCache)
+        # The config drives per-layer cache types: a config-less DynamicCache()
+        # starts empty and would silently drop the mamba conv/recurrent state.
+        assert len(cache.layers) == len(hf_model.config.layers_block_type) == 2
+        assert hasattr(cache.layers[0], "conv_states")  # mamba layer carries SSM state
+        assert not hasattr(cache.layers[1], "conv_states")  # attention layer is plain KV
 
     def test_cache_independent_per_call(self, adapter: NemotronHArchitectureAdapter) -> None:
         """Each call returns a fresh cache object."""

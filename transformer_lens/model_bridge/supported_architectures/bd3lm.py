@@ -146,7 +146,9 @@ class BD3LMArchitectureAdapter(ArchitectureAdapter):
         """
         # Best-effort: never block loading if the dynamic module is missing/modified.
         model_class = force_import_remote_class(
-            model_name, "modeling_bd3lm.BD3LM", revision=model_kwargs.get("revision")
+            model_name,
+            "modeling_bd3lm.BD3LM",
+            revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
         )
         if model_class is not None:
             disable_tied_weights_lookup(model_class)

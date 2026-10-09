@@ -7,12 +7,8 @@ import pytest
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import (
-    ArithmeticTensorConversion,
     RearrangeTensorConversion,
     TransposeTensorConversion,
-)
-from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
-    OperationTypes,
 )
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
@@ -243,20 +239,14 @@ class TestGemma3MultimodalWeightProcessingConversions:
         o_conv = adapter.weight_processing_conversions["blocks.{i}.attn.o.weight"]
         assert o_conv.tensor_conversion.pattern == "m (n h) -> n h m"
 
-    def test_norm_offset_conversion_semantics(self, adapter):
-        for key in (
-            "blocks.{i}.ln1.weight",
-            "blocks.{i}.ln1_post.weight",
-            "blocks.{i}.ln2.weight",
-            "blocks.{i}.ln2_post.weight",
-            "ln_final.weight",
-            "blocks.{i}.attn.q_norm.weight",
-            "blocks.{i}.attn.k_norm.weight",
-        ):
-            conv = adapter.weight_processing_conversions[key]
-            assert isinstance(conv.tensor_conversion, ArithmeticTensorConversion)
-            assert conv.tensor_conversion.operation == OperationTypes.ADDITION
-            assert conv.tensor_conversion.value == 1.0
+    def test_no_norm_weight_conversion_entries(self, adapter):
+        # cfg.rmsnorm_uses_offset is the only offset signal; a conversion entry
+        # on a norm weight would double-apply the +1 if norm weights ever flowed
+        # through convert_tensor_to_tl_format. Behavior coverage lives in
+        # test_gemma_rmsnorm_offset.py (text path shared with Gemma3).
+        for key in adapter.weight_processing_conversions:
+            assert "ln" not in key and "norm" not in key, f"unexpected norm entry {key}"
+        assert adapter.cfg.rmsnorm_uses_offset is True
 
     def test_mlp_uses_transpose_conversion(self, adapter):
         for slot in ("gate", "in", "out"):

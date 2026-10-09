@@ -691,3 +691,113 @@ def test_stack_neuron_results_mlp_input_remainder_fills_to_resid_mid(
     if direction is not None:
         target = target @ direction
     torch.testing.assert_close(stack.sum(dim=0), target)
+
+
+@torch.no_grad()
+def test_stack_head_results_does_not_warn_when_results_cached(
+    activation_cache: ActivationCache,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Repeated stacking stays silent; direct recomputation of cached results still warns."""
+    cache = ActivationCache(
+        {key: value.clone() for key, value in activation_cache.cache_dict.items()},
+        activation_cache.model,
+    )
+    for layer in range(cache.model.cfg.n_layers):
+        cache.cache_dict.pop(f"blocks.{layer}.attn.hook_result", None)
+
+    with caplog.at_level("WARNING"):
+        first = cache.stack_head_results()
+        second = cache.stack_head_results()
+    already_cached = "Tried to compute head results when they were already cached"
+    assert already_cached not in caplog.messages
+    torch.testing.assert_close(second, first)
+
+    with caplog.at_level("WARNING"):
+        cache.compute_head_results()
+    assert already_cached in caplog.messages
+
+
+@pytest.mark.parametrize("mlp_input", [False, True], ids=["attn-input", "mlp-input"])
+@torch.no_grad()
+def test_stack_neuron_results_rejects_out_of_contract_remainder_layer(
+    activation_cache: ActivationCache,
+    mlp_input: bool,
+) -> None:
+    """Layers below the remainder contract raise instead of wrapping to a late layer's residual."""
+    with pytest.raises(ValueError, match="incl_remainder=True"):
+        activation_cache.stack_neuron_results(-2, incl_remainder=True, mlp_input=mlp_input)
+
+
+@torch.no_grad()
+def test_stack_neuron_results_layer_zero_remainder_is_the_whole_model(
+    activation_cache: ActivationCache,
+) -> None:
+    """``layer=0`` decomposes the final residual stream: no neurons, remainder = resid_post[-1]."""
+    stack, labels = activation_cache.stack_neuron_results(
+        0, incl_remainder=True, return_labels=True
+    )
+    assert labels == ["remainder"]
+    n_layers = activation_cache.model.cfg.n_layers
+    torch.testing.assert_close(stack[0], activation_cache[("resid_post", n_layers - 1)])
+    empty, empty_labels = activation_cache.stack_neuron_results(
+        0, incl_remainder=False, return_labels=True
+    )
+    assert empty_labels == [] and empty.shape[0] == 0
+
+
+@torch.no_grad()
+def test_stack_neuron_results_mlp_input_layer_zero_remainder_is_resid_mid(
+    activation_cache: ActivationCache,
+) -> None:
+    """At layer 0 with ``mlp_input=True`` the remainder is the whole MLP input ``resid_mid``."""
+    stack, labels = activation_cache.stack_neuron_results(
+        0, incl_remainder=True, mlp_input=True, return_labels=True
+    )
+    assert labels == ["remainder"]
+    torch.testing.assert_close(stack[0], activation_cache[("resid_mid", 0)])
+
+
+@pytest.fixture(scope="module")
+def no_norm_activation_cache() -> ActivationCache:
+    cfg = TransformerBridgeConfig(
+        n_layers=2,
+        d_model=16,
+        n_ctx=8,
+        d_head=4,
+        n_heads=4,
+        d_vocab=32,
+        act_fn="gelu",
+        normalization_type=None,
+    )
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model = TransformerBridge.boot_native(cfg)
+    tokens = torch.tensor(
+        [
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+        ]
+    )
+    _, cache = model.run_with_cache(tokens)
+    return cache
+
+
+@pytest.mark.parametrize("batch_slice", [[0, 2], 1], ids=["list", "int"])
+@torch.no_grad()
+def test_logit_attrs_batch_slice_without_normalization(
+    no_norm_activation_cache: ActivationCache,
+    batch_slice: list[int] | int,
+) -> None:
+    """Without LN/RMS the batch slice must still be applied, not silently dropped."""
+    cache = no_norm_activation_cache
+    residual = cache.decompose_resid()
+    assert isinstance(residual, torch.Tensor)
+    all_targets = torch.tensor([10, 11, 12])
+
+    actual = cache.logit_attrs(residual, tokens=all_targets[batch_slice], batch_slice=batch_slice)
+
+    expected = cache.logit_attrs(residual, tokens=all_targets)[:, batch_slice]
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual, expected)

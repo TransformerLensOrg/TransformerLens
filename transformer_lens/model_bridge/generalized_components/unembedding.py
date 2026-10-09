@@ -154,10 +154,6 @@ class UnembeddingBridge(GeneralizedComponent):
     @property
     def b_U(self) -> torch.Tensor:
         """Access the unembedding bias vector."""
-        if "_b_U" in self._parameters:
-            param = self._parameters["_b_U"]
-            if param is not None:
-                return param
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}")
         if hasattr(self.original_component, "bias") and self.original_component.bias is not None:

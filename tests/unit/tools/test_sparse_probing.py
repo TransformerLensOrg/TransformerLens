@@ -16,6 +16,7 @@ from transformer_lens.tools.analysis import (
 from transformer_lens.tools.analysis.sparse_probing import (
     ClassWeightMode,
     SparseProbeControl,
+    SparseProbeConvergenceError,
     SparseProbeResult,
     SparseProbeSweep,
     _binary_metrics,
@@ -901,7 +902,7 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         validated.canonical_labels, validated.test_fraction, generator
     )
     train_labels = validated.canonical_labels[train_indices]
-    draw_generator = _control_generator(validated.seed, 2, "shuffle", 0)
+    draw_generator = _control_generator(validated.seed, 2, "label_shuffle", 0)
     permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
     shuffled_labels = train_labels[permutation]
     shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
@@ -1034,13 +1035,158 @@ def test_control_draws_depend_only_on_seed_k_and_arm():
         assert torch.equal(left.supports, right.supports)
         assert torch.equal(left.f1, right.f1)
 
-    # The random arm is unchanged by the other arm's repeat count (b vs c differ
-    # only in n_label_shuffles).
-    b_random = with_k1.random_coordinate_controls[1]
-    c_random = fewer_shuffles.random_coordinate_controls[1]
-    assert torch.equal(b_random.supports, c_random.supports)
-    assert torch.equal(b_random.f1, c_random.f1)
+    # The random arm's draws are unchanged by the label-shuffle repeat count.
+    full_random = with_k1.random_coordinate_controls[1]
+    fewer_random = fewer_shuffles.random_coordinate_controls[1]
+    assert torch.equal(full_random.supports, fewer_random.supports)
+    assert torch.equal(full_random.f1, fewer_random.f1)
 
     # Main-fit results never depend on the control configuration.
     assert only_k2.results[0].metrics.f1 == with_k1.results[1].metrics.f1
     assert with_k1.results[1].metrics.f1 == fewer_shuffles.results[1].metrics.f1
+
+
+def test_control_draws_differ_across_repeats_and_seeds():
+    # Complements the invariance test above: per-draw keying must still separate
+    # draws, so distinct repeats and distinct seeds may not replay one another.
+    features, labels = _planted_data(n_examples=200, n_features=32, seed=0)
+
+    first = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=2, n_label_shuffles=2, seed=0
+    )
+    reseeded = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=2, n_label_shuffles=2, seed=1
+    )
+
+    random_control = first.random_coordinate_controls[0]
+    shuffle_control = first.label_shuffle_controls[0]
+    assert not torch.equal(random_control.supports[0], random_control.supports[1])
+    assert not torch.equal(shuffle_control.supports[0], shuffle_control.supports[1])
+    assert not torch.equal(random_control.supports, reseeded.random_coordinate_controls[0].supports)
+    assert not torch.equal(shuffle_control.supports, reseeded.label_shuffle_controls[0].supports)
+
+
+def test_label_shuffle_controls_are_independent_of_a_nonzero_random_subset_count():
+    # The invariance test above only varies the shuffle count; this pins the
+    # converse arm at a nonzero count, where a shared stream would still couple them.
+    features, labels = _planted_data(n_examples=160, n_features=12)
+
+    without_random = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=0, n_label_shuffles=3, seed=7
+    )
+    with_random = sweep_sparse_probe(
+        features, labels, ks=[2], n_random_subsets=4, n_label_shuffles=3, seed=7
+    )
+
+    left = without_random.label_shuffle_controls[0]
+    right = with_random.label_shuffle_controls[0]
+    assert torch.equal(left.supports, right.supports)
+    assert torch.equal(left.accuracy, right.accuracy)
+    assert torch.equal(left.f1, right.f1)
+    assert torch.equal(left.roc_auc, right.roc_auc)
+    assert torch.equal(left.average_precision, right.average_precision)
+
+
+def test_rejection_coordinates_identify_the_failing_draw():
+    # A rejection's (k, arm, repeat) must name the exact draw that failed:
+    # recomputing that draw from the per-draw generator reproduces its support.
+    features = torch.randn(200, 32, generator=torch.Generator().manual_seed(0))
+    labels = (torch.rand(200, generator=torch.Generator().manual_seed(1)) < 0.5).long()
+    features[:, 3] += labels.float() * 1.5
+    seed = 0
+
+    sweep = sweep_sparse_probe(
+        features,
+        labels,
+        ks=[1, 2, 4],
+        n_random_subsets=10,
+        n_label_shuffles=10,
+        seed=seed,
+        max_refinement_steps=0,
+        decrement_tolerance=1e-14,
+    )
+
+    validated = _validate_inputs(
+        features,
+        labels,
+        k=4,
+        test_fraction=0.3,
+        positive_label=1,
+        preprocess="none",
+        std_floor=1e-3,
+        class_weight="balanced",
+        l2_strength=1e-2,
+        seed=seed,
+        max_iter=200,
+        max_refinement_steps=0,
+        decrement_tolerance=1e-14,
+    )
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    train_indices, _ = _stratified_split(validated.canonical_labels, 0.3, generator)
+    train_labels = validated.canonical_labels[train_indices]
+
+    assert len(sweep.rejections) > 0
+    arms = set()
+    for rejection in sweep.rejections:
+        arms.add(rejection.arm)
+        draw_generator = _control_generator(seed, rejection.k, rejection.arm, rejection.repeat)
+        if rejection.arm == "random_coordinate":
+            expected = (
+                torch.randperm(features.shape[1], generator=draw_generator)[: rejection.k]
+                .sort()
+                .values
+            )
+        else:
+            permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
+            shuffled_scores = _feature_scores(
+                validated.features, train_labels[permutation], train_indices
+            )
+            expected = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[
+                : rejection.k
+            ]
+        assert torch.equal(rejection.support, expected)
+    assert "random_coordinate" in arms
+
+
+def test_sweep_raises_when_a_main_probe_fit_fails():
+    # Only control fits are made partial; a main fit missing the acceptance
+    # threshold must abort the sweep exactly as fit_sparse_probe would.
+    features, labels = _large_scale_data()
+
+    with pytest.raises(SparseProbeConvergenceError, match="did not converge"):
+        sweep_sparse_probe(features, labels, ks=[4], seed=1, max_refinement_steps=0)
+
+
+def test_forced_nonconvergence_raises_the_dedicated_exception():
+    features, labels = _planted_data(n_examples=100, n_features=5)
+
+    with pytest.raises(SparseProbeConvergenceError, match="did not converge") as excinfo:
+        fit_sparse_probe(features, labels, k=3, max_iter=1, max_refinement_steps=0)
+
+    assert issubclass(excinfo.type, RuntimeError)
+
+
+def test_generic_runtime_error_in_a_control_fit_propagates(monkeypatch):
+    # The rejection path may swallow only convergence failures; an unrelated
+    # RuntimeError from a control fit must surface instead of becoming a rejection.
+    features, labels = _planted_data(n_examples=120, n_features=8)
+
+    def broken_fit_control(*args, **kwargs):
+        raise RuntimeError("unrelated runtime fault")
+
+    monkeypatch.setattr(
+        "transformer_lens.tools.analysis.sparse_probing._fit_control", broken_fit_control
+    )
+
+    with pytest.raises(RuntimeError, match="unrelated runtime fault") as excinfo:
+        sweep_sparse_probe(features, labels, ks=[2], n_random_subsets=1, seed=0)
+
+    assert excinfo.type is RuntimeError
+
+
+def test_control_generator_rejects_arm_names_outside_the_literal():
+    # The pre-ArmMode short names only survive inside the hash key; as arguments
+    # they must fail the runtime type check rather than silently fork the stream.
+    for bad_arm in ("random", "shuffle"):
+        with pytest.raises(TYPECHECK_ERRORS):
+            _control_generator(0, 1, bad_arm, 0)

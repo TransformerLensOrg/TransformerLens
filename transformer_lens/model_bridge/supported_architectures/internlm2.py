@@ -204,7 +204,7 @@ class InternLM2ArchitectureAdapter(ArchitectureAdapter):
         force_import_remote_class(
             model_name,
             "modeling_internlm2.InternLM2ForCausalLM",
-            revision=model_kwargs.get("revision"),
+            revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
         )
 
         # v5 calls _init_weights on all modules after weight materialization;

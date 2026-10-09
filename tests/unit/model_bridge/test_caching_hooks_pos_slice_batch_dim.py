@@ -256,6 +256,60 @@ def test_mla_head_major_hooks_slice_position(kind):
     _assert_slices_position(bridge, tokens, rotary, pos_dim=1)
 
 
+def _tiny_t5gemma2_bridge() -> TransformerBridge:
+    """T5Gemma2's merged decoder attention emits hook_cross_pattern as [b, h, q_pos, k_pos]."""
+    from transformers import T5Gemma2Config, T5Gemma2ForConditionalGeneration
+    from transformers.models.t5gemma2 import (
+        T5Gemma2DecoderConfig,
+        T5Gemma2EncoderConfig,
+    )
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        build_bridge_from_module,
+    )
+
+    text_cfg = dict(
+        vocab_size=64,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=1,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=8,
+        max_position_embeddings=32,
+        sliding_window=8,
+    )
+    vision_cfg = dict(
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        image_size=28,
+        patch_size=14,
+    )
+    cfg = T5Gemma2Config(
+        encoder=T5Gemma2EncoderConfig(text_config=text_cfg, vision_config=vision_cfg),
+        decoder=T5Gemma2DecoderConfig(**dict(text_cfg, cross_attention_hidden_size=32)),
+    )
+    cfg._attn_implementation = "eager"
+    torch.manual_seed(0)
+    hf = T5Gemma2ForConditionalGeneration(cfg).eval()
+    return build_bridge_from_module(
+        hf,
+        "T5Gemma2ForConditionalGeneration",
+        hf_config=copy.deepcopy(cfg),
+        tokenizer=None,
+        device="cpu",
+    ).eval()
+
+
+def test_t5gemma2_cross_pattern_slices_query_position():
+    bridge = _tiny_t5gemma2_bridge()
+    tokens = torch.randint(3, 64, (1, 6))
+    names = ["decoder_blocks.0.self_attn.hook_cross_pattern"]
+    _assert_slices_position(bridge, tokens, names, pos_dim=-2)
+
+
 def test_mamba_channel_first_hooks_slice_position():
     bridge = _tiny_mamba_bridge()
     bridge.blocks[0].mixer.eager_scan = True

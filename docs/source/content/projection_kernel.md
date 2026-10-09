@@ -55,7 +55,10 @@ before the SVD, the default is the same for every storage dtype that promotes to
 float32. Deriving the tolerance from the compute dtype rather than the storage dtype
 keeps the rank decision tied to the precision of the singular values actually
 computed; a storage-dtype floor would instead discard that precision and collapse the
-measured rank of a full-rank half-precision head. Supplying `rank` selects the leading
+measured rank of a full-rank half-precision head. Concretely, a half-precision matrix
+with 4096 rows gets `rtol = 4096 * float32_eps ≈ 4.9e-4` once promoted — tight enough
+that a column duplicated from another is still measured as structurally rank-deficient
+while an independent full-rank matrix keeps its full rank. Supplying `rank` selects the leading
 singular subspace, but the requested rank cannot exceed the measured numerical rank.
 
 Float64 inputs remain float64. Float32 inputs remain float32. Float16 and bfloat16 inputs are

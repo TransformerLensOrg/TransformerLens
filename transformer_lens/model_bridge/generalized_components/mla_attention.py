@@ -9,6 +9,7 @@ forward path step-by-step with hooks at each meaningful stage, exposing:
 - hook_rot_q / hook_rot_k: after RoPE on the rope portion splits
 - hook_attn_scores / hook_pattern: pre/post-softmax attention weights
 - hook_z: pre-output-projection (alias for o.hook_in)
+- hook_result: per-head output (z_h @ W_O_h, pre-sum), gated by use_attn_result
 """
 
 from __future__ import annotations
@@ -102,12 +103,13 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     property_aliases: Dict[str, str] = {}
 
     hook_aliases = {
-        "hook_result": "hook_out",
         "hook_z": "o.hook_in",
     }
 
     # MLA's forward never forks the residual pre-LN; suppress dead HookPoints.
     supports_split_qkv_fork: bool = False
+    # o_proj is a plain concat-heads projection, so z_h @ W_O_h is well-defined.
+    supports_attn_result: bool = True
 
     def __init__(
         self,
@@ -118,6 +120,11 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
     ):
         super().__init__(name, config, submodules=submodules, **kwargs)
         self._init_position_embedding_hooks()
+        # The per-head hook_result computation lives in this class's forward; a
+        # subclass that replaces forward (GLM DSA) does not inherit it, so it
+        # must not advertise support it cannot honor.
+        if type(self).forward is not MLAAttentionBridge.forward:
+            self.supports_attn_result = False
 
         self.hook_q_latent = HookPoint()  # Compressed Q (post q_a_layernorm)
         self.hook_kv_latent = HookPoint()  # Compressed KV (post kv_a_layernorm)
@@ -315,7 +322,25 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         # --- Output projection ---
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(batch_size, seq_length, -1)
-        attn_output = hf_attn.o_proj(attn_output)
+        o_bridge = getattr(self, "o", None)
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and isinstance(o_bridge, GeneralizedComponent)
+            and o_bridge.original_component is not None
+        ):
+            # Per-head output pre-sum across heads. Fire hook_z (o.hook_in) on
+            # the pre-projection tensor first so a patch there flows into the
+            # per-head computation — matches the default path, where o_proj's
+            # bridge fires it inside the projection call.
+            attn_output = o_bridge.hook_in(attn_output)
+            # Head count from the tensor, not cfg: remote-code V2 modules may
+            # not expose num_heads, and the flat width is n_heads * v_head_dim
+            # by construction.
+            n_heads = attn_output.shape[-1] // self._v_head_dim
+            z_4d = attn_output.reshape(batch_size, seq_length, n_heads, self._v_head_dim)
+            attn_output = self._compute_per_head_result(z_4d, n_heads, self._v_head_dim)
+        else:
+            attn_output = hf_attn.o_proj(attn_output)
 
         attn_output = self.hook_out(attn_output)
         return attn_output, attn_weights
