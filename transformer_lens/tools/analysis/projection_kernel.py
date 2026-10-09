@@ -215,8 +215,10 @@ def orthonormal_subspace(
     Low-precision inputs are promoted to float32 before the reduced SVD. With no
     explicit ``rtol``, numerical rank uses the compute-SVD error scale relative
     to the largest singular value, so the default does not depend on the storage
-    dtype. An explicit ``rank`` truncates the measured subspace but may not
-    exceed its measured rank.
+    dtype — e.g. a 4096-row half-precision input gets ``4096 * float32_eps``
+    (about ``4.9e-4``), tight enough to flag an exactly repeated column as
+    rank-deficient. An explicit ``rank`` truncates the measured subspace but may
+    not exceed its measured rank.
 
     Args:
         matrix: Finite floating-point matrix with shape ``[ambient_dim, width]``.

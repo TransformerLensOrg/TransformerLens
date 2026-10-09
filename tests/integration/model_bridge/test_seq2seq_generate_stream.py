@@ -59,6 +59,101 @@ def seq2seq_bridge(request) -> TransformerBridge:
     return bridge
 
 
+def _tiny_bart_pair(**config_overrides):
+    config = BartConfig(
+        vocab_size=32,
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=2,
+        decoder_attention_heads=2,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+        max_position_embeddings=32,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
+        decoder_start_token_id=2,
+        **config_overrides,
+    )
+    return make_tiny_pair(
+        config, "BartForConditionalGeneration", loader=BartForConditionalGeneration
+    )
+
+
+def test_forced_eos_config_default_matches_hf_generate():
+    """BART-family configs pin forced_eos_token_id; HF forces it as the final
+    token once max length is reached. Greedy decoding must match HF token for
+    token, including that forced final step, on both generation paths."""
+    bridge, ref = _tiny_bart_pair(forced_eos_token_id=3)
+    source = torch.tensor([[4, 5, 6, 2]])
+    options = dict(max_new_tokens=4, do_sample=False)
+    hf_out = ref.generate(source, **options)
+    # Max length must actually be reached, or the forced step never fires and
+    # the comparison is vacuous.
+    assert hf_out.shape == (1, 5), hf_out
+    assert hf_out[0, -1].item() == 3
+    out = bridge.generate(source, eos_token_id=2, return_type="tokens", verbose=False, **options)
+    assert out.tolist() == hf_out.tolist()
+    chunks = list(
+        bridge.generate_stream(
+            source, eos_token_id=2, return_type="tokens", verbose=False, **options
+        )
+    )
+    assert torch.cat(chunks, dim=1).tolist() == hf_out.tolist()
+    # Vacuity guard: without the config value the final greedy token differs.
+    bridge.original_model.generation_config.forced_eos_token_id = None
+    unforced = bridge.generate(
+        source, eos_token_id=2, return_type="tokens", verbose=False, **options
+    )
+    assert unforced[0, -1].item() != 3, unforced
+
+
+def test_stream_explicit_forced_bos_overrides_config(seq2seq_bridge, monkeypatch):
+    config = seq2seq_bridge.original_model.generation_config
+    monkeypatch.setattr(config, "forced_bos_token_id", 8)
+    source = torch.tensor([[4, 5, 6, 2]])
+    options = dict(
+        max_new_tokens=3,
+        do_sample=False,
+        stop_at_eos=False,
+        verbose=False,
+        return_type="tokens",
+        forced_bos_token_id=9,
+    )
+    expected = seq2seq_bridge.generate(source, **options)
+    chunks = list(seq2seq_bridge.generate_stream(source, max_tokens_per_yield=2, **options))
+    assert chunks[0][0, 1].item() == 9
+    torch.testing.assert_close(torch.cat(chunks, dim=1), expected, rtol=0, atol=0)
+
+
+def test_stream_tensor_attention_mask_matches_generate(seq2seq_bridge):
+    source = torch.tensor([[4, 5, 6, 2], [0, 0, 9, 2]])
+    mask = torch.tensor([[1, 1, 1, 1], [0, 0, 1, 1]])
+    options = dict(
+        max_new_tokens=3,
+        do_sample=False,
+        stop_at_eos=False,
+        verbose=False,
+        return_type="tokens",
+    )
+    expected = seq2seq_bridge.generate(source, attention_mask=mask, **options)
+    masks = []
+
+    def record(module, args, kwargs):
+        masks.append(kwargs["attention_mask"].clone())
+
+    handle = seq2seq_bridge.register_forward_pre_hook(record, with_kwargs=True)
+    try:
+        chunks = list(seq2seq_bridge.generate_stream(source, attention_mask=mask, **options))
+    finally:
+        handle.remove()
+    assert len(masks) == 3
+    for seen in masks:
+        torch.testing.assert_close(seen, mask, rtol=0, atol=0)
+    torch.testing.assert_close(torch.cat(chunks, dim=1), expected, rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("batch_size", (1, 2))
 @pytest.mark.parametrize("use_cache", (False, True))
 def test_stream_matches_generate(seq2seq_bridge, batch_size, use_cache):
@@ -156,6 +251,9 @@ def test_stream_honors_seq2seq_generation_defaults(seq2seq_bridge, monkeypatch):
     monkeypatch.setattr(config, "forced_bos_token_id", 8)
     monkeypatch.setattr(config, "min_length", 4)
     monkeypatch.setattr(config, "no_repeat_ngram_size", 1)
+    # Forced EOS (BartConfig defaults it to 2) would overwrite the final token,
+    # breaking the all-distinct assertion this test uses to see the ngram rule.
+    monkeypatch.setattr(config, "forced_eos_token_id", None)
     source = torch.tensor([[4, 5, 6, 2]])
     options = dict(
         max_new_tokens=4, do_sample=False, eos_token_id=2, verbose=False, return_type="tokens"
@@ -170,6 +268,9 @@ def test_stream_honors_seq2seq_generation_defaults(seq2seq_bridge, monkeypatch):
 
 def test_stream_min_length_suppresses_an_early_eos(seq2seq_bridge, monkeypatch):
     config = seq2seq_bridge.original_model.generation_config
+    # Forced EOS (BartConfig defaults it to 2) would overwrite the one-token
+    # probe below, so would_be_eos would no longer be the natural first token.
+    monkeypatch.setattr(config, "forced_eos_token_id", None)
     monkeypatch.setattr(config, "min_length", None)
     source = torch.tensor([[4, 5, 6, 2]])
     first = seq2seq_bridge.generate(
@@ -197,7 +298,12 @@ def test_stream_min_length_suppresses_an_early_eos(seq2seq_bridge, monkeypatch):
     assert int(actual[0, 1]) != would_be_eos
 
 
-def test_stream_stops_at_eos(seq2seq_bridge):
+def test_stream_stops_at_eos(seq2seq_bridge, monkeypatch):
+    # Forced EOS (BartConfig defaults it to 2) would overwrite the probe step's
+    # natural token, so the derived "first token" would no longer stop step one.
+    monkeypatch.setattr(
+        seq2seq_bridge.original_model.generation_config, "forced_eos_token_id", None
+    )
     source = torch.tensor([[4, 5, 6, 2]])
     first = seq2seq_bridge.generate(
         source,

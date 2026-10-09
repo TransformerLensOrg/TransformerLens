@@ -7,7 +7,8 @@ Supports CohereForCausalLM models (Command-R family) with:
 - Gated SwiGLU MLP (gate_proj, up_proj, down_proj)
 - Logit scaling: output logits multiplied by config.logit_scale (default 1/16)
 - Tied embed/unembed weights by default (tie_word_embeddings=True)
-- Interleaved RoPE via CohereRotaryEmbedding (delegated to HF module)
+- Interleaved RoPE: cos/sin come from HF's CohereRotaryEmbedding, but the
+  bridge rotates Q/K itself (cfg.rotary_interleaved_cos_sin=True)
 """
 
 from typing import Any
@@ -36,7 +37,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
       It has a weight parameter but NO bias parameter.
     - Logit scale: CohereForCausalLM.forward multiplies logits by logit_scale
       (default 0.0625 = 1/16). Folded into unembed.weight via preprocess_weights.
-    - Rotary embeddings use repeat_interleave instead of cat-split (delegated to HF).
+    - Rotary embeddings use repeat_interleave instead of cat-split; the bridge
+      applies that rotation itself in its reconstructed attention.
 
     Optional parameters (absent from state_dict by default):
     - blocks.{i}.attn.b_Q/b_K/b_V/b_O — no bias on projections (attention_bias=False)
@@ -117,8 +119,9 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         # Block structure follows Falcon's parallel_attn=True, num_ln_in_parallel_attn=1
         # mode: single ln1 feeds both attn and MLP; NO ln2.
         # Submodule shapes follow Llama: separate q/k/v/o projections and SwiGLU MLP.
-        # Rotary and attention both delegate to HF modules, preserving Cohere's
-        # repeat_interleave RoPE convention without re-implementing it in TL.
+        # Attention is reconstructed in the bridge (so hooks fire mid-computation);
+        # cfg.rotary_interleaved_cos_sin selects Cohere's repeat_interleave RoPE
+        # convention there, while cos/sin generation stays with the HF rotary module.
         self.component_mapping = {
             # Embedding: model.embed_tokens (same root as Llama, not transformer.* like Falcon)
             "embed": EmbeddingBridge(name="model.embed_tokens"),
@@ -142,13 +145,20 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
                             "k": LinearBridge(name="k_proj"),
                             "v": LinearBridge(name="v_proj"),
                             "o": LinearBridge(name="o_proj"),
+                            # Present only when use_qk_norm=True (config default False).
+                            # Per-head CohereLayerNorm with weight (n_heads, d_head);
+                            # the reconstruction applies it on the post-reshape path.
+                            "q_norm": NormalizationBridge(
+                                name="q_norm", config=self.cfg, optional=True
+                            ),
+                            "k_norm": NormalizationBridge(
+                                name="k_norm", config=self.cfg, optional=True
+                            ),
                         },
                         requires_attention_mask=True,
                         requires_position_embeddings=True,
                     ),
                     # GatedMLPBridge: gate/in/out matches Llama's gate_proj/up_proj/down_proj.
-                    # Optional use_qk_norm is handled transparently by HF's
-                    # CohereAttention.forward delegation (no extra submodules needed).
                     "mlp": self._gated_mlp(),
                 },
             ),

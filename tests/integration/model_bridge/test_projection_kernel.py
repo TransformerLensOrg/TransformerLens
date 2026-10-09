@@ -10,14 +10,6 @@ from transformer_lens.tools.analysis.projection_kernel import (
 )
 
 
-@pytest.fixture(scope="module")
-def gpt2_bridge_bfloat16():
-    """Fresh gpt2 bridge loaded with bfloat16 weights."""
-    from transformer_lens.model_bridge import TransformerBridge
-
-    return TransformerBridge.boot_transformers("gpt2", device="cpu", dtype=torch.bfloat16)
-
-
 @pytest.mark.parametrize(("role", "attribute"), [("Q", "W_Q"), ("K", "W_K"), ("V", "W_V")])
 def test_gpt2_head_affinity_contract_and_sample_parity(gpt2_bridge, role, attribute):
     result = attention_head_subspace_affinity(gpt2_bridge, target_role=role)
@@ -44,29 +36,20 @@ def test_gpt2_head_affinity_contract_and_sample_parity(gpt2_bridge, role, attrib
     )
 
 
-def test_bfloat16_weights_measure_full_rank_without_explicit_rtol(
-    gpt2_bridge, gpt2_bridge_bfloat16
-):
+def test_bfloat16_weights_measure_full_rank_without_explicit_rtol(gpt2_bridge):
     """Half-precision storage must not loosen the default rank tolerance.
 
-    gpt2-small is dense MHA with no GQA grouping, so this isolates the storage
-    dtype effect from the head-cardinality effect.
-
-    The discriminating assertion is the tolerance itself. gpt2-small's
-    worst-conditioned head sits near 40, well below the reciprocal of the
-    bfloat16 epsilon, so its measured ranks survive even the storage-dtype
-    floor; the rank and bound checks below guard the end-to-end contract rather
-    than reproducing the collapse. A head whose spectrum decays past that
-    reciprocal is covered by the synthetic unit cases.
+    Casting a real checkpoint head to bfloat16 exercises the storage-dtype path
+    without booting a second model. The default tolerance must track the float32
+    dtype the SVD actually runs in: a storage-dtype floor would land at the
+    bfloat16 epsilon instead of ``max(shape) * float32_eps`` and detach the rank
+    decision from the computed singular values.
     """
-    reference = attention_head_subspace_affinity(gpt2_bridge, target_role="Q")
-    result = attention_head_subspace_affinity(gpt2_bridge_bfloat16, target_role="Q")
+    weight = gpt2_bridge.blocks[0].attn.W_O[0].T
+    reference = orthonormal_subspace(weight)
+    result = orthonormal_subspace(weight.to(torch.bfloat16))
 
     assert result.rtol < torch.finfo(torch.bfloat16).eps
-    assert torch.equal(result.source_ranks, reference.source_ranks)
-    assert torch.equal(result.target_ranks, reference.target_ranks)
-    assert bool(torch.isfinite(result.scores[result.valid_mask]).all())
-    assert bool((result.scores[result.valid_mask] >= -1e-5).all())
-    assert bool((result.scores[result.valid_mask] <= 64 + 1e-4).all())
-    assert bool((result.normalized[result.valid_mask] >= -1e-6).all())
-    assert bool((result.normalized[result.valid_mask] <= 1 + 1e-5).all())
+    assert result.rtol == pytest.approx(max(weight.shape) * torch.finfo(torch.float32).eps)
+    assert result.measured_rank == reference.measured_rank
+    assert result.basis.dtype == torch.float32

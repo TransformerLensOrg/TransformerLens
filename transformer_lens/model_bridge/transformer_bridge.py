@@ -19,6 +19,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Tuple,
     Union,
     cast,
@@ -2527,6 +2528,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         return NoRepeatNGramLogitsProcessor(size)
 
+    def _encdec_forced_eos_token_id(self) -> Optional[int]:
+        """generation_config.forced_eos_token_id, or None. HF forces EOS as the
+        final token when max length is reached; BART-family configs set it by
+        default and their summaries otherwise end mid-sentence."""
+        value = getattr(
+            getattr(self.original_model, "generation_config", None),
+            "forced_eos_token_id",
+            None,
+        )
+        return value if isinstance(value, int) else None
+
     def _encoder_decoder_setup(
         self, input_tokens: torch.Tensor, forced_bos_token_id: Optional[int]
     ) -> tuple[torch.Tensor, Optional[int]]:
@@ -2594,6 +2606,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         min_decoder_length: Optional[int] = None,
         ngram_processor: Optional[Any] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        forced_eos_token_id: Optional[int] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
 
@@ -2819,6 +2832,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 ):
                     final_logits = final_logits.clone()
                     final_logits[:, stop_tokens] = float("-inf")
+                # Force EOS as the last allowed token, applied after the other
+                # processors so it wins — the same ordering HF uses for
+                # ForcedEOSTokenLogitsProcessor.
+                if forced_eos_token_id is not None and gen_step_idx == max_new_tokens - 1:
+                    final_logits = torch.full_like(final_logits, float("-inf"))
+                    final_logits[:, forced_eos_token_id] = 0.0
                 if do_sample:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
@@ -3352,6 +3371,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 "max_new_tokens": max_new_tokens,
                 "do_sample": do_sample,
                 "temperature": temperature,
+                # hf_generate defaults this to True, so omitting it would make
+                # generate(stop_at_eos=False) silently stop at EOS on this path.
+                "stop_at_eos": stop_at_eos,
             }
             if top_k is not None:
                 hf_kwargs["top_k"] = top_k
@@ -3433,6 +3455,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 min_decoder_length=min_decoder_length,
                 ngram_processor=(self._encdec_ngram_processor() if is_encoder_decoder else None),
                 encoder_attention_mask=(attention_mask if is_encoder_decoder else None),
+                forced_eos_token_id=(
+                    self._encdec_forced_eos_token_id() if is_encoder_decoder else None
+                ),
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
@@ -3599,6 +3624,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         verbose: bool = True,
         stop_strings: Optional[Union[str, List[str]]] = None,
         stopping_criteria: Optional[Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        forced_bos_token_id: Optional[int] = None,
     ) -> Generator[Union[torch.Tensor, str, List[str]], None, None]:
         """Stream tokens from the model as they are generated.
 
@@ -3633,6 +3660,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             stopping_criteria: Optional transformers StoppingCriteria, list, or
                 StoppingCriteriaList, called as criterion(input_ids, scores) each step
                 (scores is the step's logits). See generate() for the full contract.
+            attention_mask: Optional ``[batch, pos]`` 0/1 mask over the prompt,
+                required to generate correctly from an already-padded token tensor.
+                Extended by one attended column per generated token on decoder-only
+                models; forwarded to the encoder as-is on encoder-decoder models.
+                See generate() for the full contract.
+            forced_bos_token_id: Optional token id seeded as the first decoder token
+                after ``decoder_start`` on encoder-decoder models, overriding any
+                generation_config default. Raises ValueError on decoder-only models.
 
         Yields:
             Token tensors [batch, seq_len], or decoded text when return_type='str' -
@@ -3691,6 +3726,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         if return_type == "input":
             return_type = "str" if input_type in ["str", "list"] else "tokens"
+
+        if forced_bos_token_id is not None and not _encdec_early:
+            raise ValueError("forced_bos_token_id is only meaningful for encoder-decoder models")
+
+        # An explicit mask wins over any tokenizer-derived one (mirrors generate()):
+        # the encoder consumes it as-is, a decoder-only prompt mask is grown per step.
+        initial_attention_mask: Optional[torch.Tensor] = None
+        if attention_mask is not None:
+            if _encdec_early:
+                encoder_attention_mask = attention_mask
+            else:
+                if attention_mask.shape != input_tokens.shape:
+                    raise ValueError(
+                        f"attention_mask shape {tuple(attention_mask.shape)} does not "
+                        f"match the prompt shape {tuple(input_tokens.shape)}. Pass a 0/1 "
+                        "mask covering exactly the prompt tokens; generate_stream() "
+                        "extends it itself."
+                    )
+                initial_attention_mask = attention_mask.to(self.cfg.device)
 
         batch_size = input_tokens.shape[0]
 
@@ -3760,7 +3814,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         stream_prefix = input_tokens
         min_decoder_length = None
         if _encdec_early:
-            decoder_tokens, min_decoder_length = self._encoder_decoder_setup(input_tokens, None)
+            decoder_tokens, min_decoder_length = self._encoder_decoder_setup(
+                input_tokens, forced_bos_token_id
+            )
             stream_prefix = decoder_tokens
 
         # --- Streaming loop ---
@@ -3838,9 +3894,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     multimodal_kwargs={},
                     verbose=verbose,
                     stopping_criteria_list=stopping_criteria_list,
+                    initial_attention_mask=initial_attention_mask,
                     min_decoder_length=min_decoder_length,
                     ngram_processor=(self._encdec_ngram_processor() if _encdec_early else None),
                     encoder_attention_mask=encoder_attention_mask,
+                    forced_eos_token_id=(
+                        self._encdec_forced_eos_token_id() if _encdec_early else None
+                    ),
                 )
             ):
                 new_tokens = sampled_tokens.unsqueeze(-1)
@@ -3882,7 +3942,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         input: str | list[str] | torch.Tensor = "",
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
-        eos_token_id: int | None = None,
+        eos_token_id: int | Sequence[int] | None = None,
         do_sample: bool = True,
         top_k: int | None = None,
         top_p: float | None = None,
@@ -3908,8 +3968,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             stop_at_eos: If True, stop generating tokens when the model outputs eos_token.
                 If False, disable EOS stopping, including the model's configured EOS.
                 Custom stopping criteria still apply.
-            eos_token_id: The token ID to use for end of sentence. Ignored when
-                stop_at_eos=False, matching generate().
+            eos_token_id: The token ID (or sequence of IDs) to stop on. Ignored
+                when stop_at_eos=False, matching generate().
             do_sample: If True, sample from the model's output distribution
             top_k: Number of tokens to sample from
             top_p: Probability mass to sample from
@@ -3995,7 +4055,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # Omitting the kwarg would restore generation_config's EOS stopping.
             generation_kwargs["eos_token_id"] = None
         elif eos_token_id is not None:
-            generation_kwargs["eos_token_id"] = eos_token_id
+            # cfg.eos_token_id can carry a chat model's full stop set; HF takes
+            # int or list, so normalize any other sequence to a list.
+            generation_kwargs["eos_token_id"] = (
+                eos_token_id if isinstance(eos_token_id, int) else list(eos_token_id)
+            )
         elif self.tokenizer.eos_token_id is not None:
             generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
 

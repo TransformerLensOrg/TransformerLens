@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 from torch.testing import assert_close
@@ -68,6 +69,34 @@ def test_index_dimension_get_element_both_negative(sample_factored_matrix):
     # Negative index into both matrix dimensions at once.
     result = sample_factored_matrix[0, 0, 0, -1, -1]
     assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, -1, -1])
+
+
+def test_getitem_leading_numpy_scalar_matches_int(sample_factored_matrix):
+    result = sample_factored_matrix[:, np.int64(1)]
+    expected = sample_factored_matrix[:, 1]
+    assert_close(result.A, expected.A)
+    assert_close(result.B, expected.B)
+
+
+def test_getitem_numpy_scalar_row_matches_int(sample_factored_matrix):
+    result = sample_factored_matrix[0, 0, 0, np.int64(1)]
+    expected = sample_factored_matrix[0, 0, 0, 1]
+    assert_close(result.A, expected.A)
+    assert_close(result.B, expected.B)
+
+
+def test_getitem_numpy_scalar_column_matches_int(sample_factored_matrix):
+    result = sample_factored_matrix[0, 0, 0, 0, np.int64(1)]
+    expected = sample_factored_matrix[0, 0, 0, 0, 1]
+    assert_close(result.A, expected.A)
+    assert_close(result.B, expected.B)
+
+
+def test_getitem_zero_dim_tensor_matrix_indices_match_int(sample_factored_matrix):
+    result = sample_factored_matrix[0, 0, 0, torch.tensor(1), torch.tensor(0)]
+    expected = sample_factored_matrix[0, 0, 0, 1, 0]
+    assert_close(result.A, expected.A)
+    assert_close(result.B, expected.B)
 
 
 def test_index_dimension_too_big(sample_factored_matrix):

@@ -1,6 +1,7 @@
 """Unembedding compatibility must preserve the checkpoint's trainable parameters."""
 
 import copy
+from collections import ChainMap
 from pathlib import Path
 
 import pytest
@@ -153,3 +154,51 @@ def test_unembedding_bias_with_offloaded_weights(
     torch.testing.assert_close(bridge(inputs), reference(inputs) + processed_bias)
     assert bridge.b_U.device == layer.weight.device == reference.weight.device
     assert not bridge.b_U.requires_grad
+
+
+@pytest.mark.parametrize("offload_method", ["cpu", "disk"])
+def test_post_wrap_bias_fold_updates_offload_map(offload_method: str, tmp_path: Path) -> None:
+    """A final_logits_bias fold after wrapping must re-sync accelerate's offload map."""
+    from types import SimpleNamespace
+
+    from transformer_lens.model_bridge.supported_architectures.bart import (
+        BartArchitectureAdapter,
+    )
+
+    torch.manual_seed(42)
+    reference = torch.nn.Linear(5, 3, bias=False)
+    layer = copy.deepcopy(reference)
+    # offload_buffers=True so each forward reads the bias back from the map.
+    if offload_method == "cpu":
+        cpu_offload(layer, execution_device=torch.device("cpu"), offload_buffers=True)
+    else:
+        disk_offload(
+            layer,
+            offload_dir=str(tmp_path),
+            execution_device=torch.device("cpu"),
+            offload_buffers=True,
+        )
+    bridge = UnembeddingBridge(name="lm_head")
+    bridge.set_original_component(layer)
+
+    # On a CPU execution device the map entry aliases the bias storage, which would
+    # hide a stale snapshot; clone it the way a device-to-cpu offload copy would.
+    hook = UnembeddingBridge._offload_hook(layer)
+    assert hook is not None and hook.weights_map is not None
+    hook.weights_map = ChainMap(
+        {"bias": torch.as_tensor(hook.weights_map["bias"]).clone()}, hook.weights_map
+    )
+
+    folded = torch.tensor([0.2, -0.4, 0.6])
+    fake_bridge = SimpleNamespace(
+        original_model=SimpleNamespace(
+            final_logits_bias=folded.reshape(1, -1).clone(), lm_head=layer
+        )
+    )
+    adapter = object.__new__(BartArchitectureAdapter)
+    adapter.setup_hook_compatibility(fake_bridge)
+
+    torch.testing.assert_close(torch.as_tensor(hook.weights_map["bias"]), folded)
+    inputs = torch.randn(2, 5)
+    for _ in range(2):
+        torch.testing.assert_close(bridge(inputs), reference(inputs) + folded)

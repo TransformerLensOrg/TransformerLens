@@ -138,7 +138,9 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
         # Force-import the modeling module so we can patch it
         if (
             force_import_remote_class(
-                model_name, "modeling_ouro.OuroForCausalLM", revision=model_kwargs.get("revision")
+                model_name,
+                "modeling_ouro.OuroForCausalLM",
+                revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
             )
             is None
         ):

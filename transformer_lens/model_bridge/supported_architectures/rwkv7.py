@@ -194,7 +194,7 @@ class RWKV7ArchitectureAdapter(ArchitectureAdapter):
                 force_import_remote_class(
                     model_name,
                     "modeling_rwkv7.RWKV7ForCausalLM",
-                    revision=model_kwargs.get("revision"),
+                    revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
                 )
                 is None
             ):

@@ -85,6 +85,10 @@ def _check_fold_ln(model: Any) -> None:
         w = getattr(ln1, "w", None)
         if w is None:
             w = getattr(ln1, "weight", None)
+        if w is not None and getattr(getattr(model, "cfg", None), "rmsnorm_uses_offset", False):
+            # Offset-RMS models (Gemma family) store w as an offset from 1:
+            # the effective scale is (1 + w) and the folded identity is 0.
+            w = 1.0 + w
         if w is not None and not torch.allclose(w, torch.ones_like(w), atol=1e-3):
             warnings.warn(
                 "get_act_patch_direct_path is most accurate when LayerNorm parameters "

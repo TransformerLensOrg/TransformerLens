@@ -82,7 +82,10 @@ $$
 $$
 
 The displayed weights apply to the default `class_weight="balanced"`; pass `None` to use
-$\alpha_c=1$. The intercept is not regularized. Positive predictions have nonnegative logits.
+$\alpha_c=1$. The intercept is not regularized, so under `class_weight=None` the fitted
+intercept of an uninformative probe converges to the training log-odds
+$\log(n_{\mathrm{pos}}/n_{\mathrm{neg}})$, not to zero; the balanced weights remove that
+imbalance offset. Positive predictions have nonnegative logits.
 Accuracy, precision, recall, F1, and all four confusion counts are returned; precision or F1 is
 zero when its denominator is zero. F1 is the primary sparse-probing metric.
 
@@ -156,7 +159,9 @@ ROC-AUC, and average precision. A random-coordinate control that lands on a dead
 the inflated F1 described above, so compare controls on ROC-AUC as well. The API returns raw
 control supports and metric distributions; it
 does not convert them into p-values or representation labels. A repeat count of zero disables that
-control.
+control. Each control draw depends only on `seed`, `k`, its arm, and its repeat index, so a k's
+controls are independent of the rest of the k-grid and of the other arm's repeat count, and the
+draws for a smaller repeat count are a prefix of a larger one's.
 
 Unlike the main results, control distributions carry only raw metrics — no per-fit convergence
 diagnostics. A control fit that fails to converge is not fatal to the sweep: it is excluded from

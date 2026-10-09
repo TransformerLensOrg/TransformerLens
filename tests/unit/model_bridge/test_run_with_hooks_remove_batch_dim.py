@@ -89,6 +89,49 @@ def test_caching_hooks_run_under_remove_batch_dim_store_tensors_without_a_batch_
     torch.testing.assert_close(cache[HOOK], expected[HOOK])
 
 
+def test_backward_hooks_see_the_batch_free_grad_and_edits_match_the_no_flag_run(bridge):
+    tokens = _tokens(bridge, 1)
+    grads = {}
+
+    # Ground-truth grad at HOOK via hooks(), so a misrouted bwd registration in
+    # run_with_hooks (which would hand the hook the forward activation) is caught.
+    bridge.zero_grad(set_to_none=True)
+    ref_cache, fwd_hooks, bwd_hooks = bridge.get_caching_hooks(names_filter=HOOK, incl_bwd=True)
+    with bridge.hooks(fwd_hooks=fwd_hooks, bwd_hooks=bwd_hooks):
+        bridge(tokens, return_type="loss").backward()
+    baseline_grad = ref_cache[HOOK + "_grad"]
+
+    def make_hook(key):
+        def scale_grad(tensor, hook):
+            grads[key] = tensor.detach().clone()
+            return tensor * 2
+
+        return scale_grad
+
+    def run(key, flag):
+        bridge.zero_grad(set_to_none=True)
+        loss = bridge.run_with_hooks(
+            tokens,
+            bwd_hooks=[(HOOK, make_hook(key))],
+            return_type="loss",
+            remove_batch_dim=flag,
+        )
+        loss.backward()
+        param = next(p for p in bridge.parameters() if p.grad is not None)
+        return param.grad.detach().clone()
+
+    param_grad_ref = run("ref", False)
+    param_grad_flag = run("flag", True)
+
+    assert grads["ref"].shape == (1, 6, bridge.cfg.d_model)
+    assert grads["flag"].shape == (6, bridge.cfg.d_model)
+    # The hook records its input before scaling, so it must equal the true grad.
+    torch.testing.assert_close(grads["ref"], baseline_grad)
+    torch.testing.assert_close(grads["flag"], grads["ref"].squeeze(0))
+    # The returned (scaled) grad must propagate upstream identically in both modes.
+    torch.testing.assert_close(param_grad_flag, param_grad_ref)
+
+
 @torch.no_grad()
 def test_a_larger_batch_reaches_the_hook_unchanged(bridge):
     tokens = _tokens(bridge, 2)

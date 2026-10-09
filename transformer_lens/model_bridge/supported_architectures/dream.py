@@ -116,7 +116,7 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
             model_name,
             "modeling_dream.DreamModel",
             "DreamRotaryEmbedding",
-            revision=model_kwargs.get("revision"),
+            revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
         )
         # DreamGenerationConfig.validate is a no-op with the v4 signature
         # (is_init=False); v5 passes user_set_attributes. Replace with a
@@ -124,13 +124,15 @@ class DreamArchitectureAdapter(Qwen2ArchitectureAdapter):
         gen_cfg_cls = force_import_remote_class(
             model_name,
             "generation_utils.DreamGenerationConfig",
-            revision=model_kwargs.get("revision"),
+            revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
         )
         if gen_cfg_cls is not None:
             setattr(gen_cfg_cls, "validate", lambda self, *args, **kwargs: None)
             _patch_from_model_config(gen_cfg_cls)
         attn_cls = force_import_remote_class(
-            model_name, "modeling_dream.DreamAttention", revision=model_kwargs.get("revision")
+            model_name,
+            "modeling_dream.DreamAttention",
+            revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
         )
         if attn_cls is not None:
             _patch_eager_attention_mask(attn_cls)

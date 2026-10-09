@@ -25,7 +25,9 @@ class MuseGlimmerArchitectureAdapter(ArchitectureAdapter):
     _testing_lm_attr = "model.language_model"
     _testing_wire_rotary = False
 
-    # Sandwich norms rescale sublayer outputs, so folding them is not function-preserving.
+    # Attention output is gated by sigmoid(gate_proj(ln1_out)); fold-LN rescales only
+    # q/k/v, so the unfolded gate path would change — Gemma 2's sandwich norms alone
+    # fold fine.
     supports_fold_ln = False
 
     def __init__(self, cfg: Any) -> None:

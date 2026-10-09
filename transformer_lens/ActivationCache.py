@@ -795,6 +795,11 @@ class ActivationCache:
         TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
         compatibility shim.
         """
+        if self._ensure_head_results():
+            logging.warning("Tried to compute head results when they were already cached")
+
+    def _ensure_head_results(self) -> bool:
+        """Recompute missing or invalid per-head results; True if all were already cached."""
         expected_ndim = 4 if self.has_batch_dim else 3
         all_cached = True
         for layer in range(self.model.cfg.n_layers):
@@ -816,9 +821,7 @@ class ActivationCache:
                 dtype = torch.promote_types(z.dtype, weights.dtype)
                 z, weights = z.to(dtype), weights.to(dtype)
             self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
-
-        if all_cached:
-            logging.warning("Tried to compute head results when they were already cached")
+        return all_cached
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
         """Return the block indices whose mixer is an SSM / recurrent mixer.
@@ -1039,8 +1042,9 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        # Idempotent; cleans up stale Bridge entries
-        self.compute_head_results()
+        # Idempotent; cleans up stale Bridge entries without the 'already cached' warning,
+        # which is only meaningful for direct compute_head_results callers.
+        self._ensure_head_results()
 
         components: Any = []
         labels = []
@@ -1276,7 +1280,7 @@ class ActivationCache:
                 Slice of the neurons. An int or an integer-mode ``Slice(n)`` selects a single
                 neuron and is treated like ``[n]``.
             return_labels:
-                Whether to also return a list of labels of the form "L0H0" for the heads.
+                Whether to also return a list of labels of the form "L0N0" for the neurons.
             incl_remainder:
                 Whether to return a final term which is "the rest of the residual stream".
             apply_ln:
@@ -1296,6 +1300,15 @@ class ActivationCache:
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+
+        # Below these bounds the remainder target's negative layer index would wrap around to a
+        # late layer via __getitem__, silently returning the wrong residual stream.
+        min_layer = 0 if mlp_input else 1
+        if incl_remainder and layer < min_layer:
+            raise ValueError(
+                f"layer must be >= {min_layer} with incl_remainder=True and "
+                f"mlp_input={mlp_input}; got {layer}."
+            )
 
         # Layers are concatenated along the neuron axis, so it must not collapse. unwrap turns an
         # int into [n] but leaves a Slice as is, so an integer-mode Slice(n) is rebuilt as [n]
@@ -1437,9 +1450,6 @@ class ActivationCache:
                 to each component with statistics recomputed from that component. Defaults to False.
 
         """
-        if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
-            # The model does not use LayerNorm, so we don't need to do anything.
-            return residual_stack
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
         if not isinstance(batch_slice, Slice):
@@ -1452,6 +1462,11 @@ class ActivationCache:
         if has_batch_dim:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
+
+        # Checked only after slicing so callers like logit_attrs still get their
+        # batch_slice honoured on models without LayerNorm/RMSNorm.
+        if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
+            return residual_stack
 
         # Logit lens: apply final layer norm to each component with recomputed statistics
         if recompute_ln and layer == self.model.cfg.n_layers and hasattr(self.model, "ln_final"):

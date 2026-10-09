@@ -160,12 +160,20 @@ class CLIPVisionEncoderBridge(GeneralizedComponent):
         """
         default_submodules: Dict[str, GeneralizedComponent] = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
-            "pre_layernorm": NormalizationBridge(name="vision_model.pre_layrnorm", config=config),
+            # Native-autograd runs the wrapped LayerNorm's own forward, so the
+            # vision tower's eps applies instead of the LM config's.
+            "pre_layernorm": NormalizationBridge(
+                name="vision_model.pre_layrnorm",
+                config=config,
+                use_native_layernorm_autograd=True,
+            ),
             "encoder_layers": CLIPVisionEncoderLayerBridge(
                 name="vision_model.encoder.layers", config=config
             ),
             "post_layernorm": NormalizationBridge(
-                name="vision_model.post_layernorm", config=config
+                name="vision_model.post_layernorm",
+                config=config,
+                use_native_layernorm_autograd=True,
             ),
         }
 

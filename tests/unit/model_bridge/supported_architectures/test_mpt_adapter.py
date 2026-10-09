@@ -504,6 +504,9 @@ class TestMPTCachedGeneration:
         tokens = torch.randint(3, 60, (2, 5))
         with torch.no_grad():
             expected = reference.generate(tokens, max_new_tokens=6, do_sample=False, pad_token_id=0)
+            # A single repeated continuation token would let a cache that ignores
+            # the prompt still match, so demand some variety.
+            assert expected[:, tokens.shape[1] :].unique().numel() > 1
             bridge = build_bridge_from_module(
                 hf_model, architecture="MptForCausalLM", hf_config=hf_config
             )

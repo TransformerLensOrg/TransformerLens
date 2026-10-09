@@ -15,6 +15,10 @@ class DepthwiseConv1DBridge(GeneralizedComponent):
         hook_in:  [batch, channels, seq_len]
         hook_out: [batch, channels, seq_len + conv_kernel - 1]  (pre causal trim)
 
+    Because ``hook_out`` is captured before the causal trim, negative ``pos_slice``
+    values index the causal padding rather than real tokens — slice positive
+    positions from the left, or trim the last ``conv_kernel - 1`` entries first.
+
     Decode-step limitation: on stateful generation, HF's Mamba/Mamba-2 mixers
     bypass ``self.conv1d(...)`` and read ``self.conv1d.weight`` directly, so the
     forward hook never fires on decode steps — only on prefill. For per-step

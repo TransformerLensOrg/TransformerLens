@@ -109,6 +109,7 @@ from transformer_lens.tools.analysis.projection_kernel import (
 )
 from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeControl,
+    SparseProbeConvergenceError,
     SparseProbeMetrics,
     SparseProbeRejection,
     SparseProbeResult,
@@ -165,6 +166,7 @@ __all__ = [
     "RandomSubspaceReference",
     "RankReportRow",
     "SparseProbeControl",
+    "SparseProbeConvergenceError",
     "SparseProbeMetrics",
     "SparseProbeRejection",
     "SparseProbeResult",

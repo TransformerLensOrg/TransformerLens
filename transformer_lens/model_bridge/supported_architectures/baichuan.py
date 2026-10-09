@@ -276,7 +276,9 @@ class BaichuanArchitectureAdapter(ArchitectureAdapter):
             ):
                 try:
                     get_class_from_dynamic_module(
-                        cls_name, model_name, revision=model_kwargs.get("revision")
+                        cls_name,
+                        model_name,
+                        revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
                     )
                     last_exc = None
                     break
