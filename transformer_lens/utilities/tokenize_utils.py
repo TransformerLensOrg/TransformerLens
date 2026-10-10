@@ -138,13 +138,15 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
 
     Note: For tokenizers without a BOS token (e.g., T5), this returns the original tokenizer
     unchanged since add_bos_token=True would fail in transformers v5+ when bos_token is None.
+    Locally constructed tokenizers without a reload source retain their configured
+    special-token behavior; Bridge tokenization handles manual BOS when needed.
 
     Args:
         tokenizer (PreTrainedTokenizerBase): The tokenizer to initialize with add_bos_token=True.
 
     Returns:
         PreTrainedTokenizerBase: The tokenizer initialized with add_bos_token=True,
-            or the original tokenizer if it has no BOS token.
+            or the original tokenizer if it has no BOS token or pretrained reload source.
     """
     # If the tokenizer has no BOS token, we can't set add_bos_token=True
     # This is the case for T5 and other encoder-decoder models
@@ -152,7 +154,9 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
         return tokenizer
 
     init_kwargs = deepcopy(tokenizer.init_kwargs)
-    pretrained_model_name_or_path = init_kwargs.pop("name_or_path")
+    pretrained_model_name_or_path = init_kwargs.pop("name_or_path", None) or tokenizer.name_or_path
+    if not pretrained_model_name_or_path:
+        return tokenizer
     add_bos_token = init_kwargs.pop("add_bos_token", None)
     if add_bos_token is None:
         add_bos_token = getattr(tokenizer, "add_bos_token", False)

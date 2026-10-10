@@ -71,6 +71,20 @@ def tiny_bridge():
     return bridge
 
 
+def test_preloaded_bridge_accepts_a_local_tokenizer_without_reloading():
+    from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+    config = GPT2Config(vocab_size=12, n_embd=4, n_layer=1, n_head=2, n_positions=16)
+    model = GPT2LMHeadModel(config).eval()
+    bridge = build_bridge_from_module(
+        model, "GPT2LMHeadModel", hf_config=config, tokenizer=local_tokenizer(), device="cpu"
+    )
+    assert bridge.cfg.tokenizer_prepends_bos
+    assert bridge.cfg.tokenizer_appends_eos
+    geometry = RepresentationGeometry.from_bridge(bridge)
+    assert geometry.concept_direction([("king", "queen")]).pairs == ((4, 5),)
+
+
 def test_bridge_geometry_matches_tensor_fit_without_mutating_model(tiny_bridge):
     bridge = tiny_bridge
     weights = {name: value.detach().clone() for name, value in bridge.state_dict().items()}

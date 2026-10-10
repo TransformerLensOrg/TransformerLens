@@ -61,6 +61,8 @@ content/drivers
 content/compatibility_mode
 content/ssm_interpretability
 content/projection_kernel
+content/representation_geometry
+generated/demos/RepresentationGeometry_Demo
 content/jacobian_lens_fitting
 generated/demos/Jacobian_Lens_Decomposition_Demo
 generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo

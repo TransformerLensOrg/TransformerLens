@@ -7,7 +7,7 @@ even when they highlight the same attention head or token.
 This guide covers the high-level tools in `transformer_lens.tools.analysis`. For
 capturing activations or installing your own interventions, start with the
 [hook system](hook_system.md). New experiments should use `TransformerBridge`; see
-the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` code.
+the [4.0 migration guide](migrating_to_v4.md) for older code.
 
 ## Choose by research question
 
@@ -21,6 +21,7 @@ the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` c
 | What vocabulary directions appear in an MLP's gradient factors? | **Backward Lens** | A prompt, one target token, and selected layers → gradient factors and vocabulary rankings. | A diagnostic of the forward inputs and backward signals composing a weight gradient. |
 | How can I read or edit residuals through a fitted transport map? | **Jacobian Lens** | A matching lens artifact and model, plus prompts or activations → vocabulary readouts, decompositions, or interventions. | Readouts under the fitted map; causal effects require running and measuring an intervention. |
 | How much do two subspaces overlap? | **Projection Kernel** | Two subspace bases, or Bridge attention-head weight spaces → overlap scores and principal-angle information. | Shared geometric support, independent of the choice of basis within each subspace. |
+| How do concept directions compare under unembedding-covariance geometry? | **Representation Geometry** | A readout tensor or raw Bridge, contrast pairs, and optional supplied category vertices. | Geometry in declared measurement/intervention spaces, not proof of causal separability or semantic categories. |
 | What are a head's QK/OV singular directions? | **SVD Circuits: head decomposition** | Model weights and a layer/head index → singular values, vectors, and degeneracy reports. | The linear structure of the head's weight maps. |
 
 These are starting points, not a required pipeline. For example, a weight-space
@@ -43,6 +44,7 @@ available hooks, and the meaning of the selected tensor axes.
 | Backward Lens | Requires a raw decoder-only TransformerBridge with dense, non-gated MLPs and without compatibility mode, such as GPT-2 or Pythia/GPT-NeoX. Use one target token and check the restrictions in the [tool guide](backward_lens.md). | Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory. |
 | Jacobian Lens | Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Fitting additionally requires all modules in evaluation mode. | Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and `ceil(d_model / dim_batch)` backwards per prompt; larger batches increase memory. |
 | Projection Kernel | The numerical API accepts finite, real floating-point matrices via orthonormal bases. The attention-head wrapper requires Bridge weights with compatible dimensions and ranks. | Basis extraction uses SVD. All-head comparisons allocate basis stacks and a pairwise score grid; they can be large despite requiring no forward pass. |
+| Representation Geometry | Tensor input or raw causal Bridge with a direct unfolded LN/RMS-to-linear readout, no compatibility processing or output transforms. String contrasts require a snapshotted HF tokenizer and exactly one token without BOS/EOS. | Dense covariance/eigendecomposition, retained readout snapshot and `d_model`-square matrices; category reports have quadratic pairwise storage. |
 | SVD head decomposition | Uses Bridge per-block weight accessors; requires accessible, compatible `W_Q`, `W_K`, `W_V`, and `W_O` for the selected head. No compatibility mode or activation cache is needed. | Factored QK/OV SVD, with rank bounded by `d_head`; the dense `d_model × d_model` product is not materialized. |
 
 **Compatibility mode is a method-specific choice.** DLA needs it on Bridge, whereas
@@ -191,6 +193,20 @@ rotate; numerically null directions are also unsuitable for individual attributi
 The weight decomposition alone is not a causal validation of a proposed subfunction.
 
 API: {func}`~transformer_lens.tools.analysis.svd_circuits.decompose_head`.
+
+### Representation Geometry: distinguish dual spaces and derived interventions
+
+Measurement vectors transform by the inverse covariance square root; intervention
+vectors transform dually by the square root. Applying the same map to both spaces
+breaks their pairing. Contrast means and categorical diagnostics use an explicit
+basis and regularization policy. A metric-derived intervention is not an
+independently estimated causal direction, and covariance identity is not evidence
+of concept separability.
+
+See [Representation Geometry](representation_geometry.md) for the mathematical
+contract, support limits, and the download-free notebook. Probe comparisons need
+preprocessing/support reconstruction; edits at an earlier hook need a valid basis
+mapping and behavioral controls.
 
 ## Try a geometry question without downloading a model
 
