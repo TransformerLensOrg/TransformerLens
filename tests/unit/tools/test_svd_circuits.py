@@ -988,6 +988,53 @@ class _PatchStubModel:
         return self._logits(activation)
 
 
+@pytest.mark.parametrize(
+    "spectrum, guarded_ids",
+    [([8.0, 4.0, 4.0, 1.0], [1, 2]), ([8.0, 4.0, 2.0, 0.0], [3])],
+    ids=["degenerate", "null"],
+)
+def test_raw_projections_preserve_columns_rejected_by_attribution_guards(spectrum, guarded_ids):
+    """Raw consumers preserve numerical columns; signature and patch guards remain distinct."""
+
+    class ProjectionModel(_PatchStubModel):
+        def run_with_cache(self, prompt, names_filter):
+            hook_name = "blocks.0.attn.hook_result"
+            assert names_filter(hook_name)
+            return self(prompt), {hook_name: self._result}
+
+        def to_str_tokens(self, prompt):
+            return [str(i) for i in range(self._result.shape[1])]
+
+    ov = _factored_head_svd(
+        *_factored_with_spectrum(spectrum), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = ProjectionModel(d_model=D_MODEL, n_heads=1)
+    model.W_U = torch.randn(D_MODEL, 16)
+    readout = vocab_readout(model, ov, k=len(ov.S))
+    projection = project_activations(model, ov, "prompt")
+
+    assert readout.shape == (16, len(ov.S))
+    assert projection.coefficients.shape == (model._result.shape[1], len(ov.S))
+    assert torch.isfinite(readout[:, guarded_ids]).all()
+    assert torch.isfinite(projection.coefficients[:, guarded_ids]).all()
+    assert model.cfg.use_attn_result is False
+    for idx in guarded_ids:
+        assert ov.rank_report[idx].is_degenerate or ov.rank_report[idx].is_null
+        with pytest.raises(DegenerateDirectionError):
+            logit_signature(model, ov, direction=idx, tokens=[0])
+
+    block = ov.block_of(guarded_ids[0])
+    if len(block) > 1:
+        with pytest.raises(DegenerateDirectionError, match="split block"):
+            patch_along_directions(
+                model, ov, "prompt", lambda logits: float(logits.sum()), keep=[block[0]]
+            )
+    result = patch_along_directions(
+        model, ov, "prompt", lambda logits: float(logits.sum()), keep=block, n_baseline=1
+    )
+    assert result.retained == block
+
+
 def test_patch_along_directions_which_guard():
     """QK has no write direction to reconstruct onto, so a QK HeadSVD is refused."""
     qk = _factored_head_svd(
@@ -1195,6 +1242,34 @@ def test_patch_threshold_above_delta_gates_false():
         rng=torch.Generator().manual_seed(0),
     )
     assert raised.gated is False
+
+
+@pytest.mark.parametrize("mode", ["keep", "ablate"])
+def test_patch_threshold_equal_to_delta_gates_false(mode):
+    """Equality with an explicit threshold passes neither mode's strict comparison."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _span_aligned_stub(ov, [1.0, 0.5, 0.25, 0.125])
+    metric = lambda logits: float(logits.sum())
+    keep = [0] if mode == "keep" else None
+    ablate = [0] if mode == "ablate" else None
+    reference = patch_along_directions(
+        stub, ov, "prompt", metric, keep=keep, ablate=ablate, n_baseline=1
+    )
+    tied = patch_along_directions(
+        stub,
+        ov,
+        "prompt",
+        metric,
+        keep=keep,
+        ablate=ablate,
+        threshold=abs(reference.delta_metric),
+        n_baseline=1,
+    )
+
+    assert tied.delta_metric == reference.delta_metric
+    assert tied.gated is False
 
 
 def test_patch_baseline_is_reproducible():
@@ -1460,3 +1535,170 @@ def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
             assert tiny_bridge.cfg.use_attn_result == initial
     finally:
         tiny_bridge.set_use_attn_result(original)
+
+
+# --------------------------------------------------------------------------- #
+# Top-k recovery through activation patching
+# --------------------------------------------------------------------------- #
+def _block_aligned_ladder(head_svd, *, geometric=True):
+    """Cumulative direction counts that never split a degenerate block.
+
+    ``patch_along_directions`` refuses a retained set that splits a block, so a
+    k-ladder has to advance block by block rather than one direction at a time.
+    Geometric spacing keeps the sweep to roughly ``log2(rank)`` calls instead of
+    one per direction, which matters because each call costs ``n_baseline + 2``
+    forward passes.
+    """
+    starts = []
+    last = None
+    for row in head_svd.rank_report:
+        if row.block_id != last:
+            starts.append(row.idx)
+            last = row.block_id
+    cumulative = starts[1:] + [len(head_svd.rank_report)]
+    if not geometric:
+        return cumulative
+
+    ladder = []
+    target = 1
+    for end in cumulative:
+        if end >= target:
+            ladder.append(end)
+            while target <= end:
+                target *= 2
+    if ladder[-1] != cumulative[-1]:
+        ladder.append(cumulative[-1])
+    return ladder
+
+
+class _RecoveryStubModel(_PatchStubModel):
+    """Expose identity-probe head outputs without a downstream scalar readout."""
+
+    def __init__(self, clean):
+        super().__init__(d_model=clean.shape[-1], n_heads=1, pos=clean.shape[0])
+        self._result = clean[None, :, None, :]
+
+    def _logits(self, result):
+        return result[:, :, 0, :]
+
+
+def _measure_patch_recovery(ov, clean, retained):
+    """Measure relative output error through the public patch and capture its output."""
+    model = _RecoveryStubModel(clean)
+    outputs = []
+
+    def metric(output):
+        outputs.append(output.detach().clone())
+        return float((output - clean.unsqueeze(0)).norm() / clean.norm())
+
+    result = patch_along_directions(
+        model,
+        ov,
+        "prompt",
+        metric,
+        keep=retained,
+        n_baseline=1,
+        rng=torch.Generator().manual_seed(0),
+        # Empty/full-span controls coincide with the intervention and need an explicit threshold.
+        threshold=1e-4,
+    )
+    assert result.original_metric == 0.0
+    assert result.retained == retained
+    assert model.cfg.use_attn_result is False
+    return result, outputs[1].squeeze(0)
+
+
+@pytest.mark.parametrize(
+    "spectrum", [(8.0, 4.0, 2.0, 1.0), (8.0, 4.0, 4.0, 1.0)], ids=["isolated", "block"]
+)
+def test_top_k_recovery_converges_monotonically(spectrum):
+    """Patched identity probes match the top-k map and its singular-value tail error."""
+    W_V, W_O = _factored_with_spectrum(spectrum)
+    ov = _factored_head_svd(W_V, W_O, which="OV", layer=0, head=0, eps=1e-2)
+    clean = W_V @ W_O
+    ladder = [0] + _block_aligned_ladder(ov, geometric=False)
+    if spectrum[1] == spectrum[2]:
+        assert ov.block_of(1) == [1, 2]
+        assert ladder == [0, 1, 3, 4]
+    else:
+        assert ladder == [0, 1, 2, 3, 4]
+    tolerance = 64 * torch.finfo(clean.dtype).eps
+
+    residuals = []
+    print("\nk   patched residual   expected residual   max output error")
+    for k in ladder:
+        result, patched = _measure_patch_recovery(ov, clean, list(range(k)))
+        expected_output = W_V[:, :k] @ W_O[:k, :]
+        expected_residual = float((ov.S[k:].square().sum() / ov.S.square().sum()).sqrt())
+        torch.testing.assert_close(patched, expected_output, rtol=tolerance, atol=tolerance)
+        assert result.patched_metric == pytest.approx(expected_residual, abs=tolerance)
+        residuals.append(result.patched_metric)
+        print(
+            f"{k:3d} {result.patched_metric:>18.8f} {expected_residual:>19.8f} "
+            f"{float((patched - expected_output).abs().max()):>18.8f}"
+        )
+
+    for prev, cur in zip(residuals, residuals[1:]):
+        assert cur <= prev + tolerance
+    assert residuals[0] == pytest.approx(1.0, abs=tolerance)
+    assert residuals[-1] < tolerance
+
+
+@pytest.mark.parametrize("control", ["bottom", "rotated", "noop"])
+def test_top_k_recovery_distinguishes_wrong_subspaces(control, monkeypatch):
+    """Same-width wrong subspaces and a no-op cannot reproduce the top-k output."""
+    W_V, W_O = _factored_with_spectrum([8.0, 4.0, 2.0, 1.0])
+    ov = _factored_head_svd(W_V, W_O, which="OV", layer=0, head=0, eps=1e-2)
+    clean = W_V @ W_O
+    k = 2
+    expected_output = W_V[:, :k] @ W_O[:k, :]
+    top, top_output = _measure_patch_recovery(ov, clean, list(range(k)))
+    torch.testing.assert_close(top_output, expected_output)
+
+    if control == "bottom":
+        wrong, wrong_output = _measure_patch_recovery(
+            ov, clean, list(range(len(ov.S) - k, len(ov.S)))
+        )
+    else:
+        if control == "rotated":
+            random_basis, _ = torch.linalg.qr(
+                torch.randn(len(ov.S), len(ov.S), generator=torch.Generator().manual_seed(17))
+            )
+            directions = ov.V @ random_basis[:, :k]
+            projector = directions @ directions.T
+        else:
+            projector = torch.eye(clean.shape[-1], dtype=clean.dtype)
+
+        def control_hook(head, requested_projector):
+            return _make_subspace_hook(head, projector)
+
+        monkeypatch.setattr(
+            "transformer_lens.tools.analysis.svd_circuits._make_subspace_hook", control_hook
+        )
+        wrong, wrong_output = _measure_patch_recovery(ov, clean, list(range(k)))
+
+    assert not torch.allclose(wrong_output, expected_output, rtol=1e-5, atol=1e-6)
+    if control == "noop":
+        assert wrong.patched_metric == 0.0
+    else:
+        assert wrong.patched_metric > top.patched_metric + 0.1
+
+
+def test_top_k_recovery_full_span_is_noop_on_bridge(tiny_bridge):
+    """Real Bridge hook wiring recovers full-span logits without assuming metric monotonicity."""
+    ov = decompose_head(tiny_bridge, 0, 0, which=("OV",)).OV
+    assert ov is not None
+    rank = ov.V.shape[1]
+    partial_k = _block_aligned_ladder(ov)[0]
+    assert partial_k < rank
+    prompt = torch.tensor([[5, 63, 7, 9]])
+    metric = lambda logits: float(logits[0, -1, 0] - logits[0, -1, 1])
+
+    partial = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, keep=list(range(partial_k)), n_baseline=1
+    )
+    full = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, keep=list(range(rank)), n_baseline=1, threshold=1e-4
+    )
+    assert abs(full.delta_metric) < 1e-4
+    assert abs(partial.delta_metric) > 100 * abs(full.delta_metric)
