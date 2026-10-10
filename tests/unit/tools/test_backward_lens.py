@@ -9,15 +9,19 @@ import torch
 import torch.nn.functional as F
 from transformers.pytorch_utils import Conv1D
 
+from transformer_lens.model_bridge.generalized_components.block import BlockBridge
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
+from transformer_lens.model_bridge.generalized_components.rms_normalization import (
+    RMSNormalizationBridge,
+)
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLensMatrixResult,
     LinearGradientFactors,
     _build_linear_gradient_factors,
     _build_matrix_result,
     _factor_norms_and_normalized_rows,
-    _get_dense_mlp_projections,
+    _get_mlp_projections,
     _project_residual_factors,
     _rank_vocabulary_logits,
     _single_batch_matrix,
@@ -25,7 +29,11 @@ from transformer_lens.tools.analysis.backward_lens import (
 
 
 def _dense_mlp_bridge(
-    *, input_component: torch.nn.Module, output_component: torch.nn.Module, gate: Any = None
+    *,
+    input_component: torch.nn.Module,
+    output_component: torch.nn.Module,
+    gate: Any = None,
+    gate_component: torch.nn.Module | None = None,
 ) -> MLPBridge:
     """Build a real MLPBridge wrapping the given input/output projection modules."""
     mlp = MLPBridge(name="mlp")
@@ -35,15 +43,39 @@ def _dense_mlp_bridge(
     output_projection.set_original_component(output_component)
     setattr(mlp, "in", input_projection)
     setattr(mlp, "out", output_projection)
-    if gate is not None:
+    if gate_component is not None:
+        gate_projection = LinearBridge(name="mlp.gate")
+        gate_projection.set_original_component(gate_component)
+        setattr(mlp, "gate", gate_projection)
+    elif gate is not None:
         setattr(mlp, "gate", gate)
     return mlp
 
 
-def _dense_mlp_model(mlp: MLPBridge, *, d_model: int, d_mlp: int) -> SimpleNamespace:
+def _mlp_block(
+    mlp: MLPBridge, *, norm_name: str | None = None, output_boundary: str | None = None
+) -> BlockBridge:
+    submodules: dict[str, Any] = {"mlp": mlp}
+    if norm_name is not None:
+        submodules[norm_name] = RMSNormalizationBridge(name=norm_name, config=None)
+    block = BlockBridge(
+        name="blocks.0",
+        submodules=submodules,
+        hook_alias_overrides=(
+            {"hook_mlp_out": output_boundary} if output_boundary is not None else None
+        ),
+    )
+    for name, component in submodules.items():
+        block.add_module(name, component)
+    return block
+
+
+def _dense_mlp_model(
+    mlp: MLPBridge, *, d_model: int, d_mlp: int, gated_mlp: bool = False
+) -> SimpleNamespace:
     return SimpleNamespace(
-        cfg=SimpleNamespace(d_model=d_model, d_mlp=d_mlp),
-        blocks=[SimpleNamespace(mlp=mlp)],
+        cfg=SimpleNamespace(d_model=d_model, d_mlp=d_mlp, gated_mlp=gated_mlp),
+        blocks=[_mlp_block(mlp)],
     )
 
 
@@ -530,7 +562,7 @@ def test_ranking_accessors_return_owned_retained_prefixes() -> None:
     assert torch.equal(result.normalized_bottom_ranking.indices, saved_bottom_indices)
 
 
-def test_get_dense_mlp_projections_resolves_nn_linear_as_out_in() -> None:
+def test_get_mlp_projections_resolves_nn_linear_as_out_in() -> None:
     d_model, d_mlp = 4, 6
     mlp = _dense_mlp_bridge(
         input_component=torch.nn.Linear(d_model, d_mlp),
@@ -538,16 +570,18 @@ def test_get_dense_mlp_projections_resolves_nn_linear_as_out_in() -> None:
     )
     model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp)
 
-    projections = _get_dense_mlp_projections(model, (0,))
+    projections = _get_mlp_projections(model, (0,))
 
     input_record, output_record = projections[0]
+    assert input_record.role == "input"
+    assert output_record.role == "output"
     assert input_record.weight_layout == "out_in"
     assert output_record.weight_layout == "out_in"
     assert tuple(input_record.projection.original_component.weight.shape) == (d_mlp, d_model)
     assert tuple(output_record.projection.original_component.weight.shape) == (d_model, d_mlp)
 
 
-def test_get_dense_mlp_projections_resolves_conv1d_as_in_out() -> None:
+def test_get_mlp_projections_resolves_conv1d_as_in_out() -> None:
     d_model, d_mlp = 4, 6
     mlp = _dense_mlp_bridge(
         input_component=Conv1D(d_mlp, d_model),
@@ -555,16 +589,18 @@ def test_get_dense_mlp_projections_resolves_conv1d_as_in_out() -> None:
     )
     model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp)
 
-    projections = _get_dense_mlp_projections(model, (0,))
+    projections = _get_mlp_projections(model, (0,))
 
     input_record, output_record = projections[0]
+    assert input_record.role == "input"
+    assert output_record.role == "output"
     assert input_record.weight_layout == "in_out"
     assert output_record.weight_layout == "in_out"
     assert tuple(input_record.projection.original_component.weight.shape) == (d_model, d_mlp)
     assert tuple(output_record.projection.original_component.weight.shape) == (d_mlp, d_model)
 
 
-def test_get_dense_mlp_projections_rejects_an_unorientable_component() -> None:
+def test_get_mlp_projections_rejects_an_unorientable_component() -> None:
     d_model, d_mlp = 4, 6
     mlp = _dense_mlp_bridge(
         input_component=torch.nn.Identity(),
@@ -573,20 +609,159 @@ def test_get_dense_mlp_projections_rejects_an_unorientable_component() -> None:
     model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp)
 
     with pytest.raises(ValueError, match="unknown weight layout"):
-        _get_dense_mlp_projections(model, (0,))
+        _get_mlp_projections(model, (0,))
 
 
-def test_get_dense_mlp_projections_rejects_a_gated_mlp() -> None:
+def test_get_mlp_projections_discovers_gated_gate_up_down() -> None:
+    d_model, d_mlp = 4, 6
+    gate_component = torch.nn.Linear(d_model, d_mlp)
+    input_component = torch.nn.Linear(d_model, d_mlp)
+    output_component = torch.nn.Linear(d_mlp, d_model)
+    mlp = _dense_mlp_bridge(
+        input_component=input_component,
+        output_component=output_component,
+        gate_component=gate_component,
+    )
+    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=True)
+
+    records = _get_mlp_projections(model, (0,))[0]
+
+    assert len(records) == 3
+    gate_record, input_record, output_record = records
+    assert gate_record.role == "gate"
+    assert input_record.role == "input"
+    assert output_record.role == "output"
+    assert gate_record.projection is mlp.gate
+    assert input_record.projection is getattr(mlp, "in")
+    assert output_record.projection is mlp.out
+    assert gate_record.projection.original_component is gate_component
+    assert input_record.projection.original_component is input_component
+    assert output_record.projection.original_component is output_component
+    assert gate_record.weight_layout == "out_in"
+    assert input_record.weight_layout == "out_in"
+    assert output_record.weight_layout == "out_in"
+    assert tuple(gate_record.projection.original_component.weight.shape) == (d_mlp, d_model)
+    assert tuple(input_record.projection.original_component.weight.shape) == (d_mlp, d_model)
+    assert tuple(output_record.projection.original_component.weight.shape) == (d_model, d_mlp)
+
+
+def test_get_mlp_projections_rejects_a_gated_config_without_a_gate() -> None:
     d_model, d_mlp = 4, 6
     mlp = _dense_mlp_bridge(
         input_component=torch.nn.Linear(d_model, d_mlp),
         output_component=torch.nn.Linear(d_mlp, d_model),
-        gate=LinearBridge(name="mlp.gate"),
     )
-    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp)
+    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=True)
 
-    with pytest.raises(ValueError, match="dense, non-gated"):
-        _get_dense_mlp_projections(model, (0,))
+    with pytest.raises(ValueError, match="fused gate/up projections are not supported"):
+        _get_mlp_projections(model, (0,))
+
+
+@pytest.mark.parametrize("gated_mlp", [False, True], ids=["dense", "gated"])
+@pytest.mark.parametrize(
+    ("norm_name", "output_boundary"),
+    [
+        pytest.param("ln2_post", None, id="automatic-post-norm"),
+        pytest.param("ln2", "ln2.hook_out", id="olmo-post-norm"),
+        pytest.param("ln2_post", "mlp.hook_out", id="inconsistent-direct-alias"),
+    ],
+)
+def test_get_mlp_projections_rejects_post_mlp_normalization(
+    gated_mlp: bool, norm_name: str, output_boundary: str | None
+) -> None:
+    d_model, d_mlp = 4, 6
+    mlp = _dense_mlp_bridge(
+        input_component=torch.nn.Linear(d_model, d_mlp),
+        output_component=torch.nn.Linear(d_mlp, d_model),
+        gate_component=torch.nn.Linear(d_model, d_mlp) if gated_mlp else None,
+    )
+    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=gated_mlp)
+    model.blocks = [_mlp_block(mlp, norm_name=norm_name, output_boundary=output_boundary)]
+
+    with pytest.raises(ValueError, match=rf"layer 0.*unsupported MLP output boundary.*{norm_name}"):
+        _get_mlp_projections(model, (0,))
+
+
+def test_get_mlp_projections_rejects_declared_unmounted_post_norm() -> None:
+    mlp = _dense_mlp_bridge(
+        input_component=torch.nn.Linear(4, 6), output_component=torch.nn.Linear(6, 4)
+    )
+    model = _dense_mlp_model(mlp, d_model=4, d_mlp=6)
+    block = _mlp_block(mlp, norm_name="ln2_post", output_boundary="mlp.hook_out")
+    delattr(block, "ln2_post")
+    model.blocks = [block]
+
+    with pytest.raises(ValueError, match="layer 0.*unsupported MLP output boundary.*ln2_post"):
+        _get_mlp_projections(model, (0,))
+
+
+@pytest.mark.parametrize("gated_mlp", [False, True], ids=["dense", "gated"])
+@pytest.mark.parametrize("conv1d", [False, True], ids=["linear", "conv1d"])
+def test_get_mlp_projections_accepts_pre_mlp_normalization(gated_mlp: bool, conv1d: bool) -> None:
+    d_model, d_mlp = 4, 6
+    mlp = _dense_mlp_bridge(
+        input_component=Conv1D(d_mlp, d_model) if conv1d else torch.nn.Linear(d_model, d_mlp),
+        output_component=Conv1D(d_model, d_mlp) if conv1d else torch.nn.Linear(d_mlp, d_model),
+        gate_component=(
+            (Conv1D(d_mlp, d_model) if conv1d else torch.nn.Linear(d_model, d_mlp))
+            if gated_mlp
+            else None
+        ),
+    )
+    model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=gated_mlp)
+    model.blocks = [_mlp_block(mlp, norm_name="ln2")]
+
+    records = _get_mlp_projections(model, (0,))[0]
+
+    assert len(records) == (3 if gated_mlp else 2)
+    assert all(record.weight_layout == ("in_out" if conv1d else "out_in") for record in records)
+    assert records[-1].projection is mlp.out
+
+
+@pytest.mark.parametrize(
+    "aliases",
+    [
+        None,
+        {},
+        {"hook_mlp_out": None},
+        {"hook_mlp_out": ["mlp.hook_out", "ln2.hook_out"]},
+        {"hook_mlp_out": "transform.hook_out"},
+    ],
+    ids=[
+        "missing-mapping",
+        "missing-alias",
+        "missing-target",
+        "ambiguous-target",
+        "unknown-transform",
+    ],
+)
+def test_get_mlp_projections_rejects_unknown_output_boundaries(aliases: Any) -> None:
+    mlp = _dense_mlp_bridge(
+        input_component=torch.nn.Linear(4, 6), output_component=torch.nn.Linear(6, 4)
+    )
+    model = _dense_mlp_model(mlp, d_model=4, d_mlp=6)
+    model.blocks[0].hook_aliases = aliases
+
+    with pytest.raises(ValueError, match="layer 0.*unsupported MLP output boundary"):
+        _get_mlp_projections(model, (0,))
+
+
+@pytest.mark.parametrize("gated_mlp", [False, True], ids=["dense", "gated"])
+def test_get_mlp_projections_validates_only_requested_output_boundaries(gated_mlp: bool) -> None:
+    def make_mlp() -> MLPBridge:
+        return _dense_mlp_bridge(
+            input_component=torch.nn.Linear(4, 6),
+            output_component=torch.nn.Linear(6, 4),
+            gate_component=torch.nn.Linear(4, 6) if gated_mlp else None,
+        )
+
+    model = _dense_mlp_model(make_mlp(), d_model=4, d_mlp=6, gated_mlp=gated_mlp)
+    model.blocks.append(_mlp_block(make_mlp(), norm_name="ln2_post"))
+
+    assert tuple(_get_mlp_projections(model, (0,))) == (0,)
+    for layers in ((1,), (0, 1), (1, 0)):
+        with pytest.raises(ValueError, match="layer 1.*unsupported MLP output boundary"):
+            _get_mlp_projections(model, layers)
 
 
 def test_public_backward_lens_symbols_are_exported() -> None:
