@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import warnings
 from importlib.metadata import version
-from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 
@@ -125,7 +125,8 @@ class RelevanceLens(JacobianLens):
     vectors and dictionary, sparse decomposition, and the steering, ablation,
     and swap interventions -- unchanged. Only :meth:`fit` differs, and it
     records the estimator identity and the rule configuration that produced the
-    matrices.
+    matrices. Loading requires explicit ``estimator="relevance_lens"`` metadata;
+    unlabelled artifacts and Jacobian running-sum checkpoints are refused.
 
     Attributes:
         rule_coverage: Which canonical mounts the rule scope installed versus
@@ -149,29 +150,32 @@ class RelevanceLens(JacobianLens):
         relevance_rule_version: int = RELEVANCE_RULE_VERSION,
         enabled_rules: Sequence[str] = (),
     ) -> None:
+        if metadata is not None and "estimator" in metadata:
+            self._validate_artifact_metadata("RelevanceLens constructor", metadata)
         super().__init__(jacobians, n_prompts=n_prompts, d_model=d_model, metadata=metadata)
         self.estimator = ESTIMATOR_RELEVANCE
-        # The rule configuration is read back from the artifact metadata when
-        # present, so a loaded lens reports the semantics its matrices were
-        # estimated under rather than the constructor defaults. Explicit
-        # arguments win, which is how fit() records a fresh configuration.
-        recorded_version = self.metadata.get("relevance_rule_version")
-        if isinstance(recorded_version, int):
+        # Recorded semantics take precedence over defaults when restoring an artifact.
+        if "relevance_rule_version" in self.metadata:
+            recorded_version = self.metadata["relevance_rule_version"]
+            if not isinstance(recorded_version, int) or isinstance(recorded_version, bool):
+                raise ValueError("relevance_rule_version provenance must be an integer")
             relevance_rule_version = recorded_version
-        recorded_rules = self.metadata.get("enabled_rules")
-        if isinstance(recorded_rules, (list, tuple)):
-            enabled_rules = tuple(str(name) for name in recorded_rules)
+        if "enabled_rules" in self.metadata:
+            recorded_rules = self.metadata["enabled_rules"]
+            if not isinstance(recorded_rules, (list, tuple)) or not all(
+                isinstance(name, str) for name in recorded_rules
+            ):
+                raise ValueError("enabled_rules provenance must be a list or tuple of strings")
+            enabled_rules = recorded_rules
         self.relevance_rule_version = int(relevance_rule_version)
         self.enabled_rules: List[str] = list(enabled_rules)
         if rule_coverage is None:
             rule_coverage = _coverage_from_metadata(self.metadata)
         self.rule_coverage = rule_coverage
-        # Stamp the rule configuration into the artifact metadata so a saved
-        # lens stays self-describing. Existing keys are left untouched so a
-        # fitted lens keeps the richer provenance recorded by fit().
-        self.metadata.setdefault("estimator", ESTIMATOR_RELEVANCE)
-        self.metadata.setdefault("relevance_rule_version", self.relevance_rule_version)
-        self.metadata.setdefault("enabled_rules", list(self.enabled_rules))
+        # Normalize recorded configuration so attributes and saved provenance agree.
+        self.metadata["estimator"] = ESTIMATOR_RELEVANCE
+        self.metadata["relevance_rule_version"] = self.relevance_rule_version
+        self.metadata["enabled_rules"] = list(self.enabled_rules)
         if self.rule_coverage is not None:
             self.metadata.setdefault(
                 "rule_coverage",
@@ -181,36 +185,35 @@ class RelevanceLens(JacobianLens):
                 },
             )
 
-    def _merge_identity(self) -> Dict[str, Any]:
-        """Extend the merge guard with the rule configuration.
-
-        Shards fitted under different rule semantics or with a different set of
-        rules enabled produce incomparable transport matrices, so both are part
-        of the identity that must match across a merge.
-        """
-        identity = super()._merge_identity()
-        identity["relevance_rule_version"] = self.relevance_rule_version
-        identity["enabled_rules"] = tuple(self.enabled_rules)
-        return identity
+    @classmethod
+    def _validate_artifact_metadata(cls, path: str, metadata: Any) -> None:
+        """Require original relevance provenance before construction can stamp it."""
+        recorded_estimator = metadata.get("estimator") if isinstance(metadata, dict) else None
+        if not isinstance(recorded_estimator, str) or recorded_estimator != ESTIMATOR_RELEVANCE:
+            raise ValueError(
+                f"{path} requires estimator provenance {ESTIMATOR_RELEVANCE!r}; "
+                f"recorded estimator is {recorded_estimator!r}. "
+                "Unlabelled or foreign artifacts cannot be converted to relevance lenses."
+            )
 
     @classmethod
-    def load(cls, path: str) -> "RelevanceLens":
-        """Load a relevance lens, refusing an artifact from another estimator.
+    def _validate_checkpoint_payload(cls, path: str, payload: Dict[str, Any]) -> None:
+        """Refuse the Jacobian-specific running-sum conversion path."""
+        raise ValueError(
+            f"{path} is a running-sum checkpoint; RelevanceLens requires an artifact "
+            "with explicit relevance estimator provenance, not a Jacobian checkpoint."
+        )
 
-        The rule configuration travels in the artifact metadata and is restored
-        by the constructor. An artifact that records a different estimator is
-        refused, since its transport matrices were not estimated with relevance
-        rules.
-        """
-        lens = cast("RelevanceLens", super().load(path))
-        recorded_estimator = lens.metadata.get("estimator")
-        if isinstance(recorded_estimator, str) and recorded_estimator != ESTIMATOR_RELEVANCE:
-            raise ValueError(
-                f"{path} records estimator {recorded_estimator!r}, not "
-                f"{ESTIMATOR_RELEVANCE!r}; load it with the estimator that "
-                "produced it."
-            )
-        return lens
+    @classmethod
+    def _validate_merge_inputs(cls, lenses: Sequence[JacobianLens]) -> None:
+        """Require relevance shards even when all inputs share ordinary provenance."""
+        for index, lens in enumerate(lenses):
+            if not isinstance(lens, RelevanceLens):
+                raise ValueError(
+                    "RelevanceLens.merge() requires relevance lens shards with relevance "
+                    f"estimator provenance; shard {index} is {type(lens).__name__}."
+                )
+            cls._validate_artifact_metadata(f"merge shard {index}", lens.metadata)
 
     @classmethod
     def fit(

@@ -231,15 +231,53 @@ def _shard(
 
 
 class TestMergeRejectsMixedEstimators:
-    def test_jacobian_shard_cannot_merge_with_relevance_shard(self) -> None:
-        jacobian = JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
-        with pytest.raises(ValueError, match="provenance"):
-            RelevanceLens.merge([_shard(n_prompts=1), jacobian])
+    @pytest.mark.parametrize("n_shards", [1, 2])
+    @pytest.mark.parametrize("metadata", [{}, {"estimator": "jacobian_lens"}])
+    def test_jacobian_shards_cannot_be_relabelled(
+        self, n_shards: int, metadata: dict[str, Any]
+    ) -> None:
+        shards = [
+            JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL, metadata=metadata)
+            for _ in range(n_shards)
+        ]
+        before = [dict(shard.metadata) for shard in shards]
 
-    def test_relevance_shard_cannot_merge_with_jacobian_shard(self) -> None:
-        jacobian = JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
         with pytest.raises(ValueError, match="provenance"):
-            JacobianLens.merge([jacobian, _shard(n_prompts=1)])
+            RelevanceLens.merge(shards)
+
+        assert [shard.metadata for shard in shards] == before
+
+    def test_generic_lens_with_relevance_metadata_is_not_a_relevance_shard(self) -> None:
+        shard = JacobianLens(
+            {0: torch.eye(D_MODEL)},
+            n_prompts=1,
+            d_model=D_MODEL,
+            metadata={"estimator": "relevance_lens"},
+        )
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge([shard])
+
+    def test_relevance_shard_requires_positive_metadata(self) -> None:
+        shard = _shard(n_prompts=1)
+        del shard.metadata["estimator"]
+        before = dict(shard.metadata)
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge([shard])
+        assert shard.metadata == before
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_jacobian_shard_cannot_merge_with_relevance_shard(self, reverse: bool) -> None:
+        jacobian = JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+        shards = [jacobian, _shard(n_prompts=1)]
+        with pytest.raises(ValueError, match="provenance"):
+            RelevanceLens.merge(shards[::-1] if reverse else shards)
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_relevance_shard_cannot_merge_with_jacobian_shard(self, reverse: bool) -> None:
+        jacobian = JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL)
+        shards = [jacobian, _shard(n_prompts=1)]
+        with pytest.raises(ValueError, match="provenance"):
+            JacobianLens.merge(shards[::-1] if reverse else shards)
 
 
 class TestMergeRejectsMismatchedRuleConfiguration:
@@ -335,6 +373,8 @@ class TestRuleProvenanceSurvivesPersistence:
 
         assert loaded.relevance_rule_version == RELEVANCE_RULE_VERSION + 3
         assert loaded.enabled_rules == ["normalization"]
+        assert loaded.relevance_rule_version == loaded.metadata["relevance_rule_version"]
+        assert loaded.enabled_rules == loaded.metadata["enabled_rules"]
 
     def test_loaded_lens_still_refuses_a_mismatched_merge(self, tmp_path: Any) -> None:
         path = tmp_path / "lens.pt"
@@ -391,21 +431,104 @@ class TestLoadRejectsForeignEstimator:
         with pytest.raises(ValueError, match="estimator"):
             RelevanceLens.load(str(path))
 
-    def test_artifact_without_estimator_provenance_still_loads(self, tmp_path: Any) -> None:
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            None,
+            {},
+            {"relevance_rule_version": RELEVANCE_RULE_VERSION},
+            {"estimator": None},
+            {"estimator": 1},
+            {"estimator": ["relevance_lens"]},
+            {"estimator": "unknown"},
+        ],
+    )
+    def test_artifact_requires_positive_estimator_provenance(
+        self, tmp_path: Any, metadata: Any
+    ) -> None:
         path = tmp_path / "lens.pt"
+        payload = {
+            "J": {0: torch.eye(D_MODEL)},
+            "n_prompts": 1,
+            "source_layers": [0],
+            "d_model": D_MODEL,
+        }
+        if metadata is not None:
+            payload["metadata"] = metadata
+        torch.save(payload, path)
+        before = path.read_bytes()
+
+        with pytest.raises(ValueError, match="estimator"):
+            RelevanceLens.load(str(path))
+
+        assert path.read_bytes() == before
+
+    def test_legacy_jacobian_artifact_remains_loadable_as_jacobian(self, tmp_path: Any) -> None:
+        path = tmp_path / "legacy.pt"
+        JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL).save(str(path))
+
+        loaded = JacobianLens.load(str(path))
+        assert loaded.estimator == "jacobian_lens"
+        assert loaded.metadata == {}
+        with pytest.raises(ValueError, match="estimator"):
+            RelevanceLens.load(str(path))
+
+    @pytest.mark.parametrize("metadata", [{}, {"estimator": "relevance_lens"}])
+    def test_running_sum_checkpoint_is_refused(self, tmp_path: Any, metadata: Any) -> None:
+        path = tmp_path / "checkpoint.pt"
         torch.save(
-            {
-                "J": {0: torch.eye(D_MODEL)},
-                "n_prompts": 1,
-                "source_layers": [0],
-                "d_model": D_MODEL,
-            },
+            {"jacobian_sum": {0: torch.eye(D_MODEL)}, "n_done": 1, "metadata": metadata},
             path,
         )
+        before = path.read_bytes()
+        with pytest.raises(ValueError, match="checkpoint"):
+            RelevanceLens.load(str(path))
+        assert path.read_bytes() == before
 
-        loaded = RelevanceLens.load(str(path))
 
-        assert loaded.estimator == "relevance_lens"
+class TestConstructorProvenance:
+    @pytest.mark.parametrize("estimator", [None, 1, ["relevance_lens"], "jacobian_lens", "other"])
+    def test_contradictory_estimator_is_refused(self, estimator: Any) -> None:
+        metadata = {"estimator": estimator}
+        with pytest.raises(ValueError, match="estimator"):
+            _shard(n_prompts=1, metadata=metadata)
+        assert metadata == {"estimator": estimator}
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            {"relevance_rule_version": None},
+            {"relevance_rule_version": True},
+            {"relevance_rule_version": "1"},
+            {"enabled_rules": None},
+            {"enabled_rules": "normalization"},
+            {"enabled_rules": [1]},
+        ],
+    )
+    def test_invalid_recorded_configuration_is_not_replaced_by_defaults(
+        self, metadata: dict[str, Any]
+    ) -> None:
+        before = dict(metadata)
+        with pytest.raises(ValueError, match="provenance"):
+            _shard(n_prompts=1, metadata=metadata)
+        assert metadata == before
+
+    def test_recorded_configuration_takes_precedence_without_mutating_metadata(self) -> None:
+        metadata = {
+            "estimator": "relevance_lens",
+            "relevance_rule_version": RELEVANCE_RULE_VERSION + 2,
+            "enabled_rules": ("normalization",),
+        }
+        lens = _shard(n_prompts=1, metadata=metadata)
+        assert lens.estimator == lens.metadata["estimator"]
+        assert lens.relevance_rule_version == lens.metadata["relevance_rule_version"]
+        assert lens.enabled_rules == lens.metadata["enabled_rules"] == ["normalization"]
+        assert metadata["enabled_rules"] == ("normalization",)
+
+    def test_generic_merge_preserves_recorded_relevance_identity(self) -> None:
+        merged = JacobianLens.merge([_shard(n_prompts=1), _shard(n_prompts=2)])
+        assert merged.n_prompts == 3
+        assert merged.estimator == merged.metadata["estimator"] == "relevance_lens"
 
 
 class TestAnalysisSurfaceIsReusedNotDuplicated:
@@ -433,6 +556,7 @@ class TestAnalysisSurfaceIsReusedNotDuplicated:
         "coordinate_patch_hooks",
         "validate_model",
         "save",
+        "load",
         "merge",
         "from_pretrained",
     )
@@ -456,7 +580,12 @@ class TestAnalysisSurfaceIsReusedNotDuplicated:
             for name in vars(RelevanceLens)
             if not name.startswith("__") and callable(getattr(RelevanceLens, name))
         }
-        assert overridden == {"fit", "load", "_merge_identity"}
+        assert overridden == {
+            "fit",
+            "_validate_artifact_metadata",
+            "_validate_checkpoint_payload",
+            "_validate_merge_inputs",
+        }
 
 
 def _build_tiny_gpt2() -> TransformerBridge:

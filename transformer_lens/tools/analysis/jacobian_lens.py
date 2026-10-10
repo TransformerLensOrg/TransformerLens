@@ -73,6 +73,8 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    Type,
+    TypeVar,
     Union,
 )
 
@@ -99,6 +101,7 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 TokenInput = Union[str, int]
+_LensT = TypeVar("_LensT", bound="JacobianLens")
 
 # Backward-provider seam for the fit drive loop. A provider takes the target
 # residual, the source residuals it differentiates against, one batched one-hot
@@ -310,14 +313,17 @@ class JacobianLens:
             f"d_model={self.d_model}, n_prompts={self.n_prompts})"
         )
 
-    def _merge_identity(self) -> Dict[str, Any]:
-        """Estimator-specific identity that must match across merged shards.
+    @classmethod
+    def _validate_artifact_metadata(cls, path: str, metadata: Any) -> None:
+        """Allow legacy artifacts without estimator provenance."""
 
-        Subclasses extend this with the configuration that changes their
-        transport matrices, so merge() refuses to combine shards whose matrices
-        were estimated differently.
-        """
-        return {"estimator": self.estimator}
+    @classmethod
+    def _validate_checkpoint_payload(cls, path: str, payload: Dict[str, Any]) -> None:
+        """Allow conversion of reference Jacobian running-sum checkpoints."""
+
+    @classmethod
+    def _validate_merge_inputs(cls, lenses: Sequence["JacobianLens"]) -> None:
+        """Allow generic lenses whose recorded provenance agrees."""
 
     # ------------------------------------------------------------------ #
     # persistence                                                        #
@@ -349,7 +355,7 @@ class JacobianLens:
         torch.save(payload, path)
 
     @classmethod
-    def load(cls, path: str) -> "JacobianLens":
+    def load(cls: Type[_LensT], path: str) -> _LensT:
         """Load a lens artifact or fit checkpoint saved in a supported schema.
 
         Two file schemas are accepted:
@@ -404,6 +410,7 @@ class JacobianLens:
         """
         payload = torch.load(path, map_location="cpu", weights_only=True)
         if "J" in payload:
+            cls._validate_artifact_metadata(path, payload.get("metadata"))
             return cls(
                 {int(layer): matrix for layer, matrix in payload["J"].items()},
                 n_prompts=int(payload.get("n_prompts", 0)),
@@ -411,6 +418,7 @@ class JacobianLens:
                 metadata=payload.get("metadata"),
             )
         if "jacobian_sum" in payload:
+            cls._validate_checkpoint_payload(path, payload)
             return cls._from_checkpoint_payload(path, payload)
         raise ValueError(
             f"{path} does not look like a Jacobian lens artifact or fit checkpoint. "
@@ -419,7 +427,7 @@ class JacobianLens:
         )
 
     @classmethod
-    def _from_checkpoint_payload(cls, path: str, payload: Dict[str, Any]) -> "JacobianLens":
+    def _from_checkpoint_payload(cls: Type[_LensT], path: str, payload: Dict[str, Any]) -> _LensT:
         """Reconstruct a JacobianLens from a fit-checkpoint payload.
 
         Divides the running Jacobian sums by ``n_prompts``, strips fit-reserved
@@ -586,9 +594,8 @@ class JacobianLens:
         parallelized across processes or machines and merged afterwards.
         Provenance must match across shards (apart from ``n_prompts``), so a
         merge cannot silently relabel matrices fitted with different models,
-        corpora, dtypes, or estimator settings. The estimator and its
-        configuration must also match, so shards from different estimators or
-        rule configurations are refused even when their provenance is empty.
+        corpora, dtypes, or recorded estimator settings. Estimator-specific
+        subclasses also validate that the inputs belong to their estimator.
         The merged count replaces the per-shard count.
 
         Args:
@@ -612,7 +619,7 @@ class JacobianLens:
         first = lenses[0]
         for lens in lenses:
             _validate_metadata(lens.metadata)
-        _require_matching_merge_identity(lenses)
+        cls._validate_merge_inputs(lenses)
         first_provenance = {
             key: value for key, value in first.metadata.items() if key != "n_prompts"
         }
@@ -1911,29 +1918,6 @@ def _require_raw_bridge(model: Any, *, estimator: str) -> None:
             f"{estimator} requires a direct d_model-width unembedding after ln_final; "
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
-        )
-
-
-def _require_matching_merge_identity(lenses: Sequence["JacobianLens"]) -> None:
-    """Reject a merge whose shards disagree on estimator-specific identity.
-
-    Transport matrices are only comparable when the estimator and its
-    configuration agree, so a merge across estimators or across rule
-    configurations would silently average incompatible quantities. The identity
-    is compared explicitly rather than through the provenance dict, so the guard
-    holds for lenses constructed without provenance metadata.
-    """
-    identities = [lens._merge_identity() for lens in lenses]
-    first = identities[0]
-    for index, other in enumerate(identities[1:], start=1):
-        if other == first:
-            continue
-        differing = sorted(
-            key for key in set(first) | set(other) if first.get(key) != other.get(key)
-        )
-        raise ValueError(
-            "all lenses being merged must share the same estimator provenance; "
-            f"shard 0 and shard {index} differ on {differing}"
         )
 
 
