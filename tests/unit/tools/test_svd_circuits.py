@@ -1197,6 +1197,34 @@ def test_patch_threshold_above_delta_gates_false():
     assert raised.gated is False
 
 
+@pytest.mark.parametrize("mode", ["keep", "ablate"])
+def test_patch_threshold_equal_to_delta_gates_false(mode):
+    """Equality with an explicit threshold passes neither mode's strict comparison."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    stub = _span_aligned_stub(ov, [1.0, 0.5, 0.25, 0.125])
+    metric = lambda logits: float(logits.sum())
+    keep = [0] if mode == "keep" else None
+    ablate = [0] if mode == "ablate" else None
+    reference = patch_along_directions(
+        stub, ov, "prompt", metric, keep=keep, ablate=ablate, n_baseline=1
+    )
+    tied = patch_along_directions(
+        stub,
+        ov,
+        "prompt",
+        metric,
+        keep=keep,
+        ablate=ablate,
+        threshold=abs(reference.delta_metric),
+        n_baseline=1,
+    )
+
+    assert tied.delta_metric == reference.delta_metric
+    assert tied.gated is False
+
+
 def test_patch_baseline_is_reproducible():
     """The averaged baseline is drawn from the passed generator, so the same seed reproduces it
     bit-for-bit and a different seed gives a different average."""

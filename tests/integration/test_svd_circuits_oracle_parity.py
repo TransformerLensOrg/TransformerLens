@@ -1,30 +1,22 @@
-"""Slow qualitative parity check: causally-gated OV subfunctions on a name-mover head.
+"""Slow qualitative OV sweep on GPT-2-small layer 9 head 9.
 
-Checks that ``svd_circuits`` surfaces at least two causally-gated OV subfunctions on
-``gpt2-small`` layer 9 head 9, the paper's canonical name-mover head, and that the
-surfaced directions behave like the paper's name-mover split.
+Reports prompt-specific gate counts without requiring a minimum or claiming a causal
+subfunction split. There is no pinned external numerical oracle: the Beyond Components
+paper publishes no numeric table for this head. The repository's ``SVDInterpreter``
+cross-check is covered separately in ``test_svd_circuits.py``.
 
-This is a qualitative sanity check, not a pinned-threshold parity test. Unlike
-``test_jacobian_lens_oracle_parity.py`` there is no external reference implementation to
-pin: the Beyond Components authors' repository is research-grade and unpinned, and the
-paper publishes no numeric table for this head. The only numeric cross-check available is
-the repository's own ``SVDInterpreter``, which ``test_svd_circuits.py`` already exercises
-for one direction; this file does not repeat it.
-
-Cost: marked ``slow``. Boots ``gpt2-small`` on CPU and spends ``k * (n_baseline + 2)``
-forward passes per swept head, so it is excluded from the default tiers.
-
-Seed sensitivity: the gate compares ``abs(delta_metric)`` against an averaged random
-in-span control, and the per-draw control magnitudes are heavy-tailed, so a direction
-whose delta sits near the threshold can gate either way across seeds. Every sweep here
-passes an explicit generator seed, and one test asserts the sweep reproduces under it.
+Keep-mode gates compare the metric change with a sampled mean random in-span control
+magnitude, not a statistical significance threshold. Counts may vary with seed and draw
+count, including zero. The checks cover eligibility, finite results, gate polarity, and
+fixed-seed reproducibility. Each sweep costs ``k * (n_baseline + 2)`` forward passes,
+so the model tests are marked ``slow`` and excluded from the default tiers.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import Callable, List, Sequence, Tuple
 
 import pytest
 import torch
@@ -38,26 +30,19 @@ from transformer_lens.tools.analysis.svd_circuits import (
 
 CLEAN_PROMPT = "When Mary and John went to the store, John gave a drink to"
 
-# Wang et al. (2022), "Interpretability in the Wild", arXiv 2211.00593, Table 1 and
-# Figure 2, latest revision (which adds 9.0 as a backup name mover and removes 11.3).
-# L9H9 is the canonical name mover and the head the paper's OV split is about. The
-# paper's taxonomy also lists backup name movers ((9, 0), (10, 10)) and negative name
-# movers ((10, 7), (11, 10)); sweeping those is left to the wider separation study,
-# since the claim checked here is about a single head's internal split.
+# Wang et al. (2022), arXiv 2211.00593, identifies L9H9 as a name mover in the IOI circuit.
 LAYER, HEAD = 9, 9
 
 TOP_K_DIRECTIONS = 8
-BASELINE_DRAWS = 16
+BASELINE_DRAWS = 32
 BASELINE_SEED = 0
-MIN_GATED_SUBFUNCTIONS = 2
 
 
 @pytest.fixture(scope="module")
 def gpt2_bridge():
     model = TransformerBridge.boot_transformers("gpt2", device="cpu", dtype=torch.float32)
     model.enable_compatibility_mode()
-    # require_eval_mode() guards both forward-pass tools, so pin eval mode here rather
-    # than inherit whatever boot_transformers happens to return.
+    # Forward-pass tools require evaluation mode.
     model.eval()
     return model
 
@@ -105,12 +90,7 @@ def _gated_directions(
     n_baseline: int,
     seed: int,
 ) -> List[_GateRow]:
-    """Return per-direction gate rows for the top-k non-degenerate OV directions.
-
-    Uses ``keep=[i]`` (retain only direction i), where ``gated`` means the metric moved
-    less than an arbitrary same-width in-span control: the direction alone reconstructs
-    the head's behavior. See :attr:`PatchResult.gated`.
-    """
+    """Report keep-mode changes against mean same-width random in-span control magnitudes."""
     rows: List[_GateRow] = []
     for idx in _eligible_directions(head_svd, k):
         result = patch_along_directions(
@@ -134,8 +114,12 @@ def _gated_directions(
     return rows
 
 
-def _format_rows(rows: List[_GateRow]) -> str:
-    lines = [f"{'dir':>4} {'sigma':>10} {'delta':>12} {'baseline':>12} {'gated':>6}"]
+def _format_rows(rows: Sequence[_GateRow], *, seed: int, n_baseline: int) -> str:
+    lines = [
+        f"seed={seed}, draws={n_baseline}, swept={len(rows)}, "
+        f"gated={sum(row.gated for row in rows)} (descriptive count)",
+        f"{'dir':>4} {'sigma':>10} {'delta':>12} {'baseline':>12} {'gated':>6}",
+    ]
     for row in rows:
         lines.append(
             f"{row.idx:>4} {row.sigma:>10.4f} {row.delta_metric:>12.6f} "
@@ -144,59 +128,63 @@ def _format_rows(rows: List[_GateRow]) -> str:
     return "\n".join(lines)
 
 
-def _sweep(gpt2_bridge, *, seed: int = BASELINE_SEED) -> List[_GateRow]:
+def _sweep(
+    gpt2_bridge, *, seed: int = BASELINE_SEED, n_baseline: int = BASELINE_DRAWS
+) -> Tuple[_GateRow, ...]:
     decomposition = decompose_head(gpt2_bridge, layer=LAYER, head=HEAD, which=("OV",))
     ov = decomposition.OV
     assert ov is not None
-    return _gated_directions(
-        gpt2_bridge,
-        ov,
-        gpt2_bridge.to_tokens(CLEAN_PROMPT),
-        _logit_diff_metric(gpt2_bridge),
-        k=TOP_K_DIRECTIONS,
-        n_baseline=BASELINE_DRAWS,
-        seed=seed,
+    return tuple(
+        _gated_directions(
+            gpt2_bridge,
+            ov,
+            gpt2_bridge.to_tokens(CLEAN_PROMPT),
+            _logit_diff_metric(gpt2_bridge),
+            k=TOP_K_DIRECTIONS,
+            n_baseline=n_baseline,
+            seed=seed,
+        )
     )
 
 
-@pytest.mark.slow
-def test_name_mover_head_has_multiple_gated_ov_subfunctions(gpt2_bridge) -> None:
-    rows = _sweep(gpt2_bridge)
-    print(_format_rows(rows))
+@pytest.fixture(scope="module")
+def default_sweep(gpt2_bridge) -> Tuple[_GateRow, ...]:
+    """Share immutable default rows without replacing the fresh reproducibility sweep."""
+    return _sweep(gpt2_bridge)
 
+
+@pytest.mark.slow
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("n_baseline", [16, BASELINE_DRAWS])
+def test_qualitative_sweep_has_finite_results_and_consistent_gates(
+    gpt2_bridge, default_sweep, seed: int, n_baseline: int
+) -> None:
+    rows = (
+        default_sweep
+        if (seed, n_baseline) == (BASELINE_SEED, BASELINE_DRAWS)
+        else _sweep(gpt2_bridge, seed=seed, n_baseline=n_baseline)
+    )
+    report = _format_rows(rows, seed=seed, n_baseline=n_baseline)
+    print(report)
+
+    ov = decompose_head(gpt2_bridge, layer=LAYER, head=HEAD, which=("OV",)).OV
+    assert ov is not None
+    expected_ids = [row.idx for row in ov.rank_report if not row.is_degenerate and not row.is_null][
+        :TOP_K_DIRECTIONS
+    ]
+    actual_ids = [row.idx for row in rows]
     assert rows, "no attributable OV directions to sweep"
-    assert all(math.isfinite(row.delta_metric) for row in rows)
-    assert all(math.isfinite(row.baseline_delta_metric) for row in rows)
-    assert sum(row.gated for row in rows) >= MIN_GATED_SUBFUNCTIONS
-
-
-@pytest.mark.slow
-def test_gated_directions_beat_their_baseline(gpt2_bridge) -> None:
-    rows = _sweep(gpt2_bridge)
-    gated = [row for row in rows if row.gated]
-    assert gated, "expected at least one gated direction"
-
-    for row in gated:
-        assert abs(row.delta_metric) < row.baseline_delta_metric, _format_rows(rows)
-
-
-@pytest.mark.slow
-def test_ungated_directions_do_not_beat_their_baseline(gpt2_bridge) -> None:
-    rows = _sweep(gpt2_bridge)
-
+    assert actual_ids == expected_ids, report
+    assert len(set(actual_ids)) == len(actual_ids), report
     for row in rows:
-        if not row.gated:
-            assert abs(row.delta_metric) >= row.baseline_delta_metric, _format_rows(rows)
+        assert math.isfinite(row.delta_metric), report
+        assert math.isfinite(row.baseline_delta_metric), report
+        assert row.baseline_delta_metric >= 0, report
+        assert row.gated == (abs(row.delta_metric) < row.baseline_delta_metric), report
 
 
 @pytest.mark.slow
-def test_sweep_is_reproducible_under_a_fixed_seed(gpt2_bridge) -> None:
-    first = _sweep(gpt2_bridge)
+def test_sweep_is_reproducible_under_a_fixed_seed(gpt2_bridge, default_sweep) -> None:
     second = _sweep(gpt2_bridge)
 
-    assert [row.idx for row in first] == [row.idx for row in second]
-    assert [row.gated for row in first] == [row.gated for row in second]
-    assert [row.delta_metric for row in first] == [row.delta_metric for row in second]
-    assert [row.baseline_delta_metric for row in first] == [
-        row.baseline_delta_metric for row in second
-    ]
+    assert default_sweep == second
