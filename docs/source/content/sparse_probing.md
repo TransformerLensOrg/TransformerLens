@@ -59,8 +59,11 @@ $$
 
 The selected support contains the $k$ largest $|s_j|$. Equal scores are resolved by increasing
 feature index. `preprocess="none"` fits the selected raw coordinates. With
-`preprocess="standardize"`, selected columns are centered and scaled using training statistics;
-zero-variance columns receive scale one. The same transform is then applied to held-out values.
+`preprocess="standardize"`, selected columns are centered and scaled using training statistics.
+Each column's scale is its training standard deviation raised to at least `std_floor` (default
+`1e-3`), so a near-constant column is not amplified to unit scale; zero-variance columns receive
+scale one, and `std_floor=0` disables the floor. The same transform is then applied to held-out
+values.
 
 Because L2 regularization is scale-sensitive, preprocessing can change the fitted probe and
 the resulting k-curve. A sweep therefore fixes preprocessing and L2 strength across every k.
@@ -79,13 +82,30 @@ $$
 $$
 
 The displayed weights apply to the default `class_weight="balanced"`; pass `None` to use
-$\alpha_c=1$. The intercept is not regularized. Positive predictions have nonnegative logits.
+$\alpha_c=1$. The intercept is not regularized, so under `class_weight=None` the fitted
+intercept of an uninformative probe converges to the training log-odds
+$\log(n_{\mathrm{pos}}/n_{\mathrm{neg}})$, not to zero; the balanced weights remove that
+imbalance offset. Positive predictions have nonnegative logits.
 Accuracy, precision, recall, F1, and all four confusion counts are returned; precision or F1 is
 zero when its denominator is zero. F1 is the primary sparse-probing metric.
 
+F1 and the other threshold metrics describe a single operating point, `logit >= 0`, so they can
+reward a probe that carries no information. When every selected coordinate is constant on the
+training rows, the fit returns zero coefficients and a zero intercept, every held-out logit is
+exactly `0.0`, and every held-out example is predicted positive. F1 then equals $2p/(1+p)$ for
+the held-out positive rate $p$ (0.667 at $p = 0.5$) even though the probe cannot rank examples.
+
+`roc_auc` and `average_precision` are also returned, computed from the held-out logits without a
+threshold. Both are tie-aware: tied logits share their average rank for ROC-AUC and form one
+threshold for average precision. The degenerate probe above therefore scores ROC-AUC 0.5 and
+average precision $p$, the chance levels. Check `constant_features` and compare against these
+threshold-free metrics before reading a high F1 as decodability.
+
 Feature-score reductions use float64 for float64 inputs and float32 otherwise. Selected matrices
-move to CPU float64, where LBFGS (at most `max_iter` iterations, with a fixed internal gradient
-stop) is followed by up to `max_refinement_steps` damped Newton steps on the `(k+1)`-square
+move to CPU float64, where LBFGS (at most `max_iter` iterations, stopping once function
+evaluations reach `max_iter * 5 // 4`, which the strong-Wolfe line search can exceed by one, and
+with a fixed internal gradient stop) is followed by up to `max_refinement_steps` damped Newton
+steps on the `(k+1)`-square
 Hessian of the objective. A fit is accepted only when the Newton decrement $\tfrac{1}{2}
 g^\top H^{-1} g$, an estimate of the objective gap to the optimum in nats, is at most
 `decrement_tolerance` (default `1e-12`, which must lie in `(0, 1)`); the decrement is checked
@@ -120,7 +140,13 @@ for k, probe, random_control in zip(
     sweep.random_coordinate_controls,
     strict=True,
 ):
-    print(k, probe.metrics.f1, random_control.f1.median())
+    print(
+        k,
+        probe.metrics.f1,
+        probe.metrics.roc_auc,
+        random_control.f1.median(),
+        random_control.roc_auc.median(),
+    )
 ```
 
 Every k uses the same split, preprocessing mode, and L2 strength. `ks` must be strictly
@@ -128,9 +154,22 @@ increasing and unique.
 
 Random-coordinate controls sample k distinct coordinates and fit the same classifier.
 Label-shuffle controls permute training labels, repeat selection and fitting, and evaluate against
-the untouched held-out labels. The API returns raw control supports and metric distributions; it
+the untouched held-out labels. Each control carries per-repeat accuracy, precision, recall, F1,
+ROC-AUC, and average precision. A random-coordinate control that lands on a dead coordinate keeps
+the inflated F1 described above, so compare controls on ROC-AUC as well. The API returns raw
+control supports and metric distributions; it
 does not convert them into p-values or representation labels. A repeat count of zero disables that
-control.
+control. Each control draw depends only on `seed`, `k`, its arm, and its repeat index, so a k's
+controls are independent of the rest of the k-grid and of the other arm's repeat count, and the
+draws for a smaller repeat count are a prefix of a larger one's.
+
+Unlike the main results, control distributions carry only raw metrics — no per-fit convergence
+diagnostics. A control fit that fails to converge is not fatal to the sweep: it is excluded from
+its control distribution and recorded in `sweep.rejections` (a `SparseProbeRejection` naming the
+arm, `k`, repeat, support, and reason), so the completed main probes and other controls survive.
+Each control's rows therefore cover only the repeats that converged. Main-probe fits are not made
+partial this way — a main fit that misses the acceptance threshold still raises, as does
+`fit_sparse_probe`.
 
 Controls can be expensive: the sweep performs one main fit plus both requested control counts for
 every k. Start with small grids and repeat counts.
@@ -163,4 +202,6 @@ with [reference code](https://github.com/wesg52/sparse-probing-paper).
 
 TransformerLens intentionally adds stratification, stable tie-breaking, explicit objective and
 convergence diagnostics, and deterministic controls. Its optional centered standardization and
-Torch LBFGS solver are not exact reproductions of the reference implementation.
+Torch LBFGS solver are not exact reproductions of the reference implementation. The default
+`std_floor=1e-3` matches the reference's standard-deviation floor, except that zero-variance
+columns keep scale one.

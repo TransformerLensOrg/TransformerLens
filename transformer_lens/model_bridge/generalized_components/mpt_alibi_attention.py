@@ -79,6 +79,9 @@ class MPTALiBiAttentionBridge(ALiBiJointQKVAttentionBridge):
             q, k, v, num_heads, num_heads
         )
 
+        # Without this, cached decoding attends to the current token alone.
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
         softmax_scale = self._softmax_scale if self._softmax_scale is not None else head_dim**-0.5
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) * softmax_scale
 

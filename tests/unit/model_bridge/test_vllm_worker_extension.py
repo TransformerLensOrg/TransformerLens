@@ -20,6 +20,63 @@ from transformer_lens.model_bridge.sources.vllm.worker_extension import (
 )
 
 
+class TestGetLogitsProcessor:
+    @pytest.mark.parametrize("scale,cap", [(0.0625, None), (0.5, None), (2.0, 3.0), (1.0, None)])
+    def test_returns_runtime_transform(self, scale, cap):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(
+            model=SimpleNamespace(
+                logits_processor=SimpleNamespace(scale=scale, soft_cap=cap, logits_as_input=False)
+            )
+        )
+        assert ext.tl_get_logits_processor() == {"scale": scale, "soft_cap": cap}
+
+    def test_missing_processor_on_pp_stage(self):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(model=SimpleNamespace())
+        assert ext.tl_get_logits_processor() is None
+
+    @pytest.mark.parametrize(
+        "scale,cap",
+        [
+            (float("nan"), None),
+            (float("inf"), None),
+            (1.0, 0.0),
+            (1.0, -1.0),
+            (1.0, float("inf")),
+            (1.0, float("nan")),
+            ("invalid", None),
+            (None, None),
+            (1.0, "invalid"),
+        ],
+    )
+    def test_invalid_transform_rejected(self, scale, cap):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(
+            model=SimpleNamespace(logits_processor=SimpleNamespace(scale=scale, soft_cap=cap))
+        )
+        with pytest.raises(RuntimeError, match="invalid scale or soft_cap"):
+            ext.tl_get_logits_processor()
+
+    def test_logits_as_input_rejected(self):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(
+            model=SimpleNamespace(
+                logits_processor=SimpleNamespace(logits_as_input=True, scale=1.0, soft_cap=None)
+            )
+        )
+        with pytest.raises(NotImplementedError, match="logits_as_input"):
+            ext.tl_get_logits_processor()
+
+    def test_unknown_processor_rejected(self):
+        ext = TLWorkerExtension()
+        ext.model_runner = SimpleNamespace(
+            model=SimpleNamespace(logits_processor=SimpleNamespace())
+        )
+        with pytest.raises(NotImplementedError, match="missing scale"):
+            ext.tl_get_logits_processor()
+
+
 class TestGetParam:
     """tl_get_param resolves a dotted path to a CPU tensor clone, or None."""
 

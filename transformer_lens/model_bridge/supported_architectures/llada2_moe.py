@@ -137,7 +137,7 @@ class LLaDA2MoeArchitectureAdapter(ArchitectureAdapter):
             model_name,
             "modeling_llada2_moe.LLaDA2MoeModelLM",
             "LLaDA2MoeRotaryEmbedding",
-            revision=model_kwargs.get("revision"),
+            revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
         )
         super().prepare_loading(model_name, model_kwargs)
 

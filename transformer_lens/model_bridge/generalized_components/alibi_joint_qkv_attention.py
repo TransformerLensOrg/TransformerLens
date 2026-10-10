@@ -86,6 +86,11 @@ class ALiBiJointQKVAttentionBridge(JointQKVAttentionBridge):
             q, k, v, num_heads, num_kv_heads
         )
 
+        # Without this, cached decoding attends to the current token alone.
+        # HF caches pre-expansion K/V, so update before the GQA expand; the
+        # ALiBi bias and mask below arrive sized to the full key length.
+        k, v = self._update_kv_cache(k, v, **kwargs)
+
         # GQA/MQA: expand K/V heads to match Q heads
         if num_kv_heads != num_heads:
             n_rep = num_heads // num_kv_heads

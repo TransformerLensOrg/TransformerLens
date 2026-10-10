@@ -8,6 +8,7 @@ monosemanticity, or superposition.
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from jaxtyping import Bool, Float, Int, Integer
 
 PreprocessMode = Literal["none", "standardize"]
 ClassWeightMode = Literal["balanced"] | None
+ArmMode = Literal["random_coordinate", "label_shuffle"]
 _SUPPORTED_FEATURE_DTYPES = (
     torch.float16,
     torch.bfloat16,
@@ -26,9 +28,24 @@ _SUPPORTED_FEATURE_DTYPES = (
 )
 
 
+class SparseProbeConvergenceError(RuntimeError):
+    """A probe fit failed to converge or produced non-finite output.
+
+    Distinct from other ``RuntimeError``s so the sweep's control-rejection path
+    swallows only convergence failures, never unrelated runtime faults.
+    """
+
+
 @dataclass(frozen=True)
 class SparseProbeMetrics:
-    """Held-out binary-classification metrics and confusion counts."""
+    """Held-out binary-classification metrics and confusion counts.
+
+    Confusion counts, accuracy, precision, recall, and F1 are read at the logit-zero
+    threshold. ``roc_auc`` and ``average_precision`` are threshold-free and tie-aware:
+    held-out examples with equal logits share one rank and one threshold. The stratified
+    split always holds out both classes; if a class is absent, ``roc_auc`` is NaN, and
+    ``average_precision`` is NaN without positives and 1.0 without negatives.
+    """
 
     true_positives: int
     true_negatives: int
@@ -38,6 +55,8 @@ class SparseProbeMetrics:
     precision: float
     recall: float
     f1: float
+    roc_auc: float
+    average_precision: float
 
 
 @dataclass(frozen=True)
@@ -65,6 +84,7 @@ class SparseProbeResult:
     test_positive_count: int
     test_negative_count: int
     preprocess: PreprocessMode
+    std_floor: float
     class_weight: ClassWeightMode
     l2_strength: float
     test_fraction: float
@@ -84,13 +104,33 @@ class SparseProbeResult:
 
 @dataclass(frozen=True)
 class SparseProbeControl:
-    """Raw held-out metric distributions for one control at one sparsity."""
+    """Raw held-out metric distributions for one control at one sparsity.
+
+    Rows cover only converged repeats, so the row count can be below the request;
+    rejected repeats live in ``SparseProbeSweep.rejections``.
+    """
 
     supports: Int[torch.Tensor, "repeat selected_feature"]
     accuracy: Float[torch.Tensor, "repeat"]
     precision: Float[torch.Tensor, "repeat"]
     recall: Float[torch.Tensor, "repeat"]
     f1: Float[torch.Tensor, "repeat"]
+    roc_auc: Float[torch.Tensor, "repeat"]
+    average_precision: Float[torch.Tensor, "repeat"]
+
+
+@dataclass(frozen=True)
+class SparseProbeRejection:
+    """A control fit excluded from the sweep because it did not converge.
+
+    Recorded instead of aborting so completed main probes and other controls survive.
+    """
+
+    arm: ArmMode
+    k: int
+    repeat: int
+    support: Int[torch.Tensor, "selected_feature"]
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -102,6 +142,7 @@ class SparseProbeSweep:
     random_coordinate_controls: tuple[SparseProbeControl, ...]
     label_shuffle_controls: tuple[SparseProbeControl, ...]
     seed: int
+    rejections: tuple[SparseProbeRejection, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,6 +154,7 @@ class _ValidatedInputs:
     k: int
     test_fraction: float
     preprocess: PreprocessMode
+    std_floor: float
     class_weight: ClassWeightMode
     l2_strength: float
     seed: int
@@ -157,6 +199,7 @@ def _validate_inputs(
     test_fraction: int | float,
     positive_label: int | bool,
     preprocess: str,
+    std_floor: int | float,
     class_weight: str | None,
     l2_strength: int | float,
     seed: int,
@@ -217,6 +260,12 @@ def _validate_inputs(
         raise ValueError(f"test_fraction must be a finite real in (0, 1), got {test_fraction!r}")
     if preprocess not in ("none", "standardize"):
         raise ValueError(f"preprocess must be 'none' or 'standardize', got {preprocess!r}")
+    if isinstance(std_floor, bool) or not isinstance(std_floor, (int, float)):
+        raise ValueError(f"std_floor must be a finite nonnegative real, got {std_floor!r}")
+    validated_std_floor = float(std_floor)
+    if not math.isfinite(validated_std_floor) or validated_std_floor < 0:
+        raise ValueError(f"std_floor must be a finite nonnegative real, got {std_floor!r}")
+
     validated_preprocess = cast(PreprocessMode, preprocess)
     if class_weight not in ("balanced", None):
         raise ValueError(f"class_weight must be 'balanced' or None, got {class_weight!r}")
@@ -239,6 +288,7 @@ def _validate_inputs(
         k=validated_k,
         test_fraction=validated_fraction,
         preprocess=validated_preprocess,
+        std_floor=validated_std_floor,
         class_weight=validated_class_weight,
         l2_strength=validated_l2,
         seed=seed,
@@ -284,6 +334,7 @@ def _selected_data(
     train_indices: torch.Tensor,
     test_indices: torch.Tensor,
     preprocess: PreprocessMode,
+    std_floor: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     selected_device = selected_features.to(device=features.device)
     train_device = train_indices.to(device=features.device)
@@ -304,7 +355,8 @@ def _selected_data(
     constant = raw_scale == 0
     if preprocess == "standardize":
         mean = train.mean(dim=0)
-        scale = torch.where(constant, torch.ones_like(raw_scale), raw_scale)
+        # Guards 0/0 when std_floor=0; zero-variance columns get a zero coefficient either way.
+        scale = torch.where(constant, torch.ones_like(raw_scale), raw_scale.clamp(min=std_floor))
         return (train - mean) / scale, (test - mean) / scale, mean, scale, constant
     mean = torch.zeros(train.shape[1], dtype=torch.float64)
     scale = torch.ones(train.shape[1], dtype=torch.float64)
@@ -381,14 +433,14 @@ def _newton_direction(
     scaled.diagonal().add_(_NEWTON_RIDGE)
     factor, info = torch.linalg.cholesky_ex(scaled)
     if int(info.item()) != 0:
-        raise RuntimeError(
+        raise SparseProbeConvergenceError(
             "sparse probe optimizer did not converge: "
             "Hessian factorization failed during Newton refinement"
         )
     direction = scale * torch.cholesky_solve((scale * gradient)[:, None], factor)[:, 0]
     decrement = 0.5 * float((gradient @ direction).item())
     if not math.isfinite(decrement) or decrement < 0.0:
-        raise RuntimeError(
+        raise SparseProbeConvergenceError(
             "sparse probe optimizer did not converge: "
             f"Newton decrement {decrement!r} is not a finite nonnegative number"
         )
@@ -416,7 +468,7 @@ def _refine_with_newton(
         if decrement <= decrement_tolerance:
             return current, decrement, steps
         if steps >= max_refinement_steps:
-            raise RuntimeError(
+            raise SparseProbeConvergenceError(
                 "sparse probe optimizer did not converge: "
                 f"Newton decrement {decrement:.6g} exceeds {decrement_tolerance:.6g} "
                 f"after {steps} refinement steps"
@@ -434,7 +486,7 @@ def _refine_with_newton(
                 break
             step *= 0.5
         else:
-            raise RuntimeError(
+            raise SparseProbeConvergenceError(
                 "sparse probe optimizer did not converge: "
                 "Newton refinement line search found no descent step"
             )
@@ -476,12 +528,12 @@ def _fit_logistic(
     try:
         optimizer.step(closure)
     except RuntimeError as error:
-        raise RuntimeError("sparse probe optimizer failed") from error
+        raise SparseProbeConvergenceError("sparse probe optimizer failed") from error
     detached = parameters.detach()
     lbfgs_gradient = _objective_gradient(features, labels, detached, sample_weights, l2_strength)
     lbfgs_gradient_inf_norm = float(lbfgs_gradient.abs().max().item())
     if not math.isfinite(lbfgs_gradient_inf_norm):
-        raise RuntimeError("sparse probe optimizer produced non-finite output")
+        raise SparseProbeConvergenceError("sparse probe optimizer produced non-finite output")
     state = optimizer.state[parameters]
     iterations = int(state.get("n_iter", 0))
     function_evaluations = int(state.get("func_evals", 0))
@@ -508,7 +560,7 @@ def _fit_logistic(
     gradient = _objective_gradient(features, labels, refined, sample_weights, l2_strength)
     gradient_inf_norm = float(gradient.abs().max().item())
     if not math.isfinite(objective) or not math.isfinite(gradient_inf_norm):
-        raise RuntimeError("sparse probe optimizer produced non-finite output")
+        raise SparseProbeConvergenceError("sparse probe optimizer produced non-finite output")
     return _FitOutcome(
         coefficients=refined[:-1].clone(),
         intercept=refined[-1].clone(),
@@ -520,6 +572,39 @@ def _fit_logistic(
         function_evaluations=function_evaluations,
         stop_reason=stop_reason,
     )
+
+
+def _roc_auc(logits: torch.Tensor, positive: torch.Tensor) -> float:
+    """Mann-Whitney ROC-AUC with average ranks for tied logits; NaN if a class is absent."""
+    positive_count = int(positive.sum().item())
+    negative_count = positive.numel() - positive_count
+    if positive_count == 0 or negative_count == 0:
+        return math.nan
+    _, inverse, counts = torch.unique(logits, return_inverse=True, return_counts=True)
+    counts = counts.to(dtype=torch.float64)
+    # A tie group occupying ranks start+1..end gets their mean, end - (count - 1) / 2.
+    average_ranks = (counts.cumsum(0) - (counts - 1) / 2)[inverse]
+    positive_rank_sum = float(average_ranks[positive].sum().item())
+    return (positive_rank_sum - positive_count * (positive_count + 1) / 2) / (
+        positive_count * negative_count
+    )
+
+
+def _average_precision(logits: torch.Tensor, positive: torch.Tensor) -> float:
+    """Step-wise average precision over distinct logits; NaN if there is no positive."""
+    positive_count = int(positive.sum().item())
+    if positive_count == 0:
+        return math.nan
+    _, inverse = torch.unique(logits, return_inverse=True)
+    group_count = int(inverse.max().item()) + 1
+    # Tied logits form one threshold, so the recall gained there is scored at a single precision.
+    group_positives = torch.zeros(group_count, dtype=torch.float64).index_add_(
+        0, inverse, positive.to(dtype=torch.float64)
+    )
+    group_sizes = torch.bincount(inverse, minlength=group_count).to(dtype=torch.float64)
+    positives_descending = group_positives.flip(0)
+    precision = positives_descending.cumsum(0) / group_sizes.flip(0).cumsum(0)
+    return float((positives_descending * precision).sum().item()) / positive_count
 
 
 def _binary_metrics(logits: torch.Tensor, labels: torch.Tensor) -> SparseProbeMetrics:
@@ -546,6 +631,8 @@ def _binary_metrics(logits: torch.Tensor, labels: torch.Tensor) -> SparseProbeMe
         precision=precision,
         recall=recall,
         f1=f1,
+        roc_auc=_roc_auc(logits, positive),
+        average_precision=_average_precision(logits, positive),
     )
 
 
@@ -563,6 +650,7 @@ def _fit_result(
         train_indices,
         test_indices,
         validated.preprocess,
+        validated.std_floor,
     )
     train_labels = validated.canonical_labels[train_indices]
     fit = _fit_logistic(
@@ -594,6 +682,7 @@ def _fit_result(
         test_positive_count=int(test_labels.sum().item()),
         test_negative_count=int((~test_labels).sum().item()),
         preprocess=validated.preprocess,
+        std_floor=validated.std_floor,
         class_weight=validated.class_weight,
         l2_strength=validated.l2_strength,
         test_fraction=validated.test_fraction,
@@ -625,6 +714,7 @@ def _fit_control(
         train_indices,
         test_indices,
         validated.preprocess,
+        validated.std_floor,
     )
     fit = _fit_logistic(
         train_features,
@@ -657,6 +747,8 @@ def _control_result(
         precision=metric_tensor("precision"),
         recall=metric_tensor("recall"),
         f1=metric_tensor("f1"),
+        roc_auc=metric_tensor("roc_auc"),
+        average_precision=metric_tensor("average_precision"),
     )
 
 
@@ -674,6 +766,7 @@ def fit_sparse_probe(
     test_fraction: int | float = 0.3,
     positive_label: int | bool = 1,
     preprocess: str = "none",
+    std_floor: int | float = 1e-3,
     class_weight: str | None = "balanced",
     l2_strength: int | float = 1e-2,
     seed: int = 0,
@@ -694,10 +787,15 @@ def fit_sparse_probe(
         test_fraction: Requested held-out fraction within each class.
         positive_label: Label defining the positive class and score sign.
         preprocess: ``"none"`` or train-only ``"standardize"``.
+        std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, so a
+            near-constant column is not amplified to unit scale; ``0`` disables it.
         class_weight: ``"balanced"`` or ``None`` for unweighted BCE.
         l2_strength: Positive coefficient penalty in the logistic objective.
         seed: Local CPU-generator seed used only for the stratified split.
-        max_iter: Maximum LBFGS iterations before Newton refinement.
+        max_iter: Maximum LBFGS iterations before Newton refinement. LBFGS also stops once its
+            function evaluations reach ``max_iter * 5 // 4`` (``stop_reason="max_eval"``; the
+            line search can finish one past it), a budget equal to ``max_iter`` when
+            ``max_iter <= 3``.
         max_refinement_steps: Maximum damped Newton steps after LBFGS; zero only checks.
         decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2``, an
             estimate of the objective gap to the optimum in nats; a larger gap raises.
@@ -708,7 +806,8 @@ def fit_sparse_probe(
 
     Raises:
         ValueError: If inputs or options violate the binary-probe contract.
-        RuntimeError: If the optimizer fails or misses its convergence threshold.
+        SparseProbeConvergenceError: If the optimizer fails or misses its
+            convergence threshold.
     """
     validated = _validate_inputs(
         features,
@@ -717,6 +816,7 @@ def fit_sparse_probe(
         test_fraction=test_fraction,
         positive_label=positive_label,
         preprocess=preprocess,
+        std_floor=std_floor,
         class_weight=class_weight,
         l2_strength=l2_strength,
         seed=seed,
@@ -744,6 +844,16 @@ def fit_sparse_probe(
     )
 
 
+def _control_generator(seed: int, k: int, arm: ArmMode, repeat: int) -> torch.Generator:
+    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``; SHA-256 rather than
+    Python ``hash`` keeps each draw's seed stable across processes."""
+    # The key keeps the pre-ArmMode short arm names so released control draws reproduce.
+    key_arm = "random" if arm == "random_coordinate" else "shuffle"
+    key = f"{seed}:{k}:{key_arm}:{repeat}".encode()
+    derived = int.from_bytes(hashlib.sha256(key).digest()[:8], "little") & 0x7FFFFFFFFFFFFFFF
+    return torch.Generator(device="cpu").manual_seed(derived)
+
+
 def sweep_sparse_probe(
     features: Float[torch.Tensor, "example feature"],
     labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
@@ -752,6 +862,7 @@ def sweep_sparse_probe(
     test_fraction: int | float = 0.3,
     positive_label: int | bool = 1,
     preprocess: str = "none",
+    std_floor: int | float = 1e-3,
     class_weight: str | None = "balanced",
     l2_strength: int | float = 1e-2,
     n_random_subsets: int = 0,
@@ -777,22 +888,32 @@ def sweep_sparse_probe(
         test_fraction: Requested held-out fraction within each class.
         positive_label: Label defining the positive class and score sign.
         preprocess: ``"none"`` or train-only ``"standardize"``.
+        std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, shared by
+            every fit; ``0`` disables it.
         class_weight: ``"balanced"`` or ``None``, shared by every fit.
         l2_strength: Positive coefficient penalty shared by every fit.
         n_random_subsets: Random-coordinate control fits per sparsity level.
         n_label_shuffles: Shuffled-training-label control fits per sparsity level.
         seed: Local CPU-generator seed for splitting and controls.
-        max_iter: Maximum LBFGS iterations per fit before Newton refinement.
+        max_iter: Maximum LBFGS iterations per fit before Newton refinement. LBFGS also stops
+            once its function evaluations reach ``max_iter * 5 // 4``
+            (``stop_reason="max_eval"``; the line search can finish one past it), a budget
+            equal to ``max_iter`` when ``max_iter <= 3``.
         max_refinement_steps: Maximum damped Newton steps per fit; zero only checks.
         decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2`` per fit,
             an estimate of the objective gap to the optimum in nats; a larger gap raises.
 
     Returns:
-        Main probe results plus aligned raw control distributions.
+        Main probe results plus aligned raw control distributions. A control fit
+        that fails to converge is excluded and recorded in ``rejections`` rather
+        than aborting the sweep, so completed fits survive; each control's rows
+        cover only its converged repeats.
 
     Raises:
         ValueError: If the grid, controls, inputs, or options are invalid.
-        RuntimeError: If any main or control fit fails to converge.
+        SparseProbeConvergenceError: If a main-probe fit fails to converge.
+            Control-fit convergence failures do not raise here — they are collected
+            in ``SparseProbeSweep.rejections``; any other error still propagates.
     """
     if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence):
         raise ValueError("ks must be a non-empty sequence of positive integers")
@@ -812,6 +933,7 @@ def sweep_sparse_probe(
         test_fraction=test_fraction,
         positive_label=positive_label,
         preprocess=preprocess,
+        std_floor=std_floor,
         class_weight=class_weight,
         l2_strength=l2_strength,
         seed=seed,
@@ -840,41 +962,47 @@ def sweep_sparse_probe(
 
     random_controls = []
     shuffle_controls = []
+    rejections: list[SparseProbeRejection] = []
     feature_count = validated.features.shape[1]
     for k in k_values:
         random_supports = []
         random_metrics = []
-        for _ in range(random_count):
-            support = torch.randperm(feature_count, generator=generator)[:k].sort().values
-            random_supports.append(support)
-            random_metrics.append(
-                _fit_control(
-                    validated,
-                    train_indices,
-                    test_indices,
-                    support,
-                    train_labels,
+        for repeat in range(random_count):
+            draw_generator = _control_generator(validated.seed, k, "random_coordinate", repeat)
+            support = torch.randperm(feature_count, generator=draw_generator)[:k].sort().values
+            # A failed control draw is recorded, not fatal: main probes and other controls survive.
+            try:
+                metrics = _fit_control(
+                    validated, train_indices, test_indices, support, train_labels
                 )
-            )
+            except SparseProbeConvergenceError as error:
+                rejections.append(
+                    SparseProbeRejection("random_coordinate", k, repeat, support, str(error))
+                )
+                continue
+            random_supports.append(support)
+            random_metrics.append(metrics)
         random_controls.append(_control_result(random_supports, random_metrics, k))
 
         shuffle_supports = []
         shuffle_metrics = []
-        for _ in range(shuffle_count):
-            permutation = torch.randperm(train_labels.numel(), generator=generator)
+        for repeat in range(shuffle_count):
+            draw_generator = _control_generator(validated.seed, k, "label_shuffle", repeat)
+            permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
             shuffled_labels = train_labels[permutation]
             shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
             support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:k]
-            shuffle_supports.append(support)
-            shuffle_metrics.append(
-                _fit_control(
-                    validated,
-                    train_indices,
-                    test_indices,
-                    support,
-                    shuffled_labels,
+            try:
+                metrics = _fit_control(
+                    validated, train_indices, test_indices, support, shuffled_labels
                 )
-            )
+            except SparseProbeConvergenceError as error:
+                rejections.append(
+                    SparseProbeRejection("label_shuffle", k, repeat, support, str(error))
+                )
+                continue
+            shuffle_supports.append(support)
+            shuffle_metrics.append(metrics)
         shuffle_controls.append(_control_result(shuffle_supports, shuffle_metrics, k))
 
     return SparseProbeSweep(
@@ -883,4 +1011,5 @@ def sweep_sparse_probe(
         random_coordinate_controls=tuple(random_controls),
         label_shuffle_controls=tuple(shuffle_controls),
         seed=validated.seed,
+        rejections=tuple(rejections),
     )

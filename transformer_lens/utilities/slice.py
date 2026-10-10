@@ -5,7 +5,8 @@ This module contains the functionality for the Slice object
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Union
+import numbers
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -16,6 +17,7 @@ from .tensors import to_numpy
 SliceInput = Optional[
     Union[
         int,
+        np.integer,
         Tuple[int,],
         Tuple[int, int],
         Tuple[int, int, int],
@@ -37,6 +39,26 @@ A `SliceInput` can be one of the following types:
 
 `SliceInput` is used in the `apply_ln_to_stack` method in the `ActivationCache` module.
 """
+
+
+def to_python_int(value: Any) -> Optional[int]:
+    """Return the Python int for a non-bool integer scalar (0-d tensor/ndarray too), else None."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    if isinstance(value, torch.Tensor):
+        is_int_dtype = (
+            not value.dtype.is_floating_point
+            and not value.dtype.is_complex
+            and value.dtype != torch.bool
+        )
+        if value.ndim == 0 and is_int_dtype:
+            return int(value.item())
+        return None
+    if isinstance(value, np.ndarray) and value.ndim == 0 and np.issubdtype(value.dtype, np.integer):
+        return int(value.item())
+    return None
 
 
 class Slice:
@@ -75,6 +97,11 @@ class Slice:
         Raises:
             ValueError: If the input_slice is not one of the above types.
         """
+        # np.integer and 0-d tensor scalars must index like ints, or downstream
+        # mode=="int" checks miss them.
+        int_input = to_python_int(input_slice)
+        if int_input is not None:
+            input_slice = int_input
         if isinstance(input_slice, tuple):
             self.slice = slice(*input_slice)
             self.mode = "slice"
@@ -155,6 +182,9 @@ class Slice:
             Slice: A Slice object.
         """
         if not isinstance(slice_input, Slice):
+            int_input = to_python_int(slice_input)
+            if int_input is not None:
+                slice_input = int_input
             if isinstance(
                 slice_input, int
             ):  # slicing with an int collapses the dimension so this stops the pos dimension from collapsing

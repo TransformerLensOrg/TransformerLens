@@ -37,7 +37,7 @@ The first hop where they disagree localizes the bug.
 | Logits off everywhere but Q/K/V close | RoPE base / scaling mismatch | Adapter's `RotaryEmbeddingBridge` setup; check `cfg.rotary_base`. For scaling, read the HF `config.rope_scaling` dict the adapter received — `self.cfg` never carries it for `boot_transformers`-loaded bridges |
 | Attention output drifts; Q / K / V match | Wrong `n_key_value_heads`, wrong head reshape | `_qkvo_weight_conversions(n_kv_heads=...)`; GQA-aware split |
 | First-layer outputs off; embeddings off | Embedding scale applied twice or not at all | Gemma scales embeddings at runtime inside its HF embedding module and `bridge.embed` already captures the scaled value — do **not** add a `preprocess_weights()` rescale (that double-scales); look for a stray manual `√d_model` multiply in the adapter instead. BART-family: check `cfg.scale_embedding` |
-| Off by a constant scale in residual | Final-RMS-norm offset missing | `cfg.rmsnorm_uses_offset = True` + `ArithmeticTensorConversion(ADDITION, 1.0)` |
+| Off by a constant scale in residual | Final-RMS-norm offset missing | `cfg.rmsnorm_uses_offset = True` only — processing reads norm weights directly and applies the offset from the flag; conversion entries on norm weights are never read |
 | Logits flat / saturated at extremes | Missing logit softcap | `cfg.output_logits_soft_cap` from HF's `final_logit_softcapping` |
 | Attention pattern collapses to argmax | Missing attention-score softcap | `cfg.attn_scores_soft_cap` from HF's `attn_logit_softcapping` |
 | First MLP off; gate matches | Forgot gated-MLP wiring | `GatedMLPBridge` with `{gate, in, out}` submodules — not `MLPBridge` |

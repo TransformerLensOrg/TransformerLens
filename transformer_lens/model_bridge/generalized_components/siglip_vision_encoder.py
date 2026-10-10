@@ -3,7 +3,6 @@
 This module contains the bridge component for SigLIP vision encoder layers
 used in multimodal models like Gemma 3 and MedGemma.
 """
-from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
 import torch
@@ -20,21 +19,9 @@ from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
-
-
-def _vision_attention_config(config: Any) -> Any:
-    """A config view carrying the vision tower's dims, not the language model's.
-
-    AttentionBridge reshapes its q/k/v/z hooks by ``config.n_heads`` at fire time,
-    so handing it the language config reshapes vision activations by the wrong head
-    count -- granite-docling runs 9 text heads over 576 dims against the tower's 12
-    over 768. Reads there are hasattr-guarded, so the dims are all this needs.
-    """
-    n_heads = getattr(config, "vision_num_heads", None)
-    d_model = getattr(config, "vision_hidden_size", None)
-    if not n_heads or not d_model:
-        return config
-    return SimpleNamespace(n_heads=n_heads, d_model=d_model, d_head=d_model // n_heads)
+from transformer_lens.model_bridge.generalized_components.vision_encoder import (
+    vision_attention_config,
+)
 
 
 class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
@@ -70,11 +57,15 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
             config: Optional configuration object
             submodules: Dictionary of submodules to register
         """
+        # use_native_layernorm_autograd makes the bridge run the wrapped LayerNorm's
+        # own forward, so the vision tower's eps applies instead of the LM config's.
         default_submodules: Dict[str, GeneralizedComponent] = {
-            "ln1": NormalizationBridge(name="layer_norm1", config=config),
+            "ln1": NormalizationBridge(
+                name="layer_norm1", config=config, use_native_layernorm_autograd=True
+            ),
             "attn": AttentionBridge(
                 name="self_attn",
-                config=_vision_attention_config(config),
+                config=vision_attention_config(config),
                 submodules={
                     "q": LinearBridge(name="q_proj"),
                     "k": LinearBridge(name="k_proj"),
@@ -83,7 +74,9 @@ class SiglipVisionEncoderLayerBridge(GeneralizedComponent):
                     "o": LinearBridge(name="out_proj"),
                 },
             ),
-            "ln2": NormalizationBridge(name="layer_norm2", config=config),
+            "ln2": NormalizationBridge(
+                name="layer_norm2", config=config, use_native_layernorm_autograd=True
+            ),
             "mlp": MLPBridge(
                 name="mlp",
                 config=config,
@@ -164,7 +157,8 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
         # SiglipVisionModel wraps a SiglipVisionTransformer as .vision_model till
         # transformers version 5.6.0
         # post_layernorm is nn.LayerNorm; NormalizationBridge introspects the
-        # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak.
+        # wrapped module so the RMSNorm-LM config (Gemma 3, LLaVA) doesn't leak,
+        # and the native-autograd flag keeps the vision eps over the LM config's.
         default_submodules = {
             "embeddings": GeneralizedComponent(name="vision_model.embeddings"),
             # Pass config down: without it the layer's attention bridge inherits the
@@ -174,7 +168,9 @@ class SiglipVisionEncoderBridge(GeneralizedComponent):
                 name="vision_model.encoder.layers", config=config
             ),
             "post_layernorm": NormalizationBridge(
-                name="vision_model.post_layernorm", config=config
+                name="vision_model.post_layernorm",
+                config=config,
+                use_native_layernorm_autograd=True,
             ),
         }
 

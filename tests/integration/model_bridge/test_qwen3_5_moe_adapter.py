@@ -79,3 +79,16 @@ class TestQwen3_5MoeHooks:
         hf_model = bridge.original_model
         assert isinstance(bridge.blocks[0].mlp, MoEBridge)
         assert bridge.blocks[0].mlp is hf_model.model.language_model.layers[0].mlp
+
+
+class TestQwen3_5MoeRMSNormOffset:
+    @pytest.mark.filterwarnings("ignore:A forward hook edited")
+    @pytest.mark.parametrize("norm", ["blocks.0.ln1", "ln_final"])
+    def test_identity_norm_edit_preserves_logits(self, bridge, sample_tokens, norm):
+        """HF's Qwen3_5MoeRMSNorm scales by (1 + weight); the bridge's edit fallback must too."""
+        with torch.no_grad():
+            clean = bridge(sample_tokens)
+            edited = bridge.run_with_hooks(
+                sample_tokens, fwd_hooks=[(f"{norm}.hook_scale", lambda t, hook: t.clone())]
+            )
+        assert ((edited - clean).norm() / clean.norm()).item() < 1e-5

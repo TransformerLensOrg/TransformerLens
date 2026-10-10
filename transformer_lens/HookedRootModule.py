@@ -28,7 +28,9 @@ from transformer_lens.hook_points import (
     HookPoint,
     NamesFilter,
 )
-from transformer_lens.utilities import Slice, SliceInput, warn_if_mps
+from transformer_lens.utilities import Slice, SliceInput
+from transformer_lens.utilities import remove_batch_dim as drop_batch_dim
+from transformer_lens.utilities import warn_if_mps
 
 
 class HookedRootModule(HookIntrospectionMixin, nn.Module):
@@ -332,7 +334,7 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             names_filter (NamesFilter, optional): Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.
             incl_bwd (bool, optional): Whether to also do backwards hooks. Defaults to False.
             device (_type_, optional): The device to store on. Defaults to same device as model.
-            remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
+            remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). A leading dimension that isn't size 1 is left in place, so a larger batch keeps its batch dimension. Defaults to False.
             cache (Optional[dict], optional): The cache to store activations in, a new dict is created by default. Defaults to None.
 
         Returns:
@@ -361,10 +363,8 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
-            if remove_batch_dim:
-                cache[hook_name] = tensor.detach().to(device)[0]
-            else:
-                cache[hook_name] = tensor.detach().to(device)
+            stored = tensor.detach().to(device)
+            cache[hook_name] = drop_batch_dim(stored) if remove_batch_dim else stored
 
         for name, hp in self.hook_dict.items():
             if names_filter(name):
@@ -397,7 +397,8 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
                 model device. WARNING: Setting a different device than the one used by the model leads to
                 significant performance degradation.
             remove_batch_dim (bool, optional): If True, removes the batch dimension when caching. Only
-                makes sense with batch_size=1 inputs. Defaults to False.
+                makes sense with batch_size=1 inputs: an AssertionError is raised when the first
+                positional input has a larger batch. Defaults to False.
             incl_bwd (bool, optional): If True, calls backward on the model output and caches gradients
                 as well. Assumes that the model outputs a scalar (e.g., return_type="loss"). Custom loss
                 functions are not supported. Defaults to False.
@@ -414,6 +415,12 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             tuple: A tuple containing the model output and a Cache object.
 
         """
+
+        if remove_batch_dim and model_args and isinstance(model_args[0], Tensor):
+            batch_size = model_args[0].shape[0] if model_args[0].ndim > 0 else 1
+            assert (
+                batch_size == 1
+            ), f"Cannot remove batch dimension from cache with batch size {batch_size}"
 
         pos_slice = Slice.unwrap(pos_slice)
 
@@ -452,7 +459,7 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
             names_filter (NamesFilter, optional): Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.
             incl_bwd (bool, optional): Whether to also do backwards hooks. Defaults to False.
             device (_type_, optional): The device to store on. Keeps on the same device as the layer if None.
-            remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
+            remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). A leading dimension that isn't size 1 is left in place, so a larger batch keeps its batch dimension. Defaults to False.
             cache (Optional[dict], optional): The cache to store activations in, a new dict is created by default. Defaults to None.
 
         Returns:
@@ -493,7 +500,7 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
                 hook_name += "_grad"
             resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
-                resid_stream = resid_stream[0]
+                resid_stream = drop_batch_dim(resid_stream)
 
             if (
                 hook.name.endswith("hook_q")
@@ -509,7 +516,7 @@ class HookedRootModule(HookIntrospectionMixin, nn.Module):
                 pos_dim = -2
 
             if (
-                tensor.dim() >= -pos_dim
+                resid_stream.dim() >= -pos_dim
             ):  # check if the residual stream has a pos dimension before trying to slice
                 resid_stream = pos_slice.apply(resid_stream, dim=pos_dim)
             cache[hook_name] = resid_stream

@@ -16,6 +16,7 @@ Two capture modes, selected at boot:
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Set
 
 import torch
@@ -92,6 +93,8 @@ def decode_tensor(payload: Dict[str, Any]) -> torch.Tensor:
 
 class TLWorkerExtension:
     """Mixed into vLLM's ``Worker`` via ``worker_extension_cls``."""
+
+    model_runner: Any
 
     _tl_hook_handles: list
     _tl_buffers: Dict[str, torch.Tensor]
@@ -176,6 +179,26 @@ class TLWorkerExtension:
         target = resolve_dot_path(getattr(self, "model_runner").model, dotted_name)
         return encode_tensor(target) if isinstance(target, torch.Tensor) else None
 
+    def tl_get_logits_processor(self) -> Optional[Dict[str, Any]]:
+        """Read the engine's post-unembedding transform; absent on non-final PP stages."""
+        processor = resolve_dot_path(self.model_runner.model, "logits_processor")
+        if processor is None:
+            return None
+        if not hasattr(processor, "scale") or not hasattr(processor, "soft_cap"):
+            raise NotImplementedError(
+                "Unsupported vLLM logits processor: missing scale or soft_cap."
+            )
+        if bool(getattr(processor, "logits_as_input", False)):
+            raise NotImplementedError("Cannot reconstruct logits_as_input processors from lm_head.")
+        try:
+            scale = float(processor.scale)
+            cap = float(processor.soft_cap) if processor.soft_cap is not None else None
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError("vLLM logits processor has an invalid scale or soft_cap.") from exc
+        if not math.isfinite(scale) or (cap is not None and (not math.isfinite(cap) or cap <= 0)):
+            raise RuntimeError("vLLM logits processor has an invalid scale or soft_cap.")
+        return {"scale": scale, "soft_cap": cap}
+
     def tl_reset_counter(self) -> None:
         """Zero the shared hook-fire counter before a forward."""
         counter = getattr(self, "_tl_fire_counter", None)
@@ -204,7 +227,7 @@ class TLWorkerExtension:
 
     def tl_read_batched_captures(
         self, names: Optional[List[str]] = None
-    ) -> Dict[str, Dict[str, torch.Tensor]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """Cat per-request chunks into ``{req_id: {hook: (seq, width)}}`` (token-order).
 
         ``names`` restricts to those hooks (``None`` = all). Note the per-chunk

@@ -22,6 +22,27 @@ from typing import Any
 import torch
 from transformers import PreTrainedModel
 
+# Architectures whose prepare_loading force-imports the remote modeling file at
+# the caller's pinned revision (code_revision, falling back to the weights
+# revision) so the patched module copy is the one from_pretrained executes.
+# Kept in sync with the adapter sources by a static scan in
+# tests/unit/model_bridge/test_prepare_loading_orchestration.py.
+REVISION_FORWARDING_ARCHITECTURES: frozenset[str] = frozenset(
+    {
+        "BD3LM",
+        "BaiChuanForCausalLM",
+        "BaichuanForCausalLM",
+        "DreamModel",
+        "GiddForDiffusionLM",
+        "InternLM2ForCausalLM",
+        "LLaDA2MoeModelLM",
+        "OpenELMForCausalLM",
+        "OuroForCausalLM",
+        "RavenForCausalLM",
+        "RWKV7ForCausalLM",
+    }
+)
+
 
 def iter_remote_modeling_modules(*name_fragments: str) -> Iterator[ModuleType]:
     """Yield imported modules whose name contains ``modeling`` and any fragment.

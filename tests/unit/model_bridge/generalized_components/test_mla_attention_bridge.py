@@ -289,6 +289,91 @@ class TestMLAAttentionBridgeScaling:
         assert not torch.allclose(out_base, out_via_scaling, atol=1e-5, rtol=1e-4)
 
 
+class TestMLAAttentionHookResult:
+    """Per-head hook_result (z_h @ W_O_h, pre-sum) gated by use_attn_result."""
+
+    @staticmethod
+    def _build_bridge(tiny_config, tiny_model, use_attn_result: bool) -> MLAAttentionBridge:
+        import copy
+
+        from transformer_lens.model_bridge.generalized_components import LinearBridge
+
+        cfg = copy.deepcopy(tiny_config)
+        cfg.use_attn_result = use_attn_result
+        hf_attn = tiny_model.model.layers[0].self_attn
+        o_bridge = LinearBridge(name="o_proj")
+        o_bridge.set_original_component(hf_attn.o_proj)
+        bridge = MLAAttentionBridge(name="self_attn", config=cfg, submodules={"o": o_bridge})
+        bridge.add_module("o", o_bridge)
+        bridge.set_original_component(hf_attn)
+        bridge.set_rotary_emb(tiny_model.model.rotary_emb)
+        return bridge
+
+    @staticmethod
+    def _sample_inputs(tiny_config, tiny_model):
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            hidden_states = torch.randn(2, 8, tiny_config.hidden_size)
+        position_ids = torch.arange(8).unsqueeze(0).expand(2, -1)
+        return hidden_states, tiny_model.model.rotary_emb(hidden_states, position_ids)
+
+    def test_hook_result_is_not_the_summed_output_hookpoint(self, tiny_config, tiny_model):
+        """Alias registration must not rebind hook_result onto hook_out: cached
+        'hook_result' would then silently hold already-summed [batch, pos, d_model]."""
+        bridge = self._build_bridge(tiny_config, tiny_model, use_attn_result=True)
+        bridge._register_aliases()
+        assert bridge.hook_result is not bridge.hook_out
+
+    def test_hook_result_fires_per_head_and_sums_to_hook_out(self, tiny_config, tiny_model):
+        bridge = self._build_bridge(tiny_config, tiny_model, use_attn_result=True)
+        hidden_states, position_embeddings = self._sample_inputs(tiny_config, tiny_model)
+        captured: dict[str, torch.Tensor] = {}
+        handle = bridge.hook_result.register_forward_hook(
+            lambda m, i, o: captured.setdefault("result", o.detach().clone())
+        )
+        try:
+            with torch.no_grad():
+                out = bridge(
+                    hidden_states, position_embeddings=position_embeddings, attention_mask=None
+                )[0]
+        finally:
+            handle.remove()
+        n_heads = tiny_config.num_attention_heads
+        assert captured["result"].shape == (2, 8, n_heads, tiny_config.hidden_size)
+        summed = captured["result"].sum(dim=-2)
+        bias = tiny_model.model.layers[0].self_attn.o_proj.bias
+        if bias is not None:
+            summed = summed + bias
+        torch.testing.assert_close(summed, out, atol=1e-5, rtol=1e-4)
+
+    def test_per_head_path_matches_default_projection(self, tiny_config, tiny_model):
+        """sum_h z_h @ W_O_h must reproduce o_proj exactly, so enabling the flag
+        cannot drift the model's output."""
+        hidden_states, position_embeddings = self._sample_inputs(tiny_config, tiny_model)
+        outs = []
+        for flag in (False, True):
+            bridge = self._build_bridge(tiny_config, tiny_model, use_attn_result=flag)
+            with torch.no_grad():
+                outs.append(
+                    bridge(
+                        hidden_states, position_embeddings=position_embeddings, attention_mask=None
+                    )[0]
+                )
+        torch.testing.assert_close(outs[0], outs[1], atol=1e-5, rtol=1e-4)
+
+    def test_hook_result_does_not_fire_without_flag(self, tiny_config, tiny_model):
+        bridge = self._build_bridge(tiny_config, tiny_model, use_attn_result=False)
+        hidden_states, position_embeddings = self._sample_inputs(tiny_config, tiny_model)
+        fired: list[torch.Tensor] = []
+        handle = bridge.hook_result.register_forward_hook(lambda m, i, o: fired.append(o))
+        try:
+            with torch.no_grad():
+                bridge(hidden_states, position_embeddings=position_embeddings, attention_mask=None)
+        finally:
+            handle.remove()
+        assert fired == []
+
+
 class TestMLACompatibilityMaskSentinel:
     """Compatibility mode must report masked scores as -inf, not HF's finfo.min."""
 

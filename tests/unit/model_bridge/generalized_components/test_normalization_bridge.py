@@ -123,6 +123,66 @@ def test_clip_layernorms_resolve_to_layernorm_under_rmsnorm_config():
     assert post.uses_rms_norm is False
 
 
+def _assert_wrapped_eps_fidelity(bridge: NormalizationBridge, wrapped_eps: float = 1e-6) -> None:
+    # Exact equality is safe: the native path returns the wrapped module's own
+    # output; the python path would recompute with the LM config's eps and drift.
+    d = 8
+    wrapped = nn.LayerNorm(d, eps=wrapped_eps)
+    nn.init.normal_(wrapped.weight, std=0.1)
+    nn.init.normal_(wrapped.bias, std=0.1)
+    wrapped.eval()
+    bridge.set_original_component(wrapped)
+    x = torch.randn(2, 5, d)
+    torch.testing.assert_close(bridge(x), wrapped(x), rtol=0, atol=0)
+
+
+def test_clip_layer_norms_use_wrapped_vision_epsilon():
+    from transformer_lens.model_bridge.generalized_components.clip_vision_encoder import (
+        CLIPVisionEncoderLayerBridge,
+    )
+
+    layer = CLIPVisionEncoderLayerBridge(
+        name="encoder.layers", config=_Cfg(uses_rms_norm=False, eps=1e-5)
+    )
+    _assert_wrapped_eps_fidelity(layer.submodules["ln1"])
+    _assert_wrapped_eps_fidelity(layer.submodules["ln2"])
+
+
+def test_clip_pre_and_post_layernorms_use_wrapped_vision_epsilon():
+    from transformer_lens.model_bridge.generalized_components.clip_vision_encoder import (
+        CLIPVisionEncoderBridge,
+    )
+
+    encoder = CLIPVisionEncoderBridge(
+        name="vision_tower", config=_Cfg(uses_rms_norm=False, eps=1e-5)
+    )
+    _assert_wrapped_eps_fidelity(encoder.submodules["pre_layernorm"])
+    _assert_wrapped_eps_fidelity(encoder.submodules["post_layernorm"])
+
+
+def test_siglip_layer_norms_use_wrapped_vision_epsilon():
+    from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder import (
+        SiglipVisionEncoderLayerBridge,
+    )
+
+    layer = SiglipVisionEncoderLayerBridge(
+        name="encoder.layers", config=_Cfg(uses_rms_norm=False, eps=1e-5)
+    )
+    _assert_wrapped_eps_fidelity(layer.submodules["ln1"])
+    _assert_wrapped_eps_fidelity(layer.submodules["ln2"])
+
+
+def test_siglip_post_layernorm_uses_wrapped_vision_epsilon():
+    from transformer_lens.model_bridge.generalized_components.siglip_vision_encoder import (
+        SiglipVisionEncoderBridge,
+    )
+
+    encoder = SiglipVisionEncoderBridge(
+        name="vision_tower", config=_Cfg(uses_rms_norm=False, eps=1e-5)
+    )
+    _assert_wrapped_eps_fidelity(encoder.submodules["post_layernorm"])
+
+
 def test_native_autograd_path_also_respects_override():
     d = 16
     layer = _layernorm(d)

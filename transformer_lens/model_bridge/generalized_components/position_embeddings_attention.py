@@ -7,9 +7,11 @@ so that all hook points fire at the correct computation stage:
 - hook_attn_scores: PRE-softmax (matching HookedTransformer convention)
 - hook_pattern: POST-softmax
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from functools import partial
+from typing import Any, Callable, Dict, Optional
 
 import torch
 
@@ -26,19 +28,26 @@ from transformer_lens.utilities.hf_utils import get_rotary_pct_from_config
 
 
 def _apply_rotary_pos_emb_adjacent_pairs(
-    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+    q: torch.Tensor,
+    k: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+    relayout_cos_sin: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """GLM/ERNIE-style RoPE: rotate adjacent element pairs in full precision.
+    """Adjacent-pair RoPE in full precision: pairs are (0,1), (2,3), ... not (i, i + d/2).
 
-    cos/sin arrive in the standard half-duplicated layout; this convention
-    takes the first half and expands it by repeat_interleave(2) so rotation
-    pairs are (0,1), (2,3), ... instead of (i, i + d/2).
+    With relayout_cos_sin=True (GLM/ERNIE), cos/sin arrive in the standard
+    half-duplicated layout, so the first half is expanded by
+    repeat_interleave(2) to match the pairing. With False (Cohere), the rotary
+    module already returns each frequency repeated twice ([c0, c0, c1, c1, ...])
+    and cos/sin are used as given.
     """
     original_dtype = q.dtype
     cos = cos.unsqueeze(1)
     sin = sin.unsqueeze(1)
-    cos = cos[..., : cos.shape[-1] // 2].repeat_interleave(2, dim=-1)
-    sin = sin[..., : sin.shape[-1] // 2].repeat_interleave(2, dim=-1)
+    if relayout_cos_sin:
+        cos = cos[..., : cos.shape[-1] // 2].repeat_interleave(2, dim=-1)
+        sin = sin[..., : sin.shape[-1] // 2].repeat_interleave(2, dim=-1)
 
     def _rotate(x: torch.Tensor) -> torch.Tensor:
         x1 = x[..., 0::2]
@@ -102,13 +111,43 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if submodules is not None and "k_norm" in submodules:
             self.hook_k_normed = HookPoint()
         self._qk_norm_phase: Optional[str] = None
+        self._qk_norm_per_head: bool = False
 
     def set_original_component(self, component: torch.nn.Module) -> None:
         """Wire HF module, validate adapter declarations."""
         super().set_original_component(component)
         self._validate_submodule_declarations(component)
         self._qk_norm_phase = self._decide_qk_norm_phase(component)
+        self._qk_norm_per_head = (
+            self._qk_norm_phase == "post_reshape" and self._qk_norm_weight_ndim(component) == 2
+        )
+        self._mark_post_reshape_norm_hooks()
         self._own_scaled_hook_k(component)
+
+    def _qk_norm_weight_ndim(self, hf_attn: torch.nn.Module) -> int:
+        """Return the HF q_norm weight rank (0 when absent or non-learnable)."""
+        norm = getattr(hf_attn, str(self.submodules["q_norm"].name), None)
+        weight = getattr(norm, "weight", None)
+        return int(weight.ndim) if isinstance(weight, torch.Tensor) else 0
+
+    def _mark_post_reshape_norm_hooks(self) -> None:
+        """Post-reshape norms (Gemma-3/Cohere) fire on ``[batch, heads, pos, d_head]``.
+
+        Declare the position axis on the normed hooks and on the norm submodules'
+        own hooks so ``pos_slice`` slices positions rather than heads there.
+        """
+        if self._qk_norm_phase != "post_reshape":
+            return
+        for norm_name, hook_name in (("q_norm", "hook_q_normed"), ("k_norm", "hook_k_normed")):
+            hook = getattr(self, hook_name, None)
+            if isinstance(hook, HookPoint):
+                hook.pos_dim = 2
+            norm = self.submodules.get(norm_name)
+            if norm is not None:
+                # hook_in/hook_out plus the norm's own hook_normalized/hook_scale.
+                # Per-head norms run on the pre-transpose [batch, pos, heads, d_head]
+                # layout (see forward), so their position axis is 1, not 2.
+                norm.mark_pos_dim(1 if self._qk_norm_per_head else 2)
 
     def _own_scaled_hook_k(self, hf_attn: torch.nn.Module) -> None:
         """Replace the ``hook_k`` alias with a real HookPoint when K is scaled.
@@ -385,11 +424,26 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             key_states = key_states.view(hidden_shape).transpose(1, 2)
             value_states = value_states.view(hidden_shape).transpose(1, 2)
 
+        # HunYuan rotates first and normalises after RoPE, every other post-reshape arch before.
+        qk_norm_after_rope = bool(getattr(self.config, "qk_norm_after_rope", False))
+
         # Post-reshape phase (Gemma-3/Cohere): norm on [B, H, S, D].
-        if has_q_norm and self._qk_norm_phase == "post_reshape":
-            query_states = self.hook_q_normed(self.q_norm(query_states))
-            if has_k_norm:
-                key_states = self.hook_k_normed(self.k_norm(key_states))
+        if has_q_norm and self._qk_norm_phase == "post_reshape" and not qk_norm_after_rope:
+            if self._qk_norm_per_head:
+                # Per-head (n_heads, d_head) weights broadcast only on HF's
+                # pre-transpose [B, S, H, D] layout; the norm reduces over the
+                # last dim alone, so transposing around the call is exact.
+                query_states = self.hook_q_normed(
+                    self.q_norm(query_states.transpose(1, 2)).transpose(1, 2)
+                )
+                if has_k_norm:
+                    key_states = self.hook_k_normed(
+                        self.k_norm(key_states.transpose(1, 2)).transpose(1, 2)
+                    )
+            else:
+                query_states = self.hook_q_normed(self.q_norm(query_states))
+                if has_k_norm:
+                    key_states = self.hook_k_normed(self.k_norm(key_states))
 
         # --- RoPE ---
         if (
@@ -413,7 +467,13 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         if position_embeddings is not None:
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
-            if getattr(self.config, "rotary_adjacent_pairs", False):
+            apply_rotary_pos_emb: Callable[..., tuple[torch.Tensor, torch.Tensor]]
+            if getattr(self.config, "rotary_interleaved_cos_sin", False):
+                # Cohere convention: adjacent pairs, cos/sin already interleaved.
+                apply_rotary_pos_emb = partial(
+                    _apply_rotary_pos_emb_adjacent_pairs, relayout_cos_sin=False
+                )
+            elif getattr(self.config, "rotary_adjacent_pairs", False):
                 # GLM/ERNIE convention: rotate adjacent element pairs in fp32,
                 # with cos/sin halves expanded by repeat_interleave.
                 apply_rotary_pos_emb = _apply_rotary_pos_emb_adjacent_pairs
@@ -465,6 +525,11 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             query_states = self.hook_rot_q(query_states)
         if hasattr(self, "hook_rot_k"):
             key_states = self.hook_rot_k(key_states)
+
+        if has_q_norm and self._qk_norm_phase == "post_reshape" and qk_norm_after_rope:
+            query_states = self.hook_q_normed(self.q_norm(query_states))
+            if has_k_norm:
+                key_states = self.hook_k_normed(self.k_norm(key_states))
 
         # --- KV cache: extend K/V with cached positions ---
         key_states, value_states = self._update_kv_cache(key_states, value_states, **kwargs)

@@ -70,9 +70,9 @@ class VLLMDriver(DriverBase):
         # Logprobs per forward = real vocab (boot's max_logprobs). d_vocab can be
         # padded larger, which vLLM would reject; the logits tensor stays d_vocab.
         self._n_logprobs = int(getattr(hf_config, "vocab_size", self.bridge_config.d_vocab))
-        # Unembedding cache: (weight_fp32, bias_fp32|None) once probe_logit_reconstruction
+        # Unembedding cache: (weight_fp32, bias_fp32|None, scale, soft_cap) once the probe
         # runs — a per-forward re-fetch clones a d_vocab×d_model tensor to CPU every call.
-        self._unembed: tuple[torch.Tensor, Any] | None = None
+        self._unembed: tuple[torch.Tensor, torch.Tensor | None, float, float | None] | None = None
         self._unembed_probed = False
         # fp32 reciprocal of the guarded final-norm weight; None after a failed probe.
         self._lnf_inv_denom: torch.Tensor | None = None
@@ -540,19 +540,35 @@ class VLLMDriver(DriverBase):
 
     def probe_logit_reconstruction(self) -> bool:
         """One-time unembedding fetch + cache; downgrades ``provides_sequence_logits``
-        honestly when no unembedding is reachable (the fallback path is final-position
-        log-probs, which cannot back a loss). Idempotent — later calls return the
-        cached availability."""
+        honestly when no unembedding or logits processor is reachable (the fallback
+        path is final-position log-probs, which cannot back a loss). Idempotent — later
+        calls return the cached availability."""
         if self._unembed_probed:
             return self._unembed is not None
-        self._unembed_probed = True
         # Gathered reads: under TP the unembedding is vocab-sharded per rank.
         weight = self._gather_param("lm_head.weight")
         if weight is None:  # tied embeddings expose no separate lm_head
             weight = self._gather_param("model.embed_tokens.weight")
         if weight is None:
+            self._unembed_probed = True
             self.provides_sequence_logits = False
             return False
+        # Config fields alone miss architecture composition and runtime overrides.
+        processors = [
+            p for p in self._llm.collective_rpc("tl_get_logits_processor") if p is not None
+        ]
+        if not processors:
+            self._unembed_probed = True
+            self.provides_sequence_logits = False
+            warnings.warn(
+                "vLLM logits processor is unavailable; disabling full-sequence logit reconstruction.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return False
+        if any(p != processors[0] for p in processors[1:]):
+            raise RuntimeError("vLLM logits processor metadata disagrees across ranks.")
+        scale, cap = processors[0]["scale"], processors[0]["soft_cap"]
         bias = self._gather_param("lm_head.bias")
         d_vocab = int(self.bridge_config.d_vocab)
         # Slice vLLM's vocab-pad rows at cache time; fp32 residency (~2× checkpoint
@@ -560,13 +576,16 @@ class VLLMDriver(DriverBase):
         self._unembed = (
             weight.to(torch.float32)[:d_vocab],
             bias.to(torch.float32)[:d_vocab] if bias is not None else None,
+            scale,
+            cap,
         )
         self.provides_sequence_logits = True
+        self._unembed_probed = True
         return True
 
     def _reconstruct_logits(self, ln_final: Any) -> torch.Tensor | None:
         """Rebuild real logits from the captured post-weight ln_final:
-        ``ln_final @ lm_head.weight.T`` (+ bias, + Gemma-family tanh soft-cap).
+        ``ln_final @ lm_head.weight.T`` (+ bias), then the engine's softcap and scale.
 
         vLLM's ``ln_final.hook_normalized`` is the POST-weight RMSNorm value lm_head
         consumes (verified empirically: it equals HF's pre-weight value times the norm
@@ -578,7 +597,7 @@ class VLLMDriver(DriverBase):
         if ln_final is None or not self.probe_logit_reconstruction():
             return None
         assert self._unembed is not None  # probe returned True
-        weight32, bias32 = self._unembed
+        weight32, bias32, scale, cap = self._unembed
         lf = ln_final.to(device=weight32.device, dtype=torch.float32)
         logits = lf @ weight32.T
         if bias32 is not None:
@@ -589,9 +608,10 @@ class VLLMDriver(DriverBase):
             # org_vocab_size before sampling — mirror that, or pad columns (zero-filled
             # at load) become phantom argmax candidates and bias softmax denominators.
             logits = logits[..., :d_vocab]
-        cap = getattr(self.bridge_config, "output_logits_soft_cap", None)
-        if cap is not None and cap > 0:  # Gemma-family cap; -1.0 is the "disabled" sentinel
-            logits = float(cap) * torch.tanh(logits / float(cap))
+        if cap is not None:
+            logits = cap * torch.tanh(logits / cap)
+        if scale != 1.0:
+            logits = logits * scale
         if logits.shape[-1] < d_vocab:  # pad the padded-vocab tail (never predicted)
             pad = logits.new_full((*logits.shape[:-1], d_vocab - logits.shape[-1]), float("-inf"))
             logits = torch.cat([logits, pad], dim=-1)
