@@ -31,12 +31,14 @@ import torch
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
+    FaithfulnessConfig,
     GradientCache,
     Node,
     NodeKind,
     _ablate_edges,
     _edge_hook_flags,
     _edge_hook_names,
+    _mean_writer_contributions,
     attribution_patch,
     enumerate_edges,
     faithfulness,
@@ -236,6 +238,72 @@ def test_coupled_partial_gpt2_ablation_matches_staged_reader_overrides(
         torch.testing.assert_close(observed[name], reference[name], atol=0, rtol=0)
     torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     assert (actual - clean_logits).abs().max() > 1e-5
+
+
+def test_partial_mean_gpt2_ablation_matches_held_out_reader_override(
+    gpt2_bridge,
+    gpt2_edge_endpoints,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clean, clean_logits, clean_values, _, edges = gpt2_edge_endpoints
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    calibration = gpt2_bridge.to_tokens(["The capital of Spain is", "The capital of Italy is"])
+    assert calibration.shape == (2, clean.shape[1])
+    position = clean.shape[1] - 1
+    name = "blocks.1.attn.hook_q_input"
+    index = (0, position, 3)
+    excluded = (
+        Node("attn_head_out", position, layer=0, head=1),
+        Node("q_input", position, layer=1, head=3),
+    )
+    assert excluded in edges
+    circuit = [edge for edge in edges if edge != excluded]
+    with _edge_hook_flags(gpt2_bridge):
+        _, first = _capture_gpt2_forward(gpt2_bridge, calibration[:1])
+        _, second = _capture_gpt2_forward(gpt2_bridge, calibration[1:])
+        names = ["hook_embed"]
+        for layer in range(gpt2_bridge.cfg.n_layers):
+            names.extend([f"blocks.{layer}.attn.hook_result", f"blocks.{layer}.hook_mlp_out"])
+        reference_means = {hook: (first[hook] + second[hook]) / 2 for hook in names}
+        actual_means = _mean_writer_contributions(gpt2_bridge, calibration)
+        assert actual_means.keys() == reference_means.keys()
+        for hook in names:
+            torch.testing.assert_close(actual_means[hook], reference_means[hook], atol=0, rtol=0)
+        expected_reader = clean_values[name].clone()
+        expected_reader[index] = (
+            clean_values[name][index]
+            - clean_values["blocks.0.attn.hook_result"][0, position, 1]
+            + reference_means["blocks.0.attn.hook_result"][0, position, 1]
+        )
+        assert (expected_reader - clean_values[name]).abs().max() > 1e-5
+        expected, reference = _capture_gpt2_forward(
+            gpt2_bridge, clean, [(name, _override_reader(index, expected_reader[index]))]
+        )
+        actual, observed = _capture_gpt2_ablation(
+            gpt2_bridge, clean, edges, circuit, actual_means, monkeypatch
+        )
+        corrupt_logits, _ = _capture_gpt2_forward(gpt2_bridge, corrupt)
+        answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1])
+        wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1])
+        metric = _logit_diff_metric(answer_id, wrong_id)
+        report = faithfulness(
+            gpt2_bridge,
+            clean,
+            corrupt,
+            metric,
+            circuit,
+            FaithfulnessConfig(ablation="mean"),
+            mean_tokens=calibration,
+        )
+    torch.testing.assert_close(reference[name], expected_reader, atol=0, rtol=0)
+    torch.testing.assert_close(observed[name], expected_reader, atol=0, rtol=0)
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    assert (actual - clean_logits).abs().max() > 1e-5
+    recovered = float(
+        (metric(expected) - metric(corrupt_logits))
+        / (metric(clean_logits) - metric(corrupt_logits))
+    )
+    assert report.recovered == pytest.approx(recovered, abs=1e-6)
 
 
 def _bridge_hook_state(model: TransformerBridge) -> tuple:

@@ -140,9 +140,41 @@ independent of the linearization that ranked the edges in the first place.
 
 `FaithfulnessConfig(ablation=...)` selects the replacement. The default,
 `"corrupt"`, substitutes the corrupt run's own contribution, which is the
-evaluation the external EAP-IG reference reports; `"mean"` substitutes the
-dataset mean of that writer's contribution instead. Compare against a random
-edge set of the same size before claiming a circuit is meaningful.
+evaluation the external EAP-IG reference reports. `"mean"` requires an explicit,
+held-out calibration batch through the keyword-only `mean_tokens` argument:
+
+```python
+from transformer_lens.tools.analysis import FaithfulnessConfig
+
+calibration_tokens = model.to_tokens([
+    "The capital of Spain is",
+    "The capital of Italy is",
+]).to(clean.device)
+mean_report = faithfulness(
+    model, clean, corrupt, metric_fn, ranked.top_edges(k=50),
+    config=FaithfulnessConfig(ablation="mean"),
+    mean_tokens=calibration_tokens,
+)
+```
+
+Calibration must be a nonempty `[n_calibration, seq]` batch of `torch.int32` or
+`torch.int64` token ids, with the evaluated sequence length and the same device
+as the clean/corrupt token tensors. Align the sequence positions before averaging;
+the helper averages examples only, preserving each position and attention head.
+It captures calibration activations with the same model, hook configuration, and
+weight-processing mode used for evaluation.
+
+Mean-mode calls without calibration now raise `ValueError`; there is no fallback
+to the evaluated pair. Exact calibration rows equal to either endpoint are also
+rejected. This check cannot establish dataset independence: callers must choose
+held-out examples and avoid semantically equivalent leakage. Passing `mean_tokens`
+in corrupt mode is rejected rather than silently ignored.
+
+Recovery is still `(circuit_metric - corrupt_metric) / (clean_metric - corrupt_metric)`.
+An empty mean-ablated circuit can have nonzero recovery because its calibration
+baseline need not reproduce the corrupt run. A full circuit still reproduces the
+clean metric. Compare against a random edge set of the same size, using the same
+calibration batch, before claiming a circuit is meaningful.
 
 `report.edge_class_recovered` breaks the result out by edge class, measured
 leave-one-out: each entry is the recovery with that class's edges removed, so a

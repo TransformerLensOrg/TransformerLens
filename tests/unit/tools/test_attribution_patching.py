@@ -36,6 +36,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _edge_hook_names,
     _ensure_edge_hook_flags,
     _excluded_writers_by_reader,
+    _mean_writer_contributions,
     _node_effects,
     _reader_hook_names,
     _required_hook_names,
@@ -2604,7 +2605,8 @@ def test_faithfulness_is_forward_only_and_preserves_parameter_gradients(
 ) -> None:
     model, clean, corrupt, metric = _faithfulness_toy()
     circuit = _toy_ablation_edges()[::2]
-    baseline = faithfulness(model, clean, corrupt, metric, circuit, config)
+    mean_tokens = _toy_mean_calibration() if config.ablation == "mean" else None
+    baseline = faithfulness(model, clean, corrupt, metric, circuit, config, mean_tokens=mean_tokens)
     parameters = list(model.parameters())
     for index, parameter in enumerate(parameters):
         parameter.grad = torch.full_like(parameter, 0.17) if index % 2 else None
@@ -2621,7 +2623,9 @@ def test_faithfulness_is_forward_only_and_preserves_parameter_gradients(
     monkeypatch.setattr(torch.Tensor, "backward", forbidden_backward)
     for enabled in (False, True):
         with torch.set_grad_enabled(enabled):
-            report = faithfulness(model, clean, corrupt, forward_metric, circuit, config)
+            report = faithfulness(
+                model, clean, corrupt, forward_metric, circuit, config, mean_tokens=mean_tokens
+            )
         assert report == baseline
         for parameter, previous in zip(parameters, saved):
             if previous is None:
@@ -2634,22 +2638,270 @@ def test_faithfulness_defaults_to_corrupt_ablation() -> None:
     assert FaithfulnessConfig().ablation == "corrupt"
 
 
-def test_faithfulness_mean_ablation_differs_from_corrupt_ablation() -> None:
-    """The two ablation modes are genuinely different measurements."""
+def test_faithfulness_mean_ablation_requires_calibration() -> None:
     model, clean, corrupt, metric = _faithfulness_toy()
-    edges = _graph_edges(model, corrupt, metric)
-    # Keep a strict subset, so some edges are actually ablated.
-    circuit = edges[: len(edges) // 2]
+    with pytest.raises(ValueError, match="mean_tokens"):
+        faithfulness(model, clean, corrupt, metric, [], FaithfulnessConfig(ablation="mean"))
 
+
+def _toy_mean_calibration() -> torch.Tensor:
+    return torch.tensor([[0, 4, 5], [2, 5, 0], [4, 0, 2]])
+
+
+def _functional_mean_writers(
+    model: _EdgeScoringToyBridge, calibration: torch.Tensor
+) -> dict[Node, torch.Tensor]:
+    examples = [_functional_toy_ablation(model, row[None], set(), {})[1] for row in calibration]
+    return {
+        writer: torch.stack([example[writer] for example in examples]).mean(dim=0)
+        for writer in examples[0]
+    }
+
+
+def test_mean_writer_contributions_preserve_positions_and_heads() -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    calibration = _toy_mean_calibration()
+    expected = _toy_replacement_tensors(_functional_mean_writers(model, calibration))
+    first = _toy_replacement_tensors(_functional_toy_ablation(model, calibration[:1], set(), {})[1])
+    with _edge_hook_flags(model):
+        actual = _mean_writer_contributions(model, calibration)
+    assert actual.keys() == expected.keys()
+    for name, value in actual.items():
+        assert value.shape == expected[name].shape
+        assert value.shape[0] == 1
+        assert value.shape[1] == calibration.shape[1]
+        assert value.dtype == torch.float64
+        assert value.device == calibration.device
+        assert not value.requires_grad
+        torch.testing.assert_close(value, expected[name], atol=1e-12, rtol=1e-12)
+        assert not torch.allclose(value, first[name])
+
+
+@pytest.mark.parametrize("budget", [0, 3, None])
+def test_faithfulness_mean_ablation_matches_functional_reference(budget: int | None) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    calibration = _toy_mean_calibration()
+    edges = _toy_ablation_edges()
+    readout = [edge for edge in edges if edge[1] == Node("logits", SEQ_LEN - 1, layer=1)]
+    circuit = edges if budget is None else readout[:budget]
+    replacements = _functional_mean_writers(model, calibration)
+    clean_logits, _, _ = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, _, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    expected_logits, _, _ = _functional_toy_ablation(
+        model, clean, set(edges) - set(circuit), replacements
+    )
+    metric = _metric_fn(1, 2)
+    expected = float(
+        (metric(expected_logits) - metric(corrupt_logits))
+        / (metric(clean_logits) - metric(corrupt_logits))
+    )
+    report = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        circuit,
+        FaithfulnessConfig(ablation="mean"),
+        mean_tokens=calibration,
+    )
+    assert report.recovered == pytest.approx(expected, abs=1e-12)
+    assert report.full_metric == pytest.approx(float(metric(clean_logits)), abs=1e-12)
+    assert report.corrupt_metric == pytest.approx(float(metric(corrupt_logits)), abs=1e-12)
+    if budget is None:
+        assert report.recovered == pytest.approx(1.0, abs=1e-12)
+    elif budget == 0:
+        mean_final = sum(
+            value for writer, value in replacements.items() if writer.position == clean.shape[1] - 1
+        )
+        mean_logits = model.unembed.weight.detach() @ mean_final
+        torch.testing.assert_close(expected_logits[0, -1], mean_logits, atol=1e-12, rtol=1e-12)
+    else:
+        empty_logits, _, _ = _functional_toy_ablation(model, clean, set(edges), replacements)
+        assert not torch.allclose(expected_logits[0, -1], empty_logits[0, -1])
+        assert not torch.allclose(expected_logits[0, -1], clean_logits[0, -1])
+
+
+def test_faithfulness_mean_ablation_differs_from_corrupt_ablation() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _toy_ablation_edges()
+    circuit = edges[::2]
+    calibration = _toy_mean_calibration()
     corrupt_report = faithfulness(model, clean, corrupt, metric, circuit)
     mean_report = faithfulness(
-        model, clean, corrupt, metric, circuit, config=FaithfulnessConfig(ablation="mean")
+        model,
+        clean,
+        corrupt,
+        metric,
+        circuit,
+        config=FaithfulnessConfig(ablation="mean"),
+        mean_tokens=calibration,
     )
-
+    expected_logits, _, _ = _functional_toy_ablation(
+        model, clean, set(edges) - set(circuit), _functional_mean_writers(model, calibration)
+    )
+    expected = (float(metric(expected_logits)) - corrupt_report.corrupt_metric) / (
+        corrupt_report.full_metric - corrupt_report.corrupt_metric
+    )
+    assert mean_report.recovered == pytest.approx(expected, abs=1e-6)
     assert corrupt_report.recovered != pytest.approx(mean_report.recovered)
-    # Both bound the same gap, so the clean/corrupt endpoints agree.
     assert corrupt_report.full_metric == pytest.approx(mean_report.full_metric)
     assert corrupt_report.corrupt_metric == pytest.approx(mean_report.corrupt_metric)
+
+
+def test_mean_calibration_does_not_depend_on_evaluated_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    calibration = _toy_mean_calibration()
+    captured: list[tuple[torch.Tensor, dict[str, torch.Tensor]]] = []
+
+    def capture(model: Any, tokens: torch.Tensor) -> dict[str, torch.Tensor]:
+        values = capture_writer_outputs(model, tokens)
+        captured.append((tokens.clone(), {name: value.clone() for name, value in values.items()}))
+        return values
+
+    monkeypatch.setattr(
+        "transformer_lens.tools.analysis.attribution_patching.capture_writer_outputs", capture
+    )
+    for clean, corrupt in (
+        (clean, corrupt),
+        (torch.tensor([[0, 2, 5]]), torch.tensor([[5, 2, 0]])),
+    ):
+        faithfulness(
+            model,
+            clean,
+            corrupt,
+            metric,
+            _toy_ablation_edges()[::2],
+            FaithfulnessConfig(ablation="mean"),
+            mean_tokens=calibration,
+        )
+    assert len(captured) == 2 * len(calibration)
+    for index, row in enumerate(calibration):
+        first_tokens, first_values = captured[index]
+        second_tokens, second_values = captured[index + len(calibration)]
+        torch.testing.assert_close(first_tokens, row[None], atol=0, rtol=0)
+        torch.testing.assert_close(second_tokens, row[None], atol=0, rtol=0)
+        for name in first_values:
+            torch.testing.assert_close(first_values[name], second_values[name], atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "tokens,error",
+    [
+        (torch.empty(0, SEQ_LEN, dtype=torch.long), "at least one"),
+        (torch.tensor([0, 4, 5]), "2D"),
+        (torch.tensor([[[0, 4, 5]]]), "2D"),
+        (torch.tensor([[0, 4]]), "same sequence length"),
+        (torch.tensor([[0.0, 4.0, 5.0]]), "dtype"),
+        (torch.tensor([[0, 4, 5]], dtype=torch.int16), "dtype"),
+        (torch.tensor([[True, False, True]]), "dtype"),
+        (torch.empty(1, SEQ_LEN, device="meta", dtype=torch.long), "same device"),
+        (torch.tensor([[0, 4, 5], [1, 2, 3]]), "evaluated.*endpoint"),
+        (torch.tensor([[0, 4, 5], [3, 2, 1]]), "evaluated.*endpoint"),
+    ],
+)
+def test_mean_calibration_rejects_invalid_tokens_without_forward(
+    tokens: torch.Tensor,
+    error: str,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    model.set_use_attn_result(True)
+    before = _mean_toy_hook_state(model)
+
+    def forbidden_forward(*args: Any) -> None:
+        raise AssertionError("invalid calibration must be rejected before a forward")
+
+    handle = model.register_forward_pre_hook(forbidden_forward)
+    try:
+        with pytest.raises(ValueError, match=error):
+            faithfulness(
+                model,
+                clean,
+                corrupt,
+                metric,
+                [],
+                FaithfulnessConfig(ablation="mean"),
+                mean_tokens=tokens,
+            )
+        assert _mean_toy_hook_state(model) == before
+    finally:
+        handle.remove()
+
+
+def test_corrupt_ablation_rejects_mean_calibration() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    with pytest.raises(ValueError, match="only accepted with mean ablation"):
+        faithfulness(model, clean, corrupt, metric, [], mean_tokens=_toy_mean_calibration())
+
+
+def test_mean_calibration_accepts_int32_token_ids() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    config = FaithfulnessConfig(ablation="mean")
+    first = faithfulness(
+        model, clean, corrupt, metric, [], config, mean_tokens=_toy_mean_calibration()
+    )
+    second = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        [],
+        config,
+        mean_tokens=_toy_mean_calibration().to(torch.int32),
+    )
+    assert first == second
+
+
+def _mean_toy_hook_state(model: _EdgeScoringToyBridge) -> tuple:
+    return (
+        tuple(
+            getattr(model.cfg, name)
+            for name in ("use_attn_result", "use_split_qkv_input", "use_hook_mlp_in")
+        ),
+        {
+            name: (
+                tuple(id(handle) for handle in point.fwd_hooks),
+                tuple(id(handle) for handle in point.bwd_hooks),
+            )
+            for name, point in model.hook_dict.items()
+        },
+    )
+
+
+@pytest.mark.parametrize("failure", ["capture", "metric"])
+def test_mean_calibration_restores_hooks_after_error(failure: str) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    calibration = _toy_mean_calibration()
+    model.set_use_attn_result(True)
+    calls = 0
+
+    def capture_guard(tensor: torch.Tensor, *, hook: Any) -> None:
+        nonlocal calls
+        calls += 1
+        if failure == "capture" and calls == 3:
+            raise RuntimeError("calibration capture failed")
+
+    def checked_metric(logits: torch.Tensor) -> torch.Tensor:
+        if failure == "metric" and calls == 6:
+            raise RuntimeError("mean metric failed")
+        return metric(logits)
+
+    with model.hooks(fwd_hooks=[("hook_embed", capture_guard)]):
+        before = _mean_toy_hook_state(model)
+        with pytest.raises(RuntimeError, match="failed"):
+            faithfulness(
+                model,
+                clean,
+                corrupt,
+                checked_metric,
+                _toy_ablation_edges()[::2],
+                FaithfulnessConfig(ablation="mean"),
+                mean_tokens=calibration,
+            )
+        assert _mean_toy_hook_state(model) == before
 
 
 def test_faithfulness_accepts_top_edges_output() -> None:

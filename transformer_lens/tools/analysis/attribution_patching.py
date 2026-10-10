@@ -269,9 +269,9 @@ class FaithfulnessConfig:
             ``"corrupt"`` substitutes the corrupt run's own contribution, which
             is the evaluation the pinned external reference reports and the
             default here so the two compare like quantities. ``"mean"``
-            substitutes the dataset mean of that writer's contribution over the
-            clean/corrupt batch, which is the usual choice when no single
-            corrupt run is meaningful.
+            substitutes that writer's mean contribution over the independent
+            calibration batch supplied as ``mean_tokens`` to :func:`faithfulness`.
+            The evaluated clean/corrupt pair is not used to estimate this mean.
     """
 
     ablation: AblationMode = "corrupt"
@@ -1368,25 +1368,18 @@ def _edge_class(edge: tuple[Node, Node]) -> EdgeClass:
 
 def _mean_writer_contributions(
     model: Any,
-    clean: torch.Tensor,
-    corrupt: torch.Tensor,
+    mean_tokens: torch.Tensor,
 ) -> dict[str, torch.Tensor]:
-    """The dataset mean of each writer's contribution over the prompt pairs.
-
-    Averages the clean and corrupt runs together, since a replacement stands in
-    for an out-of-circuit edge regardless of which direction the run moves.
-    """
-    totals: dict[str, torch.Tensor] = {}
-    count = 0
-    for tokens in (clean, corrupt):
-        for index in range(int(tokens.shape[0])):
-            captured = capture_writer_outputs(model, tokens[index : index + 1])
-            for name, tensor in captured.items():
-                running = totals.get(name)
-                totals[name] = tensor if running is None else running + tensor
-            count += 1
+    """Average calibration examples, preserving position, head, and singleton batch axes."""
+    count = int(mean_tokens.shape[0])
     if count == 0:
-        raise ValueError("faithfulness needs at least one clean/corrupt pair")
+        raise ValueError("mean_tokens must contain at least one calibration example")
+    totals: dict[str, torch.Tensor] = {}
+    for index in range(count):
+        captured = capture_writer_outputs(model, mean_tokens[index : index + 1])
+        for name, tensor in captured.items():
+            running = totals.get(name)
+            totals[name] = tensor if running is None else running + tensor
     return {name: total / count for name, total in totals.items()}
 
 
@@ -1397,6 +1390,8 @@ def faithfulness(
     metric_fn: MetricFn,
     circuit: Sequence[tuple[Node, Node]] | Sequence[tuple[Node, Node, float]],
     config: FaithfulnessConfig = FaithfulnessConfig(),
+    *,
+    mean_tokens: Optional[torch.Tensor] = None,
 ) -> FaithfulnessResult:
     """Measure how much of the clean-to-corrupt metric gap a circuit recovers.
 
@@ -1412,18 +1407,29 @@ def faithfulness(
     edges. Feed a ranked edge set straight in from
     ``attribution_patch(..., config=EdgeAttributionConfig(granularity="edge")).top_edges(k=...)``.
 
+    Mean ablation requires held-out ``mean_tokens`` rather than the evaluated
+    endpoints. Recovery is still normalized to the clean/corrupt metric gap,
+    so an empty mean-ablated circuit need not have zero recovery.
+
     Args:
         model: A ``TransformerBridge`` (or compatible) exposing ``cfg.n_layers``,
             ``hook_dict``, and ``hooks()``.
-        clean: Clean token ids, shape ``[batch, seq]``.
-        corrupt: Corrupt token ids, shape ``[batch, seq]``, paired row-by-row
-            with ``clean``.
+        clean: Clean token ids for one evaluated example, shape ``[1, seq]``.
+        corrupt: Paired corrupt token ids, shape ``[1, seq]``.
         metric_fn: Maps single-example logits to a scalar.
         circuit: The edges to keep, as ``(writer, reader)`` pairs or the
             ``(writer, reader, score)`` triples ``top_edges`` returns. Every
             other edge in the graph is ablated.
         config: Ablation configuration. Defaults to replacing an ablated writer
             with the corrupt run's own contribution.
+        mean_tokens: Required only for ``ablation="mean"``. Held-out calibration
+            token ids, shape ``[n_calibration, seq]`` with a nonempty batch and
+            the evaluated sequence length. Must have dtype ``torch.int32`` or
+            ``torch.int64`` and share the clean/corrupt token device. Writer
+            activations are averaged over examples, retaining sequence positions
+            and heads. Exact rows matching either evaluated endpoint are rejected;
+            callers must also avoid semantically equivalent dataset leakage.
+            Calibration uses the same model and processing mode as evaluation.
 
     Returns:
         A :class:`FaithfulnessResult` with the recovered fraction, the clean and
@@ -1437,8 +1443,10 @@ def faithfulness(
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number
             of pairs, hold more than one pair, a pair tokenizes to different
             lengths, the model or a submodule is in training mode, a circuit edge
-            is not in the graph, or the clean and corrupt metrics are equal (so
-            the recovered fraction is undefined).
+            is not in the graph, the clean and corrupt metrics are equal (so
+            the recovered fraction is undefined), mean calibration is missing,
+            empty, misaligned, on a different input device, has an unsupported
+            dtype, contains an evaluated endpoint, or is supplied in corrupt mode.
     """
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
@@ -1463,6 +1471,26 @@ def faithfulness(
             "Faithfulness aligns activations position-by-position."
         )
 
+    if config.ablation == "mean":
+        if mean_tokens is None:
+            raise ValueError("mean ablation requires independent calibration via mean_tokens")
+        if mean_tokens.ndim != 2:
+            raise ValueError("mean_tokens must be a 2D [n_calibration, seq] token tensor")
+        if mean_tokens.shape[0] == 0:
+            raise ValueError("mean_tokens must contain at least one calibration example")
+        if mean_tokens.shape[1] != clean.shape[1]:
+            raise ValueError("mean_tokens must have the same sequence length as the evaluated pair")
+        if mean_tokens.dtype not in (torch.int32, torch.int64):
+            raise ValueError(
+                "mean_tokens must contain token ids with dtype torch.int32 or torch.int64"
+            )
+        if mean_tokens.device != clean.device or mean_tokens.device != corrupt.device:
+            raise ValueError("mean_tokens must be on the same device as the clean/corrupt tokens")
+        if (mean_tokens == clean).all(dim=1).any() or (mean_tokens == corrupt).all(dim=1).any():
+            raise ValueError("mean_tokens must not contain either evaluated clean/corrupt endpoint")
+    elif mean_tokens is not None:
+        raise ValueError("mean_tokens is only accepted with mean ablation")
+
     require_eval_mode(model, operation="faithfulness()")
 
     kept = _normalize_circuit(circuit)
@@ -1483,8 +1511,8 @@ def faithfulness(
                 "otherwise ablate nothing."
             )
 
-        if config.ablation == "mean":
-            replacements = _mean_writer_contributions(model, clean, corrupt)
+        if mean_tokens is not None:
+            replacements = _mean_writer_contributions(model, mean_tokens)
         else:
             replacements = capture_writer_outputs(model, corrupt)
 
