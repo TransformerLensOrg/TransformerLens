@@ -8,7 +8,8 @@ causes a model behavior.
 
 TransformerLens supports decoder-only implementations through
 `TransformerBridge` whose MLP projections are dense (for example GPT-2 and
-Pythia/GPT-NeoX) or gated (for example Qwen2). It follows the method
+Pythia/GPT-NeoX) or gated (for example Qwen2), with a direct MLP contribution
+to the residual stream in each requested layer. It follows the method
 introduced by [Katz et al. (2024)](https://aclanthology.org/2024.emnlp-main.142/).
 
 ## Gradient factorization
@@ -45,7 +46,8 @@ below use `Conv1D` (`[in, out]`) storage, as GPT-2 uses; `torch.nn.Linear` stora
 
 The FF1 readout therefore describes the layer-normalized residual state entering the
 MLP (post-`ln_2`, including its gain and bias).
-The FF2 readout describes raw loss gradients at the MLP output. These are different
+The FF2 readout describes raw loss gradients at the MLP output on supported blocks,
+where that output contributes directly to the residual stream. These are different
 quantities and should not be interpreted interchangeably.
 
 ### Gated MLP matrices
@@ -67,8 +69,9 @@ as Qwen2 uses.
 The gate and up projections both consume the same residual input $x$, so their
 forward-input factors and vocabulary logits coincide exactly; the two results are
 retained separately because their weight gradients and output gradients differ.
-The down projection carries the distinct shift direction, matching the dense FF2
-treatment. For dense MLPs, `gate_projection` is `None`.
+On supported direct-output blocks, the down projection carries the distinct shift
+direction, matching the dense FF2 treatment. For dense MLPs, `gate_projection` is
+`None`.
 
 ## Vocabulary projection
 
@@ -169,8 +172,9 @@ pythia_result = BackwardLens(pythia).analyze(
 pythia_result.layer(0).input_projection.factors.weight_layout  # "out_in"
 ```
 
-The same call also works against a gated Bridge, whose MLP exposes separate gate,
-up, and down projections. The result gains a `gate_projection` matrix per layer:
+The same call also works against a gated Bridge whose MLP exposes separate gate,
+up, and down projections and contributes directly to the residual stream. The
+result gains a `gate_projection` matrix per layer:
 
 ```python
 qwen = TransformerBridge.boot_transformers(
@@ -227,6 +231,8 @@ The current implementation requires:
   e.g. Pythia/GPT-NeoX and Qwen2).
 - Original, trainable weights and a dense or gated MLP whose projections are
   distinct linear layers.
+- A direct MLP contribution to the residual stream in each requested layer, with
+  the adapter mapping `hook_mlp_out` to `mlp.hook_out` and no post-MLP normalization.
 - Compatibility mode and weight processing to remain disabled.
 - One non-empty prompt, one single-token target, and unique valid layer indices.
 
@@ -244,9 +250,32 @@ Bridge splits that matrix into distinct gate and up projections at boot, as the
 Phi-3 adapter does. A gated MLP that exposes no distinct gate projection is
 rejected with a clear error.
 
+### Output-boundary restriction
+
+Post-MLP-normalized layouts, such as Gemma 2/3, OLMo 2, EXAONE-4, and GLM-4,
+are rejected. Gemma and GLM adapters expose `ln2_post`; OLMo 2 and EXAONE-4
+instead map the residual contribution to `ln2.hook_out`. An ordinary pre-MLP
+`ln2` does not prevent support. Discovery checks only requested layers, before
+tokenization, model execution, or temporary-hook installation, and rejects the
+whole analysis if any requested layer has an unsupported output boundary.
+
+For a raw down-projection output $y$ followed by normalization $z=N(y)$,
+$\partial L/\partial y = J_N(y)^\mathsf{T}\,\partial L/\partial z$.
+The raw output gradient can still factorize the down-weight gradient exactly,
+but it is not the gradient at the residual-add boundary. Residual width alone
+does not justify projecting it as the FF2 shift. Applying the norm to that
+gradient, or enabling `normalized=True`, does not correct this mismatch.
+
+Support is structural, not a family-name allowlist: variants that omit post
+norms are evaluated according to their actual Bridge layout. Missing, ambiguous,
+or redirected `hook_mlp_out` declarations are also rejected. The check relies on
+the adapter's boundary declaration; it does not infer arbitrary transformations
+hidden inside custom forward implementations.
+
 It does not currently support batched prompts, multi-token target losses,
 mixture-of-experts routing, architecture families whose MLP projections have an
-unknown weight layout, compatibility-mode weights, model editing, or causal
+unknown weight layout, post-MLP-normalized output readouts, compatibility-mode
+weights, model editing, or causal
 claims about the displayed vocabulary rankings.
 
 ## Model-state safety
@@ -270,6 +299,7 @@ activation-editing hooks still affect the analyzed computation.
 | FF2 ranking appears sign-reversed | Remember that results are raw loss gradients and gradient descent subtracts them; inspect bottom tokens or ascending target ranks. |
 | Results change when custom hooks are installed | Existing hooks are intentionally respected; remove them to analyze the unmodified model computation. |
 | Gated MLP exposes no distinct gate projection | The Bridge did not split a fused gate/up matrix into separate projections; only models whose adapter performs that split are supported. |
+| Unsupported MLP output boundary | The selected layer applies post-MLP normalization or lacks an unambiguous direct-output declaration. Select a supported direct-output layer/model; changing `normalized` does not fix the boundary mismatch. |
 
 ## References
 

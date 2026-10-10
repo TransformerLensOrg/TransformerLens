@@ -4,13 +4,14 @@ The Backward Lens represents a linear weight gradient as a sum of token-position
 outer products and projects residual-width factors into the model vocabulary.
 The public API supports raw decoder-only ``TransformerBridge`` models whose MLP
 exposes dense or gated linear projections (for example GPT-2, Pythia/GPT-NeoX,
-and Qwen2), reading each MLP projection's weight layout from the Bridge
-component rather than the model class.
+and Qwen2) with a direct MLP contribution to the residual stream, reading each
+MLP projection's weight layout from the Bridge component rather than the model
+class.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Literal, cast
@@ -190,7 +191,7 @@ class BackwardLensLayerResult:
     ``gate_projection`` is populated for gated MLPs and ``None`` for dense MLPs.
     For gated MLPs the gate and input projections share the residual input, so
     their vocabulary logits coincide; the output projection carries the distinct
-    shift direction.
+    shift direction on supported direct-output blocks.
     """
 
     layer: int
@@ -603,6 +604,27 @@ class _MLPLinear:
     weight_layout: WeightLayout
 
 
+def _require_direct_mlp_output(block: Any, layer: int) -> None:
+    """Require the adapter's MLP contribution to have no intervening output transform."""
+    submodules = getattr(block, "submodules", None)
+    if getattr(block, "ln2_post", None) is not None or (
+        isinstance(submodules, Mapping) and submodules.get("ln2_post") is not None
+    ):
+        raise ValueError(
+            f"layer {layer} has unsupported MLP output boundary 'ln2_post.hook_out' "
+            "(post-MLP normalization); the raw output-projection gradient is not a "
+            "residual-stream shift"
+        )
+    aliases = getattr(block, "hook_aliases", None)
+    boundary = aliases.get("hook_mlp_out") if isinstance(aliases, Mapping) else None
+    if boundary != "mlp.hook_out":
+        raise ValueError(
+            f"layer {layer} has unsupported MLP output boundary {boundary!r}; "
+            "Backward Lens requires a direct MLP contribution to the residual stream "
+            "with hook_mlp_out mapped to mlp.hook_out"
+        )
+
+
 def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple[_MLPLinear, ...]]:
     """Return validated live MLP projection bridges for each requested layer.
 
@@ -610,8 +632,8 @@ def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple
     three ordered ``(gate, input, output)``. Each projection's storage orientation
     is resolved from the Bridge weight-layout oracle, so Conv1D ``[in, out]`` and
     ``torch.nn.Linear`` ``[out, in]`` weights are both accepted without inspecting
-    the model class. Projections whose wrapped module the oracle cannot orient are
-    rejected.
+    the model class. Unknown layouts and blocks whose MLP contribution passes
+    through an intervening output transform are rejected.
     """
     from transformer_lens.hook_points import HookPoint
     from transformer_lens.model_bridge.generalized_components import (
@@ -628,9 +650,11 @@ def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple
     # Gate and input map d_model -> d_mlp, output maps d_mlp -> d_model.
     projections: dict[int, tuple[_MLPLinear, ...]] = {}
     for layer in layers:
-        mlp = model.blocks[layer].mlp
+        block = model.blocks[layer]
+        mlp = block.mlp
         if not isinstance(mlp, MLPBridge):
             raise ValueError(f"layer {layer} must be an MLPBridge")
+        _require_direct_mlp_output(block, layer)
         gate = getattr(mlp, "gate", None)
         roles: tuple[tuple[Literal["gate", "input", "output"], Any, tuple[int, int]], ...]
         if gate is None:
@@ -881,7 +905,8 @@ class BackwardLens:
     """Analyze MLP weight gradients in the output vocabulary basis.
 
     The analyzer accepts a fresh, raw :class:`TransformerBridge` whose MLP
-    projections are dense (GPT-2, Pythia/GPT-NeoX) or gated (Qwen2). Results
+    projections are dense (GPT-2, Pythia/GPT-NeoX) or gated (Qwen2), with a direct
+    MLP contribution to the residual stream in each requested layer. Results
     retain no model or tokenizer reference and contain detached CPU-owned
     tensors. Raw backward signals are loss gradients; gradient descent subtracts
     them.
