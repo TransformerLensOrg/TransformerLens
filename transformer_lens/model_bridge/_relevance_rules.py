@@ -171,18 +171,20 @@ class RelevanceRules:
     attention: bool = False
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
+class _RelevanceRuleCoverageEntry:
+    """A rule kind and its canonical component path."""
+
+    kind: str
+    path: str
+
+
+@dataclasses.dataclass(frozen=True)
 class RelevanceRuleCoverage:
-    """Which canonical mounts a ``use_relevance_rules`` scope installed versus skipped.
+    """Requested rule kinds installed or skipped at canonical component paths."""
 
-    ``installed`` holds the dotted path of every mount where a requested rule kind was
-    actually enabled. ``skipped`` holds the dotted path of every mount that matched a
-    requested kind's canonical mount name but did not implement the relevance-rule
-    protocol there, so no rule could be installed.
-    """
-
-    installed: Tuple[str, ...]
-    skipped: Tuple[str, ...]
+    installed: Tuple[_RelevanceRuleCoverageEntry, ...]
+    skipped: Tuple[_RelevanceRuleCoverageEntry, ...]
 
 
 @runtime_checkable
@@ -321,10 +323,15 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
         )
 
     installed: List[Tuple[str, _RelevanceRuleCapable, str]] = []
-    skipped: List[str] = []
+    skipped: List[_RelevanceRuleCoverageEntry] = []
+    seen = set()
     for kind in requested_kinds:
         mount_names = _CANONICAL_MOUNTS.get(kind, ())
         for name, module in _iter_canonical_mount_candidates(model, mount_names):
+            entry = _RelevanceRuleCoverageEntry(kind=kind, path=name)
+            if entry in seen:
+                continue
+            seen.add(entry)
             if isinstance(module, _RelevanceRuleCapable) and kind in module._relevance_rule_kinds:
                 installed.append((name, module, kind))
                 continue
@@ -334,13 +341,15 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
                     f"{name!r} ({type(module).__name__}) cannot install the {kind!r} "
                     "relevance rule: unsupported configuration for this component."
                 )
-            skipped.append(name)
+            skipped.append(entry)
 
     for _, module, kind in installed:
         _acquire_rule(module, kind)
     try:
         yield RelevanceRuleCoverage(
-            installed=tuple(name for name, _, _ in installed),
+            installed=tuple(
+                _RelevanceRuleCoverageEntry(kind=kind, path=name) for name, _, kind in installed
+            ),
             skipped=tuple(skipped),
         )
     finally:

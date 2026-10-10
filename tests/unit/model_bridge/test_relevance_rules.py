@@ -1,16 +1,4 @@
-"""Tests for the scoped relevance-rule context: forward-identity, cleanup, and nesting.
-
-The fixture component below installs the real LN-rule primitive
-(``transformer_lens.model_bridge._relevance_rules.ln_rule``) through the protocol
-``use_relevance_rules`` relies on to find and toggle rule-capable components. That keeps
-these tests focused on the scoping mechanics -- forward identity, gradient restoration,
-nested contexts, exception safety, and positional (not class-based) targeting -- rather
-than on any concrete NormalizationBridge or gated-MLP integration, which land in later
-commits.
-
-The scoped context does not exist yet, so this fails collection with a single
-ImportError -- the expected red state before the context is implemented.
-"""
+"""Scoped relevance rules: kind-aware coverage, positional targeting, cleanup, and nesting."""
 
 import dataclasses
 
@@ -22,9 +10,14 @@ from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRuleCoverage,
     RelevanceRules,
     RelevanceRuleUnsupportedError,
+    _RelevanceRuleCoverageEntry,
     ln_rule,
     use_relevance_rules,
 )
+
+
+def _normalization_entries(*paths):
+    return tuple(_RelevanceRuleCoverageEntry(kind="normalization", path=path) for path in paths)
 
 
 class _FakeNormComponent(nn.Module):
@@ -179,7 +172,7 @@ def test_positional_targeting_excludes_same_class_component_at_other_mount():
         assert block.ln1._rule_active is True
         assert block.ln2._rule_active is True
         assert block.q_norm._rule_active is False
-        assert set(coverage.installed) == {"ln1", "ln2"}
+        assert coverage.installed == _normalization_entries("ln1", "ln2")
     assert block.ln1._rule_active is False
     assert block.ln2._rule_active is False
 
@@ -191,7 +184,7 @@ def test_normalization_rule_installs_on_sandwich_post_norm_mounts():
         assert block.ln1_post._rule_active is True
         assert block.ln2._rule_active is True
         assert block.ln2_post._rule_active is True
-        assert set(coverage.installed) == {"ln1", "ln1_post", "ln2", "ln2_post"}
+        assert coverage.installed == _normalization_entries("ln1", "ln1_post", "ln2", "ln2_post")
         assert coverage.skipped == ()
     assert block.ln1_post._rule_active is False
     assert block.ln2_post._rule_active is False
@@ -204,8 +197,8 @@ def test_sandwich_post_norm_on_python_path_is_reported_skipped_never_absent():
     # names were recognized.
     block.ln2_post = _PlainMount()
     with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
-        assert set(coverage.installed) == {"ln1", "ln1_post", "ln2"}
-        assert set(coverage.skipped) == {"ln2_post"}
+        assert coverage.installed == _normalization_entries("ln1", "ln1_post", "ln2")
+        assert coverage.skipped == _normalization_entries("ln2_post")
 
 
 def test_requesting_a_kind_with_no_canonical_mount_raises():
@@ -222,8 +215,8 @@ def test_unsupported_component_at_targeted_mount_is_skipped():
     block.ln2 = _PlainMount()
     with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
         assert isinstance(coverage, RelevanceRuleCoverage)
-        assert set(coverage.installed) == {"ln1"}
-        assert set(coverage.skipped) == {"ln2"}
+        assert coverage.installed == _normalization_entries("ln1")
+        assert coverage.skipped == _normalization_entries("ln2")
 
 
 def test_requesting_unsupported_kind_on_capable_component_raises():
@@ -295,8 +288,8 @@ def test_nested_contexts_restore_outer_state_on_inner_exit():
 
     assert block.ln1._rule_active is False
     assert block.ln2._rule_active is False
-    assert set(outer_coverage.installed) == {"ln1", "ln2"}
-    assert set(inner_coverage.installed) == {"ln1", "ln2"}
+    assert outer_coverage.installed == _normalization_entries("ln1", "ln2")
+    assert inner_coverage.installed == _normalization_entries("ln1", "ln2")
 
 
 def test_exception_inside_context_leaves_no_rule_state():
@@ -331,14 +324,49 @@ def test_exception_during_nested_context_restores_outer_state():
     assert block.ln2._rule_active is False
 
 
-def test_one_kind_requested_on_a_two_kind_mount_leaves_the_other_kind_inactive():
+@pytest.mark.parametrize("kind", ["activation", "multiplicative_gate"])
+def test_one_kind_requested_on_a_two_kind_mount_leaves_the_other_kind_inactive(kind):
     block = _tiny_block()
     block.mlp = _FakeGatedMLPComponent()
-    with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)) as coverage:
-        assert block.mlp._gate_rule_active is True
-        assert block.mlp._activation_rule_active is False
-        assert coverage.installed == ("mlp",)
+    with use_relevance_rules(block, RelevanceRules(**{kind: True})) as coverage:
+        assert block.mlp._gate_rule_active is (kind == "multiplicative_gate")
+        assert block.mlp._activation_rule_active is (kind == "activation")
+        assert [(entry.kind, entry.path) for entry in coverage.installed] == [(kind, "mlp")]
+        assert coverage.skipped == ()
     assert block.mlp._gate_rule_active is False
+    assert block.mlp._activation_rule_active is False
+
+
+@pytest.mark.parametrize("supported_kind", ["activation", "multiplicative_gate"])
+def test_kind_coverage_distinguishes_installed_and_skipped_at_the_same_path(supported_kind):
+    block = _tiny_block()
+    block.mlp = _FakeGatedMLPComponent()
+    block.mlp._relevance_rule_kinds = (supported_kind,)
+    other_kind = "multiplicative_gate" if supported_kind == "activation" else "activation"
+    with use_relevance_rules(
+        block, RelevanceRules(activation=True, multiplicative_gate=True)
+    ) as coverage:
+        assert [(entry.kind, entry.path) for entry in coverage.installed] == [
+            (supported_kind, "mlp")
+        ]
+        assert [(entry.kind, entry.path) for entry in coverage.skipped] == [(other_kind, "mlp")]
+
+
+def test_aliases_do_not_duplicate_kind_coverage():
+    block = _tiny_block()
+    block.mlp = _FakeGatedMLPComponent()
+    block.original = nn.Module()
+    block.original.mlp = block.mlp
+    with use_relevance_rules(
+        block, RelevanceRules(activation=True, multiplicative_gate=True)
+    ) as coverage:
+        assert [(entry.kind, entry.path) for entry in coverage.installed] == [
+            ("activation", "mlp"),
+            ("multiplicative_gate", "mlp"),
+        ]
+        assert coverage.skipped == ()
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(coverage.installed[0], "kind", "normalization")
 
 
 def test_both_kinds_requested_together_both_activate_on_the_same_mount():
@@ -349,7 +377,10 @@ def test_both_kinds_requested_together_both_activate_on_the_same_mount():
     ) as coverage:
         assert block.mlp._activation_rule_active is True
         assert block.mlp._gate_rule_active is True
-        assert set(coverage.installed) == {"mlp"}
+        assert [(entry.kind, entry.path) for entry in coverage.installed] == [
+            ("activation", "mlp"),
+            ("multiplicative_gate", "mlp"),
+        ]
     assert block.mlp._activation_rule_active is False
     assert block.mlp._gate_rule_active is False
 

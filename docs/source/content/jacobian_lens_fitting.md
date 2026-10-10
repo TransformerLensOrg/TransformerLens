@@ -233,6 +233,178 @@ To propose a short-name entry in TransformerLens, open a pull request that adds 
 published file to `transformer_lens/tools/analysis/jacobian_lens_registry.json` and
 include the fitting provenance and validation results.
 
+## Relevance lens (R-lens)
+
+The relevance lens is a second estimator for the same transport matrices. It keeps
+the fitting loop, readout, vocabulary vectors, sparse decomposition, and
+interventions above unchanged, and changes only the backward pass: each per-layer
+matrix is estimated with a scoped set of Layer-wise Relevance Propagation rules
+instead of the ordinary vector-Jacobian product. The forward pass is bit-identical
+to the model's native forward, so the two estimators differ solely in the backward
+semantics they select.
+
+The relevance lens requires a raw `TransformerBridge` in evaluation mode.
+`boot_transformers` uses eager attention; explicitly select float32 for fitting
+and do not enable compatibility mode or process the weights.
+
+```python
+import torch
+
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.analysis import RelevanceLens
+
+model = TransformerBridge.boot_transformers(
+    "Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32
+)
+model.eval()
+prompts = [
+    "The capital of France is Paris, and the capital of Germany is Berlin."
+]
+lens = RelevanceLens.fit(
+    model,
+    prompts,
+    corpus="example:capital-cities",
+    source_layers=[0],
+    dim_batch=8,
+    max_seq_len=32,
+    skip_first_positions=2,
+    show_progress=False,
+)
+assert lens.rule_coverage is not None
+assert not lens.rule_coverage.skipped
+readout = lens.readout(model, "The capital of France is", layers=[0], top_k=10)
+```
+
+This is a bounded walkthrough using one source layer and one short prompt, not a
+research-quality corpus. Even this fit performs multiple backward passes; use
+`device="cuda"` when available. Larger corpora and earlier-to-final transport
+across large models are substantially more expensive. Coverage depends on the
+model's components and dispatch paths; the Qwen2 example does not imply that
+every gated architecture installs all three rules.
+
+Everything after the fit is the Jacobian lens surface: `transport`, `readout`,
+`lens_vectors`, `lens_vector_dictionary`, `decompose`, `occupancy`,
+`fraction_of_variance`, and the steering, ablation, and swap interventions all
+behave identically. `RelevanceLens` is a subclass of `JacobianLens`, so code that
+accepts a fitted lens accepts either estimator.
+
+### The three rules
+
+The estimator installs three rules, matching the RelP reference:
+
+| Rule | Applies to | Backward semantics |
+|---|---|---|
+| LN-rule | Residual-stream norms (`ln1`, `ln2`, and the sandwich post-norms `ln1_post`, `ln2_post`) | Preserves the normalization forward value while treating its denominator as a constant |
+| Identity-rule | GELU and SiLU activations in gated MLPs | Expresses `f(x) = x * phi(x)` and detaches `phi(x)`, so the local VJP is `grad_out * phi(x)` |
+| Half-rule | Multiplicative MLP gates | Preserves the forward product `u * v` while halving each branch's ordinary product-rule gradient |
+
+Linear layers and attention keep ordinary autograd. The attention-specific AH-rule
+is not implemented.
+
+### Supported architectures
+
+Rule installation is positional: a component is targeted by its canonical mount
+name, never by class, so a same-class component mounted elsewhere (an
+attention-internal q/k norm, for example) is left untouched. Coverage is reported
+per fit, and a requested rule that cannot be installed on a component that is
+expected to honor it raises rather than silently falling back to ordinary
+gradients.
+
+A fit that installs **no** rule at all also raises. Without that guard the
+estimator would return ordinary Jacobian matrices labelled as a relevance lens,
+which is indistinguishable from a real relevance fit in the artifact. This is the
+common case for a dense-MLP model such as GPT-2, whose norms do not dispatch
+through the native-autograd branch the LN-rule wraps and which has no gated MLP;
+use `JacobianLens` for those models.
+
+A fit that installs **some** rules but skips others warns, naming the installed
+rules and the skipped mounts. The transport matrices then mix rule-modified and
+ordinary gradients, which is a weaker estimator than a fully covered fit and
+should be reported alongside any result. OPT is the common case: its norms take
+the LN-rule but its dense ReLU MLP takes neither MLP rule.
+
+| Component | LN-rule | Identity-rule | Half-rule |
+|---|---|---|---|
+| Residual-stream norms on the native-autograd path | yes | n/a | n/a |
+| Gated MLPs with GELU or SiLU activations | n/a | yes | yes |
+| Gated MLPs with relu-family activations | n/a | refused | yes |
+| Attention-internal q/k norms | not targeted | n/a | n/a |
+| Attention | ordinary autograd | ordinary autograd | ordinary autograd |
+
+The Identity-rule is refused for the relu family because its backward multiplier
+`f(x) / x` reduces to `relu(x)` for relu-squared rather than the true derivative
+`2 * relu(x)`, and plain relu has no smooth two-sided derivative for the ratio to
+represent. Requesting it there raises instead of scoring the model incorrectly.
+
+### Artifact provenance and safety
+
+A relevance lens records `estimator = "relevance_lens"`, the rule version, the
+enabled rules, and kind-aware per-mount coverage, and it restores that configuration
+on load. `enabled_rules` names the rules that actually shaped the matrices, not the
+rules that were requested: a model can honor some rules and not others, so a fit
+whose MLP mounts were all skipped records only `normalization`.
+
+`rule_coverage` has its own `schema_version = 1`, independent of the numerical
+rule version. Both `installed` and `skipped` contain records with a rule `kind`
+and canonical component `path`. The record shape is illustrated below; a real
+fit records every applicable mount:
+
+```json
+{
+  "schema_version": 1,
+  "installed": [
+    {"kind": "normalization", "path": "blocks.0.ln1"},
+    {"kind": "activation", "path": "blocks.0.mlp"},
+    {"kind": "multiplicative_gate", "path": "blocks.0.mlp"}
+  ],
+  "skipped": []
+}
+```
+
+Activation and multiplicative-gate rules share an MLP path but have independent
+records. Installing one does not claim that the other contributed. Partial
+coverage warnings identify both the skipped kind and its path.
+
+The guards are strict:
+
+- `RelevanceLens.merge()` requires relevance-lens shards with positive relevance
+  estimator metadata, including for a one-shard merge. All provenance other than
+  `n_prompts` must match, including rule version, enabled rules, and coverage.
+- `RelevanceLens.load()` requires the original artifact metadata to record the
+  exact string `estimator = "relevance_lens"`. Missing, malformed, or foreign
+  estimator records are refused before construction. Unlabelled reference and
+  Jacobian artifacts are not implicitly converted.
+- Only the `J` artifact schema is accepted by the relevance loader. Reference
+  running-sum `jacobian_sum` checkpoints are refused, even if labelled as
+  relevance; their conversion path is Jacobian-specific.
+- Explicitly marked relevance artifacts may omit optional coverage. A present
+  coverage record must use the kind-aware schema. Legacy path-only coverage is
+  ambiguous and requires refitting, not guessing activation/gate kinds from
+  shared paths.
+- `from_pretrained()` does not resolve short model names through the Jacobian lens
+  registry, since that registry holds only Jacobian artifacts. Pass an explicit
+  artifact path or a Hub repo id containing a relevance artifact.
+
+Save and reload a supported relevance artifact with the inherited persistence
+API:
+
+```python
+lens.save("qwen2_relevance_lens.pt")
+loaded = RelevanceLens.load("qwen2_relevance_lens.pt").validate_model(model)
+```
+
+### Relationship to RelP and the published artifacts
+
+Three things are easy to conflate:
+
+- **RelP** is generic relevance patching: clean-versus-corrupted component scores
+  from a scalar metric. It is a separate feature and is not implemented here.
+- **R-lens** is this estimator: a Jacobian lens fitted with relevance-rule
+  backward. It produces transport matrices, not component scores.
+- **Published paired artifacts** (`camilablank/workspace-lenses` on the Hugging
+  Face Hub) are not accepted by the current loader; converting them is separate
+  work.
+
 ## Sparse decomposition (J-space coordinates)
 
 A detailed open-weight A–F replication is available in the

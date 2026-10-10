@@ -22,6 +22,7 @@ from transformers.pytorch_utils import Conv1D
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRules,
     RelevanceRuleUnsupportedError,
+    _RelevanceRuleCoverageEntry,
     half_rule,
     identity_rule,
     use_relevance_rules,
@@ -232,8 +233,30 @@ class TestGatedMLPRelevanceRuleCapability:
         x = torch.randn(2, 4)
         baseline = block(x)
         with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)) as coverage:
-            assert coverage.installed == ("mlp",)
+            assert coverage.installed == (
+                _RelevanceRuleCoverageEntry("multiplicative_gate", "mlp"),
+            )
             assert torch.equal(block(x), baseline)
+
+
+@pytest.mark.parametrize("component_training", [False, True])
+@pytest.mark.parametrize("activation_training", [False, True])
+def test_activation_wrapper_preserves_existing_module_modes(
+    component_training: bool, activation_training: bool
+) -> None:
+    block, hf_mlp = _make_bridge("nn.Linear")
+    block.train(component_training)
+    original_activation = hf_mlp.act_fn
+    original_activation.train(activation_training)
+    original_modes = {module: module.training for module in block.modules()}
+
+    with use_relevance_rules(block, RelevanceRules(activation=True)):
+        assert hf_mlp.act_fn is not original_activation
+        assert hf_mlp.act_fn.training is component_training
+        assert all(module.training is mode for module, mode in original_modes.items())
+
+    assert hf_mlp.act_fn is original_activation
+    assert all(module.training is mode for module, mode in original_modes.items())
 
 
 class TestGatedMLPRelevanceRuleForwardIdentity:
