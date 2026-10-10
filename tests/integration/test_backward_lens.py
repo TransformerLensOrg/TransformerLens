@@ -936,6 +936,166 @@ def test_tiny_llama_gated_discovery_is_structural(tiny_llama_bridge) -> None:
     )
 
 
+def _tiny_output_boundary_bridge(architecture: str, tokenizer: Any) -> Any:
+    from transformers import (
+        AutoModelForCausalLM,
+        Exaone4Config,
+        Gemma2Config,
+        Gemma3TextConfig,
+        Glm4Config,
+        LlamaConfig,
+        Olmo2Config,
+    )
+
+    from transformer_lens.model_bridge import TransformerBridge
+
+    config_classes = {
+        "gemma2": Gemma2Config,
+        "gemma3": Gemma3TextConfig,
+        "olmo2": Olmo2Config,
+        "exaone4": Exaone4Config,
+        "glm4": Glm4Config,
+        "llama": LlamaConfig,
+    }
+    options: dict[str, Any] = {}
+    if architecture in ("gemma2", "gemma3", "glm4"):
+        options["head_dim"] = 8
+    if architecture in ("gemma2", "gemma3", "exaone4"):
+        options["sliding_window"] = 16
+    config = cast(Any, config_classes[architecture])(
+        vocab_size=len(tokenizer),
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        num_key_value_heads=2,
+        max_position_embeddings=32,
+        pad_token_id=tokenizer.eos_token_id,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        **options,
+    )
+    hf_model = AutoModelForCausalLM.from_config(config, attn_implementation="eager").eval()
+    hf_model.config.architectures = [type(hf_model).__name__]
+    return TransformerBridge.boot_transformers(
+        architecture, hf_model=hf_model, tokenizer=tokenizer, device="cpu", dtype=torch.float32
+    )
+
+
+@pytest.mark.parametrize("architecture", ["gemma2", "gemma3", "olmo2", "exaone4", "glm4"])
+@pytest.mark.parametrize("layer", [0, 1])
+@pytest.mark.parametrize("training", [False, True], ids=["eval", "train"])
+def test_post_normalized_bridge_rejection_preserves_state_before_forward(
+    gpt2_tokenizer, architecture: str, layer: int, training: bool
+) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    bridge = _tiny_output_boundary_bridge(architecture, gpt2_tokenizer)
+    bridge.train(training)
+    parameters = list(bridge.original_model.parameters())
+    for index, parameter in enumerate(parameters):
+        parameter.grad = torch.full_like(parameter, index + 1.0) if index % 2 else None
+    saved_parameters = [
+        (
+            parameter.detach().clone(),
+            parameter.requires_grad,
+            parameter.grad,
+            parameter.grad.clone() if parameter.grad is not None else None,
+        )
+        for parameter in parameters
+    ]
+    forward_calls = 0
+    caller_hook_calls = 0
+
+    def count_forward(_module, _inputs) -> None:
+        nonlocal forward_calls
+        forward_calls += 1
+
+    def caller_hook(_module, _inputs, _output) -> None:
+        nonlocal caller_hook_calls
+        caller_hook_calls += 1
+
+    forward_handle = bridge.original_model.register_forward_pre_hook(count_forward)
+    caller_handle = bridge.blocks[layer].mlp.out.hook_out.register_forward_hook(caller_hook)
+    try:
+        modules = list(bridge.original_model.modules())
+        saved_modes = [module.training for module in modules]
+        saved_hooks = [
+            (
+                dict(module._forward_pre_hooks),
+                dict(module._forward_hooks),
+                dict(module._backward_hooks),
+            )
+            for module in modules
+        ]
+        rng_before = torch.random.get_rng_state()
+        boundary = "ln2" if architecture in ("olmo2", "exaone4") else "ln2_post"
+        with pytest.raises(
+            ValueError, match=rf"layer {layer}.*unsupported MLP output boundary.*{boundary}"
+        ):
+            BackwardLens(bridge).analyze(PROMPT, TARGET, [layer], normalized=training)
+
+        assert forward_calls == 0
+        assert caller_hook_calls == 0
+        assert bridge.training is training
+        assert torch.equal(torch.random.get_rng_state(), rng_before)
+        assert [module.training for module in modules] == saved_modes
+        assert [
+            (
+                dict(module._forward_pre_hooks),
+                dict(module._forward_hooks),
+                dict(module._backward_hooks),
+            )
+            for module in modules
+        ] == saved_hooks
+        for parameter, (weight, requires_grad, grad, grad_copy) in zip(
+            parameters, saved_parameters, strict=True
+        ):
+            assert torch.equal(parameter, weight)
+            assert parameter.requires_grad is requires_grad
+            assert parameter.grad is grad
+            if grad_copy is not None:
+                assert torch.equal(parameter.grad, grad_copy)
+    finally:
+        caller_handle.remove()
+        forward_handle.remove()
+
+
+def test_tiny_direct_output_bridge_analyzes_and_reconstructs_named_gradients(
+    gpt2_tokenizer,
+) -> None:
+    from transformer_lens.tools.analysis import BackwardLens
+
+    bridge = _tiny_output_boundary_bridge("llama", gpt2_tokenizer)
+    result = BackwardLens(bridge).analyze(PROMPT, TARGET, [1, 0], top_k=3, normalized=True)
+    tokens = bridge.to_tokens(PROMPT, truncate=False)
+    loss = F.cross_entropy(bridge(tokens)[:, -1, :], torch.tensor([result.target_token_id]))
+    named_projections = [
+        (
+            layer,
+            role,
+            getattr(bridge.blocks[layer].mlp.original_component, hf_name).original_component,
+        )
+        for layer in (1, 0)
+        for role, hf_name in (("gate", "gate_proj"), ("input", "up_proj"), ("output", "down_proj"))
+    ]
+    expected_gradients = torch.autograd.grad(
+        loss, [projection.weight for _, _, projection in named_projections]
+    )
+
+    assert tuple(layer.layer for layer in result.layers) == (1, 0)
+    for (layer, role, _projection), expected in zip(
+        named_projections, expected_gradients, strict=True
+    ):
+        matrix = getattr(result.layer(layer), f"{role}_projection")
+        assert matrix is not None
+        torch.testing.assert_close(matrix.factors.weight_gradient, expected, atol=2e-6, rtol=2e-5)
+        torch.testing.assert_close(
+            matrix.factors.reconstructed_gradient, expected, atol=2e-6, rtol=2e-5
+        )
+        assert torch.isfinite(matrix.top_ranking.values).all()
+
+
 def test_gated_mlp_factors_reconstruct_all_three_weight_gradients(
     qwen_bridge,
 ) -> None:
