@@ -46,6 +46,7 @@ _HF_PASSTHROUGH_ATTRS = [
     "position_embedding_type",
     "logits_scaling",
     "residual_multiplier",
+    "embedding_multiplier",
     # Falcon
     "parallel_attn",
     "multi_query",

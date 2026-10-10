@@ -686,6 +686,12 @@ class ActivationCache:
         logit_attrs = (scaled_residual_stack * logit_directions).sum(dim=-1)
         return logit_attrs
 
+    def _embedding_contribution(self) -> torch.Tensor:
+        """Return the embedding's residual contribution, without changing its native hook."""
+        embed = self["hook_embed"]
+        multiplier = getattr(self.model.cfg, "embedding_multiplier", 1.0)
+        return embed if multiplier == 1.0 else embed * multiplier
+
     def decompose_resid(
         self,
         layer: Optional[int] = None,
@@ -726,7 +732,8 @@ class ActivationCache:
                 A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
             incl_embeds:
-                Whether to include embed & pos_embed
+                Whether to include embed & pos_embed. Embedding contributions include
+                any post-embedding runtime multiplier; the cached hook remains unscaled.
             return_labels:
                 Whether to return a list of labels for the residual stream components.
                 Useful for labelling graphs.
@@ -749,7 +756,7 @@ class ActivationCache:
         labels = []
         if incl_embeds:
             if self.has_embed:
-                components_list = [self["hook_embed"]]
+                components_list = [self._embedding_contribution()]
                 labels.append("embed")
             if self.has_pos_embed:
                 components_list.append(self["hook_pos_embed"])
@@ -1516,7 +1523,7 @@ class ActivationCache:
         2. Neuron / MLP results (only if ``cfg.attn_only=False`` and
            ``layer > 0``; ``L * d_mlp`` rows when ``expand_neurons=True``,
            else ``L`` rows)
-        3. ``embed`` (1 row, if the model has token embeddings)
+        3. ``embed`` (1 row, including any post-embedding runtime multiplier)
         4. ``pos_embed`` (1 row, if the model has positional embeddings)
         5. ``bias`` (1 row, the accumulated layer biases)
 
@@ -1612,7 +1619,7 @@ class ActivationCache:
                 components.append(mlp_stack)
 
         if self.has_embed:
-            embed = pos_slice.apply(self["embed"], -2)[None]
+            embed = pos_slice.apply(self._embedding_contribution(), -2)[None]
             if ln_folded:
                 embed = _ln_then_project(embed)
             elif project_2d is not None:
