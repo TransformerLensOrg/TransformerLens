@@ -44,10 +44,19 @@ near-equal consecutive singular values leave the corresponding subspace defined 
 to an arbitrary rotation, so any statement of the form "direction 3 is the surname
 subfunction" is a statement about a basis choice rather than about the model.
 
-`decompose_head` returns a rank report marking each direction, and the consumers refuse
-per-direction attribution inside a degenerate block, reporting the block as a subspace
-instead. Numerically null directions are refused too, since they are arbitrary vectors
-from the map's null space.
+`decompose_head` returns a rank report marking degenerate and numerically null
+directions. Null directions are arbitrary vectors from the map's null space and are
+also unsuitable for individual attribution. The consumers have different guards:
+
+- `logit_signature` requires an isolated, non-null direction and refuses individual
+  directions inside a degenerate block.
+- `patch_along_directions` refuses selections that split a degenerate block. Complete
+  blocks can be retained or removed as subspaces; empty or full-span retained sets
+  require an explicit `threshold` because their random controls coincide with them.
+- `vocab_readout` and `project_activations` return raw numerical projections, including
+  columns inside degenerate blocks. They neither refuse these columns nor replace
+  them with block summaries. Consult the rank report and exclude both `is_degenerate`
+  and `is_null` before interpreting individual directions.
 
 ## The causal gate
 
@@ -129,6 +138,6 @@ print(result.delta_metric, result.baseline_delta_metric, result.gated)
 
 ## Links
 
-- [SVD Circuits demo](../generated/demos/SVD_Circuits_Demo.html)
+- [SVD Circuits demo](../generated/demos/SVD_Circuits_Demo.ipynb)
 - Areeb Ahmad, Abhinav Joshi, Ashutosh Modi, "Beyond Components: Singular Vector-Based
   Interpretability of Transformer Circuits", [arXiv 2511.20273](https://arxiv.org/abs/2511.20273)

@@ -988,6 +988,53 @@ class _PatchStubModel:
         return self._logits(activation)
 
 
+@pytest.mark.parametrize(
+    "spectrum, guarded_ids",
+    [([8.0, 4.0, 4.0, 1.0], [1, 2]), ([8.0, 4.0, 2.0, 0.0], [3])],
+    ids=["degenerate", "null"],
+)
+def test_raw_projections_preserve_columns_rejected_by_attribution_guards(spectrum, guarded_ids):
+    """Raw consumers preserve numerical columns; signature and patch guards remain distinct."""
+
+    class ProjectionModel(_PatchStubModel):
+        def run_with_cache(self, prompt, names_filter):
+            hook_name = "blocks.0.attn.hook_result"
+            assert names_filter(hook_name)
+            return self(prompt), {hook_name: self._result}
+
+        def to_str_tokens(self, prompt):
+            return [str(i) for i in range(self._result.shape[1])]
+
+    ov = _factored_head_svd(
+        *_factored_with_spectrum(spectrum), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = ProjectionModel(d_model=D_MODEL, n_heads=1)
+    model.W_U = torch.randn(D_MODEL, 16)
+    readout = vocab_readout(model, ov, k=len(ov.S))
+    projection = project_activations(model, ov, "prompt")
+
+    assert readout.shape == (16, len(ov.S))
+    assert projection.coefficients.shape == (model._result.shape[1], len(ov.S))
+    assert torch.isfinite(readout[:, guarded_ids]).all()
+    assert torch.isfinite(projection.coefficients[:, guarded_ids]).all()
+    assert model.cfg.use_attn_result is False
+    for idx in guarded_ids:
+        assert ov.rank_report[idx].is_degenerate or ov.rank_report[idx].is_null
+        with pytest.raises(DegenerateDirectionError):
+            logit_signature(model, ov, direction=idx, tokens=[0])
+
+    block = ov.block_of(guarded_ids[0])
+    if len(block) > 1:
+        with pytest.raises(DegenerateDirectionError, match="split block"):
+            patch_along_directions(
+                model, ov, "prompt", lambda logits: float(logits.sum()), keep=[block[0]]
+            )
+    result = patch_along_directions(
+        model, ov, "prompt", lambda logits: float(logits.sum()), keep=block, n_baseline=1
+    )
+    assert result.retained == block
+
+
 def test_patch_along_directions_which_guard():
     """QK has no write direction to reconstruct onto, so a QK HeadSVD is refused."""
     qk = _factored_head_svd(
