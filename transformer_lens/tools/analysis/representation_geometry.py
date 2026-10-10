@@ -251,3 +251,194 @@ def _fit_unembedding_geometry(
             ),
         ),
     )
+
+
+class RepresentationGeometry:
+    """Dual-space geometry fitted from a tensor-level unembedding readout.
+
+    Let ``M = covariance + ridge * I`` (with no shift for an exact fit),
+    ``W = M^(-1/2)``, and ``S = M^(1/2)``. For column-vector measurement ``g``
+    and intervention ``h``, transformed coordinates are ``W g`` and ``S h``.
+    Their pairing is preserved: ``(S h).T @ (W g) = h.T @ g``. The two spaces
+    therefore must not use the same coordinate transform.
+
+    Methods accept non-empty real tensors with trailing dimension ``d_model``
+    on the fit device. Leading batch dimensions broadcast for binary operations;
+    rows are compared elementwise, not as an implicit all-pairs Gram matrix.
+    Vectors are converted to the fit's compute dtype without implicit device
+    transfer. Gradients flow through vector operations, not through fitted
+    weights. Matrix properties return copies of the detached snapshot.
+
+    Inner products and cosines take raw coordinates in the named space, not
+    already-whitened vectors. Transform methods are linear and do not subtract
+    the token mean. Callers must declare the correct basis/space: bare tensors
+    carry no metadata that can detect a semantically mislabeled direction.
+    Zero-vector inner products are valid; cosines with any zero direction raise.
+
+    Exact metrics are invariant under consistent invertible dual basis changes.
+    An isotropic ridge is invariant under orthogonal changes, but not arbitrary
+    invertible changes unless its regularizer is transformed consistently.
+    Derived interventions are metric identifications, not evidence of model use.
+
+    Args:
+        unembedding: Finite readout tensor with shape ``[d_model, d_vocab]``.
+        token_ids: Optional unique token population for uniform covariance.
+        ridge: Explicit positive covariance shift, or None for an exact fit.
+        rtol: Relative eigenvalue threshold, or None for the compute default.
+        compute_dtype: Optional float32/float64 accumulation dtype.
+
+    Examples:
+        >>> geometry = RepresentationGeometry(torch.tensor([[-2.0, 2.0]]))
+        >>> geometry.whiten_measurement(torch.tensor([2.0])).tolist()
+        [1.0]
+        >>> geometry.whiten_intervention(torch.tensor([3.0])).tolist()
+        [6.0]
+        >>> geometry.derived_intervention(torch.tensor([2.0])).tolist()
+        [0.5]
+    """
+
+    def __init__(
+        self,
+        unembedding: torch.Tensor,
+        *,
+        token_ids: Optional[Sequence[int]] = None,
+        ridge: Optional[float] = None,
+        rtol: Optional[float] = None,
+        compute_dtype: Optional[torch.dtype] = None,
+    ) -> None:
+        self._fit = _fit_unembedding_geometry(
+            unembedding,
+            token_ids=token_ids,
+            ridge=ridge,
+            rtol=rtol,
+            compute_dtype=compute_dtype,
+        )
+
+    @property
+    def diagnostics(self) -> _GeometryDiagnostics:
+        """Return immutable population, precision and conditioning metadata."""
+        return self._fit.diagnostics
+
+    @property
+    def mean(self) -> Float[torch.Tensor, "model"]:
+        """Return a copy of the selected population's token mean."""
+        return self._fit.mean.clone()
+
+    @property
+    def covariance(self) -> Float[torch.Tensor, "model model"]:
+        """Return a copy of the centered, unregularized population covariance."""
+        return self._fit.covariance.clone()
+
+    @property
+    def regularized_covariance(self) -> Float[torch.Tensor, "model model"]:
+        """Return a copy of the positive-definite matrix used for the fit."""
+        return self._fit.regularized_covariance.clone()
+
+    def _validate_vector(self, vector: torch.Tensor) -> torch.Tensor:
+        if not isinstance(vector, torch.Tensor):
+            raise ValueError("vector must be a torch.Tensor")
+        dimension = self.diagnostics.input_shape[0]
+        if vector.ndim == 0 or vector.shape[-1] != dimension:
+            raise ValueError(f"vector must have trailing dimension {dimension}")
+        if vector.numel() == 0:
+            raise ValueError("vector batches must be non-empty")
+        if vector.layout != torch.strided:
+            raise ValueError("vector must have strided layout")
+        if vector.dtype not in _INPUT_DTYPES:
+            raise ValueError("vector must have float16, bfloat16, float32 or float64 dtype")
+        if vector.device != self.diagnostics.device:
+            raise ValueError("vector must be on the same device as the geometry fit")
+        return self._require_finite(vector.to(dtype=self.diagnostics.compute_dtype))
+
+    @staticmethod
+    def _require_finite(value: torch.Tensor) -> torch.Tensor:
+        if not bool(torch.isfinite(value).all()):
+            raise ValueError("geometry vectors and results must be finite at compute precision")
+        return value
+
+    def _transform(self, vector: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        return self._require_finite(self._validate_vector(vector) @ factor.T)
+
+    def whiten_measurement(self, vector: torch.Tensor) -> torch.Tensor:
+        """Map raw measurement rows to whitened rows via ``g @ M^(-1/2)``."""
+        return self._transform(vector, self._fit.whitening)
+
+    def unwhiten_measurement(self, vector: torch.Tensor) -> torch.Tensor:
+        """Recover raw measurement rows via ``g_whitened @ M^(1/2)``."""
+        return self._transform(vector, self._fit.unwhitening)
+
+    def whiten_intervention(self, vector: torch.Tensor) -> torch.Tensor:
+        """Map raw intervention rows dually via ``h @ M^(1/2)``."""
+        return self._transform(vector, self._fit.unwhitening)
+
+    def unwhiten_intervention(self, vector: torch.Tensor) -> torch.Tensor:
+        """Recover raw intervention rows via ``h_whitened @ M^(-1/2)``."""
+        return self._transform(vector, self._fit.whitening)
+
+    def derived_intervention(self, measurement: torch.Tensor) -> torch.Tensor:
+        """Return ``M^(-1) g`` in raw intervention coordinates.
+
+        This Riesz identification follows Equation (4.1) of
+        https://arxiv.org/abs/2311.03658v2 for the exact metric. With ridge it
+        uses the regularized metric. Transformed-coordinate equality is a
+        construction identity, not an independently estimated intervention.
+        """
+        return self._transform(self.whiten_measurement(measurement), self._fit.whitening)
+
+    def _validate_pair(self, a: torch.Tensor, b: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        a = self._validate_vector(a)
+        b = self._validate_vector(b)
+        try:
+            torch.broadcast_shapes(a.shape[:-1], b.shape[:-1])
+        except RuntimeError as error:
+            raise ValueError("vector batch dimensions must broadcast") from error
+        return a, b
+
+    def _inner_product(
+        self, a: torch.Tensor, b: torch.Tensor, factor: torch.Tensor
+    ) -> torch.Tensor:
+        a, b = self._validate_pair(a, b)
+        transformed_a = self._require_finite(a @ factor.T)
+        transformed_b = self._require_finite(b @ factor.T)
+        return self._require_finite((transformed_a * transformed_b).sum(dim=-1))
+
+    def measurement_inner_product(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Compute raw-coordinate ``a.T M^(-1) b`` over broadcast batches."""
+        return self._inner_product(a, b, self._fit.whitening)
+
+    def intervention_inner_product(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Compute raw-coordinate ``a.T M b`` over broadcast batches."""
+        return self._inner_product(a, b, self._fit.unwhitening)
+
+    def _unit_direction(self, vector: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        scale = vector.abs().amax(dim=-1, keepdim=True)
+        if bool((scale == 0).any()):
+            raise ValueError("cosine is undefined for a zero direction")
+        transformed = self._require_finite((vector / scale) @ factor.T)
+        transformed_scale = transformed.abs().amax(dim=-1, keepdim=True)
+        if bool((transformed_scale == 0).any()):
+            raise ValueError("cosine has a zero transformed direction at compute precision")
+        scaled = transformed / transformed_scale
+        return self._require_finite(scaled / torch.linalg.vector_norm(scaled, dim=-1, keepdim=True))
+
+    def _cosine(self, a: torch.Tensor, b: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        a, b = self._validate_pair(a, b)
+        a_unit = self._unit_direction(a, factor)
+        b_unit = self._unit_direction(b, factor)
+        result = self._require_finite((a_unit * b_unit).sum(dim=-1))
+        tolerance = 4 * self.diagnostics.input_shape[0] * torch.finfo(result.dtype).eps
+        if bool((result.abs() > 1 + tolerance).any()):
+            raise ValueError("cosine exceeds its valid range at compute precision")
+        return result.clamp(-1.0, 1.0)
+
+    def measurement_cosine(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Compute measurement-metric cosine; reject zero directions.
+
+        Positive rescaling avoids norm overflow/underflow. Final values are
+        clamped to [-1, 1] only within the accumulation roundoff bound.
+        """
+        return self._cosine(a, b, self._fit.whitening)
+
+    def intervention_cosine(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Compute intervention-metric cosine with the same zero/range policy."""
+        return self._cosine(a, b, self._fit.unwhitening)
