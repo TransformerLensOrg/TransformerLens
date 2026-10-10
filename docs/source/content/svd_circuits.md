@@ -1,13 +1,13 @@
 # SVD Circuits
 
 SVD Circuits decomposes a single attention head's QK and OV weight maps into orthogonal
-singular directions, so a head can be examined as a sum of low-rank subfunctions rather
-than as one indivisible unit. Every claimed subfunction is then causally gated by
-patching activations along its direction.
+singular directions. Vocab readouts and activation projections describe those directions;
+patching measures prompt-specific changes in a caller-selected output metric.
 
-A weight-space decomposition is not a causal claim. A direction can project onto
-plausible tokens while carrying no role in the model's behaviour, which is why the
-causal gate is part of the tool rather than an optional extra.
+Mathematically distinct directions need not be semantically or causally distinct
+subfunctions. A weight-space decomposition or a plausible token projection does not
+establish a direction's role. Interventions provide additional measurements, but the
+reported gate comparison is not by itself a validation of a named mechanism.
 
 ## Definition
 
@@ -58,7 +58,7 @@ also unsuitable for individual attribution. The consumers have different guards:
   them with block summaries. Consult the rank report and exclude both `is_degenerate`
   and `is_null` before interpreting individual directions.
 
-## The causal gate
+## The intervention comparison
 
 `patch_along_directions` reconstructs the head's output onto a chosen singular subspace
 and reports the resulting change in a caller-supplied metric:
@@ -68,9 +68,9 @@ and reports the resulting change in a caller-supplied metric:
   inside the head's own OV span. Drawing the control in-span rather than from the full
   residual stream makes it the effect of an arbitrary subspace of *this head's* output,
   which is the comparison the gate needs.
-- `gated`: whether the retained subspace passed the causal test.
+- `gated`: whether the metric change passed the mode-specific threshold comparison.
 
-The success condition depends on the mode the caller expressed, because `keep=S` and
+The comparison depends on the mode the caller expressed, because `keep=S` and
 `ablate=complement(S)` resolve to the same retained set:
 
 | Mode | Meaning | `gated` is |
@@ -78,15 +78,16 @@ The success condition depends on the mode the caller expressed, because `keep=S`
 | `keep=S` | retain only $S$ | `abs(delta_metric) < threshold` |
 | `ablate=S` | zero $S$, retain the rest | `abs(delta_metric) > threshold` |
 
-With `keep`, a direction that alone reconstructs the head's behaviour moves the metric
-*less* than an arbitrary same-width subspace. With `ablate`, a load-bearing direction
-moves it *more*. A single "moved more than the control" test cannot answer both
-questions, which is why the mode is explicit.
+With `keep`, a passing comparison means retaining the selected subspace changes the
+metric less than the threshold. With `ablate`, it means removing the selected subspace
+changes the metric more than the threshold. These describe effects on the chosen metric,
+not reconstruction of the head's entire behaviour or identification of its function.
 
-The threshold defaults to `baseline_delta_metric`. Because the per-draw control
-magnitudes are heavy-tailed, the averaged threshold still varies with the seed, so a
-direction whose delta sits near it can gate either way. Pass an explicit `rng` for a
-reproducible verdict, and raise `n_baseline` when the verdict is close.
+The threshold defaults to `baseline_delta_metric`, a sampled mean magnitude rather than
+a confidence bound or p-value. It does not establish statistical separation from
+arbitrary directions. The sampled mean can vary with the seed and draw count, so verdicts
+near it can change. Pass an explicit `rng` for repeatability and increase `n_baseline` to
+sample the mean more thoroughly; neither makes a verdict scientifically conclusive.
 
 ## Compatibility mode
 
@@ -128,13 +129,16 @@ print(result.delta_metric, result.baseline_delta_metric, result.gated)
 
 ## What this does not establish
 
-- A passing gate validates one subspace on one prompt, not a named subfunction. The
-  vocab readout suggests what a direction moves; the gate tests whether it matters.
-- Results are single-head. Nothing here assembles a multi-head circuit.
-- The paper's subfunction taxonomy is scale- and model-dependent, so a small model
-  reproduces the mechanism rather than the paper's exact inventory.
-- Verdicts near the baseline threshold are seed-sensitive and should be read as
-  borderline.
+- A passing gate reports a metric comparison for one intervention on one prompt. Vocab
+  readouts and activation coefficients are descriptive projections, not semantic labels.
+- Results are single-head and prompt-specific. Nothing here assembles a multi-head circuit.
+- The worked example and demo do not establish named subfunctions, statistical separation
+  from arbitrary directions, or replication of the paper's causal subfunction taxonomy.
+- Output-metric changes include downstream responses. A small final-logit effect does not
+  imply a small direct write contribution, nor identify which downstream components alter
+  the effect.
+- Verdicts near the mean control magnitude can change with the seed or draw count. Fixing
+  a seed makes the comparison repeatable, not scientifically conclusive.
 
 ## Links
 
