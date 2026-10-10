@@ -22,6 +22,8 @@ hides:
 from __future__ import annotations
 
 import math
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator
 
 import pytest
 import torch
@@ -29,7 +31,14 @@ import torch
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
+    GradientCache,
+    Node,
+    NodeKind,
+    _ablate_edges,
+    _edge_hook_flags,
+    _edge_hook_names,
     attribution_patch,
+    enumerate_edges,
     faithfulness,
 )
 
@@ -47,6 +56,245 @@ def _logit_diff_metric(answer_id: int, wrong_id: int):
         return logits[0, -1, answer_id] - logits[0, -1, wrong_id]
 
     return metric
+
+
+def _capture_hook(name: str, cache: dict[str, torch.Tensor]) -> Callable[..., None]:
+    def capture(tensor: torch.Tensor, *, hook: Any) -> None:
+        del hook
+        cache[name] = tensor.detach().clone()
+
+    return capture
+
+
+def _capture_gpt2_forward(
+    model: TransformerBridge,
+    tokens: torch.Tensor,
+    overrides: list[tuple[str, Callable]] | None = None,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    cache: dict[str, torch.Tensor] = {}
+    observers = [
+        (name, _capture_hook(name, cache)) for name in _edge_hook_names(model.cfg.n_layers)
+    ]
+    with torch.no_grad(), model.hooks(fwd_hooks=(overrides or []) + observers):
+        logits = model(tokens)
+    return logits, cache
+
+
+@pytest.fixture(scope="module")
+def gpt2_edge_endpoints(gpt2_bridge):
+    clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    assert clean.shape == corrupt.shape
+    assert gpt2_bridge.original_model.config._attn_implementation == "eager"
+    with _edge_hook_flags(gpt2_bridge):
+        clean_logits, clean_values = _capture_gpt2_forward(gpt2_bridge, clean)
+        _, corrupt_values = _capture_gpt2_forward(gpt2_bridge, corrupt)
+    cache = GradientCache(clean_values, {}, torch.tensor(0.0))
+    edges = enumerate_edges(gpt2_bridge, cache)
+    return clean, clean_logits, clean_values, corrupt_values, edges
+
+
+def _override_reader(index: tuple[int, ...], value: torch.Tensor) -> Callable[..., torch.Tensor]:
+    def override(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        replaced = tensor.clone()
+        replaced[index] = value
+        return replaced
+
+    return override
+
+
+def _capture_gpt2_ablation(
+    model: TransformerBridge,
+    tokens: torch.Tensor,
+    edges: list[tuple[Node, Node]],
+    circuit: list[tuple[Node, Node]],
+    replacements: dict[str, torch.Tensor],
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    cache: dict[str, torch.Tensor] = {}
+    original_hooks = model.hooks
+
+    @contextmanager
+    def hooks(fwd_hooks: list[tuple[str, Callable]], **kwargs: Any) -> Iterator[Any]:
+        # Appending observers preserves the production correction order.
+        observers = [
+            (name, _capture_hook(name, cache)) for name in _edge_hook_names(model.cfg.n_layers)
+        ]
+        with original_hooks(fwd_hooks=fwd_hooks + observers, **kwargs):
+            yield model
+
+    before = _bridge_hook_state(model)
+    with monkeypatch.context() as patch:
+        patch.setattr(model, "hooks", hooks)
+        logits = _ablate_edges(model, tokens, edges, circuit, replacements)
+    assert _bridge_hook_state(model) == before
+    return logits, cache
+
+
+@pytest.mark.parametrize(
+    "kind,name,layer,head",
+    [
+        ("q_input", "blocks.1.attn.hook_q_input", 1, 3),
+        ("k_input", "blocks.1.attn.hook_k_input", 1, 4),
+        ("v_input", "blocks.1.attn.hook_v_input", 1, 5),
+        ("mlp_in", "blocks.1.hook_mlp_in", 1, None),
+        ("logits", "blocks.11.hook_resid_post", 11, None),
+    ],
+)
+def test_partial_gpt2_ablation_matches_explicit_reader_override(
+    gpt2_bridge,
+    gpt2_edge_endpoints,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: NodeKind,
+    name: str,
+    layer: int,
+    head: int | None,
+) -> None:
+    clean, clean_logits, clean_values, corrupt_values, edges = gpt2_edge_endpoints
+    position = clean.shape[1] - 1
+    writer = Node("attn_head_out", position, layer=0, head=1)
+    reader = Node(kind, position, layer=layer, head=head)
+    excluded = (writer, reader)
+    assert excluded in edges
+    circuit = [edge for edge in edges if edge != excluded]
+    assert len(circuit) == len(edges) - 1
+    index = (0, position) if head is None else (0, position, head)
+    delta = (
+        corrupt_values["blocks.0.attn.hook_result"][0, position, 1]
+        - clean_values["blocks.0.attn.hook_result"][0, position, 1]
+    )
+    assert delta.abs().max() > 1e-5
+    expected_reader = clean_values[name].clone()
+    expected_reader[index] = (
+        clean_values[name][index]
+        - clean_values["blocks.0.attn.hook_result"][0, position, 1]
+        + corrupt_values["blocks.0.attn.hook_result"][0, position, 1]
+    )
+    with _edge_hook_flags(gpt2_bridge):
+        expected, reference = _capture_gpt2_forward(
+            gpt2_bridge, clean, [(name, _override_reader(index, expected_reader[index]))]
+        )
+        actual, observed = _capture_gpt2_ablation(
+            gpt2_bridge, clean, edges, circuit, corrupt_values, monkeypatch
+        )
+    # Both routes apply identical fp32 slice arithmetic to the same clean reader.
+    torch.testing.assert_close(reference[name], expected_reader, atol=0, rtol=0)
+    torch.testing.assert_close(observed[name], expected_reader, atol=0, rtol=0)
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    assert (actual - clean_logits).abs().max() > 1e-5
+
+
+def test_coupled_partial_gpt2_ablation_matches_staged_reader_overrides(
+    gpt2_bridge,
+    gpt2_edge_endpoints,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clean, clean_logits, clean_values, corrupt_values, edges = gpt2_edge_endpoints
+    position = clean.shape[1] - 1
+    upstream_name = "blocks.1.attn.hook_q_input"
+    downstream_name = "blocks.2.attn.hook_k_input"
+    upstream_index = (0, position, 3)
+    downstream_index = (0, position, 4)
+    upstream_value = (
+        clean_values[upstream_name][upstream_index]
+        - clean_values["blocks.0.attn.hook_result"][0, position, 1]
+        + corrupt_values["blocks.0.attn.hook_result"][0, position, 1]
+    )
+    upstream_override = (upstream_name, _override_reader(upstream_index, upstream_value))
+    with _edge_hook_flags(gpt2_bridge):
+        _, staged = _capture_gpt2_forward(gpt2_bridge, clean, [upstream_override])
+        live = staged["blocks.1.attn.hook_result"][0, position, 3]
+        assert (live - clean_values["blocks.1.attn.hook_result"][0, position, 3]).abs().max() > 1e-6
+        downstream_value = (
+            staged[downstream_name][downstream_index]
+            - live
+            + corrupt_values["blocks.1.attn.hook_result"][0, position, 3]
+        )
+        overrides = [
+            upstream_override,
+            (downstream_name, _override_reader(downstream_index, downstream_value)),
+        ]
+        expected, reference = _capture_gpt2_forward(gpt2_bridge, clean, overrides)
+        excluded = {
+            (
+                Node("attn_head_out", position, layer=0, head=1),
+                Node("q_input", position, layer=1, head=3),
+            ),
+            (
+                Node("attn_head_out", position, layer=1, head=3),
+                Node("k_input", position, layer=2, head=4),
+            ),
+        }
+        assert excluded <= set(edges)
+        circuit = [edge for edge in edges if edge not in excluded]
+        assert len(circuit) == len(edges) - 2
+        actual, observed = _capture_gpt2_ablation(
+            gpt2_bridge, clean, edges, circuit, corrupt_values, monkeypatch
+        )
+    for name in (upstream_name, downstream_name, "blocks.1.attn.hook_result"):
+        torch.testing.assert_close(observed[name], reference[name], atol=0, rtol=0)
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    assert (actual - clean_logits).abs().max() > 1e-5
+
+
+def _bridge_hook_state(model: TransformerBridge) -> tuple:
+    flags = tuple(
+        getattr(model.cfg, name)
+        for name in ("use_attn_result", "use_split_qkv_input", "use_hook_mlp_in", "use_attn_in")
+    )
+    handles = {
+        name: (
+            tuple(id(handle) for handle in point.fwd_hooks),
+            tuple(id(handle) for handle in point.bwd_hooks),
+        )
+        for name, point in model.hook_dict.items()
+    }
+    return flags, handles, model.context_level
+
+
+@pytest.mark.parametrize("fail_at", [None, 1, 3])
+def test_forward_only_faithfulness_restores_gpt2_hooks_after_metric_error(
+    gpt2_bridge,
+    gpt2_edge_endpoints,
+    fail_at: int | None,
+) -> None:
+    clean, _, _, _, edges = gpt2_edge_endpoints
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1])
+    wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1])
+    metric = _logit_diff_metric(answer_id, wrong_id)
+    calls = 0
+
+    def checked_metric(logits: torch.Tensor) -> torch.Tensor:
+        nonlocal calls
+        calls += 1
+        assert not logits.requires_grad
+        if calls == fail_at:
+            raise RuntimeError("metric failed")
+        return metric(logits)
+
+    original_state = _bridge_hook_state(gpt2_bridge)
+    with _edge_hook_flags(gpt2_bridge):
+        gpt2_bridge.set_use_split_qkv_input(False)
+        gpt2_bridge.set_use_hook_mlp_in(False)
+        gpt2_bridge.set_use_attn_in(True)
+        try:
+            with gpt2_bridge.hooks(fwd_hooks=[("hook_embed", lambda tensor, **kwargs: None)]):
+                before = _bridge_hook_state(gpt2_bridge)
+                with torch.no_grad():
+                    if fail_at is None:
+                        report = faithfulness(
+                            gpt2_bridge, clean, corrupt, checked_metric, edges[:-1]
+                        )
+                        assert math.isfinite(report.recovered)
+                    else:
+                        with pytest.raises(RuntimeError, match="metric failed"):
+                            faithfulness(gpt2_bridge, clean, corrupt, checked_metric, edges[:-1])
+                assert _bridge_hook_state(gpt2_bridge) == before
+        finally:
+            gpt2_bridge.set_use_attn_in(False)
+    assert _bridge_hook_state(gpt2_bridge) == original_state
 
 
 def test_attribution_patch_scores_every_node_finite_on_real_bridge(gpt2_bridge) -> None:

@@ -1469,9 +1469,9 @@ def faithfulness(
     n_layers = int(model.cfg.n_layers)
     hook_names = _edge_hook_names(n_layers)
 
-    with _edge_hook_flags(model):
+    with torch.no_grad(), _edge_hook_flags(model):
         corrupt_cache = cache_activation_and_gradient(
-            model, corrupt, metric_fn, names_filter=hook_names
+            model, corrupt, metric_fn, names_filter=hook_names, compute_gradient=False
         )
         edges = enumerate_edges(model, corrupt_cache)
         graph = set(edges)

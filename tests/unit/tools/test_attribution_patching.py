@@ -2598,6 +2598,38 @@ def test_faithfulness_full_and_corrupt_metrics_match_direct_evaluation() -> None
     assert report.full_metric != pytest.approx(report.corrupt_metric)
 
 
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_faithfulness_is_forward_only_and_preserves_parameter_gradients(
+    config: FaithfulnessConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    circuit = _toy_ablation_edges()[::2]
+    baseline = faithfulness(model, clean, corrupt, metric, circuit, config)
+    parameters = list(model.parameters())
+    for index, parameter in enumerate(parameters):
+        parameter.grad = torch.full_like(parameter, 0.17) if index % 2 else None
+    saved = [None if parameter.grad is None else parameter.grad.clone() for parameter in parameters]
+
+    def forbidden_backward(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("faithfulness must not request a backward pass")
+
+    def forward_metric(logits: torch.Tensor) -> torch.Tensor:
+        assert not logits.requires_grad
+        return metric(logits)
+
+    monkeypatch.setattr(torch.autograd, "grad", forbidden_backward)
+    monkeypatch.setattr(torch.Tensor, "backward", forbidden_backward)
+    for enabled in (False, True):
+        with torch.set_grad_enabled(enabled):
+            report = faithfulness(model, clean, corrupt, forward_metric, circuit, config)
+        assert report == baseline
+        for parameter, previous in zip(parameters, saved):
+            if previous is None:
+                assert parameter.grad is None
+            else:
+                torch.testing.assert_close(parameter.grad, previous, atol=0, rtol=0)
+
+
 def test_faithfulness_defaults_to_corrupt_ablation() -> None:
     assert FaithfulnessConfig().ablation == "corrupt"
 
