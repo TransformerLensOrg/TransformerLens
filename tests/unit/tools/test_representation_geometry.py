@@ -10,9 +10,30 @@ from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.tools.analysis.representation_geometry import (
     CategoricalGeometry,
     ConceptDirection,
+    GeometryBasis,
     RepresentationGeometry,
     _fit_unembedding_geometry,
 )
+
+
+def test_public_exports_and_tensor_workflow():
+    from transformer_lens.tools import analysis
+
+    assert analysis.__all__ == sorted(analysis.__all__)
+    assert analysis.RepresentationGeometry is RepresentationGeometry
+    assert analysis.GeometryBasis is GeometryBasis
+    assert analysis.ConceptDirection is ConceptDirection
+    assert analysis.CategoricalGeometry is CategoricalGeometry
+    geometry = RepresentationGeometry(torch.tensor([[0.0, 1.0, 2.0]]))
+    assert isinstance(geometry.basis, GeometryBasis)
+    assert geometry.basis.source == "tensor"
+    assert geometry.basis.input_location == "declared-readout-input"
+    concept = geometry.concept_direction([(0, 1)])
+    assert isinstance(concept, ConceptDirection)
+    assert concept.geometry_basis == geometry.basis
+    categories = geometry.categorical_geometry(torch.tensor([[0.0], [1.0]]), space="measurement")
+    assert isinstance(categories, CategoricalGeometry)
+    assert categories.geometry_basis == geometry.basis
 
 
 def known_readout(dtype=torch.float64):

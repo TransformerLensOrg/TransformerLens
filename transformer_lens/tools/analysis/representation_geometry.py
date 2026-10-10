@@ -9,17 +9,37 @@ changes that metric and does not whiten the original covariance to identity.
 
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import dataclass
 from numbers import Real
-from typing import Literal, Optional, Sequence, Tuple
+from typing import Literal, Optional, Sequence, Tuple, Union
 
 import torch
 from jaxtyping import Bool, Float
+from transformers import PreTrainedTokenizerBase
 
 _INPUT_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
 _COMPUTE_DTYPES = (torch.float32, torch.float64)
 _GeometrySpace = Literal["measurement", "intervention"]
+
+
+@dataclass(frozen=True)
+class GeometryBasis:
+    """Coordinate provenance for a detached readout geometry snapshot.
+
+    Bridge construction uses the raw linear unembedding input after final
+    normalization, including its learned gain and bias. No cached scale or
+    normalization folding is applied. Tensor construction leaves semantic
+    basis identification to the caller. Metadata is not a unique model ID and
+    cannot establish compatibility between arbitrary snapshots.
+    """
+
+    source: Literal["tensor", "transformer-bridge"]
+    input_location: Literal["declared-readout-input", "post-final-normalization"]
+    normalization_type: Optional[str] = None
+    architecture: Optional[str] = None
+    model_name: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +132,7 @@ class CategoricalGeometry:
     relative_distance_spread: Optional[float]
     regularity_rtol: float
     geometry_diagnostics: _GeometryDiagnostics
+    geometry_basis: GeometryBasis
 
     @property
     def n_vertices(self) -> int:
@@ -171,6 +192,7 @@ class ConceptDirection:
     raw_dispersion: Float[torch.Tensor, ""]
     whitened_dispersion: Float[torch.Tensor, ""]
     geometry_diagnostics: _GeometryDiagnostics
+    geometry_basis: GeometryBasis
     aggregation: Literal["mean"] = "mean"
     intervention_kind: Literal["metric-derived"] = "metric-derived"
 
@@ -424,6 +446,146 @@ class RepresentationGeometry:
             compute_dtype=compute_dtype,
         )
         self._unembedding = unembedding.detach().clone()
+        self._basis = GeometryBasis(source="tensor", input_location="declared-readout-input")
+        self._tokenizer: Optional[PreTrainedTokenizerBase] = None
+
+    @classmethod
+    def from_bridge(
+        cls,
+        model: object,
+        *,
+        token_ids: Optional[Sequence[int]] = None,
+        ridge: Optional[float] = None,
+        rtol: Optional[float] = None,
+        compute_dtype: Optional[torch.dtype] = None,
+    ) -> "RepresentationGeometry":
+        """Snapshot a raw TransformerBridge's post-normalization linear readout.
+
+        Requires a causal decoder-only Bridge with a direct unfolded LN/RMS
+        to linear unembedding path, consistent d_model/output vocabulary, and
+        no post-readout transform. Processed/compatibility bases, final output
+        projections and unsupported normalization contracts raise explicitly.
+        The model, training state, hooks, weights and device are not changed.
+
+        The optional HF tokenizer is deep-copied for stable single-token string
+        contrasts; ID contrasts need no tokenizer. Encoding disables special
+        tokens (including BOS/EOS), rejects unknown-token substitutions and
+        requires exactly one vocabulary token. This is a weight snapshot, not
+        a live view of subsequent model/tokenizer edits. Unembedding bias is
+        not part of the metric; absolute logits still require that bias.
+
+        Args:
+            model: Raw TransformerBridge with a plain linear vocabulary head.
+            token_ids: Optional uniformly weighted covariance token population.
+            ridge: Explicit positive covariance shift, or None for an exact fit.
+            rtol: Optional relative covariance eigenvalue threshold.
+            compute_dtype: Optional float32/float64 accumulation dtype.
+
+        Returns:
+            Detached geometry and coordinate provenance, with an optional
+            independent tokenizer snapshot for string contrasts.
+
+        Raises:
+            TypeError: If model is not a TransformerBridge.
+            ValueError: For unsupported basis/readout/tokenizer contracts or
+                invalid covariance fit inputs.
+        """
+        from transformer_lens.model_bridge import TransformerBridge
+        from transformer_lens.model_bridge.architecture_adapter import (
+            ArchitectureAdapter,
+        )
+        from transformer_lens.model_bridge.generalized_components.normalization import (
+            NormalizationBridge,
+        )
+        from transformer_lens.model_bridge.generalized_components.unembedding import (
+            UnembeddingBridge,
+        )
+
+        if not isinstance(model, TransformerBridge):
+            raise TypeError("from_bridge requires a TransformerBridge")
+        if model.compatibility_mode:
+            raise ValueError("geometry requires raw weights, not compatibility mode")
+        if model._weights_processed or getattr(model.cfg, "layer_norm_folding", False):
+            raise ValueError(
+                "geometry requires raw, unprocessed weights without normalization folding"
+            )
+        mapping = model.adapter.get_component_mapping()
+        if (
+            not model.adapter.supports_generation
+            or "encoder_blocks" in mapping
+            or "decoder_blocks" in mapping
+            or getattr(model.cfg, "attention_dir", "causal") != "causal"
+        ):
+            raise ValueError("geometry requires a causal decoder-only text generation bridge")
+        if "project_out" in mapping:
+            raise ValueError("geometry does not support a final output projection")
+        norm = getattr(model, "ln_final", None)
+        if (
+            "ln_final" not in mapping
+            or not isinstance(norm, NormalizationBridge)
+            or norm.original_component is None
+        ):
+            raise ValueError("geometry requires a readable ln_final normalization component")
+        norm_type = model.cfg.normalization_type
+        if norm_type not in ("LN", "RMS"):
+            raise ValueError("geometry requires an unfolded LN or RMS normalization basis")
+        if norm.uses_rms_norm != (norm_type == "RMS"):
+            raise ValueError("ln_final normalization does not match the configured basis")
+        if norm_type == "LN" and (
+            not isinstance(norm.original_component, torch.nn.LayerNorm)
+            or tuple(norm.original_component.normalized_shape) != (model.cfg.d_model,)
+        ):
+            raise ValueError("ln_final must expose a d_model-width LayerNorm for the LN basis")
+        unembed = getattr(model, "unembed", None)
+        if "unembed" not in mapping or not isinstance(unembed, UnembeddingBridge):
+            raise ValueError("geometry requires a direct linear unembedding")
+        head = unembed.original_component
+        if not isinstance(head, torch.nn.Linear) or type(head) is not torch.nn.Linear:
+            raise ValueError(
+                "geometry requires a plain linear unembedding without parametrizations"
+            )
+        if getattr(head.forward, "__func__", None) is not torch.nn.Linear.forward:
+            raise ValueError("linear readout must use the standard nn.Linear forward")
+        transform = model.adapter.apply_output_logits_transform
+        if (
+            getattr(transform, "__func__", None)
+            is not ArchitectureAdapter.apply_output_logits_transform
+        ):
+            raise ValueError("geometry does not support a custom post-readout output transform")
+        cap = getattr(model.cfg, "output_logits_soft_cap", None)
+        if cap is not None and (
+            not isinstance(cap, Real) or not math.isfinite(float(cap)) or float(cap) > 0
+        ):
+            raise ValueError("geometry does not support an active or invalid output soft cap")
+        readout = model.W_U
+        if readout.ndim != 2 or readout.shape != (model.cfg.d_model, model.cfg.d_vocab_out):
+            raise ValueError("unembedding shape must match d_model and d_vocab_out")
+        if readout.device.type not in ("cpu", "cuda"):
+            raise ValueError("geometry requires materialized CPU or CUDA readout weights")
+        if not bool(torch.isfinite(readout).all()):
+            raise ValueError("unembedding readout weights must contain only finite values")
+        if readout.device != head.weight.device or not torch.equal(readout.T, head.weight):
+            raise ValueError("exposed W_U must match the actual linear readout weight")
+        tokenizer = model.tokenizer
+        if tokenizer is not None and not isinstance(tokenizer, PreTrainedTokenizerBase):
+            raise ValueError("string contrasts require a Hugging Face tokenizer or no tokenizer")
+        geometry = cls(
+            readout, token_ids=token_ids, ridge=ridge, rtol=rtol, compute_dtype=compute_dtype
+        )
+        geometry._basis = GeometryBasis(
+            source="transformer-bridge",
+            input_location="post-final-normalization",
+            normalization_type=norm_type,
+            architecture=model.cfg.architecture,
+            model_name=model.cfg.model_name,
+        )
+        geometry._tokenizer = copy.deepcopy(tokenizer)
+        return geometry
+
+    @property
+    def basis(self) -> GeometryBasis:
+        """Return immutable coordinate provenance for the snapshot."""
+        return self._basis
 
     @property
     def diagnostics(self) -> _GeometryDiagnostics:
@@ -498,7 +660,7 @@ class RepresentationGeometry:
 
     def concept_direction(
         self,
-        pairs: Sequence[Sequence[int]],
+        pairs: Sequence[Sequence[Union[int, str]]],
         *,
         label: Optional[str] = None,
         pair_labels: Optional[Sequence[Sequence[str]]] = None,
@@ -515,11 +677,13 @@ class RepresentationGeometry:
         zero contrasts and zero aggregate directions raise rather than being
         silently filtered. Near-canceling nonzero means retain their measured
         dispersion; no arbitrary minimum pair count establishes concept quality.
-        Strings are optional metadata, not tokenization inputs. Finite outputs
-        must be representable at the declared compute precision.
+        String endpoints require a snapshotted Bridge tokenizer and exactly one
+        token without implicit BOS/EOS. String/mixed pairs retain endpoint labels
+        unless explicit pair labels are supplied. Finite outputs must be
+        representable at the declared compute precision.
 
         Args:
-            pairs: Non-empty sequence of two integer vocabulary IDs per pair.
+            pairs: Non-empty sequence of two token IDs or single-token strings.
             label: Optional non-empty concept label.
             pair_labels: Optional two non-empty strings per pair in input order.
 
@@ -545,13 +709,14 @@ class RepresentationGeometry:
             raise ValueError("pairs must be a non-empty sequence of token-ID pairs")
         vocabulary_size = self.diagnostics.input_shape[1]
         oriented_pairs: list[Tuple[int, int]] = []
+        inferred_labels: list[Tuple[str, str]] = []
+        has_strings = False
         seen: set[Tuple[int, int]] = set()
         for pair in pairs:
             if isinstance(pair, (str, bytes)) or not isinstance(pair, Sequence) or len(pair) != 2:
                 raise ValueError("each contrast pair must contain exactly two token IDs")
-            lo, hi = pair
-            if any(isinstance(token, bool) or not isinstance(token, int) for token in (lo, hi)):
-                raise ValueError("contrast pairs must contain integer token IDs")
+            has_strings = has_strings or any(isinstance(token, str) for token in pair)
+            lo, hi = (self._contrast_token_id(token) for token in pair)
             if not (0 <= lo < vocabulary_size and 0 <= hi < vocabulary_size):
                 raise ValueError(f"contrast token IDs must lie in [0, {vocabulary_size})")
             if lo == hi:
@@ -564,9 +729,19 @@ class RepresentationGeometry:
             seen.add(unordered_pair)
             oriented_pairs.append((lo, hi))
 
+        if has_strings and pair_labels is None:
+            inferred_labels = [
+                (
+                    self._contrast_token_label(pair[0], lo),
+                    self._contrast_token_label(pair[1], hi),
+                )
+                for pair, (lo, hi) in zip(pairs, oriented_pairs)
+            ]
         if label is not None and (not isinstance(label, str) or not label):
             raise ValueError("label must be a non-empty string or None")
-        frozen_labels: Optional[Tuple[Tuple[str, str], ...]] = None
+        frozen_labels: Optional[Tuple[Tuple[str, str], ...]] = (
+            tuple(inferred_labels) if has_strings and pair_labels is None else None
+        )
         if pair_labels is not None:
             if (
                 isinstance(pair_labels, (str, bytes))
@@ -621,6 +796,7 @@ class RepresentationGeometry:
             raw_dispersion=raw_dispersion,
             whitened_dispersion=whitened_dispersion,
             geometry_diagnostics=self.diagnostics,
+            geometry_basis=self.basis,
         )
 
     def categorical_geometry(
@@ -765,7 +941,36 @@ class RepresentationGeometry:
             relative_distance_spread=relative_spread,
             regularity_rtol=8 * default_rtol,
             geometry_diagnostics=self.diagnostics,
+            geometry_basis=self.basis,
         )
+
+    def _contrast_token_label(self, token: Union[int, str], token_id: int) -> str:
+        if isinstance(token, str):
+            return token
+        if self._tokenizer is None:
+            raise ValueError("string labels require a snapshotted Bridge tokenizer")
+        label = self._tokenizer.decode([token_id])
+        if not isinstance(label, str):
+            raise ValueError("tokenizer must decode a token ID to a string label")
+        return label
+
+    def _contrast_token_id(self, token: Union[int, str]) -> int:
+        if not isinstance(token, str):
+            if isinstance(token, bool) or not isinstance(token, int):
+                raise ValueError("contrast endpoints must be integer token IDs or strings")
+            return token
+        if self._tokenizer is None:
+            raise ValueError("string contrasts require a snapshotted Bridge tokenizer")
+        if not token:
+            raise ValueError("contrast string must not be empty")
+        ids = self._tokenizer.encode(token, add_special_tokens=False)
+        if len(ids) != 1:
+            raise ValueError("contrast string must resolve to exactly one token without BOS/EOS")
+        if isinstance(ids[0], bool) or not isinstance(ids[0], int):
+            raise ValueError("tokenizer must encode exactly one integer token ID")
+        if ids[0] == self._tokenizer.unk_token_id:
+            raise ValueError("contrast string resolves to an unknown token")
+        return ids[0]
 
     def _validate_pair(self, a: torch.Tensor, b: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         a = self._validate_vector(a)
