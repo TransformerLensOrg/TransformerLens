@@ -1746,87 +1746,158 @@ class JacobianLens:
             ValueError: On compatibility mode, training mode, invalid provenance
                 or layer indices, or if no prompt was long enough to fit on.
         """
-        _require_raw_bridge(model, estimator=cls.__name__)
-        require_eval_mode(model, operation="JacobianLens.fit()")
-        if not isinstance(corpus, str) or not corpus.strip():
-            raise ValueError("corpus must be a non-empty provenance identifier")
-        n_layers = model.cfg.n_layers
-        d_model = model.cfg.d_model
-        resolved_target = n_layers - 1
-        if source_layers is None:
-            resolved_sources = list(range(resolved_target))
-        else:
-            resolved_sources = sorted(
-                {_normalize_layer(layer, n_layers) for layer in source_layers}
-            )
-        if not resolved_sources:
-            raise ValueError("source_layers is empty")
-        if resolved_sources[-1] >= resolved_target:
-            raise ValueError(
-                f"every source layer must be below target_layer={resolved_target}; "
-                f"got {resolved_sources}"
-            )
-        if dim_batch < 1:
-            raise ValueError(f"dim_batch must be >= 1, got {dim_batch}")
-        if skip_first_positions < 0:
-            raise ValueError(f"skip_first_positions must be >= 0, got {skip_first_positions}")
-        fit_dtype = model.W_U.dtype
-        if fit_dtype in (torch.float16, torch.bfloat16):
-            warnings.warn(
-                f"fitting in {fit_dtype} accumulates Jacobian gradients at reduced "
-                "precision; use a float32 TransformerBridge for the highest-fidelity fit",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        transport_matrices, n_done = _fit_transport_matrices(
+        options = _prepare_fit(
             model,
-            prompts,
-            source_layers=resolved_sources,
+            operation=cls.__name__,
+            estimator=ESTIMATOR_JACOBIAN,
+            corpus=corpus,
+            source_layers=source_layers,
             dim_batch=dim_batch,
             max_seq_len=max_seq_len,
             skip_first_positions=skip_first_positions,
+            metadata=metadata,
+        )
+        transport_matrices, n_done = _fit_transport_matrices(
+            model,
+            prompts,
+            source_layers=list(options.source_layers),
+            dim_batch=options.dim_batch,
+            max_seq_len=options.max_seq_len,
+            skip_first_positions=options.skip_first_positions,
             show_progress=show_progress,
             backward_provider=_ordinary_vjp,
         )
-
-        fit_metadata: Dict[str, Any] = {
-            "model_name": getattr(model.cfg, "model_name", None),
-            "model_revision": _get_model_revision(model),
-            "transformer_lens_version": version("transformer-lens"),
-            "model_system": "TransformerBridge",
-            "estimator": ESTIMATOR_JACOBIAN,
-            "processing": {
-                "compatibility_mode": False,
-                "weight_basis": "raw_huggingface",
-            },
-            "hook_convention": "blocks.{layer}.hook_out",
-            "corpus": corpus,
-            "n_prompts": n_done,
-            "fit_dtype": str(fit_dtype).removeprefix("torch."),
-            "target_layer": resolved_target,
-            "dim_batch": dim_batch,
-            "max_seq_len": max_seq_len,
-            "skip_first_positions": skip_first_positions,
-            "transformer_lens_fit": True,
-        }
-        reserved = sorted(set(fit_metadata).intersection(metadata or {}))
-        if reserved:
-            raise ValueError(f"metadata cannot override fit provenance keys: {reserved}")
-        full_metadata = dict(metadata or {})
-        full_metadata.update(fit_metadata)
-        _validate_metadata(full_metadata)
         return cls(
             transport_matrices,
             n_prompts=n_done,
-            d_model=d_model,
-            metadata=full_metadata,
+            d_model=options.d_model,
+            metadata=_build_fit_metadata(
+                model, options, estimator=ESTIMATOR_JACOBIAN, n_prompts=n_done, metadata=metadata
+            ),
         )
 
 
 # ---------------------------------------------------------------------- #
 # helpers                                                                #
 # ---------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class _FitOptions:
+    """Resolved options shared by transport-matrix estimators."""
+
+    source_layers: Tuple[int, ...]
+    target_layer: int
+    d_model: int
+    fit_dtype: torch.dtype
+    corpus: str
+    dim_batch: int
+    max_seq_len: int
+    skip_first_positions: int
+
+
+def _prepare_fit(
+    model: Any,
+    *,
+    operation: str,
+    estimator: str,
+    corpus: str,
+    source_layers: Optional[Sequence[int]],
+    dim_batch: int,
+    max_seq_len: int,
+    skip_first_positions: int,
+    metadata: Optional[Dict[str, Any]],
+    estimator_metadata_keys: Sequence[str] = (),
+) -> _FitOptions:
+    """Validate the shared fit contract before tokenization or rule installation."""
+    _require_raw_bridge(model, estimator=operation)
+    require_eval_mode(model, operation=f"{operation}.fit()")
+    if not isinstance(corpus, str) or not corpus.strip():
+        raise ValueError("corpus must be a non-empty provenance identifier")
+    n_layers = model.cfg.n_layers
+    target_layer = n_layers - 1
+    if source_layers is None:
+        resolved_sources = list(range(target_layer))
+    else:
+        resolved_sources = sorted({_normalize_layer(layer, n_layers) for layer in source_layers})
+    if not resolved_sources:
+        raise ValueError("source_layers is empty")
+    if resolved_sources[-1] >= target_layer:
+        raise ValueError(
+            f"every source layer must be below target_layer={target_layer}; got {resolved_sources}"
+        )
+    if dim_batch < 1:
+        raise ValueError(f"dim_batch must be >= 1, got {dim_batch}")
+    if skip_first_positions < 0:
+        raise ValueError(f"skip_first_positions must be >= 0, got {skip_first_positions}")
+    options = _FitOptions(
+        source_layers=tuple(resolved_sources),
+        target_layer=target_layer,
+        d_model=model.cfg.d_model,
+        fit_dtype=model.W_U.dtype,
+        corpus=corpus,
+        dim_batch=dim_batch,
+        max_seq_len=max_seq_len,
+        skip_first_positions=skip_first_positions,
+    )
+    # Preflight metadata before fitting supplies counts and estimator-specific values.
+    _build_fit_metadata(
+        model,
+        options,
+        estimator=estimator,
+        n_prompts=0,
+        metadata=metadata,
+        estimator_metadata=dict.fromkeys(estimator_metadata_keys),
+    )
+    if options.fit_dtype in (torch.float16, torch.bfloat16):
+        warnings.warn(
+            f"fitting in {options.fit_dtype} accumulates transport gradients at reduced "
+            "precision; use a float32 TransformerBridge for the highest-fidelity fit",
+            UserWarning,
+            stacklevel=3,
+        )
+    return options
+
+
+def _build_fit_metadata(
+    model: Any,
+    options: _FitOptions,
+    *,
+    estimator: str,
+    n_prompts: int,
+    metadata: Optional[Dict[str, Any]],
+    estimator_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Combine validated user provenance with common and estimator-specific fit fields."""
+    fit_metadata: Dict[str, Any] = {
+        "model_name": getattr(model.cfg, "model_name", None),
+        "model_revision": _get_model_revision(model),
+        "transformer_lens_version": version("transformer-lens"),
+        "model_system": "TransformerBridge",
+        "estimator": estimator,
+        "processing": {"compatibility_mode": False, "weight_basis": "raw_huggingface"},
+        "hook_convention": "blocks.{layer}.hook_out",
+        "corpus": options.corpus,
+        "n_prompts": n_prompts,
+        "fit_dtype": str(options.fit_dtype).removeprefix("torch."),
+        "target_layer": options.target_layer,
+        "dim_batch": options.dim_batch,
+        "max_seq_len": options.max_seq_len,
+        "skip_first_positions": options.skip_first_positions,
+        "transformer_lens_fit": True,
+    }
+    extra_metadata = dict(estimator_metadata or {})
+    overlapping = sorted(set(fit_metadata).intersection(extra_metadata))
+    if overlapping:
+        raise ValueError(f"estimator metadata cannot override common fit provenance: {overlapping}")
+    fit_metadata.update(extra_metadata)
+    reserved = sorted(set(fit_metadata).intersection(metadata or {}))
+    if reserved:
+        raise ValueError(f"metadata cannot override fit provenance keys: {reserved}")
+    full_metadata = dict(metadata or {})
+    full_metadata.update(fit_metadata)
+    _validate_metadata(full_metadata)
+    return full_metadata
 
 
 def _resid_post_hook_name(layer: int) -> str:

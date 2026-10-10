@@ -21,6 +21,8 @@ from tokenizers.pre_tokenizers import Whitespace
 from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFast
 
 import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
+import transformer_lens.tools.analysis.relevance_lens as relevance_lens_module
+from tests.unit.tools.conftest import _ToyBridge
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
@@ -169,6 +171,173 @@ def _expected_rule_mounts() -> tuple[_RelevanceRuleCoverageEntry, ...]:
         for layer in range(N_LAYERS)
         for mount in mounts
     )
+
+
+@pytest.fixture(params=[JacobianLens, RelevanceLens], ids=["jacobian", "relevance"])
+def estimator(request: pytest.FixtureRequest) -> Any:
+    return request.param
+
+
+def _forbid_fit_work(*args: Any, **kwargs: Any) -> Any:
+    raise AssertionError("invalid fit options reached tokenization or rule installation")
+
+
+class TestSharedFitValidation:
+    @pytest.mark.parametrize(
+        "options, message",
+        [
+            ({"corpus": ""}, "corpus"),
+            ({"corpus": " "}, "corpus"),
+            ({"source_layers": []}, "source_layers"),
+            ({"source_layers": [N_LAYERS - 1]}, "target_layer"),
+            ({"source_layers": [N_LAYERS]}, "out of range"),
+            ({"dim_batch": 0}, "dim_batch"),
+            ({"skip_first_positions": -1}, "skip_first_positions"),
+        ],
+    )
+    def test_invalid_options_fail_before_fit_work(
+        self,
+        estimator: Any,
+        options: dict[str, Any],
+        message: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        model = _build_tiny_qwen2()
+        monkeypatch.setattr(jacobian_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+        monkeypatch.setattr(relevance_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+        monkeypatch.setattr(relevance_lens_module, "use_relevance_rules", _forbid_fit_work)
+        with pytest.raises(ValueError, match=message):
+            estimator.fit(model, PROMPTS, **{"corpus": CORPUS, **options})
+
+    @pytest.mark.parametrize(
+        "state, message",
+        [
+            ("compatibility", "compatibility mode"),
+            ("processed", "process_weights"),
+            ("training", r"model\.eval\(\)"),
+            ("submodule", r"model\.eval\(\)"),
+        ],
+    )
+    def test_model_state_rejections_are_shared(
+        self, estimator: Any, state: str, message: str
+    ) -> None:
+        model = _build_tiny_qwen2()
+        if state == "compatibility":
+            model.compatibility_mode = True
+        elif state == "processed":
+            model._weights_processed = True
+        elif state == "training":
+            model.train()
+        else:
+            model.blocks[0].train()
+        with pytest.raises(ValueError, match=message):
+            estimator.fit(model, PROMPTS, corpus=CORPUS, show_progress=False)
+
+    def test_hidden_original_submodule_in_training_mode_is_refused(self, estimator: Any) -> None:
+        model = _ToyBridge()
+        original_model = torch.nn.Sequential(torch.nn.Linear(4, 4)).eval()
+        original_model[0].train()
+        model.original_model = original_model
+        with pytest.raises(ValueError, match="original_model"):
+            estimator.fit(model, PROMPTS, corpus=CORPUS)
+        assert original_model.training is False
+        assert original_model[0].training is True
+
+    def test_non_bridge_is_refused(self, estimator: Any) -> None:
+        with pytest.raises(TypeError, match="TransformerBridge"):
+            estimator.fit(object(), PROMPTS, corpus=CORPUS)
+
+    def test_both_estimators_reach_the_same_raw_bridge_guard(
+        self,
+        estimator: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def refuse(*args: Any, **kwargs: Any) -> None:
+            raise ValueError("shared raw-bridge guard")
+
+        monkeypatch.setattr(jacobian_lens_module, "_require_raw_bridge", refuse)
+        with pytest.raises(ValueError, match="shared raw-bridge guard"):
+            estimator.fit(_ToyBridge(), PROMPTS, corpus=CORPUS)
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "model_name",
+            "model_revision",
+            "transformer_lens_version",
+            "model_system",
+            "estimator",
+            "processing",
+            "hook_convention",
+            "corpus",
+            "n_prompts",
+            "fit_dtype",
+            "target_layer",
+            "dim_batch",
+            "max_seq_len",
+            "skip_first_positions",
+            "transformer_lens_fit",
+        ],
+    )
+    def test_common_provenance_is_reserved_before_fit_work(
+        self,
+        estimator: Any,
+        key: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(jacobian_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+        monkeypatch.setattr(relevance_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+        monkeypatch.setattr(relevance_lens_module, "use_relevance_rules", _forbid_fit_work)
+        with pytest.raises(ValueError, match="cannot override fit provenance"):
+            estimator.fit(_ToyBridge(), PROMPTS, corpus=CORPUS, metadata={key: None})
+
+    @pytest.mark.parametrize("key", ["relevance_rule_version", "enabled_rules", "rule_coverage"])
+    def test_relevance_provenance_is_reserved_before_rule_installation(
+        self,
+        key: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(relevance_lens_module, "use_relevance_rules", _forbid_fit_work)
+        with pytest.raises(ValueError, match="cannot override fit provenance"):
+            RelevanceLens.fit(_ToyBridge(), PROMPTS, corpus=CORPUS, metadata={key: None})
+
+    @pytest.mark.parametrize("value", [torch.tensor(1), {"unsafe"}, object()])
+    def test_unsafe_user_metadata_is_refused_before_fit_work(
+        self,
+        estimator: Any,
+        value: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(jacobian_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+        monkeypatch.setattr(relevance_lens_module, "use_relevance_rules", _forbid_fit_work)
+        with pytest.raises(ValueError, match="metadata"):
+            estimator.fit(_ToyBridge(), PROMPTS, corpus=CORPUS, metadata={"run": value})
+
+
+class TestSharedFitProvenance:
+    def test_common_provenance_matches_between_estimators(self, fitted: _FittedPair) -> None:
+        relevance_only = {"relevance_rule_version", "enabled_rules", "rule_coverage"}
+        assert fitted.relevance.metadata["estimator"] == "relevance_lens"
+        assert fitted.jacobian.metadata["estimator"] == "jacobian_lens"
+        assert {
+            key: value
+            for key, value in fitted.relevance.metadata.items()
+            if key not in relevance_only | {"estimator"}
+        } == {key: value for key, value in fitted.jacobian.metadata.items() if key != "estimator"}
+
+    def test_custom_metadata_is_preserved(self, estimator: Any) -> None:
+        metadata = {"run": {"seed": 0, "tags": ["offline", "fit"]}}
+        lens = estimator.fit(
+            _build_tiny_qwen2(),
+            PROMPTS[:1],
+            corpus=CORPUS,
+            source_layers=SOURCE_LAYERS,
+            show_progress=False,
+            metadata=metadata,
+        )
+        assert lens.metadata["run"] == metadata["run"]
+        assert set(metadata) == {"run"}
+        assert lens.metadata["n_prompts"] == lens.n_prompts == 1
 
 
 class TestFitShapeAndFiniteness:

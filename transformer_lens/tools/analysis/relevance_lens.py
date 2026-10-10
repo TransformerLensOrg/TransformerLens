@@ -40,7 +40,6 @@ Example::
 from __future__ import annotations
 
 import warnings
-from importlib.metadata import version
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -51,16 +50,13 @@ from transformer_lens.model_bridge._relevance_rules import (
     _RelevanceRuleCoverageEntry,
     use_relevance_rules,
 )
-from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.jacobian_lens import (
     DEFAULT_SKIP_FIRST_POSITIONS,
     JacobianLens,
+    _build_fit_metadata,
     _fit_transport_matrices,
-    _get_model_revision,
-    _normalize_layer,
     _ordinary_vjp,
-    _require_raw_bridge,
-    _validate_metadata,
+    _prepare_fit,
 )
 
 # Estimator identity recorded on every relevance lens. Distinct from the
@@ -319,39 +315,18 @@ class RelevanceLens(JacobianLens):
             UserWarning: If some rule mounts were skipped, so the matrices mix
                 rule-modified and ordinary gradients.
         """
-        _require_raw_bridge(model, estimator=cls.__name__)
-        require_eval_mode(model, operation=f"{cls.__name__}.fit()")
-        if not isinstance(corpus, str) or not corpus.strip():
-            raise ValueError("corpus must be a non-empty provenance identifier")
-        n_layers = model.cfg.n_layers
-        d_model = model.cfg.d_model
-        resolved_target = n_layers - 1
-        if source_layers is None:
-            resolved_sources = list(range(resolved_target))
-        else:
-            resolved_sources = sorted(
-                {_normalize_layer(layer, n_layers) for layer in source_layers}
-            )
-        if not resolved_sources:
-            raise ValueError("source_layers is empty")
-        if resolved_sources[-1] >= resolved_target:
-            raise ValueError(
-                f"every source layer must be below target_layer={resolved_target}; "
-                f"got {resolved_sources}"
-            )
-        if dim_batch < 1:
-            raise ValueError(f"dim_batch must be >= 1, got {dim_batch}")
-        if skip_first_positions < 0:
-            raise ValueError(f"skip_first_positions must be >= 0, got {skip_first_positions}")
-        fit_dtype = model.W_U.dtype
-        if fit_dtype in (torch.float16, torch.bfloat16):
-            warnings.warn(
-                f"fitting in {fit_dtype} accumulates transport gradients at reduced "
-                "precision; use a float32 TransformerBridge for the highest-fidelity "
-                "fit",
-                UserWarning,
-                stacklevel=2,
-            )
+        options = _prepare_fit(
+            model,
+            operation=cls.__name__,
+            estimator=ESTIMATOR_RELEVANCE,
+            corpus=corpus,
+            source_layers=source_layers,
+            dim_batch=dim_batch,
+            max_seq_len=max_seq_len,
+            skip_first_positions=skip_first_positions,
+            metadata=metadata,
+            estimator_metadata_keys=("relevance_rule_version", "enabled_rules", "rule_coverage"),
+        )
 
         with use_relevance_rules(model, RELEVANCE_RULES) as coverage:
             if not coverage.installed:
@@ -376,48 +351,30 @@ class RelevanceLens(JacobianLens):
             transport_matrices, n_done = _fit_transport_matrices(
                 model,
                 prompts,
-                source_layers=resolved_sources,
-                dim_batch=dim_batch,
-                max_seq_len=max_seq_len,
-                skip_first_positions=skip_first_positions,
+                source_layers=list(options.source_layers),
+                dim_batch=options.dim_batch,
+                max_seq_len=options.max_seq_len,
+                skip_first_positions=options.skip_first_positions,
                 show_progress=show_progress,
                 backward_provider=_ordinary_vjp,
             )
 
-        fit_metadata: Dict[str, Any] = {
-            "model_name": getattr(model.cfg, "model_name", None),
-            "model_revision": _get_model_revision(model),
-            "transformer_lens_version": version("transformer-lens"),
-            "model_system": "TransformerBridge",
-            "estimator": ESTIMATOR_RELEVANCE,
-            "processing": {
-                "compatibility_mode": False,
-                "weight_basis": "raw_huggingface",
-            },
-            "hook_convention": "blocks.{layer}.hook_out",
-            "corpus": corpus,
-            "n_prompts": n_done,
-            "fit_dtype": str(fit_dtype).removeprefix("torch."),
-            "target_layer": resolved_target,
-            "dim_batch": dim_batch,
-            "max_seq_len": max_seq_len,
-            "skip_first_positions": skip_first_positions,
-            "transformer_lens_fit": True,
-            "relevance_rule_version": RELEVANCE_RULE_VERSION,
-            "enabled_rules": _installed_rule_names(coverage),
-            "rule_coverage": _encode_rule_coverage(coverage),
-        }
-        reserved = sorted(set(fit_metadata).intersection(metadata or {}))
-        if reserved:
-            raise ValueError(f"metadata cannot override fit provenance keys: {reserved}")
-        full_metadata = dict(metadata or {})
-        full_metadata.update(fit_metadata)
-        _validate_metadata(full_metadata)
         return cls(
             transport_matrices,
             n_prompts=n_done,
-            d_model=d_model,
-            metadata=full_metadata,
+            d_model=options.d_model,
+            metadata=_build_fit_metadata(
+                model,
+                options,
+                estimator=ESTIMATOR_RELEVANCE,
+                n_prompts=n_done,
+                metadata=metadata,
+                estimator_metadata={
+                    "relevance_rule_version": RELEVANCE_RULE_VERSION,
+                    "enabled_rules": _installed_rule_names(coverage),
+                    "rule_coverage": _encode_rule_coverage(coverage),
+                },
+            ),
             rule_coverage=coverage,
             relevance_rule_version=RELEVANCE_RULE_VERSION,
             enabled_rules=_installed_rule_names(coverage),
