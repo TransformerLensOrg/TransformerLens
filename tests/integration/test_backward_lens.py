@@ -833,9 +833,17 @@ def test_tiny_llama_gated_discovery_is_structural(tiny_llama_bridge) -> None:
     d_model = int(tiny_llama_bridge.cfg.d_model)
     d_mlp = int(tiny_llama_bridge.cfg.d_mlp)
     records = _get_mlp_projections(tiny_llama_bridge, (0,))[0]
+    mlp = tiny_llama_bridge.blocks[0].mlp
+    original_mlp = mlp.original_component
 
     assert len(records) == 3
     gate_record, input_record, output_record = records
+    assert gate_record.projection is mlp.gate
+    assert input_record.projection is getattr(mlp, "in")
+    assert output_record.projection is mlp.out
+    assert gate_record.projection.original_component is original_mlp.gate_proj.original_component
+    assert input_record.projection.original_component is original_mlp.up_proj.original_component
+    assert output_record.projection.original_component is original_mlp.down_proj.original_component
     for record in records:
         assert record.weight_layout == "out_in"
     assert tuple(gate_record.projection.original_component.weight.shape) == (

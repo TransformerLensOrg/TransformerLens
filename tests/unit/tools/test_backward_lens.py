@@ -605,10 +605,13 @@ def test_mlp_projection_roles_match_the_discovered_record_count() -> None:
 
 def test_get_mlp_projections_discovers_gated_gate_up_down() -> None:
     d_model, d_mlp = 4, 6
+    gate_component = torch.nn.Linear(d_model, d_mlp)
+    input_component = torch.nn.Linear(d_model, d_mlp)
+    output_component = torch.nn.Linear(d_mlp, d_model)
     mlp = _dense_mlp_bridge(
-        input_component=torch.nn.Linear(d_model, d_mlp),
-        output_component=torch.nn.Linear(d_mlp, d_model),
-        gate_component=torch.nn.Linear(d_model, d_mlp),
+        input_component=input_component,
+        output_component=output_component,
+        gate_component=gate_component,
     )
     model = _dense_mlp_model(mlp, d_model=d_model, d_mlp=d_mlp, gated_mlp=True)
 
@@ -616,6 +619,12 @@ def test_get_mlp_projections_discovers_gated_gate_up_down() -> None:
 
     assert len(records) == 3
     gate_record, input_record, output_record = records
+    assert gate_record.projection is mlp.gate
+    assert input_record.projection is getattr(mlp, "in")
+    assert output_record.projection is mlp.out
+    assert gate_record.projection.original_component is gate_component
+    assert input_record.projection.original_component is input_component
+    assert output_record.projection.original_component is output_component
     assert gate_record.weight_layout == "out_in"
     assert input_record.weight_layout == "out_in"
     assert output_record.weight_layout == "out_in"
