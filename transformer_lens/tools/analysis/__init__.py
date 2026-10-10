@@ -32,6 +32,9 @@ Tools:
       the vocabulary with target ranks, top-k and vocabulary subsets.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
+    - representation_geometry: Explicit dual-space unembedding-covariance
+      metrics, counterfactual concept directions and categorical diagnostics
+      over tensors or raw TransformerBridge post-normalization readouts.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
       activation tensors, with train-only selection and raw null controls.
     - svd_circuits: Per-head QK/OV singular-vector decomposition with a
@@ -107,6 +110,12 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
+from transformer_lens.tools.analysis.representation_geometry import (
+    CategoricalGeometry,
+    ConceptDirection,
+    GeometryBasis,
+    RepresentationGeometry,
+)
 from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeControl,
     SparseProbeConvergenceError,
@@ -141,11 +150,14 @@ __all__ = [
     "BackwardLensMatrixResult",
     "BackwardLensResult",
     "BenchmarkCorpus",
+    "CategoricalGeometry",
+    "ConceptDirection",
     "CoordinatePatch",
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
     "FunctionSpec",
+    "GeometryBasis",
     "HeadAffinityPair",
     "HeadAffinityResult",
     "HeadDecomposition",
@@ -165,6 +177,7 @@ __all__ = [
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "RankReportRow",
+    "RepresentationGeometry",
     "SparseProbeControl",
     "SparseProbeConvergenceError",
     "SparseProbeMetrics",
