@@ -1,12 +1,14 @@
-"""Analytic tests for centered unembedding covariance and factorization."""
+"""Analytic tests for dual-space geometry and counterfactual concept directions."""
 
 import math
+from dataclasses import FrozenInstanceError
 
 import pytest
 import torch
 
 from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.tools.analysis.representation_geometry import (
+    ConceptDirection,
     RepresentationGeometry,
     _fit_unembedding_geometry,
 )
@@ -624,3 +626,267 @@ def test_isotropic_ridge_preserves_orthogonal_basis_invariance():
         original.measurement_inner_product(g, k),
         transformed.measurement_inner_product(g @ rotation.T, k @ rotation.T),
     )
+
+
+@pytest.mark.parametrize("ridge", [None, 0.5])
+def test_concept_direction_matches_independent_oriented_pair_aggregation(ridge):
+    readout, rotation = known_readout()
+    geometry = RepresentationGeometry(readout, ridge=ridge)
+    result = geometry.concept_direction(
+        [(1, 0), (3, 2)], label="contrast", pair_labels=[("low-a", "high-a"), ("low-b", "high-b")]
+    )
+    differences = torch.stack([readout[:, 0] - readout[:, 1], readout[:, 2] - readout[:, 3]])
+    mean = differences.mean(dim=0)
+    eigenvalues = torch.tensor([4.0, 1.0], dtype=torch.float64) + (ridge or 0.0)
+    covariance = rotation @ torch.diag(eigenvalues) @ rotation.T
+    whitening = rotation @ torch.diag(eigenvalues.rsqrt()) @ rotation.T
+    intervention = torch.linalg.solve(covariance, mean)
+    deviations = differences - mean
+    assert isinstance(result, ConceptDirection)
+    torch.testing.assert_close(result.raw_pair_differences, differences)
+    torch.testing.assert_close(result.whitened_pair_differences, differences @ whitening.T)
+    torch.testing.assert_close(result.raw_measurement, mean)
+    torch.testing.assert_close(result.whitened_measurement, whitening @ mean)
+    torch.testing.assert_close(result.raw_derived_intervention, intervention)
+    torch.testing.assert_close(result.whitened_derived_intervention, whitening @ mean)
+    torch.testing.assert_close(result.raw_dispersion, deviations.square().sum(-1).mean())
+    torch.testing.assert_close(
+        result.whitened_dispersion, (deviations @ whitening.T).square().sum(-1).mean()
+    )
+    assert result.pairs == ((1, 0), (3, 2))
+    assert result.pair_labels == (("low-a", "high-a"), ("low-b", "high-b"))
+    assert result.label == "contrast"
+    assert result.n_pairs == 2
+    assert result.aggregation == "mean"
+    assert result.intervention_kind == "metric-derived"
+    assert result.geometry_diagnostics == geometry.diagnostics
+    assert result.raw_measurement.shape == (2,)
+    assert result.raw_dispersion.shape == torch.Size([])
+
+
+@pytest.mark.parametrize("ridge", [None, 0.5])
+def test_reversing_all_pairs_reverses_directions_but_not_dispersion(ridge):
+    readout, _ = known_readout()
+    geometry = RepresentationGeometry(readout, ridge=ridge)
+    original = geometry.concept_direction([(1, 0), (3, 2)])
+    reversed_result = geometry.concept_direction([(0, 1), (2, 3)])
+    for name in [
+        "raw_pair_differences",
+        "whitened_pair_differences",
+        "raw_measurement",
+        "whitened_measurement",
+        "raw_derived_intervention",
+        "whitened_derived_intervention",
+    ]:
+        torch.testing.assert_close(getattr(reversed_result, name), -getattr(original, name))
+    torch.testing.assert_close(reversed_result.raw_dispersion, original.raw_dispersion)
+    torch.testing.assert_close(reversed_result.whitened_dispersion, original.whitened_dispersion)
+
+
+def test_single_pair_dispersion_is_population_zero_without_a_confidence_claim():
+    readout, _ = known_readout()
+    geometry = RepresentationGeometry(readout)
+    result = geometry.concept_direction([(1, 0)])
+    torch.testing.assert_close(result.raw_measurement, readout[:, 0] - readout[:, 1])
+    assert result.raw_dispersion.item() == 0.0
+    assert result.whitened_dispersion.item() == 0.0
+    assert result.n_pairs == 1
+    assert result.label is None
+    assert result.pair_labels is None
+
+
+def test_concept_dispersion_is_population_variance_not_sample_variance():
+    readout, _ = known_readout()
+    result = RepresentationGeometry(readout).concept_direction([(1, 0), (3, 2)])
+    sample = result.raw_pair_differences.var(dim=0, correction=1).sum()
+    torch.testing.assert_close(result.raw_dispersion * 2, sample)
+    assert not torch.allclose(result.raw_dispersion, sample)
+
+
+def test_contrasts_do_not_subtract_the_token_mean_twice():
+    readout, _ = known_readout()
+    shifted = readout + torch.tensor([[13.0], [-11.0]], dtype=torch.float64)
+    original = RepresentationGeometry(readout).concept_direction([(1, 0), (3, 2)])
+    translated = RepresentationGeometry(shifted).concept_direction([(1, 0), (3, 2)])
+    torch.testing.assert_close(original.raw_measurement, translated.raw_measurement)
+    torch.testing.assert_close(original.whitened_measurement, translated.whitened_measurement)
+    torch.testing.assert_close(original.raw_dispersion, translated.raw_dispersion)
+
+
+def test_pair_order_is_preserved_but_does_not_change_the_mean():
+    readout, _ = known_readout()
+    geometry = RepresentationGeometry(readout)
+    original = geometry.concept_direction([(1, 0), (3, 2)])
+    reordered = geometry.concept_direction([(3, 2), (1, 0)])
+    assert reordered.pairs == ((3, 2), (1, 0))
+    torch.testing.assert_close(reordered.raw_measurement, original.raw_measurement)
+    torch.testing.assert_close(reordered.whitened_dispersion, original.whitened_dispersion)
+
+
+def test_population_selection_does_not_limit_valid_contrast_token_ids():
+    readout, _ = known_readout()
+    geometry = RepresentationGeometry(readout, token_ids=[0, 2, 3])
+    result = geometry.concept_direction([(1, 0)])
+    assert result.geometry_diagnostics.token_ids == (0, 2, 3)
+    torch.testing.assert_close(result.raw_measurement, readout[:, 0] - readout[:, 1])
+
+
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        [],
+        [(0, 0)],
+        [(0, 1), (0, 1)],
+        [(0, 1), (1, 0)],
+        [(-1, 0)],
+        [(0, 4)],
+        [(True, 0)],
+        [(0.5, 1)],
+        [(0,)],
+        [(0, 1, 2)],
+        ["01"],
+        [("low", "high")],
+        None,
+        "01",
+    ],
+)
+def test_invalid_contrast_pairs_are_rejected(pairs):
+    readout, _ = known_readout()
+    geometry = RepresentationGeometry(readout)
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        geometry.concept_direction(pairs)
+
+
+def test_distinct_token_ids_with_identical_readout_vectors_are_rejected():
+    readout = torch.tensor([[0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 2.0, -2.0]])
+    geometry = RepresentationGeometry(readout, ridge=0.25)
+    with pytest.raises(ValueError, match="zero"):
+        geometry.concept_direction([(0, 1), (0, 2)])
+
+
+def test_canceling_distinct_contrasts_have_no_mean_concept_direction():
+    readout = torch.tensor([[0.0, 1.0, 2.0, 1.0], [0.0, 0.0, 1.0, 1.0]])
+    geometry = RepresentationGeometry(readout)
+    with pytest.raises(ValueError, match="mean.*zero"):
+        geometry.concept_direction([(0, 1), (2, 3)])
+
+
+def test_noisy_contrasts_are_reported_without_a_minimum_pair_count():
+    readout = torch.tensor([[0.0, 1.0, 2.0, 1.1], [0.0, 0.0, 1.0, 1.0]], dtype=torch.float64)
+    geometry = RepresentationGeometry(readout)
+    result = geometry.concept_direction([(0, 1), (2, 3)])
+    torch.testing.assert_close(
+        result.raw_measurement, torch.tensor([0.05, 0.0], dtype=torch.float64)
+    )
+    assert result.raw_dispersion.item() > 0.9
+    assert result.n_pairs == 2
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"label": ""},
+        {"label": True},
+        {"pair_labels": []},
+        {"pair_labels": [("low", "high"), ("extra", "pair")]},
+        {"pair_labels": [("", "high")]},
+        {"pair_labels": [("low", 1)]},
+        {"pair_labels": ["ab"]},
+        {"pair_labels": "ab"},
+    ],
+)
+def test_invalid_concept_labels_are_rejected(kwargs):
+    readout, _ = known_readout()
+    geometry = RepresentationGeometry(readout)
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        geometry.concept_direction([(1, 0)], **kwargs)
+
+
+def test_concept_metadata_is_frozen_and_input_sequences_are_snapshotted():
+    readout, _ = known_readout()
+    pairs = [[1, 0], [3, 2]]
+    labels = [["a", "b"], ["c", "d"]]
+    result = RepresentationGeometry(readout).concept_direction(pairs, pair_labels=labels)
+    pairs[0][0] = 0
+    labels[0][0] = "changed"
+    assert result.pairs == ((1, 0), (3, 2))
+    assert result.pair_labels == (("a", "b"), ("c", "d"))
+    with pytest.raises(FrozenInstanceError):
+        result.label = "changed"
+
+
+def test_concept_results_are_detached_and_cannot_mutate_geometry_or_other_results():
+    readout, _ = known_readout()
+    readout.requires_grad_()
+    geometry = RepresentationGeometry(readout)
+    before = geometry.concept_direction([(1, 0), (3, 2)])
+    with torch.no_grad():
+        readout.fill_(0.0)
+    after = geometry.concept_direction([(1, 0), (3, 2)])
+    for name in [
+        "raw_measurement",
+        "whitened_measurement",
+        "raw_derived_intervention",
+        "whitened_derived_intervention",
+        "raw_pair_differences",
+        "whitened_pair_differences",
+        "raw_dispersion",
+        "whitened_dispersion",
+    ]:
+        actual = getattr(after, name)
+        expected = getattr(before, name)
+        torch.testing.assert_close(actual, expected)
+        assert not actual.requires_grad
+        assert actual.grad_fn is None
+        actual.fill_(0.0)
+    fresh = geometry.concept_direction([(1, 0), (3, 2)])
+    torch.testing.assert_close(fresh.raw_measurement, before.raw_measurement)
+    torch.testing.assert_close(fresh.raw_pair_differences, before.raw_pair_differences)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_concept_results_use_the_fit_precision_and_device(dtype):
+    readout, _ = known_readout(dtype)
+    geometry = RepresentationGeometry(readout)
+    result = geometry.concept_direction([(1, 0), (3, 2)])
+    for name in [
+        "raw_measurement",
+        "whitened_measurement",
+        "raw_derived_intervention",
+        "whitened_derived_intervention",
+        "raw_pair_differences",
+        "whitened_pair_differences",
+        "raw_dispersion",
+        "whitened_dispersion",
+    ]:
+        value = getattr(result, name)
+        assert value.dtype == geometry.diagnostics.compute_dtype
+        assert value.device == geometry.diagnostics.device
+
+
+def test_concept_metric_dispersion_and_derived_map_respect_exact_basis_changes():
+    readout, _ = known_readout()
+    change = torch.tensor([[2.0, 1.0], [-0.3, 1.4]], dtype=torch.float64)
+    original = RepresentationGeometry(readout).concept_direction([(1, 0), (3, 2)])
+    transformed = RepresentationGeometry(change @ readout).concept_direction([(1, 0), (3, 2)])
+    torch.testing.assert_close(transformed.raw_measurement, original.raw_measurement @ change.T)
+    torch.testing.assert_close(
+        transformed.raw_derived_intervention,
+        original.raw_derived_intervention @ torch.linalg.inv(change),
+    )
+    torch.testing.assert_close(transformed.whitened_dispersion, original.whitened_dispersion)
+    assert not torch.allclose(transformed.raw_dispersion, original.raw_dispersion)
+
+
+def test_non_finite_contrast_difference_is_rejected_at_compute_precision():
+    readout = torch.tensor([[0.0, 1.0, 1e100, -1e100]], dtype=torch.float64)
+    geometry = RepresentationGeometry(readout, token_ids=[0, 1], compute_dtype=torch.float32)
+    with pytest.raises(ValueError, match="finite"):
+        geometry.concept_direction([(2, 3)])
+
+
+def test_population_dispersion_overflow_is_rejected_not_reported_as_infinity():
+    readout = torch.tensor([[0.0, 1.0, 1e200, -1e200]], dtype=torch.float64)
+    geometry = RepresentationGeometry(readout, token_ids=[0, 1])
+    with pytest.raises(ValueError, match="finite"):
+        geometry.concept_direction([(0, 2), (0, 3), (1, 2)])

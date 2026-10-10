@@ -1,4 +1,4 @@
-"""Centered unembedding covariance and explicit inverse-square-root geometry.
+"""Dual-space unembedding geometry and counterfactual concept directions.
 
 The population covariance convention follows Park, Choe and Veitch,
 https://arxiv.org/abs/2311.03658v2, Section 3.2, Equation (3.3). Its inverse is
@@ -70,6 +70,47 @@ class _GeometryFit:
     whitening: Float[torch.Tensor, "model model"]
     unwhitening: Float[torch.Tensor, "model model"]
     diagnostics: _GeometryDiagnostics
+
+
+@dataclass(frozen=True)
+class ConceptDirection:
+    """An oriented, unnormalized mean of counterfactual token contrasts.
+
+    Each ``(lo, hi)`` pair contributes ``unembedding[:, hi] - unembedding[:, lo]``.
+    Measurement fields contain the uniformly weighted mean in raw and whitened
+    measurement coordinates. Intervention fields are explicitly metric-derived,
+    not independently estimated from contexts or input token embeddings.
+
+    Dispersion is ``mean_i ||difference_i - mean_difference||^2`` in the named
+    space, with population normalization. A single pair has zero dispersion;
+    this is not a confidence estimate or evidence of a linear concept. Near
+    cancellation can have high dispersion even when the mean is nonzero.
+
+    All tensors use the fit dtype/device and are detached, independently owned
+    results. Frozen fields prevent reassignment, not in-place tensor mutation;
+    treat tensors as read-only. Mutating a result cannot change the geometry.
+    Diagnostics describe the metric policy, not a unique model/basis identity.
+    """
+
+    pairs: Tuple[Tuple[int, int], ...]
+    pair_labels: Optional[Tuple[Tuple[str, str], ...]]
+    label: Optional[str]
+    raw_measurement: Float[torch.Tensor, "model"]
+    whitened_measurement: Float[torch.Tensor, "model"]
+    raw_derived_intervention: Float[torch.Tensor, "model"]
+    whitened_derived_intervention: Float[torch.Tensor, "model"]
+    raw_pair_differences: Float[torch.Tensor, "pair model"]
+    whitened_pair_differences: Float[torch.Tensor, "pair model"]
+    raw_dispersion: Float[torch.Tensor, ""]
+    whitened_dispersion: Float[torch.Tensor, ""]
+    geometry_diagnostics: _GeometryDiagnostics
+    aggregation: Literal["mean"] = "mean"
+    intervention_kind: Literal["metric-derived"] = "metric-derived"
+
+    @property
+    def n_pairs(self) -> int:
+        """Number of equally weighted, oriented contrast pairs."""
+        return len(self.pairs)
 
 
 def _validate_scalar(value: float, name: str, *, positive: bool) -> float:
@@ -267,7 +308,9 @@ class RepresentationGeometry:
     rows are compared elementwise, not as an implicit all-pairs Gram matrix.
     Vectors are converted to the fit's compute dtype without implicit device
     transfer. Gradients flow through vector operations, not through fitted
-    weights. Matrix properties return copies of the detached snapshot.
+    weights. Matrix properties return copies of the detached snapshot. The full
+    readout is retained as a detached copy in its storage dtype for token
+    contrasts, even when covariance uses a selected vocabulary population.
 
     Inner products and cosines take raw coordinates in the named space, not
     already-whitened vectors. Transform methods are linear and do not subtract
@@ -313,6 +356,7 @@ class RepresentationGeometry:
             rtol=rtol,
             compute_dtype=compute_dtype,
         )
+        self._unembedding = unembedding.detach().clone()
 
     @property
     def diagnostics(self) -> _GeometryDiagnostics:
@@ -384,6 +428,133 @@ class RepresentationGeometry:
         construction identity, not an independently estimated intervention.
         """
         return self._transform(self.whiten_measurement(measurement), self._fit.whitening)
+
+    def concept_direction(
+        self,
+        pairs: Sequence[Sequence[int]],
+        *,
+        label: Optional[str] = None,
+        pair_labels: Optional[Sequence[Sequence[str]]] = None,
+    ) -> ConceptDirection:
+        """Estimate an oriented measurement mean and its derived intervention.
+
+        ``(lo, hi)`` means ``unembedding[:, hi] - unembedding[:, lo]``. Contrasts
+        use the full snapshotted vocabulary; covariance population selection
+        does not restrict valid contrast IDs. Centering cancels in differences
+        and is not applied again. Aggregation is an equally weighted,
+        unnormalized mean, not a unit-length canonical concept representation.
+
+        A single pair is valid. Self-pairs, repeated or reversed duplicates,
+        zero contrasts and zero aggregate directions raise rather than being
+        silently filtered. Near-canceling nonzero means retain their measured
+        dispersion; no arbitrary minimum pair count establishes concept quality.
+        Strings are optional metadata, not tokenization inputs. Finite outputs
+        must be representable at the declared compute precision.
+
+        Args:
+            pairs: Non-empty sequence of two integer vocabulary IDs per pair.
+            label: Optional non-empty concept label.
+            pair_labels: Optional two non-empty strings per pair in input order.
+
+        Returns:
+            Typed, detached directions, contrast differences and population
+            dispersion, with frozen pair/label metadata and metric diagnostics.
+
+        Raises:
+            ValueError: For malformed/out-of-range IDs, invalid labels,
+                duplicates, degenerate contrasts or non-finite computations.
+
+        Examples:
+            >>> geometry = RepresentationGeometry(torch.tensor([[0.0, 1.0, 2.0]]))
+            >>> concept = geometry.concept_direction([(0, 1), (1, 2)], label="step")
+            >>> concept.raw_measurement.tolist()
+            [1.0]
+            >>> concept.raw_dispersion.item()
+            0.0
+            >>> concept.n_pairs
+            2
+        """
+        if isinstance(pairs, (str, bytes)) or not isinstance(pairs, Sequence) or not pairs:
+            raise ValueError("pairs must be a non-empty sequence of token-ID pairs")
+        vocabulary_size = self.diagnostics.input_shape[1]
+        oriented_pairs: list[Tuple[int, int]] = []
+        seen: set[Tuple[int, int]] = set()
+        for pair in pairs:
+            if isinstance(pair, (str, bytes)) or not isinstance(pair, Sequence) or len(pair) != 2:
+                raise ValueError("each contrast pair must contain exactly two token IDs")
+            lo, hi = pair
+            if any(isinstance(token, bool) or not isinstance(token, int) for token in (lo, hi)):
+                raise ValueError("contrast pairs must contain integer token IDs")
+            if not (0 <= lo < vocabulary_size and 0 <= hi < vocabulary_size):
+                raise ValueError(f"contrast token IDs must lie in [0, {vocabulary_size})")
+            if lo == hi:
+                raise ValueError("contrast self-pairs have a zero direction")
+            unordered_pair = (min(lo, hi), max(lo, hi))
+            if unordered_pair in seen:
+                raise ValueError(
+                    "contrast pairs must not contain duplicates or reversed duplicates"
+                )
+            seen.add(unordered_pair)
+            oriented_pairs.append((lo, hi))
+
+        if label is not None and (not isinstance(label, str) or not label):
+            raise ValueError("label must be a non-empty string or None")
+        frozen_labels: Optional[Tuple[Tuple[str, str], ...]] = None
+        if pair_labels is not None:
+            if (
+                isinstance(pair_labels, (str, bytes))
+                or not isinstance(pair_labels, Sequence)
+                or len(pair_labels) != len(oriented_pairs)
+            ):
+                raise ValueError("pair_labels must have one label pair per contrast pair")
+            labels: list[Tuple[str, str]] = []
+            for label_pair in pair_labels:
+                if (
+                    isinstance(label_pair, (str, bytes))
+                    or not isinstance(label_pair, Sequence)
+                    or len(label_pair) != 2
+                    or any(not isinstance(value, str) or not value for value in label_pair)
+                ):
+                    raise ValueError("each pair_labels entry must contain two non-empty strings")
+                labels.append((label_pair[0], label_pair[1]))
+            frozen_labels = tuple(labels)
+
+        indices = torch.tensor(oriented_pairs, device=self.diagnostics.device, dtype=torch.long)
+        lo_rows = self._unembedding.index_select(1, indices[:, 0]).T.to(
+            dtype=self.diagnostics.compute_dtype
+        )
+        hi_rows = self._unembedding.index_select(1, indices[:, 1]).T.to(
+            dtype=self.diagnostics.compute_dtype
+        )
+        differences = self._require_finite(hi_rows - lo_rows)
+        whitened_differences = self.whiten_measurement(differences)
+        if bool((differences.abs().amax(dim=-1) == 0).any()) or bool(
+            (whitened_differences.abs().amax(dim=-1) == 0).any()
+        ):
+            raise ValueError("contrast pairs must not have a zero direction at compute precision")
+        measurement = self._require_finite(differences.mean(dim=0))
+        whitened_measurement = self.whiten_measurement(measurement)
+        if bool((measurement.abs().amax() == 0)) or bool((whitened_measurement.abs().amax() == 0)):
+            raise ValueError("mean concept direction is zero at compute precision")
+        deviations = self._require_finite(differences - measurement)
+        whitened_deviations = self.whiten_measurement(deviations)
+        raw_dispersion = self._require_finite(deviations.square().sum(dim=-1).mean())
+        whitened_dispersion = self._require_finite(whitened_deviations.square().sum(dim=-1).mean())
+        derived = self.derived_intervention(measurement)
+        return ConceptDirection(
+            pairs=tuple(oriented_pairs),
+            pair_labels=frozen_labels,
+            label=label,
+            raw_measurement=measurement,
+            whitened_measurement=whitened_measurement,
+            raw_derived_intervention=derived,
+            whitened_derived_intervention=self.whiten_intervention(derived),
+            raw_pair_differences=differences,
+            whitened_pair_differences=whitened_differences,
+            raw_dispersion=raw_dispersion,
+            whitened_dispersion=whitened_dispersion,
+            geometry_diagnostics=self.diagnostics,
+        )
 
     def _validate_pair(self, a: torch.Tensor, b: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         a = self._validate_vector(a)
