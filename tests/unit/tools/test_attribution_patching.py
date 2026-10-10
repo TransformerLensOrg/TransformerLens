@@ -1,9 +1,7 @@
 """Model-free unit tests for the attribution-patching substrate.
 
-These tests target the ``TransformerBridge`` API exclusively (TransformerLens v4
-deprecates ``HookedTransformer``). They use a tiny, deliberately *linear*
-``TransformerBridge`` subclass so gradients have a closed form and, later, the
-first-order attribution identity holds exactly.
+These tests target the ``TransformerBridge`` API using tiny linear subclasses
+with closed-form gradients and exact first-order attribution identities.
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
     AttributionResult,
     EdgeAttributionConfig,
+    EdgeClass,
     FaithfulnessConfig,
     FaithfulnessResult,
     GradientCache,
@@ -38,6 +37,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _excluded_writers_by_reader,
     _mean_writer_contributions,
     _node_effects,
+    _normalize_circuit,
     _reader_hook_names,
     _required_hook_names,
     _writer_hook_name,
@@ -238,7 +238,7 @@ def test_gradient_cache_activation_only_skips_gradients() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 2 — typed computational-graph node model
+# Typed computational-graph node model
 # ---------------------------------------------------------------------------
 
 N_HEADS = 2
@@ -322,7 +322,7 @@ def test_enumerate_nodes_raises_on_missing_hook() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 3 — config + result API
+# Configuration and result API
 # ---------------------------------------------------------------------------
 
 
@@ -394,7 +394,7 @@ def test_top_edges_empty_when_no_edge_sweep_has_run() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 4 — node attribution_patch entry point
+# Node attribution entry point
 # ---------------------------------------------------------------------------
 
 
@@ -402,7 +402,7 @@ class _AttnMlpBlock(nn.Module):
     """A block exposing the standard node-granularity hook points.
 
     ``hook_z`` carries the per-head output ``[batch, seq, n_heads, d_head]`` and
-    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` — the two per-layer
+    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` -- the two per-layer
     hook families ``enumerate_nodes`` reads. The block is linear; the test only
     needs a real hook graph with gradients flowing to those points, not attention.
     """
@@ -620,10 +620,10 @@ def test_attribution_patch_identical_inputs_are_exactly_zero_in_eval_mode() -> N
 
 
 # ---------------------------------------------------------------------------
-# Commit 5 — linear-model reconstruction identity
+# Linear-model reconstruction identity
 # ---------------------------------------------------------------------------
 #
-# ``_NodeGraphToyBridge`` is fully linear by construction — the remaining
+# ``_NodeGraphToyBridge`` is fully linear by construction -- the remaining
 # nonlinearities on the residual->metric path are neutralized without extra
 # freezing: ``ln_final`` is ``nn.Identity``, the
 # attention projection is a plain linear map with no softmax pattern, the MLP has
@@ -673,8 +673,8 @@ def test_linear_reconstruction_identity_holds_on_a_complete_cut() -> None:
     post-attention residual, which already contains the embed and attention writes),
     so a node's full-model gradient re-counts the paths of every node upstream of
     it: summing embed + attention + MLP scores overcounts. The embed layer is the
-    input-side complete cut — every path to the metric passes through exactly one
-    embed position — so its scores alone reconstruct the exact metric delta for a
+    input-side complete cut -- every path to the metric passes through exactly one
+    embed position -- so its scores alone reconstruct the exact metric delta for a
     linear model.
     """
     model = _NodeGraphToyBridge()
@@ -785,7 +785,7 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
     With an input-dependent Jacobian the clean and corrupt caches hold *different*
     gradients, so pairing the clean-activation delta with the clean gradient (the
     reversed convention) yields different scores from the corrupt-gradient one the
-    docstring promises. This pins ``attribution_patch`` to the corrupt gradient — a
+    docstring promises. This pins ``attribution_patch`` to the corrupt gradient -- a
     guard the linear tests structurally cannot provide.
     """
     model = _NonlinearNodeGraphToyBridge()
@@ -1306,7 +1306,7 @@ def test_enumerate_edges_drops_same_layer_heads_from_mlp_reader_on_parallel_attn
 
 
 # ---------------------------------------------------------------------------
-# Commit 3 - edge scoring in attribution_patch
+# Edge attribution scoring
 # ---------------------------------------------------------------------------
 #
 # Edge scoring needs every reader hook to actually participate in the forward
@@ -1704,10 +1704,10 @@ def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 4 - exact-patch parity and mutation-checked reconstruction
+# Exact-patch parity and mutation-checked reconstruction
 # ---------------------------------------------------------------------------
 #
-# Two guards on the edge-scoring identity Risk 1 warns about: a genuine
+# Two guards on the edge-scoring identity: a genuine
 # activation patch of a single edge must match _edge_effects' estimate (sign
 # always; magnitude too on this linear toy model), and mutating one writer's
 # captured contribution must change only the edges that writer feeds, never a
@@ -3012,9 +3012,7 @@ def test_faithfulness_recovery_is_graded_not_binary() -> None:
 # Edge-class breakout
 # ---------------------------------------------------------------------------
 #
-# Edges into Q and K pass through the softmax, so they are expected to be less
-# faithful than edges into V, the MLP, or the terminal readout. The breakout
-# measures that per class instead of hiding it in one aggregate.
+# Class removal stays inside the evaluated circuit, with a shared baseline.
 
 
 def test_edge_class_partitions_edges_exhaustively_and_without_overlap() -> None:
@@ -3046,6 +3044,15 @@ def test_edge_class_maps_each_reader_kind_to_its_class() -> None:
         _edge_class((writer, Node(kind="mlp_out", layer=0, position=0)))
 
 
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_empty_circuit_is_aggregate(config: FaithfulnessConfig) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    report = faithfulness(model, clean, corrupt, metric, [], config, mean_tokens=calibration)
+    assert report.edge_class_recovered
+    assert all(value == report.recovered for value in report.edge_class_recovered.values())
+
+
 def test_edge_class_recovered_reconciles_with_the_aggregate() -> None:
     model, clean, corrupt, metric = _faithfulness_toy()
     edges = _graph_edges(model, corrupt, metric)
@@ -3066,26 +3073,143 @@ def test_edge_class_recovered_reconciles_with_the_aggregate() -> None:
     assert report.recovered == pytest.approx(1.0, abs=1e-6)
 
 
-def test_edge_class_breakout_is_leave_one_out() -> None:
-    """Each class's entry is the recovery with that class's edges removed.
+_CLASS_READER_KINDS: dict[EdgeClass, tuple[NodeKind, ...]] = {
+    "into_qk": ("q_input", "k_input"),
+    "into_v": ("v_input",),
+    "into_mlp": ("mlp_in",),
+    "into_logits": ("logits",),
+}
 
-    Keeping only a class would report roughly zero for every class, since no
-    single class alone reconstructs the behavior, so the leave-one-out form is
-    the one that carries signal. On this toy the classes are separable, so
-    dropping one must move the number away from the full-circuit ``1.0``.
-    """
-    model, clean, corrupt, metric = _faithfulness_toy()
-    edges = _graph_edges(model, corrupt, metric)
 
-    report = faithfulness(model, clean, corrupt, metric, edges)
-
-    assert report.edge_class_recovered
-    assert all(math.isfinite(value) for value in report.edge_class_recovered.values())
-    assert sum(report.edge_class_counts.values()) == report.total_edges
-    # Leave-one-out is not the aggregate: removing a class changes the number.
-    assert any(
-        value != pytest.approx(report.recovered) for value in report.edge_class_recovered.values()
+def _functional_circuit_recovery(
+    model: _EdgeScoringToyBridge,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    circuit: list[tuple[Node, Node]],
+    replacements: dict[Node, torch.Tensor],
+) -> float:
+    clean_logits, _, _ = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, _, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    logits, _, _ = _functional_toy_ablation(
+        model, clean, set(_toy_ablation_edges()) - set(circuit), replacements
     )
+    metric = _metric_fn(1, 2)
+    return float(
+        (metric(logits) - metric(corrupt_logits)) / (metric(clean_logits) - metric(corrupt_logits))
+    )
+
+
+@pytest.mark.parametrize("edge_class", list(_CLASS_READER_KINDS))
+@pytest.mark.parametrize("partial", [False, True])
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_removal_matches_functional_candidate_reference(
+    edge_class: EdgeClass,
+    partial: bool,
+    config: FaithfulnessConfig,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    circuit = edges[::2] if partial else edges
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    replacements = (
+        _functional_mean_writers(model, calibration)
+        if calibration is not None
+        else _functional_toy_ablation(model, corrupt, set(), {})[1]
+    )
+    report = faithfulness(
+        model, clean, corrupt, _metric_fn(1, 2), circuit, config, mean_tokens=calibration
+    )
+    kinds = _CLASS_READER_KINDS[edge_class]
+    reduced = [edge for edge in circuit if edge[1].kind not in kinds]
+    expected = _functional_circuit_recovery(model, clean, corrupt, reduced, replacements)
+    assert report.edge_class_recovered[edge_class] == pytest.approx(expected, abs=1e-12)
+    assert report.recovered == pytest.approx(
+        _functional_circuit_recovery(model, clean, corrupt, circuit, replacements), abs=1e-12
+    )
+    assert report.edge_class_counts[edge_class] == sum(edge[1].kind in kinds for edge in edges)
+
+
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_absent_from_candidate_reuses_aggregate(
+    config: FaithfulnessConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    circuit = [edge for edge in _toy_ablation_edges() if edge[1].kind == "logits"][:3]
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    calls: list[list[tuple[Node, Node]]] = []
+
+    def ablate(model: Any, tokens: torch.Tensor, edges: list, kept: list, replacements: dict):
+        calls.append(list(kept))
+        return _ablate_edges(model, tokens, edges, kept, replacements)
+
+    monkeypatch.setattr(
+        "transformer_lens.tools.analysis.attribution_patching._ablate_edges", ablate
+    )
+    report = faithfulness(model, clean, corrupt, metric, circuit, config, mean_tokens=calibration)
+    assert calls == [circuit, []]
+    for edge_class in ("into_qk", "into_v", "into_mlp"):
+        assert report.edge_class_recovered[edge_class] == report.recovered
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+
+
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_breakout_changes_with_candidate(config: FaithfulnessConfig) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    replacements = (
+        _functional_mean_writers(model, calibration)
+        if calibration is not None
+        else _functional_toy_ablation(model, corrupt, set(), {})[1]
+    )
+    q_edge = (Node("embed", 2), Node("q_input", 2, layer=0, head=0))
+    logits = Node("logits", 2, layer=1)
+    circuits = [
+        [q_edge, (Node("embed", 2), logits)],
+        [q_edge, (Node("mlp_out", 2, layer=0), logits)],
+    ]
+    expected = [
+        _functional_circuit_recovery(model, clean, corrupt, circuit[1:], replacements)
+        for circuit in circuits
+    ]
+    assert expected[0] != pytest.approx(expected[1], abs=1e-12)
+    for circuit, value in zip(circuits, expected):
+        report = faithfulness(
+            model, clean, corrupt, _metric_fn(1, 2), circuit, config, mean_tokens=calibration
+        )
+        assert report.edge_class_recovered["into_qk"] == pytest.approx(value, abs=1e-12)
+
+
+@pytest.mark.parametrize("ranked", [False, True])
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_faithfulness_duplicate_circuit_entries_are_equivalent(
+    ranked: bool,
+    config: FaithfulnessConfig,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    circuit = _toy_ablation_edges()[::2]
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    duplicates = circuit[:2] + circuit + circuit[:1]
+    entries = [(writer, reader, float(index)) for index, (writer, reader) in enumerate(duplicates)]
+    assert _normalize_circuit(entries if ranked else duplicates) == circuit
+    reference = faithfulness(
+        model, clean, corrupt, metric, circuit, config, mean_tokens=calibration
+    )
+    actual = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        entries if ranked else duplicates,
+        config,
+        mean_tokens=calibration,
+    )
+    assert actual == reference
+    assert actual.circuit_size == len(circuit)
 
 
 # ---------------------------------------------------------------------------

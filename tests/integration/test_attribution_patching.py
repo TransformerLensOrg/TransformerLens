@@ -1,22 +1,7 @@
-"""Integration guard: attribution patching and faithfulness on a real Bridge. Bridge.
+"""Attribution patching and faithfulness on a raw GPT-2 Bridge.
 
-The model-free unit suite runs against ``_LinearToyBridge``, which overrides
-``hook_dict``, ``hooks()``, and ``check_hooks_to_add`` — the three behaviours the
-two real-Bridge failures depend on. Its hook points have no conversion and its
-gate check is a no-op, so a green unit suite says nothing about a real Bridge.
-
-This test boots a real GPT-2 Bridge and exercises the paths the toy bridge
-hides:
-
-- gradients captured *through* hook conversions — ``blocks.*.attn.hook_z`` hands a
-  reshaped ``[batch, seq, n_heads, d_head]`` view to the forward hook, so the
-  ``attn_head_out`` family only scores if the backward hook delivers the gradient
-  in that converted shape; and
-- the default ``names_filter`` (``None``) falling back to the node hook set on a
-  real ``hook_dict``, which also exposes gated points (``hook_mlp_in``,
-  ``attn.hook_result``, split-QKV inputs) that ``add_hook`` would reject; and
-- the edge-ablation rewrite, whose per-head fork hooks and pre-LN placement only
-  exist on a real attention bridge.
+Covers converted gradient caches, gated reader forks, independent partial
+intervention references, and circuit-relative class removal.
 """
 
 from __future__ import annotations
@@ -31,6 +16,7 @@ import torch
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
     EdgeAttributionConfig,
+    EdgeClass,
     FaithfulnessConfig,
     GradientCache,
     Node,
@@ -389,7 +375,7 @@ def test_attribution_patch_scores_every_node_finite_on_real_bridge(gpt2_bridge) 
     for node, score in result.node_scores.items():
         assert math.isfinite(score), f"non-finite score for {node}"
 
-    # All three node families are present — attn_head_out is the family the hook
+    # All three node families are present -- attn_head_out is the family the hook
     # conversion bug broke, mlp_out and embed round out the node graph.
     families = {node.kind for node in result.node_scores}
     assert families == {"embed", "attn_head_out", "mlp_out"}
@@ -453,42 +439,82 @@ def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> 
     assert report.recovered > random_report.recovered + 0.4
 
 
-def test_edge_class_breakout_marks_into_qk_as_the_least_faithful_class(gpt2_bridge) -> None:
-    """Removing the into-Q/K edges is what breaks the circuit's faithfulness.
+def _gpt2_class_reader_names(edge_class: EdgeClass, n_layers: int) -> list[str]:
+    suffixes = {
+        "into_qk": ("attn.hook_q_input", "attn.hook_k_input"),
+        "into_v": ("attn.hook_v_input",),
+        "into_mlp": ("hook_mlp_in",),
+    }
+    if edge_class == "into_logits":
+        return [f"blocks.{n_layers - 1}.hook_resid_post"]
+    return [
+        f"blocks.{layer}.{suffix}" for layer in range(n_layers) for suffix in suffixes[edge_class]
+    ]
 
-    Edges into Q and K pass through the softmax, so the linearized ranking is
-    least trustworthy there; edges into V, the MLP, and the terminal readout are
-    linear. The breakout measures that by keeping every edge outside one class,
-    so a class whose removal collapses recovery is the one carrying the
-    nonlinearity.
 
-    Thresholds are set from measured values on this exact model and prompt pair
-    (gpt2-small, fp32, CPU): keeping everything except into-Q/K recovers about
-    1.09 of the gap, while removing into-V drops it to about -0.18 and removing
-    into-logits to about 0.00.
-    """
-    clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
-    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
-    answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1].item())
-    wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1].item())
-    metric_fn = _logit_diff_metric(answer_id, wrong_id)
-
-    result = attribution_patch(
-        gpt2_bridge,
-        clean,
-        corrupt,
-        metric_fn,
-        config=EdgeAttributionConfig(granularity="edge"),
+def _gpt2_class_overrides(
+    clean: torch.Tensor,
+    clean_values: dict[str, torch.Tensor],
+    corrupt_values: dict[str, torch.Tensor],
+    edge_class: EdgeClass,
+    n_layers: int,
+) -> tuple[tuple[Node, Node], list[tuple[str, Callable]]]:
+    position = clean.shape[1] - 2
+    kind: NodeKind = "q_input" if edge_class == "into_v" else "v_input"
+    name = "blocks.0.attn.hook_q_input" if kind == "q_input" else "blocks.0.attn.hook_v_input"
+    index = (0, position, 0)
+    base_value = (
+        clean_values[name][index]
+        - clean_values["hook_embed"][0, position]
+        + corrupt_values["hook_embed"][0, position]
     )
-    report = faithfulness(gpt2_bridge, clean, corrupt, metric_fn, result.top_edges(k=200))
+    base_edge = (Node("embed", position), Node(kind, position, layer=0, head=0))
+    overrides = [(name, _override_reader(index, base_value))]
+    # Replacing every writer in a class preserves the prompt-independent residual background.
+    overrides.extend(
+        (reader_name, _override_reader((), corrupt_values[reader_name]))
+        for reader_name in _gpt2_class_reader_names(edge_class, n_layers)
+    )
+    return base_edge, overrides
 
-    breakout = report.edge_class_recovered
-    assert set(breakout) == {"into_qk", "into_v", "into_mlp", "into_logits"}
-    assert all(math.isfinite(value) for value in breakout.values())
-    assert sum(report.edge_class_counts.values()) == report.total_edges
 
-    # Dropping the softmax-fed class leaves the circuit intact; dropping the
-    # linear classes does not.
-    assert breakout["into_qk"] > 0.9
-    assert breakout["into_v"] < 0.5
-    assert breakout["into_logits"] < 0.5
+@pytest.mark.parametrize("edge_class", ["into_qk", "into_v", "into_mlp", "into_logits"])
+def test_edge_class_gpt2_removal_keeps_candidate_exclusions(
+    gpt2_bridge,
+    gpt2_edge_endpoints,
+    monkeypatch: pytest.MonkeyPatch,
+    edge_class: EdgeClass,
+) -> None:
+    clean, _, clean_values, corrupt_values, edges = gpt2_edge_endpoints
+    corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
+    base_edge, overrides = _gpt2_class_overrides(
+        clean, clean_values, corrupt_values, edge_class, gpt2_bridge.cfg.n_layers
+    )
+    class_names = _gpt2_class_reader_names(edge_class, gpt2_bridge.cfg.n_layers)
+    assert base_edge in edges
+    assert base_edge[1].hook_name not in class_names
+    circuit = [edge for edge in edges if edge != base_edge]
+    reduced = [edge for edge in circuit if edge[1].hook_name not in class_names]
+    answer_id = int(gpt2_bridge.to_tokens(" Paris")[0, -1])
+    wrong_id = int(gpt2_bridge.to_tokens(" Moscow")[0, -1])
+    metric = _logit_diff_metric(answer_id, wrong_id)
+    with _edge_hook_flags(gpt2_bridge):
+        expected, reference = _capture_gpt2_forward(gpt2_bridge, clean, overrides)
+        restored, _ = _capture_gpt2_forward(gpt2_bridge, clean, overrides[1:])
+        actual, observed = _capture_gpt2_ablation(
+            gpt2_bridge, clean, edges, reduced, corrupt_values, monkeypatch
+        )
+        report = faithfulness(gpt2_bridge, clean, corrupt, metric, circuit)
+    # Dense corrections and cached reader overrides use different reduction orders.
+    for name in class_names + [base_edge[1].hook_name]:
+        torch.testing.assert_close(observed[name], reference[name], atol=2e-4, rtol=0)
+    torch.testing.assert_close(actual, expected, atol=2e-4, rtol=0)
+    expected_recovery = (float(metric(expected)) - report.corrupt_metric) / (
+        report.full_metric - report.corrupt_metric
+    )
+    assert report.edge_class_recovered[edge_class] == pytest.approx(expected_recovery, abs=1e-5)
+    assert report.circuit_size == len(edges) - 1
+    assert sum(report.edge_class_counts.values()) == len(edges)
+    if edge_class != "into_logits":
+        gap = report.full_metric - report.corrupt_metric
+        assert abs(float(metric(expected) - metric(restored)) / gap) > 1e-4

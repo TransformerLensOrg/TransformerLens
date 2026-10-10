@@ -1,4 +1,4 @@
-"""Attribution patching — linearized activation patching on ``TransformerBridge``.
+"""Attribution patching -- linearized activation patching on ``TransformerBridge``.
 
 Attribution patching estimates the causal effect of every model component on a
 task metric with a *gradient-based linearization* of activation patching: rather
@@ -9,8 +9,7 @@ its gradient), and scores each node with the
 first-order Taylor estimate ``effect(node) = (a_clean - a_corrupt) . g``. Scores
 over a batch of clean/corrupt pairs are averaged before ranking.
 
-Only the ``TransformerBridge`` API is targeted; TransformerLens v4 deprecates
-``HookedTransformer``.
+Only the ``TransformerBridge`` API is targeted.
 
 Sign/direction convention (denoising form): the gradient is taken on the
 *corrupt* run and the estimate points *toward* the clean activation, so a
@@ -194,9 +193,8 @@ class EdgeAttributionConfig:
     This build implements node and edge granularity with plain attribution.
     ``ig_steps>1`` is accepted by the type but raises :class:`NotImplementedError`
     at construction, so downstream code can import and reference this API now
-    while the integrated-gradient path is not implemented yet. Once EAP-IG lands,
-    the default flips to ``ig_steps=5`` (EAP-IG is the faithful default); until
-    then the default is the only executable value, ``ig_steps=1``.
+    while the integrated-gradient path is not implemented. The default is the
+    only executable value, ``ig_steps=1``.
 
     Attributes:
         granularity: ``"node"`` or ``"edge"``. Defaults to ``"node"``.
@@ -241,8 +239,8 @@ class AttributionResult:
         """The ``k`` nodes with the largest effect magnitude, strongest first.
 
         Ranking is by absolute score: a node with a large negative effect is as
-        causally important as one with a large positive effect, so magnitude — not
-        signed value — orders the circuit. Ties keep enumeration order (stable
+        causally important as one with a large positive effect, so magnitude -- not
+        signed value -- orders the circuit. Ties keep enumeration order (stable
         sort). Requesting more than the available nodes returns all of them.
         """
         ranked = sorted(self.node_scores.items(), key=lambda item: abs(item[1]), reverse=True)
@@ -292,17 +290,14 @@ class FaithfulnessResult:
         corrupt_metric: The corrupt run's metric, the bottom of the gap.
         circuit_size: Number of edges kept.
         total_edges: Number of edges in the graph, so the budget is visible.
-        edge_class_recovered: Recovered fraction when every edge *outside* this
-            class is kept, keyed by class. A class whose removal collapses
-            recovery is load-bearing; one whose removal leaves recovery near
-            ``1.0`` is not. Keeping only the class instead would report roughly
-            ``0.0`` for every class, since no single class alone reconstructs
-            the behavior, so the leave-one-out form is the informative one.
-            Edges into Q and K pass through the softmax, so ``"into_qk"`` is
-            expected to be the least faithful class; edges into V, the MLP, and
-            the terminal logits readout are linear.
-        edge_class_counts: Number of edges in each class, so a class with few
-            edges is not over-read.
+        edge_class_recovered: Recovery after removing this class's retained
+            edges from the candidate circuit. All edges originally outside the
+            circuit stay ablated, with the same replacements and metric gap.
+            A class absent from the circuit has the aggregate recovery. This
+            measures conditional circuit dependence, not attribution ranking
+            accuracy. Interactions can increase recovery after removal; class
+            contributions are not additive and need not lie in ``[0, 1]``.
+        edge_class_counts: Full-graph edge counts per class, not retained counts.
     """
 
     recovered: float
@@ -460,7 +455,7 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
         The node list, ordered embed-then-layerwise for deterministic ranking.
 
     Raises:
-        ValueError: if any required hook point is absent from ``cache`` — the
+        ValueError: if any required hook point is absent from ``cache`` -- the
             graph is never silently truncated.
     """
     n_layers = int(model.cfg.n_layers)
@@ -696,7 +691,7 @@ def cache_activation_and_gradient(
     inert and its ``.grad`` stays ``None``. A backward hook goes through the same
     conversion and delivers the real gradient in canonical shape. Driving the
     backward with :func:`torch.autograd.grad` instead of ``metric.backward()``
-    keeps it off every parameter's ``.grad`` buffer — no caller grads clobbered, no
+    keeps it off every parameter's ``.grad`` buffer -- no caller grads clobbered, no
     model-sized buffer allocated.
 
     With ``compute_gradient=False`` the backward is skipped entirely: only forward
@@ -711,7 +706,7 @@ def cache_activation_and_gradient(
         tokens: Input token ids for a single forward pass.
         metric_fn: Maps the model logits to a scalar to differentiate.
         names_filter: Restricts which hook points are cached (and have gradients
-            retained). ``None`` (the default) caches the node-granularity hook set —
+            retained). ``None`` (the default) caches the node-granularity hook set --
             ``hook_embed`` plus each layer's ``attn.hook_z`` and ``hook_mlp_out``;
             pass an explicit filter to cache any hook point outside that set. On a
             real Bridge, ``None`` cannot mean "every hook point": the gated points
@@ -806,8 +801,8 @@ def cache_activation_and_gradient(
             else ()
         )
 
-    # The most-upstream cached point's own backward hook never fires — nothing
-    # requested is upstream of it, so the backward stops at it — but its cached
+    # The most-upstream cached point's own backward hook never fires -- nothing
+    # requested is upstream of it, so the backward stops at it -- but its cached
     # tensor is on-path and unconverted, so torch.autograd.grad returns that
     # gradient directly. Backfill any point the hooks missed from that return.
     for name, grad in zip(captured_names, returned):
@@ -1324,7 +1319,7 @@ def attribution_patch(
 def _normalize_circuit(
     circuit: Sequence[tuple[Node, Node]] | Sequence[tuple[Node, Node, float]],
 ) -> list[tuple[Node, Node]]:
-    """Reduce a circuit to ``(writer, reader)`` pairs, dropping any scores.
+    """Deduplicate circuit pairs in first-occurrence order, dropping any scores.
 
     Accepts either the bare edge list :func:`enumerate_edges` returns or the
     ranked ``(writer, reader, score)`` triples ``AttributionResult.top_edges``
@@ -1332,6 +1327,7 @@ def _normalize_circuit(
     :func:`faithfulness` without reshaping.
     """
     normalized: list[tuple[Node, Node]] = []
+    seen: set[tuple[Node, Node]] = set()
     for entry in circuit:
         if len(entry) == 2:
             writer, reader = entry
@@ -1342,17 +1338,19 @@ def _normalize_circuit(
                 f"circuit entries must be (writer, reader) or (writer, reader, score), "
                 f"got a {len(entry)}-tuple"
             )
-        normalized.append((writer, reader))
+        edge = (writer, reader)
+        if edge not in seen:
+            normalized.append(edge)
+            seen.add(edge)
     return normalized
 
 
 def _edge_class(edge: tuple[Node, Node]) -> EdgeClass:
     """The class an edge belongs to, keyed by what its reader consumes.
 
-    Q and K share a class because both feed the attention score, so both pass
-    through the same softmax nonlinearity; V, the MLP entry, and the terminal
-    logits readout are each linear in the residual they read. The split exists
-    to make that asymmetry measurable rather than hidden in one aggregate.
+    Q and K share a class because both feed attention scores. Class removal
+    measures the candidate circuit's dependence on those retained edges; it
+    does not establish relative ranking fidelity or downstream linearity.
     """
     reader = edge[1]
     if reader.kind in ("q_input", "k_input"):
@@ -1419,7 +1417,7 @@ def faithfulness(
         metric_fn: Maps single-example logits to a scalar.
         circuit: The edges to keep, as ``(writer, reader)`` pairs or the
             ``(writer, reader, score)`` triples ``top_edges`` returns. Every
-            other edge in the graph is ablated.
+            other edge in the graph is ablated. Duplicate entries count once.
         config: Ablation configuration. Defaults to replacing an ablated writer
             with the corrupt run's own contribution.
         mean_tokens: Required only for ``ablation="mean"``. Held-out calibration
@@ -1434,10 +1432,12 @@ def faithfulness(
     Returns:
         A :class:`FaithfulnessResult` with the recovered fraction, the clean and
         corrupt metrics bounding it, the circuit's size against the graph's, and
-        a per-edge-class breakout. The breakout measures each class
-        leave-one-out, so it costs one extra ablation per class; edges into Q and
-        K are expected to be the least faithful, since they pass through the
-        softmax.
+        a per-edge-class breakout. Each class entry removes only that class's
+        retained edges from the candidate. It shares the aggregate's replacements
+        and normalization, and costs one extra forward per retained class.
+        Classes absent from the candidate reuse aggregate recovery. Class counts
+        describe the full graph. This is conditional circuit dependence, not
+        an estimate of ranking error; removals need not reduce recovery.
 
     Raises:
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number
@@ -1529,28 +1529,27 @@ def faithfulness(
             )
         ablated_metric = float(metric_fn(_ablate_edges(model, clean, edges, kept, replacements)))
 
-        # Break the report out by edge class, so the attention nonlinearity's
-        # cost is measured rather than hidden in the aggregate. Each class is
-        # measured leave-one-out: keep every edge outside it, so the value says
-        # how much of the gap survives without that class. One extra ablation
-        # per class.
+        recovered = (ablated_metric - corrupt_metric) / gap
         class_counts: dict[EdgeClass, int] = {}
-        class_edges: dict[EdgeClass, list[tuple[Node, Node]]] = {}
         for edge in edges:
             edge_class = _edge_class(edge)
             class_counts[edge_class] = class_counts.get(edge_class, 0) + 1
-            class_edges.setdefault(edge_class, []).append(edge)
 
+        kept_classes = {_edge_class(edge) for edge in kept}
         class_recovered: dict[EdgeClass, float] = {}
-        for edge_class in class_edges:
-            outside = [edge for edge in edges if _edge_class(edge) != edge_class]
+        for edge_class in class_counts:
+            if edge_class not in kept_classes:
+                class_recovered[edge_class] = recovered
+                continue
+            # Removing a class must not restore edges excluded by the candidate.
+            reduced = [edge for edge in kept if _edge_class(edge) != edge_class]
             class_metric = float(
-                metric_fn(_ablate_edges(model, clean, edges, outside, replacements))
+                metric_fn(_ablate_edges(model, clean, edges, reduced, replacements))
             )
             class_recovered[edge_class] = (class_metric - corrupt_metric) / gap
 
     return FaithfulnessResult(
-        recovered=(ablated_metric - corrupt_metric) / gap,
+        recovered=recovered,
         full_metric=clean_metric,
         corrupt_metric=corrupt_metric,
         circuit_size=len(kept),
