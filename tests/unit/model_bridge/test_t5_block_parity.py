@@ -126,6 +126,89 @@ def test_sublayer_output_aliases_resolve_and_fire() -> None:
     torch.testing.assert_close(seen["mid"], seen["pre"] + seen["attn_out"])
 
 
+class _FixedTupleAttention(torch.nn.Module):
+    """T5Attention as of Transformers 5.15: no ``output_attentions`` parameter,
+    always (attn_output, position_bias, attn_weights)."""
+
+    def forward(
+        self, hidden_states, mask=None, key_value_states=None, position_bias=None, **kwargs
+    ):
+        seq = hidden_states.shape[1]
+        kv_seq = seq if key_value_states is None else key_value_states.shape[1]
+        if position_bias is None:
+            position_bias = torch.zeros(1, 1, seq, kv_seq)
+        weights = torch.full((hidden_states.shape[0], 1, seq, kv_seq), 1.0 / kv_seq)
+        return hidden_states, position_bias, weights
+
+
+class _FixedTupleAttentionLayer(torch.nn.Module):
+    """T5LayerSelfAttention / T5LayerCrossAttention as of Transformers 5.15:
+    unpacks exactly three values from the attention module."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.attention = _FixedTupleAttention()
+
+    def forward(
+        self,
+        hidden_states,
+        key_value_states=None,
+        attention_mask=None,
+        position_bias=None,
+        past_key_values=None,
+        **kwargs,
+    ):
+        attention_output, position_bias, attn_weights = self.attention(
+            hidden_states,
+            mask=attention_mask,
+            key_value_states=key_value_states,
+            position_bias=position_bias,
+            **kwargs,
+        )
+        return hidden_states + attention_output, position_bias, attn_weights
+
+
+class _FixedTupleBlock(torch.nn.Module):
+    def __init__(self, is_decoder: bool) -> None:
+        super().__init__()
+        layers = [_FixedTupleAttentionLayer()]
+        if is_decoder:
+            layers.append(_FixedTupleAttentionLayer())
+        layers.append(torch.nn.Identity())
+        self.layer = torch.nn.ModuleList(layers)
+
+
+@pytest.mark.parametrize("is_decoder", [False, True])
+def test_block_follows_fixed_tuple_layout_of_newer_transformers(is_decoder) -> None:
+    """Transformers 5.15 made the T5 sublayers return a fixed 3-tuple and the
+    stack unpack ``hidden, self_bias, cross_bias`` from every block; the
+    bridged attention and the patched block forward must keep that arity."""
+    from transformer_lens.model_bridge.generalized_components import (
+        AttentionBridge,
+        T5BlockBridge,
+    )
+
+    cfg = _adapter().cfg
+    block = _FixedTupleBlock(is_decoder)
+    for layer in block.layer[:-1]:
+        attn = AttentionBridge(name="attention", config=cfg, requires_relative_position_bias=True)
+        attn.set_original_component(layer.attention)
+        layer.attention = attn
+    T5BlockBridge(name="block", is_decoder=is_decoder).set_original_component(block)
+
+    hidden = torch.randn(2, 5, 16)
+    encoder_hidden = torch.randn(2, 3, 16) if is_decoder else None
+    outputs = block(hidden, encoder_hidden_states=encoder_hidden)
+
+    assert len(outputs) == 3
+    assert outputs[0].shape == hidden.shape
+    assert outputs[1].shape == (1, 1, 5, 5)
+    if is_decoder:
+        assert outputs[2].shape == (1, 1, 5, 3)
+    else:
+        assert outputs[2] is None
+
+
 def test_decoder_gets_the_cross_attention_alias() -> None:
     adapter = _adapter()
     decoder = adapter.component_mapping["decoder_blocks"]
