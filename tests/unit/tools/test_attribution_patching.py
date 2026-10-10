@@ -26,6 +26,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     FaithfulnessResult,
     GradientCache,
     Node,
+    NodeKind,
     _ablate_edges,
     _assert_edges_unique,
     _check_required_hooks,
@@ -1784,17 +1785,8 @@ def _assert_mutation_only_changes_the_perturbed_writers_edges(
 ) -> None:
     """Assert a single-writer perturbation moved exactly that writer's edges.
 
-    Both the edge scorer and the ablation correction read a writer's delta and a
-    reader's gradient from independently indexed tensors (writer position/head,
-    reader position/head). A slicing bug that mixed up either index could leak a
-    perturbation into an edge whose writer was never touched, or fail to move an
-    edge whose writer was. Perturbing a single head's slice of a shared per-head
-    tensor also exercises the narrower case: sibling heads and positions inside
-    the *same* tensor must stay untouched.
-
-    Shared by the edge-scoring and edge-ablation tests so the two cannot drift
-    apart: the ablation's correction terms inherit the same indexing failure
-    modes as the scorer.
+    The scorer indexes writer deltas and reader gradients independently.
+    Perturbing one head at one position must not change sibling writers' scores.
     """
     changed = 0
     moved = 0
@@ -2150,8 +2142,8 @@ def test_capture_writer_outputs_needs_no_grad() -> None:
 # of its writers' contributions. Ablating an edge means subtracting that
 # writer's live contribution and adding its replacement at the reader's fork
 # hook, which fires before the layer norm -- an exact correction, not an
-# approximation. The two boundary cases pin the rewrite: excluding every edge
-# must reproduce the corrupt run, excluding none must reproduce the clean run.
+# approximation. Partial circuits need independent reader and logit references;
+# boundary circuits alone cannot expose incorrect upstream corrections.
 
 
 def _ablation_replacement(
@@ -2196,34 +2188,6 @@ def test_excluded_writers_by_reader_groups_only_out_of_circuit_edges() -> None:
     incoming = [writer for writer, reader in edges if reader == kept_reader]
     assert kept_writer not in excluded[kept_reader]
     assert len(excluded[kept_reader]) == len(incoming) - 1
-
-
-def test_ablating_the_empty_circuit_reproduces_the_corrupt_metric() -> None:
-    """Excluding every edge rebuilds each reader's input as the corrupt run's."""
-    model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
-
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    replacements = _ablation_replacement(model, corrupt)
-
-    with _edge_hook_flags(model):
-        ablated_logits = _ablate_edges(model, corrupt, edges, [], replacements)
-
-    ablated = float(metric(ablated_logits))
-    assert ablated == pytest.approx(float(corrupt_cache.metric), abs=1e-6)
-    # Discriminating: the correction genuinely moved the run, so this cannot
-    # pass on an ablation that silently did nothing.
-    assert ablated != pytest.approx(float(clean_cache.metric), abs=1e-6)
 
 
 def test_ablating_the_full_circuit_reproduces_the_clean_metric() -> None:
@@ -2311,50 +2275,250 @@ def test_ablation_installs_one_hook_per_reader_node() -> None:
     assert sum(counts.values()) < len(edges)
 
 
-def test_ablation_correction_terms_isolate_the_intended_edges() -> None:
-    """Perturbing one writer's contribution moves only that writer's edges.
+def _toy_ablation_edges() -> list[tuple[Node, Node]]:
+    """Explicit topology for the two-layer, two-head sequential toy."""
+    edges: list[tuple[Node, Node]] = []
+    for position in range(SEQ_LEN):
+        writers = [
+            Node("embed", position),
+            Node("attn_head_out", position, layer=0, head=0),
+            Node("attn_head_out", position, layer=0, head=1),
+            Node("mlp_out", position, layer=0),
+            Node("attn_head_out", position, layer=1, head=0),
+            Node("attn_head_out", position, layer=1, head=1),
+            Node("mlp_out", position, layer=1),
+        ]
+        kinds: tuple[NodeKind, ...] = ("q_input", "k_input", "v_input")
+        for layer, upstream, post_attention in ((0, 1, 3), (1, 4, 6)):
+            for kind in kinds:
+                for head in range(N_HEADS):
+                    reader = Node(kind, position, layer=layer, head=head)
+                    edges.extend((writer, reader) for writer in writers[:upstream])
+            reader = Node("mlp_in", position, layer=layer)
+            edges.extend((writer, reader) for writer in writers[:post_attention])
+        reader = Node("logits", position, layer=1)
+        edges.extend((writer, reader) for writer in writers)
+    return edges
 
-    The ablation's correction terms read a writer's contribution and a reader's
-    position from independently indexed tensors, the same failure mode the edge
-    scorer has. This reuses the scorer's mutation guard rather than restating it,
-    so the two cannot drift apart.
-    """
-    model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
+
+@torch.no_grad()
+def _functional_toy_ablation(
+    model: _EdgeScoringToyBridge,
+    tokens: torch.Tensor,
+    excluded: set[tuple[Node, Node]],
+    replacements: dict[Node, torch.Tensor],
+) -> tuple[torch.Tensor, dict[Node, torch.Tensor], dict[Node, torch.Tensor]]:
+    """Evaluate the linear toy by summing edge values, without invoking hooks."""
+    writers: dict[Node, torch.Tensor] = {}
+    readers: dict[Node, torch.Tensor] = {}
+
+    def read(reader: Node, available: list[Node]) -> torch.Tensor:
+        value = torch.stack(
+            [
+                replacements[writer] if (writer, reader) in excluded else writers[writer]
+                for writer in available
+            ]
+        ).sum(dim=0)
+        readers[reader] = value
+        return value
+
+    outputs = []
+    for position in range(tokens.shape[1]):
+        embed = Node("embed", position)
+        writers[embed] = model.embed.weight[tokens[0, position]]
+        available = [embed]
+        for layer, block in enumerate(model.blocks):
+            heads = []
+            for head in range(N_HEADS):
+                z = torch.zeros(D_HEAD, dtype=model.cfg.dtype)
+                projections: tuple[tuple[NodeKind, torch.Tensor], ...] = (
+                    ("q_input", block.w_q.weight),
+                    ("k_input", block.w_k.weight),
+                    ("v_input", block.w_v.weight),
+                )
+                for kind, weight in projections:
+                    reader = Node(kind, position, layer=layer, head=head)
+                    z += weight[head * D_HEAD : (head + 1) * D_HEAD] @ read(reader, available)
+                writer = Node("attn_head_out", position, layer=layer, head=head)
+                writers[writer] = block.w_o.weight[:, head * D_HEAD : (head + 1) * D_HEAD] @ z
+                heads.append(writer)
+            available.extend(heads)
+            reader = Node("mlp_in", position, layer=layer)
+            writer = Node("mlp_out", position, layer=layer)
+            writers[writer] = block.w_mlp.weight @ read(reader, available)
+            available.append(writer)
+        final = read(Node("logits", position, layer=1), available)
+        outputs.append(model.unembed.weight @ final)
+    return torch.stack(outputs).unsqueeze(0), writers, readers
+
+
+def _toy_replacement_tensors(writers: dict[Node, torch.Tensor]) -> dict[str, torch.Tensor]:
+    tensors = {"hook_embed": torch.stack([writers[Node("embed", p)] for p in range(SEQ_LEN)])[None]}
+    for layer in range(N_LAYERS):
+        tensors[f"blocks.{layer}.attn.hook_result"] = torch.stack(
+            [
+                torch.stack(
+                    [writers[Node("attn_head_out", p, layer=layer, head=h)] for h in range(N_HEADS)]
+                )
+                for p in range(SEQ_LEN)
+            ]
+        )[None]
+        tensors[f"blocks.{layer}.hook_mlp_out"] = torch.stack(
+            [writers[Node("mlp_out", p, layer=layer)] for p in range(SEQ_LEN)]
+        )[None]
+    return tensors
+
+
+def _observed_toy_ablation(
+    model: _EdgeScoringToyBridge,
+    clean: torch.Tensor,
+    circuit: list[tuple[Node, Node]],
+    replacements: dict[Node, torch.Tensor],
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[torch.Tensor, dict[Node, torch.Tensor]]:
+    observed: dict[Node, torch.Tensor] = {}
+    original_hooks = model.hooks
+    edges = _toy_ablation_edges()
+
+    def observer(reader: Node) -> Callable[..., None]:
+        def capture(tensor: torch.Tensor, *, hook: Any) -> None:
+            del hook
+            if reader.head is None:
+                observed[reader] = tensor[0, reader.position].clone()
+            else:
+                observed[reader] = tensor[0, reader.position, reader.head].clone()
+
+        return capture
+
+    @contextmanager
+    def hooks(fwd_hooks: list[tuple[str, Any]], **kwargs: Any) -> Iterator[Any]:
+        # Observers run after all corrections sharing the reader's hook point.
+        observers = [
+            (reader.hook_name, observer(reader))
+            for reader in dict.fromkeys(reader for _, reader in edges)
+        ]
+        with original_hooks(fwd_hooks=fwd_hooks + observers, **kwargs):
+            yield model
+
+    with monkeypatch.context() as patch, _edge_hook_flags(model):
+        patch.setattr(model, "hooks", hooks)
+        logits = _ablate_edges(model, clean, edges, circuit, _toy_replacement_tensors(replacements))
+    return logits, observed
+
+
+@pytest.mark.parametrize("kind", ["q_input", "k_input", "v_input", "mlp_in", "logits"])
+@pytest.mark.parametrize("head,position", [(0, 0), (1, 2)])
+def test_partial_ablation_matches_functional_toy_reference(
+    kind: NodeKind, head: int, position: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    edges = _toy_ablation_edges()
+    assert edges == enumerate_edges(model, _synthetic_edge_cache())
+    clean_logits, clean_writers, clean_readers = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    with torch.no_grad():
+        torch.testing.assert_close(clean_logits, model(clean))
+        torch.testing.assert_close(corrupt_logits, model(corrupt))
+    writer = Node("attn_head_out", position, layer=0, head=head)
+    reader = Node(kind, position, layer=1, head=head if kind.endswith("input") else None)
+    excluded = {(writer, reader)}
+    assert excluded <= set(edges)
+    assert not torch.allclose(clean_writers[writer], replacements[writer])
+    circuit = [edge for edge in edges if edge not in excluded]
+    expected, _, expected_readers = _functional_toy_ablation(model, clean, excluded, replacements)
+    actual, observed = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+    assert not torch.allclose(actual, clean_logits)
+    assert not torch.allclose(observed[reader], clean_readers[reader])
+    assert observed.keys() == expected_readers.keys()
+    for node, value in expected_readers.items():
+        torch.testing.assert_close(observed[node], value, atol=1e-12, rtol=1e-12)
 
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    _assert_edges_unique(edges)
-    baseline_scores = _edge_effects(clean_cache, corrupt_cache, edges)
 
-    writer = Node(kind="attn_head_out", layer=0, head=0, position=SEQ_LEN - 1)
-    assert any(edge_writer == writer for edge_writer, _reader in edges)
+def test_sparse_partial_ablation_matches_functional_toy_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    clean_logits, _, _ = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    circuit = edges[::2]
+    excluded = set(edges) - set(circuit)
+    expected, _, readers = _functional_toy_ablation(model, clean, excluded, replacements)
+    actual, observed = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+    assert not torch.allclose(actual, clean_logits)
+    assert not torch.allclose(actual, corrupt_logits)
+    for reader, value in readers.items():
+        torch.testing.assert_close(observed[reader], value, atol=1e-12, rtol=1e-12)
 
-    perturbation = torch.full((D_MODEL,), 0.37, dtype=clean_cache.activations["hook_embed"].dtype)
-    writer_name = _writer_hook_name(writer)
-    perturbed_activations = dict(clean_cache.activations)
-    perturbed_activations[writer_name] = perturbed_activations[writer_name].clone()
-    perturbed_activations[writer_name][0, writer.position, writer.head] += perturbation
-    perturbed_clean_cache = GradientCache(
-        activations=perturbed_activations,
-        gradients=clean_cache.gradients,
-        metric=clean_cache.metric,
-    )
 
-    mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
+def test_coupled_partial_ablation_uses_intervened_live_writers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    clean_logits, clean_writers, clean_readers = _functional_toy_ablation(model, clean, set(), {})
+    _, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    embed = Node("embed", 2)
+    writer = Node("attn_head_out", 2, layer=0, head=0)
+    downstream = Node("v_input", 2, layer=1, head=1)
+    excluded = {
+        (embed, Node("q_input", 2, layer=0, head=0)),
+        (writer, Node("k_input", 2, layer=1, head=0)),
+    }
+    circuit = [edge for edge in edges if edge not in excluded]
+    assert (writer, downstream) in circuit
+    expected, live_writers, readers = _functional_toy_ablation(model, clean, excluded, replacements)
+    actual, observed = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    shift = live_writers[writer] - clean_writers[writer]
+    assert not torch.allclose(shift, torch.zeros_like(shift))
+    mlp = Node("mlp_out", 2, layer=0)
+    mlp_shift = live_writers[mlp] - clean_writers[mlp]
+    torch.testing.assert_close(readers[downstream], clean_readers[downstream] + shift + mlp_shift)
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+    assert not torch.allclose(actual, clean_logits)
+    for reader, value in readers.items():
+        torch.testing.assert_close(observed[reader], value, atol=1e-12, rtol=1e-12)
 
-    _assert_mutation_only_changes_the_perturbed_writers_edges(
-        edges, writer, perturbation, baseline_scores, mutated_scores, corrupt_cache
-    )
+
+def test_ablation_replacement_mutation_isolates_direct_reader_slices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    _, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    writer = Node("attn_head_out", 2, layer=0, head=1)
+    excluded_readers = {
+        Node("q_input", 2, layer=1, head=0),
+        Node("k_input", 2, layer=1, head=1),
+        Node("v_input", 2, layer=1, head=0),
+    }
+    excluded = {(writer, reader) for reader in excluded_readers}
+    circuit = [edge for edge in edges if edge not in excluded]
+    perturbation = torch.tensor([0.37, -0.19, 0.23, -0.41], dtype=torch.float64)
+    mutated = dict(replacements)
+    mutated[writer] = replacements[writer] + perturbation
+    _, baseline = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    logits, observed = _observed_toy_ablation(model, clean, circuit, mutated, monkeypatch)
+    expected, _, readers = _functional_toy_ablation(model, clean, excluded, mutated)
+    torch.testing.assert_close(logits, expected, atol=1e-12, rtol=1e-12)
+    for reader, value in readers.items():
+        torch.testing.assert_close(observed[reader], value, atol=1e-12, rtol=1e-12)
+        # Later MLP and logits readers can change through causal propagation.
+        if reader.kind in ("q_input", "k_input", "v_input"):
+            shift = perturbation if reader in excluded_readers else torch.zeros_like(perturbation)
+            torch.testing.assert_close(
+                observed[reader] - baseline[reader], shift, atol=1e-12, rtol=1e-12
+            )
 
 
 def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
