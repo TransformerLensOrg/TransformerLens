@@ -16,6 +16,8 @@ upstream matches its closed-form VJP given the gradient it actually
 received downstream in the real graph.
 """
 
+from typing import Any
+
 import pytest
 import torch
 from tokenizers import Tokenizer
@@ -43,6 +45,7 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
 from transformer_lens.tools.analysis import RelevanceLens
+from transformer_lens.tools.analysis.relevance_lens import RELEVANCE_RULES
 
 TOKENS = torch.tensor([[1, 5, 7, 42, 9]])
 N_LAYERS = 2
@@ -290,6 +293,22 @@ def _fit_relevance(bridge: TransformerBridge, prompts: list[str], *, corpus: str
     )
 
 
+def _residual_gradient(bridge: TransformerBridge) -> torch.Tensor:
+    """Probe a rule-sensitive residual VJP on a fresh graph."""
+    captured: dict[str, torch.Tensor] = {}
+
+    def capture(activation: torch.Tensor, hook: Any) -> torch.Tensor:
+        captured["residual"] = activation.detach().requires_grad_(True)
+        return captured["residual"]
+
+    with torch.enable_grad(), bridge.hooks(fwd_hooks=[("blocks.0.hook_out", capture)]):
+        logits = bridge(TOKENS)
+        (gradient,) = torch.autograd.grad(logits[0, -1, 0], captured["residual"])
+    assert torch.isfinite(gradient).all()
+    assert gradient.count_nonzero() > 0
+    return gradient.detach().clone()
+
+
 class TestRelevanceLensFitOnRealBridge:
     def test_full_requested_rule_coverage_is_installed(self) -> None:
         bridge = _fit_bridge()
@@ -309,6 +328,22 @@ class TestRelevanceLensFitOnRealBridge:
         with torch.no_grad():
             after = bridge(TOKENS)
         assert torch.equal(after, before)
+
+    def test_fit_restores_ordinary_gradients(self) -> None:
+        bridge = _fit_bridge()
+        before = _residual_gradient(bridge)
+        torch.testing.assert_close(_residual_gradient(bridge), before, atol=0, rtol=0)
+        parameter_flags = [parameter.requires_grad for parameter in bridge.parameters()]
+
+        _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        after_fit = _residual_gradient(bridge)
+        with use_relevance_rules(bridge, RELEVANCE_RULES):
+            active_gradient = _residual_gradient(bridge)
+        assert not torch.allclose(active_gradient, before, atol=1e-6, rtol=1e-4)
+        torch.testing.assert_close(after_fit, before, atol=0, rtol=0)
+        assert [parameter.requires_grad for parameter in bridge.parameters()] == parameter_flags
+        assert all(parameter.grad is None for parameter in bridge.parameters())
 
     def test_fit_records_rule_provenance(self) -> None:
         bridge = _fit_bridge()

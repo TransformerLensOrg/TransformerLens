@@ -239,6 +239,26 @@ class TestGatedMLPRelevanceRuleCapability:
             assert torch.equal(block(x), baseline)
 
 
+@pytest.mark.parametrize("component_training", [False, True])
+@pytest.mark.parametrize("activation_training", [False, True])
+def test_activation_wrapper_preserves_existing_module_modes(
+    component_training: bool, activation_training: bool
+) -> None:
+    block, hf_mlp = _make_bridge("nn.Linear")
+    block.train(component_training)
+    original_activation = hf_mlp.act_fn
+    original_activation.train(activation_training)
+    original_modes = {module: module.training for module in block.modules()}
+
+    with use_relevance_rules(block, RelevanceRules(activation=True)):
+        assert hf_mlp.act_fn is not original_activation
+        assert hf_mlp.act_fn.training is component_training
+        assert all(module.training is mode for module, mode in original_modes.items())
+
+    assert hf_mlp.act_fn is original_activation
+    assert all(module.training is mode for module, mode in original_modes.items())
+
+
 class TestGatedMLPRelevanceRuleForwardIdentity:
     @pytest.mark.parametrize("backing_class", BACKING_CLASSES)
     def test_forward_identical_while_rule_active(self, backing_class):

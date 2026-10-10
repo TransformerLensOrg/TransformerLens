@@ -30,6 +30,7 @@ from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRuleCoverage,
     RelevanceRuleUnsupportedError,
     _RelevanceRuleCoverageEntry,
+    use_relevance_rules,
 )
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
@@ -42,6 +43,7 @@ from transformer_lens.model_bridge.supported_architectures.qwen2 import (
 from transformer_lens.tools.analysis import JacobianLens
 from transformer_lens.tools.analysis.relevance_lens import (
     RELEVANCE_RULE_VERSION,
+    RELEVANCE_RULES,
     RelevanceLens,
     _installed_rule_names,
 )
@@ -118,25 +120,41 @@ def _build_tiny_qwen2_relu() -> TransformerBridge:
     return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_offline_tokenizer(PROMPTS))
 
 
+def _residual_gradient(model: TransformerBridge, tokens: torch.Tensor) -> torch.Tensor:
+    """Probe downstream backward semantics without accumulating parameter gradients."""
+    captured: dict[str, torch.Tensor] = {}
+
+    def capture(activation: torch.Tensor, hook: Any) -> torch.Tensor:
+        captured["residual"] = activation.detach().requires_grad_(True)
+        return captured["residual"]
+
+    with torch.enable_grad(), model.hooks(fwd_hooks=[("blocks.0.hook_out", capture)]):
+        logits = model(tokens)
+        (gradient,) = torch.autograd.grad(logits[0, -1, 0], captured["residual"])
+    assert torch.isfinite(gradient).all()
+    assert gradient.count_nonzero() > 0
+    return gradient.detach().clone()
+
+
 class _FittedPair(NamedTuple):
     model: TransformerBridge
     logits_before_fit: torch.Tensor
+    gradient_before_fit: torch.Tensor
     jacobian: JacobianLens
     relevance: RelevanceLens
 
 
 @pytest.fixture(scope="module")
 def fitted() -> _FittedPair:
-    """Both estimators fitted on the same tiny model and prompts.
-
-    Sharing one model keeps the comparison apples-to-apples: the only thing that
-    differs between the two fits is the backward semantics the estimator
-    selects. The pre-fit logits are captured so a test can prove the scoped rule
-    context does not leak past the fit.
-    """
+    """Both estimators on one model, with separate forward and backward baselines."""
     model = _build_tiny_qwen2()
+    tokens = model.to_tokens(PROMPTS[0])
     with torch.no_grad():
-        logits_before_fit = model(model.to_tokens(PROMPTS[0]))
+        logits_before_fit = model(tokens)
+    gradient_before_fit = _residual_gradient(model, tokens)
+    torch.testing.assert_close(
+        _residual_gradient(model, tokens), gradient_before_fit, atol=0, rtol=0
+    )
     jacobian = JacobianLens.fit(
         model,
         PROMPTS,
@@ -154,6 +172,7 @@ def fitted() -> _FittedPair:
     return _FittedPair(
         model=model,
         logits_before_fit=logits_before_fit,
+        gradient_before_fit=gradient_before_fit,
         jacobian=jacobian,
         relevance=relevance,
     )
@@ -361,10 +380,73 @@ class TestRuleCoverageSelection:
         assert coverage.installed == _expected_rule_mounts()
         assert coverage.skipped == ()
 
-    def test_rule_scope_does_not_leak_past_the_fit(self, fitted: _FittedPair) -> None:
+    def test_fit_preserves_forward_values(self, fitted: _FittedPair) -> None:
         with torch.no_grad():
             logits_after_fit = fitted.model(fitted.model.to_tokens(PROMPTS[0]))
         assert torch.equal(logits_after_fit, fitted.logits_before_fit)
+
+    def test_rule_scope_does_not_leak_past_the_fit(self, fitted: _FittedPair) -> None:
+        tokens = fitted.model.to_tokens(PROMPTS[0])
+        after_fit = _residual_gradient(fitted.model, tokens)
+        with use_relevance_rules(fitted.model, RELEVANCE_RULES):
+            active_gradient = _residual_gradient(fitted.model, tokens)
+        assert not torch.allclose(active_gradient, fitted.gradient_before_fit, atol=1e-6, rtol=1e-4)
+        torch.testing.assert_close(after_fit, fitted.gradient_before_fit, atol=0, rtol=0)
+        assert all(parameter.grad is None for parameter in fitted.model.parameters())
+
+
+class _FitFailure(RuntimeError):
+    """Injected failure during a rule-active backward pass."""
+
+
+class TestFitRestoresBackwardSemantics:
+    def test_restores_gradients_after_backward_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        model = _build_tiny_qwen2()
+        tokens = model.to_tokens(PROMPTS[0])
+        baseline = _residual_gradient(model, tokens)
+        parameter_flags = [parameter.requires_grad for parameter in model.parameters()]
+        active_gradients = []
+
+        def fail_backward(*args: Any, **kwargs: Any) -> Any:
+            active_gradients.append(_residual_gradient(model, tokens))
+            raise _FitFailure("injected backward failure")
+
+        monkeypatch.setattr(relevance_lens_module, "_ordinary_vjp", fail_backward)
+        with pytest.raises(_FitFailure, match="injected backward failure"):
+            RelevanceLens.fit(
+                model,
+                PROMPTS[:1],
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+        assert len(active_gradients) == 1
+        assert not torch.allclose(active_gradients[0], baseline, atol=1e-6, rtol=1e-4)
+        torch.testing.assert_close(_residual_gradient(model, tokens), baseline, atol=0, rtol=0)
+        assert [parameter.requires_grad for parameter in model.parameters()] == parameter_flags
+        assert all(parameter.grad is None for parameter in model.parameters())
+
+    def test_nested_fit_preserves_outer_backward_rules(self) -> None:
+        model = _build_tiny_qwen2()
+        tokens = model.to_tokens(PROMPTS[0])
+        baseline = _residual_gradient(model, tokens)
+        with use_relevance_rules(model, RELEVANCE_RULES):
+            outer_gradient = _residual_gradient(model, tokens)
+            assert not torch.allclose(outer_gradient, baseline, atol=1e-6, rtol=1e-4)
+            RelevanceLens.fit(
+                model,
+                PROMPTS[:1],
+                corpus=CORPUS,
+                source_layers=SOURCE_LAYERS,
+                show_progress=False,
+            )
+            torch.testing.assert_close(
+                _residual_gradient(model, tokens), outer_gradient, atol=0, rtol=0
+            )
+        torch.testing.assert_close(_residual_gradient(model, tokens), baseline, atol=0, rtol=0)
+        assert all(parameter.grad is None for parameter in model.parameters())
 
 
 class TestEstimatorDiffersFromOrdinaryJacobian:
