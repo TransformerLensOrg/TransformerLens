@@ -596,19 +596,11 @@ def _require_raw_mlp_bridge(model: Any) -> None:
 
 @dataclass(frozen=True)
 class _MLPLinear:
-    """One validated MLP linear projection with its resolved weight layout."""
+    """One validated MLP linear projection with its role and weight layout."""
 
+    role: Literal["gate", "input", "output"]
     projection: Any
     weight_layout: WeightLayout
-
-
-_DENSE_MLP_ROLES = ("input", "output")
-_GATED_MLP_ROLES = ("gate", "input", "output")
-
-
-def _mlp_projection_roles(records: tuple[_MLPLinear, ...]) -> tuple[str, ...]:
-    """Role names matching a layer's discovered projection records."""
-    return _GATED_MLP_ROLES if len(records) == 3 else _DENSE_MLP_ROLES
 
 
 def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple[_MLPLinear, ...]]:
@@ -640,7 +632,7 @@ def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple
         if not isinstance(mlp, MLPBridge):
             raise ValueError(f"layer {layer} must be an MLPBridge")
         gate = getattr(mlp, "gate", None)
-        roles: tuple[tuple[str, Any, tuple[int, int]], ...]
+        roles: tuple[tuple[Literal["gate", "input", "output"], Any, tuple[int, int]], ...]
         if gate is None:
             if bool(getattr(model.cfg, "gated_mlp", False)):
                 raise ValueError(
@@ -693,7 +685,9 @@ def _get_mlp_projections(model: Any, layers: tuple[int, ...]) -> dict[int, tuple
                 projection.hook_out, HookPoint
             ):
                 raise ValueError(f"layer {layer} {name} projection is missing Bridge hook points")
-            records.append(_MLPLinear(projection=projection, weight_layout=weight_layout))
+            records.append(
+                _MLPLinear(role=name, projection=projection, weight_layout=weight_layout)
+            )
         projections[layer] = tuple(records)
     return projections
 
@@ -722,10 +716,10 @@ def _capture_projection_tensors(
     handles: list[Any] = []
     try:
         for layer, records in projections.items():
-            for name, record in zip(_mlp_projection_roles(records), records, strict=True):
+            for record in records:
                 projection = record.projection
-                input_key = (layer, name, "forward_input")
-                output_key = (layer, name, "output")
+                input_key = (layer, record.role, "forward_input")
+                output_key = (layer, record.role, "output")
                 # Existing hook_in edits must run first so this is the actual linear input.
                 handles.append(
                     projection.hook_in.register_forward_hook(_capture_once(captured, input_key))
@@ -839,21 +833,21 @@ def _capture_mlp_gradient_factors(
             if not bool(torch.isfinite(loss)):
                 raise ValueError("the next-token loss must be finite")
             outputs = [
-                captured[(layer, role, "output")]
+                captured[(layer, record.role, "output")]
                 for layer in requested_layers
-                for role in _mlp_projection_roles(projections[layer])
+                for record in projections[layer]
             ]
             gradients = torch.autograd.grad(loss, (*outputs, *weights), allow_unused=False)
 
     output_gradients = gradients[: len(outputs)]
     weight_gradients = gradients[len(outputs) :]
     layer_results = []
-    for index, layer in enumerate(requested_layers):
+    offset = 0
+    for layer in requested_layers:
         records = projections[layer]
-        roles = _mlp_projection_roles(records)
-        offset = len(records) * index
         factors: dict[str, LinearGradientFactors] = {}
-        for position, (role, record) in enumerate(zip(roles, records, strict=True)):
+        for position, record in enumerate(records):
+            role = record.role
             factors[role] = _build_linear_gradient_factors(
                 _single_batch_matrix(
                     f"layer {layer} {role} projection input",
@@ -874,6 +868,7 @@ def _capture_mlp_gradient_factors(
                 gate_projection=factors.get("gate"),
             )
         )
+        offset += len(records)
     return _MLPGradientCapture(
         prompt_token_ids=prompt_tokens.detach().cpu().clone(),
         target_token_id=target_token_id,

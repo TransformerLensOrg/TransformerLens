@@ -741,6 +741,79 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
                 assert ranking.indices.device.type == "cpu"
 
 
+@pytest.mark.parametrize("gated_layer", [0, 1], ids=["gated-dense", "dense-gated"])
+@pytest.mark.parametrize("layers", [(0, 1), (1, 0)], ids=["forward-order", "reverse-order"])
+def test_mixed_mlp_capture_aligns_gradients_with_original_modules(
+    gpt2_tokenizer, gated_layer: int, layers: tuple[int, ...]
+) -> None:
+    from transformers import GPT2Config, GPT2LMHeadModel
+
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.generalized_components import LinearBridge
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_mlp_gradient_factors,
+    )
+
+    class GatedMLP(torch.nn.Module):
+        def __init__(self, d_model: int, d_mlp: int) -> None:
+            super().__init__()
+            self.gate_proj = torch.nn.Linear(d_model, d_mlp)
+            self.c_fc = torch.nn.Linear(d_model, d_mlp)
+            self.c_proj = torch.nn.Linear(d_mlp, d_model)
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.c_proj(F.silu(self.gate_proj(inputs)) * self.c_fc(inputs))
+
+    config = GPT2Config(
+        n_layer=2,
+        n_head=2,
+        n_embd=16,
+        n_inner=32,
+        n_positions=32,
+        vocab_size=len(gpt2_tokenizer),
+        resid_pdrop=0.0,
+        embd_pdrop=0.0,
+        attn_pdrop=0.0,
+    )
+    hf_model = cast(Any, GPT2LMHeadModel)(config).eval()
+    hf_model.transformer.h[gated_layer].mlp = GatedMLP(config.n_embd, config.n_inner)
+    original_modules = {
+        layer: {"input": block.mlp.c_fc, "output": block.mlp.c_proj}
+        for layer, block in enumerate(hf_model.transformer.h)
+    }
+    original_modules[gated_layer]["gate"] = hf_model.transformer.h[gated_layer].mlp.gate_proj
+    bridge = TransformerBridge.boot_transformers(
+        "gpt2", hf_model=hf_model, tokenizer=gpt2_tokenizer, dtype=torch.float32, device="cpu"
+    )
+    mlp = bridge.blocks[gated_layer].mlp
+    gate = LinearBridge(name=f"blocks.{gated_layer}.mlp.gate")
+    gate.set_original_component(original_modules[gated_layer]["gate"])
+    mlp.add_module("gate", gate)
+    mlp.original_component.gate_proj = gate
+
+    capture = _capture_mlp_gradient_factors(bridge, PROMPT, TARGET, layers)
+
+    prompt_tokens = capture.prompt_token_ids
+    target = torch.tensor([capture.target_token_id])
+    loss = F.cross_entropy(bridge(prompt_tokens)[:, -1, :], target)
+    named_modules = [
+        (layer, role, module)
+        for layer in layers
+        for role, module in original_modules[layer].items()
+    ]
+    expected_gradients = torch.autograd.grad(
+        loss, [module.weight for _, _, module in named_modules]
+    )
+    captured_layers = {result.layer: result for result in capture.layers}
+    assert tuple(result.layer for result in capture.layers) == layers
+    for (layer, role, _module), expected in zip(named_modules, expected_gradients, strict=True):
+        factors = getattr(captured_layers[layer], f"{role}_projection")
+        assert factors is not None
+        torch.testing.assert_close(factors.weight_gradient, expected, atol=2e-6, rtol=2e-5)
+        torch.testing.assert_close(factors.reconstructed_gradient, expected, atol=2e-6, rtol=2e-5)
+    assert captured_layers[1 - gated_layer].gate_projection is None
+
+
 @pytest.mark.parametrize(("device", "dtype"), DEVICE_DTYPE_CASES)
 def test_tiny_gated_capture_supports_available_devices_and_reduced_precision(
     qwen_bridge, device: str, dtype: torch.dtype
@@ -838,6 +911,9 @@ def test_tiny_llama_gated_discovery_is_structural(tiny_llama_bridge) -> None:
 
     assert len(records) == 3
     gate_record, input_record, output_record = records
+    assert gate_record.role == "gate"
+    assert input_record.role == "input"
+    assert output_record.role == "output"
     assert gate_record.projection is mlp.gate
     assert input_record.projection is getattr(mlp, "in")
     assert output_record.projection is mlp.out

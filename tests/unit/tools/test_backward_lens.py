@@ -18,8 +18,6 @@ from transformer_lens.tools.analysis.backward_lens import (
     _build_matrix_result,
     _factor_norms_and_normalized_rows,
     _get_mlp_projections,
-    _mlp_projection_roles,
-    _MLPLinear,
     _project_residual_factors,
     _rank_vocabulary_logits,
     _single_batch_matrix,
@@ -553,6 +551,8 @@ def test_get_mlp_projections_resolves_nn_linear_as_out_in() -> None:
     projections = _get_mlp_projections(model, (0,))
 
     input_record, output_record = projections[0]
+    assert input_record.role == "input"
+    assert output_record.role == "output"
     assert input_record.weight_layout == "out_in"
     assert output_record.weight_layout == "out_in"
     assert tuple(input_record.projection.original_component.weight.shape) == (d_mlp, d_model)
@@ -570,6 +570,8 @@ def test_get_mlp_projections_resolves_conv1d_as_in_out() -> None:
     projections = _get_mlp_projections(model, (0,))
 
     input_record, output_record = projections[0]
+    assert input_record.role == "input"
+    assert output_record.role == "output"
     assert input_record.weight_layout == "in_out"
     assert output_record.weight_layout == "in_out"
     assert tuple(input_record.projection.original_component.weight.shape) == (d_model, d_mlp)
@@ -588,21 +590,6 @@ def test_get_mlp_projections_rejects_an_unorientable_component() -> None:
         _get_mlp_projections(model, (0,))
 
 
-def test_mlp_projection_roles_match_the_discovered_record_count() -> None:
-    dense_records = (
-        _MLPLinear(projection=object(), weight_layout="in_out"),
-        _MLPLinear(projection=object(), weight_layout="in_out"),
-    )
-    gated_records = (
-        _MLPLinear(projection=object(), weight_layout="out_in"),
-        _MLPLinear(projection=object(), weight_layout="out_in"),
-        _MLPLinear(projection=object(), weight_layout="out_in"),
-    )
-
-    assert _mlp_projection_roles(dense_records) == ("input", "output")
-    assert _mlp_projection_roles(gated_records) == ("gate", "input", "output")
-
-
 def test_get_mlp_projections_discovers_gated_gate_up_down() -> None:
     d_model, d_mlp = 4, 6
     gate_component = torch.nn.Linear(d_model, d_mlp)
@@ -619,6 +606,9 @@ def test_get_mlp_projections_discovers_gated_gate_up_down() -> None:
 
     assert len(records) == 3
     gate_record, input_record, output_record = records
+    assert gate_record.role == "gate"
+    assert input_record.role == "input"
+    assert output_record.role == "output"
     assert gate_record.projection is mlp.gate
     assert input_record.projection is getattr(mlp, "in")
     assert output_record.projection is mlp.out
