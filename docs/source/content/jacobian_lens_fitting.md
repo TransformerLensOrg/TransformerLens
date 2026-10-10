@@ -243,14 +243,44 @@ instead of the ordinary vector-Jacobian product. The forward pass is bit-identic
 to the model's native forward, so the two estimators differ solely in the backward
 semantics they select.
 
+The relevance lens requires a raw `TransformerBridge` in evaluation mode.
+`boot_transformers` uses eager attention; explicitly select float32 for fitting
+and do not enable compatibility mode or process the weights.
+
 ```python
+import torch
+
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis import RelevanceLens
 
-model = TransformerBridge.boot_transformers("openai-community/gpt2", device="cuda")
-lens = RelevanceLens.fit(model, prompts, corpus="wikitext-103-raw-v1@2.0.0:train")
-readout = lens.readout(model, "The capital of France is", top_k=10)
+model = TransformerBridge.boot_transformers(
+    "Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32
+)
+model.eval()
+prompts = [
+    "The capital of France is Paris, and the capital of Germany is Berlin."
+]
+lens = RelevanceLens.fit(
+    model,
+    prompts,
+    corpus="example:capital-cities",
+    source_layers=[0],
+    dim_batch=8,
+    max_seq_len=32,
+    skip_first_positions=2,
+    show_progress=False,
+)
+assert lens.rule_coverage is not None
+assert not lens.rule_coverage.skipped
+readout = lens.readout(model, "The capital of France is", layers=[0], top_k=10)
 ```
+
+This is a bounded walkthrough using one source layer and one short prompt, not a
+research-quality corpus. Even this fit performs multiple backward passes; use
+`device="cuda"` when available. Larger corpora and earlier-to-final transport
+across large models are substantially more expensive. Coverage depends on the
+model's components and dispatch paths; the Qwen2 example does not imply that
+every gated architecture installs all three rules.
 
 Everything after the fit is the Jacobian lens surface: `transport`, `readout`,
 `lens_vectors`, `lens_vector_dictionary`, `decompose`, `occupancy`,
@@ -309,20 +339,59 @@ represent. Requesting it there raises instead of scoring the model incorrectly.
 ### Artifact provenance and safety
 
 A relevance lens records `estimator = "relevance_lens"`, the rule version, the
-enabled rules, and the per-mount coverage, and it restores that configuration on
-load. `enabled_rules` names the rules that actually shaped the matrices, not the
+enabled rules, and kind-aware per-mount coverage, and it restores that configuration
+on load. `enabled_rules` names the rules that actually shaped the matrices, not the
 rules that were requested: a model can honor some rules and not others, so a fit
-whose MLP mounts were all skipped records only `normalization`. The guards are
-strict:
+whose MLP mounts were all skipped records only `normalization`.
 
-- `merge()` refuses to combine shards from different estimators, or shards whose
-  rule version or enabled rules differ, even when their provenance metadata is
-  empty.
-- `load()` refuses an artifact that records a different estimator, so a Jacobian
-  lens cannot be loaded as a relevance lens.
+`rule_coverage` has its own `schema_version = 1`, independent of the numerical
+rule version. Both `installed` and `skipped` contain records with a rule `kind`
+and canonical component `path`. The record shape is illustrated below; a real
+fit records every applicable mount:
+
+```json
+{
+  "schema_version": 1,
+  "installed": [
+    {"kind": "normalization", "path": "blocks.0.ln1"},
+    {"kind": "activation", "path": "blocks.0.mlp"},
+    {"kind": "multiplicative_gate", "path": "blocks.0.mlp"}
+  ],
+  "skipped": []
+}
+```
+
+Activation and multiplicative-gate rules share an MLP path but have independent
+records. Installing one does not claim that the other contributed. Partial
+coverage warnings identify both the skipped kind and its path.
+
+The guards are strict:
+
+- `RelevanceLens.merge()` requires relevance-lens shards with positive relevance
+  estimator metadata, including for a one-shard merge. All provenance other than
+  `n_prompts` must match, including rule version, enabled rules, and coverage.
+- `RelevanceLens.load()` requires the original artifact metadata to record the
+  exact string `estimator = "relevance_lens"`. Missing, malformed, or foreign
+  estimator records are refused before construction. Unlabelled reference and
+  Jacobian artifacts are not implicitly converted.
+- Only the `J` artifact schema is accepted by the relevance loader. Reference
+  running-sum `jacobian_sum` checkpoints are refused, even if labelled as
+  relevance; their conversion path is Jacobian-specific.
+- Explicitly marked relevance artifacts may omit optional coverage. A present
+  coverage record must use the kind-aware schema. Legacy path-only coverage is
+  ambiguous and requires refitting, not guessing activation/gate kinds from
+  shared paths.
 - `from_pretrained()` does not resolve short model names through the Jacobian lens
   registry, since that registry holds only Jacobian artifacts. Pass an explicit
-  path or a Hub repo id.
+  artifact path or a Hub repo id containing a relevance artifact.
+
+Save and reload a supported relevance artifact with the inherited persistence
+API:
+
+```python
+lens.save("qwen2_relevance_lens.pt")
+loaded = RelevanceLens.load("qwen2_relevance_lens.pt").validate_model(model)
+```
 
 ### Relationship to RelP and the published artifacts
 
@@ -335,9 +404,6 @@ Three things are easy to conflate:
 - **Published paired artifacts** (`camilablank/workspace-lenses` on the Hugging
   Face Hub) are not accepted by the current loader; converting them is separate
   work.
-
-The relevance lens targets `TransformerBridge` exclusively. `HookedTransformer` is
-deprecated and has no relevance-lens path.
 
 ## Sparse decomposition (J-space coordinates)
 

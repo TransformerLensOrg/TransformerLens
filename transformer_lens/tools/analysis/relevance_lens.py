@@ -27,14 +27,38 @@ Warning:
     ``process_weights`` calls change the residual basis and are refused rather
     than returning silently wrong readouts.
 
+This example bounds the fit to one layer and a short prompt; it does not produce
+research-quality corpus estimates. Fitting still requires multiple backward
+passes. ``boot_transformers`` uses eager attention; do not process the weights
+or enable compatibility mode.
+
 Example::
+
+    import torch
 
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.tools.analysis import RelevanceLens
 
-    model = TransformerBridge.boot_transformers("gpt2", device="cpu")
-    lens = RelevanceLens.fit(model, prompts, corpus="pile-10k:fixed-manifest")
-    result = lens.readout(model, "The Eiffel Tower is in the city of")
+    model = TransformerBridge.boot_transformers(
+        "Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32
+    )
+    model.eval()
+    prompts = [
+        "The capital of France is Paris, and the capital of Germany is Berlin."
+    ]
+    lens = RelevanceLens.fit(
+        model,
+        prompts,
+        corpus="example:capital-cities",
+        source_layers=[0],
+        dim_batch=8,
+        max_seq_len=32,
+        skip_first_positions=2,
+        show_progress=False,
+    )
+    assert lens.rule_coverage is not None
+    assert not lens.rule_coverage.skipped
+    readout = lens.readout(model, "The capital of France is", layers=[0], top_k=10)
 """
 
 from __future__ import annotations
@@ -167,7 +191,9 @@ class RelevanceLens(JacobianLens):
     and swap interventions -- unchanged. Only :meth:`fit` differs, and it
     records the estimator identity and the rule configuration that produced the
     matrices. Loading requires explicit ``estimator="relevance_lens"`` metadata;
-    unlabelled artifacts and Jacobian running-sum checkpoints are refused.
+    unlabelled artifacts and Jacobian running-sum checkpoints are refused. Present
+    coverage records require schema version 1 with explicit rule kinds and paths;
+    ambiguous path-only coverage requires refitting.
 
     Attributes:
         rule_coverage: Rule-kind and canonical-path pairs installed versus
