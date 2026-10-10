@@ -2,6 +2,7 @@
 
 This module contains the bridge component for attention layers.
 """
+import inspect
 import logging
 import warnings
 from typing import Any, Dict, Optional, Tuple
@@ -941,9 +942,25 @@ class AttentionBridge(GeneralizedComponent):
         if scores is not None:
             self._fire_post_hoc_hook(self.hook_attn_scores, scores, "hook_attn_scores")
         weights = self._fire_post_hoc_hook(self.hook_pattern, weights, "hook_pattern")
-        if caller_output_attentions:
+        if caller_output_attentions or not self._output_attentions_is_optional():
             return (position_bias, weights) + rest[2:]
         return (position_bias,) + rest[2:]
+
+    def _output_attentions_is_optional(self) -> bool:
+        """Whether the wrapped module only returns weights when asked to.
+
+        Transformers >= 5.15 dropped the explicit ``output_attentions``
+        parameter from the T5-family attention forward: it always returns
+        (attn_output, position_bias, attn_weights) and callers unpack exactly
+        three values, so the weights slot must stay in the output.
+        """
+        if self.original_component is None:
+            return True
+        try:
+            params = inspect.signature(self.original_component.forward).parameters
+        except (TypeError, ValueError):
+            return True
+        return "output_attentions" in params
 
     def _reconstruct_bias_scores(
         self,

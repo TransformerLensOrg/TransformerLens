@@ -153,6 +153,11 @@ class T5BlockBridge(GeneralizedComponent):
             if "layer_head_mask" in self_attn_params:
                 self_attn_kwargs["layer_head_mask"] = layer_head_mask
             self_attention_outputs = layers[0](**self_attn_kwargs)
+            # Transformers >= 5.15 dropped the explicit output_attentions
+            # parameter: sublayers always return (hidden, position_bias,
+            # attn_weights) and the stack unpacks a fixed 3-tuple per block.
+            fixed_block_outputs = "output_attentions" not in self_attn_params
+            cross_attention_outputs = None
             hidden_states = _clamp_fp16_inf(self_attention_outputs[0])
             # Keep self-attention outputs and relative position weights
             # attention_outputs contains: (position_bias,) or (position_bias, attn_weights)
@@ -189,6 +194,13 @@ class T5BlockBridge(GeneralizedComponent):
                 hidden_states = feed_forward_outputs
             hidden_states = _clamp_fp16_inf(hidden_states)
             hidden_states = self.hook_out(hidden_states)
+            if fixed_block_outputs:
+                # hidden-states, self-attention position bias, cross-attention position bias
+                return (
+                    hidden_states,
+                    self_attention_outputs[1],
+                    cross_attention_outputs[1] if cross_attention_outputs is not None else None,
+                )
             outputs: tuple[Any, ...] = (hidden_states,)
             # Return: hidden-states, (self-attention position bias), (self-attention weights),
             # (cross-attention position bias), (cross-attention weights)
