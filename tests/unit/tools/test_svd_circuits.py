@@ -1491,7 +1491,7 @@ def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
 
 
 # --------------------------------------------------------------------------- #
-# Top-k recovery (reconstruction fidelity, second clause)
+# Top-k recovery through activation patching
 # --------------------------------------------------------------------------- #
 def _block_aligned_ladder(head_svd, *, geometric=True):
     """Cumulative direction counts that never split a degenerate block.
@@ -1524,68 +1524,134 @@ def _block_aligned_ladder(head_svd, *, geometric=True):
     return ladder
 
 
-def _reconstruction_residual(head_svd, k):
-    """Relative Frobenius residual of the rank-k reconstruction of the head map."""
-    full = head_svd.U @ torch.diag(head_svd.S) @ head_svd.V.T
-    recon = head_svd.U[:, :k] @ torch.diag(head_svd.S[:k]) @ head_svd.V[:, :k].T
-    return float((full - recon).norm() / full.norm())
+class _RecoveryStubModel(_PatchStubModel):
+    """Expose identity-probe head outputs without a downstream scalar readout."""
+
+    def __init__(self, clean):
+        super().__init__(d_model=clean.shape[-1], n_heads=1, pos=clean.shape[0])
+        self._result = clean[None, :, None, :]
+
+    def _logits(self, result):
+        return result[:, :, 0, :]
 
 
-def test_top_k_recovery_converges_monotonically(tiny_bridge):
-    """Retaining more OV directions recovers more of the head's output.
+def _measure_patch_recovery(ov, clean, retained):
+    """Measure relative output error through the public patch and capture its output."""
+    model = _RecoveryStubModel(clean)
+    outputs = []
 
-    The recovered quantity is the rank-k reconstruction of the head's OV map, and
-    its residual is non-increasing in k by Eckart-Young: each retained direction
-    removes the energy of one more singular value, so the residual can only fall.
-    That is the falsifiable form of the claim, and it is asserted directly.
+    def metric(output):
+        outputs.append(output.detach().clone())
+        return float((output - clean.unsqueeze(0)).norm() / clean.norm())
 
-    The downstream metric is deliberately not asserted to be monotone in k. A
-    metric is a nonlinear functional of the patched logits, so adding a direction
-    can move it either way; on gpt2-small L9H9 the logit difference rises from
-    0.039 at k=17 to 0.226 at k=29 and peaks at 0.449 at k=33 before falling to
-    zero at k=64, while the residual falls monotonically across the same ladder.
-    Asserting metric monotonicity would therefore encode a claim that is false on
-    a real head. What is asserted instead is that the two endpoints bracket the
-    recovery: one direction moves the metric materially, and retaining the whole
-    span is a no-op.
-    """
-    decomposition = decompose_head(tiny_bridge, 0, 0, which=("OV",))
-    ov = decomposition.OV
+    result = patch_along_directions(
+        model,
+        ov,
+        "prompt",
+        metric,
+        keep=retained,
+        n_baseline=1,
+        rng=torch.Generator().manual_seed(0),
+        # Empty/full-span controls coincide with the intervention and need an explicit threshold.
+        threshold=1e-4,
+    )
+    assert result.original_metric == 0.0
+    assert result.retained == retained
+    assert model.cfg.use_attn_result is False
+    return result, outputs[1].squeeze(0)
+
+
+@pytest.mark.parametrize(
+    "spectrum", [(8.0, 4.0, 2.0, 1.0), (8.0, 4.0, 4.0, 1.0)], ids=["isolated", "block"]
+)
+def test_top_k_recovery_converges_monotonically(spectrum):
+    """Patched identity probes match the top-k map and its singular-value tail error."""
+    W_V, W_O = _factored_with_spectrum(spectrum)
+    ov = _factored_head_svd(W_V, W_O, which="OV", layer=0, head=0, eps=1e-2)
+    clean = W_V @ W_O
+    ladder = [0] + _block_aligned_ladder(ov, geometric=False)
+    if spectrum[1] == spectrum[2]:
+        assert ov.block_of(1) == [1, 2]
+        assert ladder == [0, 1, 3, 4]
+    else:
+        assert ladder == [0, 1, 2, 3, 4]
+    tolerance = 64 * torch.finfo(clean.dtype).eps
+
+    residuals = []
+    print("\nk   patched residual   expected residual   max output error")
+    for k in ladder:
+        result, patched = _measure_patch_recovery(ov, clean, list(range(k)))
+        expected_output = W_V[:, :k] @ W_O[:k, :]
+        expected_residual = float((ov.S[k:].square().sum() / ov.S.square().sum()).sqrt())
+        torch.testing.assert_close(patched, expected_output, rtol=tolerance, atol=tolerance)
+        assert result.patched_metric == pytest.approx(expected_residual, abs=tolerance)
+        residuals.append(result.patched_metric)
+        print(
+            f"{k:3d} {result.patched_metric:>18.8f} {expected_residual:>19.8f} "
+            f"{float((patched - expected_output).abs().max()):>18.8f}"
+        )
+
+    for prev, cur in zip(residuals, residuals[1:]):
+        assert cur <= prev + tolerance
+    assert residuals[0] == pytest.approx(1.0, abs=tolerance)
+    assert residuals[-1] < tolerance
+
+
+@pytest.mark.parametrize("control", ["bottom", "rotated", "noop"])
+def test_top_k_recovery_distinguishes_wrong_subspaces(control, monkeypatch):
+    """Same-width wrong subspaces and a no-op cannot reproduce the top-k output."""
+    W_V, W_O = _factored_with_spectrum([8.0, 4.0, 2.0, 1.0])
+    ov = _factored_head_svd(W_V, W_O, which="OV", layer=0, head=0, eps=1e-2)
+    clean = W_V @ W_O
+    k = 2
+    expected_output = W_V[:, :k] @ W_O[:k, :]
+    top, top_output = _measure_patch_recovery(ov, clean, list(range(k)))
+    torch.testing.assert_close(top_output, expected_output)
+
+    if control == "bottom":
+        wrong, wrong_output = _measure_patch_recovery(
+            ov, clean, list(range(len(ov.S) - k, len(ov.S)))
+        )
+    else:
+        if control == "rotated":
+            random_basis, _ = torch.linalg.qr(
+                torch.randn(len(ov.S), len(ov.S), generator=torch.Generator().manual_seed(17))
+            )
+            directions = ov.V @ random_basis[:, :k]
+            projector = directions @ directions.T
+        else:
+            projector = torch.eye(clean.shape[-1], dtype=clean.dtype)
+
+        def control_hook(head, requested_projector):
+            return _make_subspace_hook(head, projector)
+
+        monkeypatch.setattr(
+            "transformer_lens.tools.analysis.svd_circuits._make_subspace_hook", control_hook
+        )
+        wrong, wrong_output = _measure_patch_recovery(ov, clean, list(range(k)))
+
+    assert not torch.allclose(wrong_output, expected_output, rtol=1e-5, atol=1e-6)
+    if control == "noop":
+        assert wrong.patched_metric == 0.0
+    else:
+        assert wrong.patched_metric > top.patched_metric + 0.1
+
+
+def test_top_k_recovery_full_span_is_noop_on_bridge(tiny_bridge):
+    """Real Bridge hook wiring recovers full-span logits without assuming metric monotonicity."""
+    ov = decompose_head(tiny_bridge, 0, 0, which=("OV",)).OV
+    assert ov is not None
     rank = ov.V.shape[1]
+    partial_k = _block_aligned_ladder(ov)[0]
+    assert partial_k < rank
     prompt = torch.tensor([[5, 63, 7, 9]])
     metric = lambda logits: float(logits[0, -1, 0] - logits[0, -1, 1])
 
-    ladder = _block_aligned_ladder(ov)
-    assert ladder[0] == 1
-    assert ladder[-1] == rank
-
-    residuals = [_reconstruction_residual(ov, k) for k in ladder]
-
-    deltas = []
-    for k in ladder:
-        # n_baseline=1 is the cheapest legal value: this test reads neither
-        # `gated` nor `baseline_delta_metric`, so the random control is pure
-        # overhead here. A full-rank keep is a no-op that ties the control by
-        # construction, so it needs an explicit threshold.
-        retained = list(range(k))
-        if k == rank:
-            result = patch_along_directions(
-                tiny_bridge, ov, prompt, metric, keep=retained, n_baseline=1, threshold=1e-4
-            )
-        else:
-            result = patch_along_directions(
-                tiny_bridge, ov, prompt, metric, keep=retained, n_baseline=1
-            )
-        deltas.append(abs(result.delta_metric))
-
-    print("\nk   residual      abs(delta_metric)")
-    for k, residual, delta in zip(ladder, residuals, deltas):
-        print(f"{k:3d}  {residual:.8f}   {delta:.8f}")
-
-    for prev, cur in zip(residuals, residuals[1:]):
-        assert cur <= prev + 1e-12
-
-    # Endpoints: retaining the whole span reconstructs the head onto its own OV
-    # map, so the metric barely moves; retaining a single direction moves it.
-    assert deltas[-1] < 1e-4
-    assert deltas[0] > 100 * deltas[-1]
+    partial = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, keep=list(range(partial_k)), n_baseline=1
+    )
+    full = patch_along_directions(
+        tiny_bridge, ov, prompt, metric, keep=list(range(rank)), n_baseline=1, threshold=1e-4
+    )
+    assert abs(full.delta_metric) < 1e-4
+    assert abs(partial.delta_metric) > 100 * abs(full.delta_metric)
