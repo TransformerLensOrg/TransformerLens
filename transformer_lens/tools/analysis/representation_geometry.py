@@ -1,4 +1,4 @@
-"""Dual-space unembedding geometry and counterfactual concept directions.
+"""Unembedding-covariance geometry for concept and categorical diagnostics.
 
 The population covariance convention follows Park, Choe and Veitch,
 https://arxiv.org/abs/2311.03658v2, Section 3.2, Equation (3.3). Its inverse is
@@ -15,10 +15,11 @@ from numbers import Real
 from typing import Literal, Optional, Sequence, Tuple
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Bool, Float
 
 _INPUT_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
 _COMPUTE_DTYPES = (torch.float32, torch.float64)
+_GeometrySpace = Literal["measurement", "intervention"]
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,72 @@ class _GeometryFit:
     whitening: Float[torch.Tensor, "model model"]
     unwhitening: Float[torch.Tensor, "model model"]
     diagnostics: _GeometryDiagnostics
+
+
+@dataclass(frozen=True)
+class CategoricalGeometry:
+    """Centered geometry of explicitly supplied concept vertices.
+
+    Affine rank is measured in whitened coordinates with a declared relative
+    singular-value threshold. A simplex requires ``affine_rank == n_vertices - 1``;
+    regularity additionally requires equal pairwise distances to a declared
+    relative tolerance. Regularity is measured, not assumed for arbitrary vertices.
+
+    Gram entries and distances use the metric of ``space``. Angles in radians
+    and cosines compare centroid-relative directions. ``angle_valid_mask`` marks
+    pairs with numerically nonzero directions; undefined entries are NaN, not
+    fabricated zero angles. Defined self-cosines are exactly one. The report
+    retains duplicate/degenerate vertices rather than silently dropping them.
+
+    ``relative_distance_spread`` is ``(max - min) / mean`` of off-diagonal pair
+    distances, or None if all coincide. Frozen fields and detached tensor copies
+    snapshot the inputs; tensor contents should be treated as read-only. These
+    numerical diagnostics do not establish semantic categories or causal use.
+    """
+
+    space: _GeometrySpace
+    labels: Optional[Tuple[str, ...]]
+    raw_vertices: Float[torch.Tensor, "category model"]
+    centroid: Float[torch.Tensor, "model"]
+    centered_raw_vertices: Float[torch.Tensor, "category model"]
+    whitened_vertices: Float[torch.Tensor, "category model"]
+    singular_values: Float[torch.Tensor, "spectrum"]
+    affine_rank: int
+    rank_rtol: float
+    rank_threshold: float
+    gram: Float[torch.Tensor, "category category"]
+    distances: Float[torch.Tensor, "category category"]
+    cosines: Float[torch.Tensor, "category category"]
+    angles: Float[torch.Tensor, "category category"]
+    angle_valid_mask: Bool[torch.Tensor, "category category"]
+    relative_distance_spread: Optional[float]
+    regularity_rtol: float
+    geometry_diagnostics: _GeometryDiagnostics
+
+    @property
+    def n_vertices(self) -> int:
+        """Number of supplied vertices, including any duplicates."""
+        return self.raw_vertices.shape[0]
+
+    def is_simplex(self) -> bool:
+        """Test affine independence under the report's numerical rank policy."""
+        return self.n_vertices >= 2 and self.affine_rank == self.n_vertices - 1
+
+    def is_regular_simplex(self, *, rtol: Optional[float] = None) -> bool:
+        """Test simplex rank and relative pair-distance spread.
+
+        ``rtol`` in [0, 1) overrides the recorded default regularity tolerance,
+        not the rank threshold. Degenerate sets never become regular simplices
+        merely because a permissive distance tolerance was requested.
+        """
+        tolerance = (
+            self.regularity_rtol if rtol is None else _validate_scalar(rtol, "rtol", positive=False)
+        )
+        return (
+            self.is_simplex()
+            and self.relative_distance_spread is not None
+            and self.relative_distance_spread <= tolerance
+        )
 
 
 @dataclass(frozen=True)
@@ -556,6 +623,150 @@ class RepresentationGeometry:
             geometry_diagnostics=self.diagnostics,
         )
 
+    def categorical_geometry(
+        self,
+        vertices: torch.Tensor,
+        *,
+        space: _GeometrySpace,
+        labels: Optional[Sequence[str]] = None,
+        rtol: Optional[float] = None,
+    ) -> CategoricalGeometry:
+        """Analyze explicit concept vertices in a declared raw coordinate space.
+
+        Inputs have shape ``[n_categories, d_model]`` with at least two rows.
+        Vertices are equally weighted and centered at their centroid, then
+        transformed with the measurement or intervention map. Centering uses
+        offsets from one vertex to avoid overflowing a common large translation.
+        No token-to-category estimator or paper reproduction is implied.
+
+        Numerical affine rank uses ``rtol * largest_singular_value`` and the
+        structural bound ``n_categories - 1``. The default ``rtol`` is
+        ``max(vertices.shape) * finfo(compute_dtype).eps``. Angles are undefined
+        for rows with norm at or below ``rtol * largest_row_norm``. Duplicate,
+        coincident and dependent vertices are reported, not removed.
+
+        Regularity uses off-diagonal pair-distance spread relative to its mean.
+        Its default tolerance is eight times the default rank tolerance, with
+        an explicit override on ``is_regular_simplex``. This is a numerical
+        closeness policy, not a theoretical guarantee for arbitrary concepts.
+        Gram matrices must be representable at compute precision; overflow or
+        a zero Gram diagonal for a nonzero direction raises. Rescale vertices
+        or use a higher compute dtype when their geometry is unrepresentable.
+
+        Results are detached snapshots, with O(n_categories**2) report storage.
+        Cosines/angles are NaN only where the explicit validity mask is false.
+
+        Args:
+            vertices: Finite raw measurement or intervention concept vertices.
+            space: Explicitly "measurement" or "intervention".
+            labels: Optional unique non-empty labels in vertex order.
+            rtol: Optional relative affine-rank and direction-norm threshold.
+
+        Returns:
+            Centered vectors, rank, metric Gram/angle/distance reports and
+            separate simplex/regular-simplex diagnostics.
+
+        Raises:
+            ValueError: For invalid shape/space/labels/tolerance or computations
+                unrepresentable on the fit device at compute precision.
+
+        Examples:
+            >>> geometry = RepresentationGeometry(torch.tensor([[-1.0, 1.0]]))
+            >>> report = geometry.categorical_geometry(
+            ...     torch.tensor([[-1.0], [1.0]]), space="measurement"
+            ... )
+            >>> report.is_simplex(), report.is_regular_simplex()
+            (True, True)
+            >>> report.distances.tolist()
+            [[0.0, 2.0], [2.0, 0.0]]
+        """
+        if not isinstance(vertices, torch.Tensor) or vertices.ndim != 2:
+            raise ValueError("vertices must be a two-dimensional tensor")
+        if space not in ("measurement", "intervention"):
+            raise ValueError("space must be measurement or intervention")
+        work = self._validate_vector(vertices).detach().clone()
+        n_vertices = work.shape[0]
+        if n_vertices < 2:
+            raise ValueError("categorical geometry requires at least two vertices")
+        default_rtol = max(work.shape) * torch.finfo(work.dtype).eps
+        rank_rtol = default_rtol if rtol is None else _validate_scalar(rtol, "rtol", positive=False)
+        frozen_labels: Optional[Tuple[str, ...]] = None
+        if labels is not None:
+            if (
+                isinstance(labels, (str, bytes))
+                or not isinstance(labels, Sequence)
+                or len(labels) != n_vertices
+                or any(not isinstance(label, str) or not label for label in labels)
+            ):
+                raise ValueError("labels must contain one non-empty string per vertex")
+            if len(set(labels)) != n_vertices:
+                raise ValueError("category labels must be unique")
+            frozen_labels = tuple(labels)
+
+        offsets = self._require_finite(work - work[0])
+        mean_offset = self._require_finite(offsets.mean(dim=0))
+        centroid = self._require_finite(work[0] + mean_offset)
+        centered = self._require_finite(offsets - mean_offset)
+        whitened = (
+            self.whiten_measurement(centered)
+            if space == "measurement"
+            else self.whiten_intervention(centered)
+        )
+        if bool(((centered.abs().amax(dim=-1) > 0) & (whitened.abs().amax(dim=-1) == 0)).any()):
+            raise ValueError("categorical transform underflow; rescale vertices or use float64")
+        scale = whitened.abs().amax()
+        scaled = whitened / scale if bool(scale > 0) else whitened.clone()
+        scaled_spectrum = self._require_finite(torch.linalg.svdvals(scaled))
+        singular_values = self._require_finite(scaled_spectrum * scale)
+        affine_rank = min(
+            int((scaled_spectrum > rank_rtol * scaled_spectrum[0]).sum().item()), n_vertices - 1
+        )
+        rank_threshold = rank_rtol * float(singular_values[0].item())
+        norms = self._require_finite(torch.linalg.vector_norm(scaled, dim=-1))
+        gram = self._require_finite(whitened @ whitened.T)
+        if bool(((gram.diagonal() == 0) & (norms > 0)).any()):
+            raise ValueError("categorical Gram diagonal underflow; rescale vertices or use float64")
+        distances_scaled = self._require_finite(
+            torch.cdist(scaled, scaled, compute_mode="donot_use_mm_for_euclid_dist")
+        )
+        distances = self._require_finite(distances_scaled * scale)
+        valid_rows = norms > rank_rtol * norms.max()
+        denominator = torch.where(valid_rows, norms, torch.ones_like(norms))
+        unit_rows = (scaled / denominator[:, None]).masked_fill(~valid_rows[:, None], 0.0)
+        cosines = self._clamp_cosines(unit_rows @ unit_rows.T)
+        cosines.diagonal().fill_(1.0)
+        angle_valid_mask = valid_rows[:, None] & valid_rows[None, :]
+        cosines = cosines.masked_fill(~angle_valid_mask, float("nan"))
+        angles = torch.acos(cosines)
+        indices = torch.triu_indices(n_vertices, n_vertices, offset=1, device=work.device)
+        pair_distances = distances_scaled[indices[0], indices[1]]
+        mean_distance = float(pair_distances.mean().item())
+        relative_spread = None
+        if mean_distance > 0:
+            relative_spread = (
+                float((pair_distances.max() - pair_distances.min()).item()) / mean_distance
+            )
+        return CategoricalGeometry(
+            space=space,
+            labels=frozen_labels,
+            raw_vertices=work,
+            centroid=centroid,
+            centered_raw_vertices=centered,
+            whitened_vertices=whitened,
+            singular_values=singular_values,
+            affine_rank=affine_rank,
+            rank_rtol=rank_rtol,
+            rank_threshold=rank_threshold,
+            gram=gram,
+            distances=distances,
+            cosines=cosines,
+            angles=angles,
+            angle_valid_mask=angle_valid_mask,
+            relative_distance_spread=relative_spread,
+            regularity_rtol=8 * default_rtol,
+            geometry_diagnostics=self.diagnostics,
+        )
+
     def _validate_pair(self, a: torch.Tensor, b: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         a = self._validate_vector(a)
         b = self._validate_vector(b)
@@ -596,7 +807,10 @@ class RepresentationGeometry:
         a, b = self._validate_pair(a, b)
         a_unit = self._unit_direction(a, factor)
         b_unit = self._unit_direction(b, factor)
-        result = self._require_finite((a_unit * b_unit).sum(dim=-1))
+        return self._clamp_cosines((a_unit * b_unit).sum(dim=-1))
+
+    def _clamp_cosines(self, result: torch.Tensor) -> torch.Tensor:
+        result = self._require_finite(result)
         tolerance = 4 * self.diagnostics.input_shape[0] * torch.finfo(result.dtype).eps
         if bool((result.abs() > 1 + tolerance).any()):
             raise ValueError("cosine exceeds its valid range at compute precision")

@@ -1,4 +1,4 @@
-"""Analytic tests for dual-space geometry and counterfactual concept directions."""
+"""Analytic tests for dual-space concept and categorical geometry."""
 
 import math
 from dataclasses import FrozenInstanceError
@@ -8,6 +8,7 @@ import torch
 
 from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.tools.analysis.representation_geometry import (
+    CategoricalGeometry,
     ConceptDirection,
     RepresentationGeometry,
     _fit_unembedding_geometry,
@@ -890,3 +891,378 @@ def test_population_dispersion_overflow_is_rejected_not_reported_as_infinity():
     geometry = RepresentationGeometry(readout, token_ids=[0, 1])
     with pytest.raises(ValueError, match="finite"):
         geometry.concept_direction([(0, 2), (0, 3), (1, 2)])
+
+
+def isotropic_geometry(dimension=2, dtype=torch.float64):
+    readout = math.sqrt(dimension) * torch.cat(
+        [torch.eye(dimension, dtype=dtype), -torch.eye(dimension, dtype=dtype)], dim=1
+    )
+    return RepresentationGeometry(readout)
+
+
+def regular_triangle(dtype=torch.float64):
+    return torch.tensor(
+        [[1.0, 0.0], [-0.5, math.sqrt(3) / 2], [-0.5, -math.sqrt(3) / 2]], dtype=dtype
+    )
+
+
+@pytest.mark.parametrize("space", ["measurement", "intervention"])
+def test_constructed_regular_simplex_matches_independent_geometry(geometry_contract, space):
+    geometry, _, whitening, unwhitening = geometry_contract
+    expected = regular_triangle()
+    raw_map = unwhitening if space == "measurement" else whitening
+    vertices = expected @ raw_map.T
+    result = geometry.categorical_geometry(vertices, space=space, labels=["a", "b", "c"])
+    assert isinstance(result, CategoricalGeometry)
+    assert result.space == space
+    assert result.labels == ("a", "b", "c")
+    assert result.n_vertices == 3
+    assert result.affine_rank == 2
+    assert result.is_simplex()
+    assert result.is_regular_simplex()
+    assert result.relative_distance_spread < 1e-14
+    torch.testing.assert_close(result.whitened_vertices, expected)
+    torch.testing.assert_close(result.gram, expected @ expected.T)
+    distances = math.sqrt(3) * (
+        torch.ones(3, 3, dtype=torch.float64) - torch.eye(3, dtype=torch.float64)
+    )
+    torch.testing.assert_close(result.distances, distances)
+    torch.testing.assert_close(result.cosines, expected @ expected.T)
+    angles = (2 * math.pi / 3) * (
+        torch.ones(3, 3, dtype=torch.float64) - torch.eye(3, dtype=torch.float64)
+    )
+    torch.testing.assert_close(result.angles, angles)
+    torch.testing.assert_close(
+        result.singular_values, torch.full((2,), math.sqrt(1.5), dtype=torch.float64)
+    )
+    assert result.angle_valid_mask.all()
+    assert result.geometry_diagnostics == geometry.diagnostics
+
+
+@pytest.mark.parametrize("space", ["measurement", "intervention"])
+def test_category_gram_and_distances_match_independent_metric_references(geometry_contract, space):
+    geometry, covariance, _, _ = geometry_contract
+    vertices = torch.tensor([[0.0, 0.0], [2.0, 0.0], [0.0, 1.0]], dtype=torch.float64)
+    result = geometry.categorical_geometry(vertices, space=space)
+    centered = vertices - vertices.mean(dim=0)
+    metric = torch.linalg.inv(covariance) if space == "measurement" else covariance
+    expected_gram = centered @ metric @ centered.T
+    delta = vertices[:, None, :] - vertices[None, :, :]
+    expected_distances = torch.einsum("...i,ij,...j->...", delta, metric, delta).sqrt()
+    torch.testing.assert_close(result.centroid, vertices.mean(dim=0))
+    torch.testing.assert_close(result.centered_raw_vertices, centered)
+    torch.testing.assert_close(result.gram, expected_gram)
+    torch.testing.assert_close(result.distances, expected_distances)
+    norms = expected_gram.diagonal().sqrt()
+    torch.testing.assert_close(result.cosines, expected_gram / (norms[:, None] * norms[None, :]))
+    assert result.is_simplex()
+
+
+def test_non_regular_simplex_is_not_confused_with_regular_simplex():
+    vertices = torch.tensor([[0.0, 0.0], [2.0, 0.0], [0.0, 1.0]], dtype=torch.float64)
+    result = isotropic_geometry().categorical_geometry(vertices, space="measurement")
+    assert result.affine_rank == 2
+    assert result.is_simplex()
+    assert not result.is_regular_simplex()
+    expected_spread = (math.sqrt(5) - 1) / ((1 + 2 + math.sqrt(5)) / 3)
+    assert result.relative_distance_spread == pytest.approx(expected_spread)
+
+
+def test_collinear_categories_report_undefined_centroid_angles_with_a_mask():
+    vertices = torch.tensor([[-1.0, 0.0], [0.0, 0.0], [1.0, 0.0]], dtype=torch.float64)
+    result = isotropic_geometry().categorical_geometry(vertices, space="measurement")
+    assert result.affine_rank == 1
+    assert not result.is_simplex()
+    assert not result.is_regular_simplex()
+    expected_mask = torch.tensor([[True, False, True], [False, False, False], [True, False, True]])
+    torch.testing.assert_close(result.angle_valid_mask, expected_mask)
+    assert torch.isnan(result.cosines[~expected_mask]).all()
+    assert torch.isnan(result.angles[~expected_mask]).all()
+    assert result.angles[0, 2].item() == pytest.approx(math.pi)
+    torch.testing.assert_close(
+        result.distances,
+        torch.tensor([[0.0, 1.0, 2.0], [1.0, 0.0, 1.0], [2.0, 1.0, 0.0]], dtype=torch.float64),
+    )
+
+
+def test_duplicate_vertices_are_diagnosed_without_being_silently_dropped():
+    vertices = torch.tensor([[1.0, 0.0], [1.0, 0.0], [-1.0, 0.0]], dtype=torch.float64)
+    result = isotropic_geometry().categorical_geometry(vertices, space="measurement")
+    assert result.n_vertices == 3
+    assert result.affine_rank == 1
+    assert not result.is_simplex()
+    assert not result.is_regular_simplex()
+    assert result.distances[0, 1].item() == 0.0
+    assert result.cosines[0, 1].item() == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_all_coincident_vertices_have_zero_rank_and_no_defined_angles(dtype):
+    geometry = isotropic_geometry(dtype=dtype)
+    vertices = torch.full((3, 2), 1e38, dtype=dtype)
+    result = geometry.categorical_geometry(vertices, space="measurement")
+    assert result.affine_rank == 0
+    assert not result.is_simplex()
+    assert not result.is_regular_simplex()
+    assert result.relative_distance_spread is None
+    assert not result.angle_valid_mask.any()
+    assert torch.isnan(result.angles).all()
+    assert torch.isnan(result.cosines).all()
+    torch.testing.assert_close(result.gram, torch.zeros(3, 3, dtype=dtype))
+    torch.testing.assert_close(result.distances, torch.zeros(3, 3, dtype=dtype))
+    torch.testing.assert_close(result.centroid, vertices[0])
+
+
+def test_invalid_angle_rows_are_masked_before_cosine_range_validation():
+    vertices = torch.tensor(
+        [[1.0, 1.0, 1.0], [-1.0, -1.0, -0.9], [0.1, 0.1, 0.1], [-0.1, -0.1, -0.2]],
+        dtype=torch.float64,
+    )
+    result = isotropic_geometry(3).categorical_geometry(vertices, space="measurement", rtol=0.99)
+    assert result.angle_valid_mask[0, 0]
+    assert not result.angle_valid_mask[1].any()
+    assert torch.isnan(result.angles[1]).all()
+
+
+def test_too_many_vertices_for_the_ambient_space_cannot_form_a_simplex():
+    vertices = torch.tensor([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]], dtype=torch.float64)
+    result = isotropic_geometry().categorical_geometry(vertices, space="measurement")
+    assert result.affine_rank == 2
+    assert result.n_vertices == 4
+    assert not result.is_simplex()
+    assert not result.is_regular_simplex()
+
+
+def test_two_distinct_vertices_form_a_regular_line_segment():
+    result = isotropic_geometry(1).categorical_geometry(
+        torch.tensor([[0.0], [3.0]], dtype=torch.float64), space="intervention"
+    )
+    assert result.affine_rank == 1
+    assert result.is_simplex()
+    assert result.is_regular_simplex(rtol=0.0)
+    assert result.relative_distance_spread == 0.0
+
+
+def test_near_zero_categories_use_declared_rank_and_angle_thresholds():
+    vertices = torch.tensor([[-1.0, 0.0], [1.0, 0.0], [0.0, 1e-12]], dtype=torch.float64)
+    geometry = isotropic_geometry()
+    strict = geometry.categorical_geometry(vertices, space="measurement", rtol=1e-14)
+    loose = geometry.categorical_geometry(vertices, space="measurement", rtol=1e-6)
+    assert strict.affine_rank == 2
+    assert strict.is_simplex()
+    assert strict.angle_valid_mask.all()
+    assert loose.affine_rank == 1
+    assert not loose.is_simplex()
+    assert not loose.angle_valid_mask[2].any()
+    assert torch.isnan(loose.angles[2]).all()
+    assert loose.rank_rtol == 1e-6
+    assert loose.rank_threshold == pytest.approx(float(loose.singular_values[0]) * 1e-6)
+
+
+@pytest.mark.parametrize("scale", [1e-6, -3.0, 1e6])
+def test_category_rank_angles_and_relative_regularity_are_scale_invariant(scale):
+    vertices = regular_triangle()
+    geometry = isotropic_geometry()
+    original = geometry.categorical_geometry(vertices, space="measurement")
+    scaled = geometry.categorical_geometry(vertices * scale, space="measurement")
+    assert scaled.affine_rank == original.affine_rank
+    assert scaled.is_regular_simplex()
+    torch.testing.assert_close(scaled.gram, original.gram * scale**2)
+    torch.testing.assert_close(scaled.distances, original.distances * abs(scale))
+    torch.testing.assert_close(scaled.cosines, original.cosines)
+    torch.testing.assert_close(scaled.angles, original.angles)
+    torch.testing.assert_close(scaled.singular_values, original.singular_values * abs(scale))
+
+
+def test_category_diagnostics_are_translation_invariant():
+    vertices = regular_triangle()
+    geometry = isotropic_geometry()
+    original = geometry.categorical_geometry(vertices, space="measurement")
+    translated = geometry.categorical_geometry(
+        vertices + torch.tensor([13.0, -7.0]), space="measurement"
+    )
+    torch.testing.assert_close(translated.centered_raw_vertices, original.centered_raw_vertices)
+    torch.testing.assert_close(translated.gram, original.gram)
+    torch.testing.assert_close(translated.distances, original.distances)
+    torch.testing.assert_close(translated.angles, original.angles)
+    assert translated.is_regular_simplex()
+
+
+@pytest.mark.parametrize("space", ["measurement", "intervention"])
+def test_exact_categorical_reports_respect_consistent_dual_basis_changes(space):
+    readout, _ = known_readout()
+    change = torch.tensor([[2.0, 1.0], [-0.3, 1.4]], dtype=torch.float64)
+    vertices = regular_triangle()
+    transformed_vertices = vertices @ (
+        change.T if space == "measurement" else torch.linalg.inv(change)
+    )
+    original = RepresentationGeometry(readout).categorical_geometry(vertices, space=space)
+    transformed = RepresentationGeometry(change @ readout).categorical_geometry(
+        transformed_vertices, space=space
+    )
+    torch.testing.assert_close(transformed.gram, original.gram)
+    torch.testing.assert_close(transformed.distances, original.distances)
+    torch.testing.assert_close(transformed.cosines, original.cosines)
+    torch.testing.assert_close(transformed.angles, original.angles)
+    assert transformed.affine_rank == original.affine_rank
+
+
+def test_vertex_order_and_labels_are_preserved_with_permuted_reports():
+    vertices = regular_triangle()
+    order = [2, 0, 1]
+    geometry = isotropic_geometry()
+    original = geometry.categorical_geometry(vertices, space="measurement", labels=["a", "b", "c"])
+    reordered = geometry.categorical_geometry(
+        vertices[order], space="measurement", labels=["c", "a", "b"]
+    )
+    assert reordered.labels == ("c", "a", "b")
+    torch.testing.assert_close(reordered.gram, original.gram[order][:, order])
+    torch.testing.assert_close(reordered.distances, original.distances[order][:, order])
+    assert reordered.affine_rank == original.affine_rank
+
+
+def test_regularity_tolerance_is_relative_explicit_and_separate_from_rank():
+    vertices = regular_triangle() * torch.tensor([1.02, 1.0])
+    result = isotropic_geometry().categorical_geometry(vertices, space="measurement")
+    assert result.is_simplex()
+    assert not result.is_regular_simplex(rtol=1e-3)
+    assert result.is_regular_simplex(rtol=0.05)
+
+
+@pytest.mark.parametrize("rtol", [True, -1.0, 1.0, float("nan"), float("inf")])
+def test_invalid_category_tolerances_are_rejected_even_for_degenerate_data(rtol):
+    geometry = isotropic_geometry()
+    vertices = torch.zeros(3, 2, dtype=torch.float64)
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        geometry.categorical_geometry(vertices, space="measurement", rtol=rtol)
+    result = geometry.categorical_geometry(vertices, space="measurement")
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        result.is_regular_simplex(rtol=rtol)
+
+
+@pytest.mark.parametrize(
+    "vertices",
+    [torch.ones(2), torch.ones(2, 2, 2), torch.empty(0, 2), torch.ones(1, 2), torch.ones(3, 1)],
+)
+def test_invalid_category_shapes_and_insufficient_vertices_are_rejected(vertices):
+    with pytest.raises(
+        ValueError, match="two-dimensional|non-empty|at least two|trailing dimension"
+    ):
+        isotropic_geometry().categorical_geometry(vertices, space="measurement")
+
+
+@pytest.mark.parametrize(
+    "vertices",
+    [
+        [[1.0, 2.0], [2.0, 3.0]],
+        torch.ones(3, 2, dtype=torch.int64),
+        torch.ones(3, 2, dtype=torch.complex64),
+        torch.tensor([[float("nan"), 1.0], [2.0, 3.0]]),
+        torch.tensor([[float("inf"), 1.0], [2.0, 3.0]]),
+    ],
+)
+def test_invalid_category_types_and_non_finite_data_are_rejected(vertices):
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        isotropic_geometry().categorical_geometry(vertices, space="measurement")
+
+
+@pytest.mark.parametrize("space", ["raw", "whitened", None])
+def test_undeclared_or_incompatible_category_spaces_are_rejected(space):
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        isotropic_geometry().categorical_geometry(regular_triangle(), space=space)
+
+
+def test_category_space_must_be_supplied_explicitly():
+    with pytest.raises(TypeError):
+        isotropic_geometry().categorical_geometry(regular_triangle())
+
+
+@pytest.mark.parametrize(
+    "labels", [[], ["a", "b"], ["a", "a", "c"], ["a", "", "c"], ["a", 1, "c"], "abc"]
+)
+def test_invalid_category_labels_are_rejected(labels):
+    with pytest.raises((ValueError,) + TYPECHECK_ERRORS):
+        isotropic_geometry().categorical_geometry(
+            regular_triangle(), space="measurement", labels=labels
+        )
+
+
+def test_category_sparse_layout_and_device_mismatch_are_rejected():
+    geometry = isotropic_geometry()
+    with pytest.raises(ValueError, match="strided"):
+        geometry.categorical_geometry(regular_triangle().to_sparse(), space="measurement")
+    with pytest.raises(ValueError, match="same device"):
+        geometry.categorical_geometry(torch.empty(3, 2, device="meta"), space="measurement")
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_category_noncontiguous_inputs_use_fit_precision_and_device(dtype):
+    geometry = isotropic_geometry(dtype=dtype)
+    vertices = regular_triangle(dtype).T.contiguous().T
+    assert not vertices.is_contiguous()
+    result = geometry.categorical_geometry(vertices, space="measurement")
+    for name in [
+        "raw_vertices",
+        "centroid",
+        "centered_raw_vertices",
+        "whitened_vertices",
+        "singular_values",
+        "gram",
+        "distances",
+        "cosines",
+        "angles",
+    ]:
+        value = getattr(result, name)
+        assert value.dtype == geometry.diagnostics.compute_dtype
+        assert value.device == geometry.diagnostics.device
+    assert result.angle_valid_mask.dtype == torch.bool
+    assert result.rank_rtol == pytest.approx(
+        3 * torch.finfo(geometry.diagnostics.compute_dtype).eps
+    )
+
+
+def test_category_report_metadata_and_tensors_are_independent_snapshots():
+    geometry = isotropic_geometry()
+    vertices = regular_triangle().requires_grad_()
+    before = vertices.detach().clone()
+    labels = ["a", "b", "c"]
+    result = geometry.categorical_geometry(vertices, space="measurement", labels=labels)
+    labels[0] = "changed"
+    with torch.no_grad():
+        vertices.fill_(0.0)
+    torch.testing.assert_close(result.raw_vertices, before)
+    assert result.labels == ("a", "b", "c")
+    with pytest.raises(FrozenInstanceError):
+        result.space = "intervention"
+    for name in [
+        "raw_vertices",
+        "centroid",
+        "centered_raw_vertices",
+        "whitened_vertices",
+        "singular_values",
+        "gram",
+        "distances",
+        "cosines",
+        "angles",
+    ]:
+        value = getattr(result, name)
+        assert not value.requires_grad
+        assert value.grad_fn is None
+        value.fill_(0.0)
+    fresh = geometry.categorical_geometry(before, space="measurement")
+    assert fresh.is_regular_simplex()
+    torch.testing.assert_close(fresh.raw_vertices, before)
+
+
+def test_transform_underflow_is_not_misreported_as_coincident_categories():
+    geometry = RepresentationGeometry(torch.tensor([[-1e150, 1e150]], dtype=torch.float64))
+    vertices = torch.tensor([[-1e-200], [1e-200]], dtype=torch.float64)
+    with pytest.raises(ValueError, match="transform underflow"):
+        geometry.categorical_geometry(vertices, space="measurement")
+
+
+@pytest.mark.parametrize("scale, message", [(1e200, "finite"), (1e-200, "underflow")])
+def test_unrepresentable_category_gram_values_are_rejected(scale, message):
+    vertices = torch.tensor([[-scale, 0.0], [scale, 0.0]], dtype=torch.float64)
+    with pytest.raises(ValueError, match=message):
+        isotropic_geometry().categorical_geometry(vertices, space="measurement")
