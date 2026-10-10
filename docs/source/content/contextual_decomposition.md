@@ -1,4 +1,4 @@
-# Contextual decomposition: affine and GELU allocation
+# Contextual decomposition: normalization and attention allocation
 
 The contextual-decomposition operators are private, model-free inference kernels.
 They do not expose a model analysis API. Each activation is represented by two
@@ -67,8 +67,73 @@ operation order. Exact GELU instead uses the Gaussian CDF. Unsupported activatio
 names are rejected.
 
 The fixed private policy identity is `magnitude-affine-ordered-gelu-v1`. It names
-only these implemented allocations; it does not claim complete paper/reference
-compatibility or permit undocumented mixtures of rules.
+the implemented allocations, with the normalization and attention extensions
+specified below. It does not claim complete paper/reference compatibility or
+permit undocumented mixtures of rules. The identity is private; its unchanged
+affine and GELU behavior is retained.
+
+## Full-input LayerNorm
+
+Center beta and gamma over the feature axis separately, but divide both by
+$\sqrt{\mathrm{Var}(\beta+\gamma)+\epsilon}$. Gain is applied to both centered
+constituents. Normalization bias is allocated by the **uncentered input**
+magnitudes, with all bias assigned to gamma at jointly zero coordinates. This
+is an explicitly declared normalization allocation, not the affine rule applied
+to independently normalized inputs.
+
+A supplied native denominator must be finite, positive, shape `[..., 1]`, and
+consistent with the combined input and epsilon within a relative tolerance of
+32 machine epsilons. Larger discrepancies are rejected rather than silently
+using stale cache statistics. Native model parity is separate from this kernel
+contract; no native forward substitution is performed by these operators.
+
+## Nonlinear masked multi-head attention
+
+Q/K/V are affine-decomposed and reshaped to `[batch, heads, sequence, head_width]`.
+For each head, allocate:
+
+$$
+S_\beta = Q_\beta K_\beta^T / \sqrt{d_h}, \qquad
+S_\gamma = (Q_\beta+Q_\gamma)(K_\beta+K_\gamma)^T / \sqrt{d_h} - S_\beta.
+$$
+
+On the same structural mask $M$:
+
+$$
+P_\beta = \mathrm{softmax}_M(S_\beta), \qquad
+P_\gamma = \mathrm{softmax}_M(S_\beta+S_\gamma)-P_\beta.
+$$
+
+Value mixing assigns:
+
+$$
+Z_\beta = P_\beta V_\beta, \qquad
+Z_\gamma = (P_\beta+P_\gamma)(V_\beta+V_\gamma)-Z_\beta.
+$$
+
+This follows the printed nonlinear attention allocation in CD-T, rather than
+replacing both probability constituents with a fixed native pattern. Cross terms
+are allocated to gamma. Probability beta need not be zero for zero beta scores;
+gamma probabilities can be negative and need not sum to one.
+
+Causal and key-padding masks use boolean allowed-key entries. Masking is applied
+inside softmax; infinity is never subtracted between constituents. Fully masked
+query rows are rejected. A key-padding mask does not suppress padded queries;
+callers must exclude unwanted query outputs explicitly. Left-padding plus causal
+attention can produce fully masked rows and is therefore not implicitly supported.
+
+Project each head's beta/gamma context through its own output-weight slice.
+These head writes have shape `[batch, sequence, heads, width]` and **exclude**
+the output projection's shared bias. Sum writes first, then allocate that bias by
+the summed projected magnitudes. Applying the bias once per head would duplicate
+it. Returned diagnostics retain projected Q/K/V, scores, probabilities, context,
+head writes, and the final attention output.
+
+Only ordinary full-sequence multi-head attention with the specified square-root
+scaling is covered. GQA, cached decoding, dropout, positional score biases, and
+alternate score scaling are not implied. Residual addition requires identical
+shapes/devices/dtypes and does not broadcast; slicing returns independent tensor
+storage and rejects empty/scalar constituent outputs.
 
 ## What the tests establish
 
