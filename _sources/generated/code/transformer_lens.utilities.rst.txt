@@ -30,8 +30,10 @@ Submodules
    transformer_lens.utilities.matrix
    transformer_lens.utilities.multi_gpu
    transformer_lens.utilities.parameter_swap
+   transformer_lens.utilities.position_ids
    transformer_lens.utilities.quantization
    transformer_lens.utilities.slice
+   transformer_lens.utilities.statistics
    transformer_lens.utilities.tensors
    transformer_lens.utilities.tl_checkpoint_conversion
    transformer_lens.utilities.tokenize_utils

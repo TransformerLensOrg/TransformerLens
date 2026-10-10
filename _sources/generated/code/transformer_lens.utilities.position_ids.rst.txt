@@ -1,0 +1,7 @@
+transformer\_lens.utilities.position\_ids module
+================================================
+
+.. automodule:: transformer_lens.utilities.position_ids
+   :members:
+   :undoc-members:
+   :show-inheritance:

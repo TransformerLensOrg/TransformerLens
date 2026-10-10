@@ -49,10 +49,17 @@ print(result.angles)
 ```
 
 `orthonormal_subspace` uses a reduced SVD. Its default relative rank tolerance is
-`max(max(matrix.shape) * compute_eps, storage_eps)`. This accounts for both SVD roundoff
-and input quantization without letting large low-precision matrices produce tolerances above
-one. Supplying `rank` selects the leading singular subspace, but the requested rank cannot
-exceed the measured numerical rank.
+`max(matrix.shape) * compute_eps`, where `compute_eps` is the epsilon of the dtype the
+SVD actually runs in. Because float16 and bfloat16 inputs are promoted to float32
+before the SVD, the default is the same for every storage dtype that promotes to
+float32. Deriving the tolerance from the compute dtype rather than the storage dtype
+keeps the rank decision tied to the precision of the singular values actually
+computed; a storage-dtype floor would instead discard that precision and collapse the
+measured rank of a full-rank half-precision head. Concretely, a half-precision matrix
+with 4096 rows gets `rtol = 4096 * float32_eps ≈ 4.9e-4` once promoted — tight enough
+that a column duplicated from another is still measured as structurally rank-deficient
+while an independent full-rank matrix keeps its full rank. Supplying `rank` selects the leading
+singular subspace, but the requested rank cannot exceed the measured numerical rank.
 
 Float64 inputs remain float64. Float32 inputs remain float32. Float16 and bfloat16 inputs are
 promoted to float32 before SVD, and outputs remain float32. Inputs must be finite,
@@ -116,8 +123,9 @@ truncation to both roles and must not exceed any participating head's measured r
 `source_ranks` and `target_ranks` report each head's measured numerical rank before
 truncation. Scalar `source_rank` and `target_rank` are the retained basis widths used for
 their respective roles.
-When `rtol` is omitted, the wrapper uses the least-precise participating storage dtype to
-derive one shared tolerance for both roles.
+When `rtol` is omitted, the wrapper derives one shared tolerance for both roles from
+the promoted compute dtype, so half-precision checkpoints do not need a manual `rtol`
+override. An explicit `rtol` still takes precedence.
 
 ## Memory and scaling
 

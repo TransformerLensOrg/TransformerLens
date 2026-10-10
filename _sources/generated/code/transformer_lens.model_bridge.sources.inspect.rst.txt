@@ -12,6 +12,7 @@ Submodules
    transformer_lens.model_bridge.sources.inspect.eval
    transformer_lens.model_bridge.sources.inspect.hooks
    transformer_lens.model_bridge.sources.inspect.intervention
+   transformer_lens.model_bridge.sources.inspect.masks
    transformer_lens.model_bridge.sources.inspect.profiles
    transformer_lens.model_bridge.sources.inspect.source
    transformer_lens.model_bridge.sources.inspect.transformers_provider

@@ -94,6 +94,7 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.mixtral
    transformer_lens.model_bridge.supported_architectures.modernbert_decoder
    transformer_lens.model_bridge.supported_architectures.mpt
+   transformer_lens.model_bridge.supported_architectures.muse_glimmer
    transformer_lens.model_bridge.supported_architectures.music_flamingo
    transformer_lens.model_bridge.supported_architectures.nanochat
    transformer_lens.model_bridge.supported_architectures.nanogpt
