@@ -25,6 +25,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFa
 
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRules,
+    _RelevanceRuleCoverageEntry,
     half_rule,
     identity_rule,
     ln_rule_grad,
@@ -131,12 +132,17 @@ def bridge(request: pytest.FixtureRequest) -> TransformerBridge:
     return FIXTURE_BUILDERS[request.param]()
 
 
-def _expected_canonical_mounts() -> set[str]:
-    ln_mounts = {f"blocks.{i}.ln1" for i in range(N_LAYERS)} | {
-        f"blocks.{i}.ln2" for i in range(N_LAYERS)
-    }
-    mlp_mounts = {f"blocks.{i}.mlp" for i in range(N_LAYERS)}
-    return ln_mounts | mlp_mounts
+def _expected_canonical_mounts() -> tuple[_RelevanceRuleCoverageEntry, ...]:
+    return tuple(
+        _RelevanceRuleCoverageEntry(kind=kind, path=f"blocks.{layer}.{mount}")
+        for kind, mounts in (
+            ("normalization", ("ln1", "ln2")),
+            ("activation", ("mlp",)),
+            ("multiplicative_gate", ("mlp",)),
+        )
+        for layer in range(N_LAYERS)
+        for mount in mounts
+    )
 
 
 class TestForwardIdentity:
@@ -161,7 +167,7 @@ class TestCoverage:
             bridge, RelevanceRules(normalization=True, activation=True, multiplicative_gate=True)
         ) as coverage:
             pass
-        assert set(coverage.installed) == _expected_canonical_mounts()
+        assert coverage.installed == _expected_canonical_mounts()
         assert coverage.skipped == ()
 
 
@@ -290,12 +296,7 @@ class TestRelevanceLensFitOnRealBridge:
 
         lens = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
 
-        expected = {
-            f"blocks.{layer}.{mount}"
-            for layer in range(N_LAYERS)
-            for mount in ("ln1", "ln2", "mlp")
-        }
-        assert set(lens.rule_coverage.installed) == expected
+        assert lens.rule_coverage.installed == _expected_canonical_mounts()
         assert lens.rule_coverage.skipped == ()
 
     def test_fit_leaves_the_forward_pass_bit_identical(self) -> None:

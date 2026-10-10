@@ -24,7 +24,11 @@ import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
 from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
-from transformer_lens.model_bridge._relevance_rules import RelevanceRuleUnsupportedError
+from transformer_lens.model_bridge._relevance_rules import (
+    RelevanceRuleCoverage,
+    RelevanceRuleUnsupportedError,
+    _RelevanceRuleCoverageEntry,
+)
 from transformer_lens.model_bridge.bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_config_from_hf
 from transformer_lens.model_bridge.supported_architectures.gpt2 import (
@@ -37,6 +41,7 @@ from transformer_lens.tools.analysis import JacobianLens
 from transformer_lens.tools.analysis.relevance_lens import (
     RELEVANCE_RULE_VERSION,
     RelevanceLens,
+    _installed_rule_names,
 )
 
 N_LAYERS = 2
@@ -152,17 +157,18 @@ def fitted() -> _FittedPair:
     )
 
 
-def _expected_rule_mounts() -> set[str]:
-    """Canonical mounts the three requested rules install on a pre-norm stack.
-
-    Qwen2 is pre-norm only, so the LN-rule reaches the residual-stream norms at
-    ``ln1``/``ln2`` and the Identity- and Half-rules reach the gated MLP at
-    ``mlp``. Attention-internal q/k norms are deliberately absent: the LN-rule
-    targets residual-stream norms only.
-    """
-    norms = {f"blocks.{layer}.{mount}" for layer in range(N_LAYERS) for mount in ("ln1", "ln2")}
-    mlps = {f"blocks.{layer}.mlp" for layer in range(N_LAYERS)}
-    return norms | mlps
+def _expected_rule_mounts() -> tuple[_RelevanceRuleCoverageEntry, ...]:
+    """Canonical rule-kind/path pairs, excluding attention-internal norms."""
+    return tuple(
+        _RelevanceRuleCoverageEntry(kind=kind, path=f"blocks.{layer}.{mount}")
+        for kind, mounts in (
+            ("normalization", ("ln1", "ln2")),
+            ("activation", ("mlp",)),
+            ("multiplicative_gate", ("mlp",)),
+        )
+        for layer in range(N_LAYERS)
+        for mount in mounts
+    )
 
 
 class TestFitShapeAndFiniteness:
@@ -183,7 +189,7 @@ class TestRuleCoverageSelection:
         self, fitted: _FittedPair
     ) -> None:
         coverage = fitted.relevance.rule_coverage
-        assert set(coverage.installed) == _expected_rule_mounts()
+        assert coverage.installed == _expected_rule_mounts()
         assert coverage.skipped == ()
 
     def test_rule_scope_does_not_leak_past_the_fit(self, fitted: _FittedPair) -> None:
@@ -347,6 +353,32 @@ class TestRegistryResolutionIsDisabled:
         assert loaded.estimator == "relevance_lens"
 
 
+@pytest.mark.parametrize(
+    "kinds",
+    [
+        (),
+        ("normalization",),
+        ("activation",),
+        ("multiplicative_gate",),
+        ("normalization", "activation", "multiplicative_gate"),
+        ("multiplicative_gate", "activation", "normalization"),
+    ],
+)
+def test_installed_rule_names_use_kinds_not_shared_mount_names(kinds: tuple[str, ...]) -> None:
+    coverage = RelevanceRuleCoverage(
+        installed=tuple(
+            _RelevanceRuleCoverageEntry(
+                kind, "blocks.0.ln1" if kind == "normalization" else "blocks.0.mlp"
+            )
+            for kind in kinds
+        ),
+        skipped=(),
+    )
+    assert _installed_rule_names(coverage) == [
+        kind for kind in ("normalization", "activation", "multiplicative_gate") if kind in kinds
+    ]
+
+
 class TestRuleProvenanceSurvivesPersistence:
     def test_fitted_rule_configuration_round_trips(
         self, fitted: _FittedPair, tmp_path: Any
@@ -360,6 +392,53 @@ class TestRuleProvenanceSurvivesPersistence:
         assert loaded.relevance_rule_version == fitted.relevance.relevance_rule_version
         assert loaded.enabled_rules == fitted.relevance.enabled_rules
         assert loaded.rule_coverage == fitted.relevance.rule_coverage
+        assert loaded.metadata["rule_coverage"] == {
+            "schema_version": 1,
+            "installed": [
+                {"kind": entry.kind, "path": entry.path} for entry in _expected_rule_mounts()
+            ],
+            "skipped": [],
+        }
+
+    @pytest.mark.parametrize("kind", ["activation", "multiplicative_gate"])
+    def test_partial_coverage_at_one_mount_round_trips(self, tmp_path: Any, kind: str) -> None:
+        other_kind = "multiplicative_gate" if kind == "activation" else "activation"
+        coverage = RelevanceRuleCoverage(
+            installed=(_RelevanceRuleCoverageEntry(kind, "blocks.0.mlp"),),
+            skipped=(_RelevanceRuleCoverageEntry(other_kind, "blocks.0.mlp"),),
+        )
+        lens = RelevanceLens(
+            {0: torch.eye(D_MODEL)},
+            n_prompts=1,
+            d_model=D_MODEL,
+            rule_coverage=coverage,
+            enabled_rules=_installed_rule_names(coverage),
+        )
+        path = tmp_path / "partial.pt"
+        lens.save(str(path))
+        loaded = RelevanceLens.load(str(path))
+        assert loaded.rule_coverage == coverage
+        assert loaded.enabled_rules == [kind]
+        assert loaded.metadata["rule_coverage"] == {
+            "schema_version": 1,
+            "installed": [{"kind": kind, "path": "blocks.0.mlp"}],
+            "skipped": [{"kind": other_kind, "path": "blocks.0.mlp"}],
+        }
+
+    def test_explicit_coverage_cannot_hide_contradictory_metadata(self) -> None:
+        metadata = {"rule_coverage": {"schema_version": 1, "installed": [], "skipped": []}}
+        coverage = RelevanceRuleCoverage(
+            installed=(_RelevanceRuleCoverageEntry("activation", "blocks.0.mlp"),),
+            skipped=(),
+        )
+        with pytest.raises(ValueError, match="coverage provenance"):
+            RelevanceLens(
+                {0: torch.eye(D_MODEL)},
+                n_prompts=1,
+                d_model=D_MODEL,
+                metadata=metadata,
+                rule_coverage=coverage,
+            )
 
     def test_non_default_rule_configuration_round_trips(self, tmp_path: Any) -> None:
         path = tmp_path / "lens.pt"
@@ -484,6 +563,67 @@ class TestLoadRejectsForeignEstimator:
         with pytest.raises(ValueError, match="checkpoint"):
             RelevanceLens.load(str(path))
         assert path.read_bytes() == before
+
+
+def _coverage_record(
+    *, installed: Any = (), skipped: Any = (), schema_version: Any = 1
+) -> dict[str, Any]:
+    return {"schema_version": schema_version, "installed": installed, "skipped": skipped}
+
+
+class TestCoverageMetadataValidation:
+    @pytest.mark.parametrize(
+        "recorded",
+        [
+            None,
+            [],
+            {},
+            {"installed": ["blocks.0.mlp"], "skipped": []},
+            _coverage_record(schema_version=2),
+            _coverage_record(schema_version=True),
+            _coverage_record(schema_version="1"),
+            {"schema_version": 1, "installed": []},
+            _coverage_record(installed="blocks.0.mlp"),
+            _coverage_record(skipped=None),
+            _coverage_record(installed=["blocks.0.mlp"]),
+            _coverage_record(skipped=["blocks.0.mlp"]),
+            _coverage_record(installed=[{"path": "blocks.0.mlp"}]),
+            _coverage_record(installed=[{"kind": "unknown", "path": "blocks.0.mlp"}]),
+            _coverage_record(installed=[{"kind": None, "path": "blocks.0.mlp"}]),
+            _coverage_record(installed=[{"kind": "activation", "path": 1}]),
+            _coverage_record(installed=[{"kind": "activation", "path": ""}]),
+            _coverage_record(skipped=[{"kind": "activation", "path": " "}]),
+            _coverage_record(installed=[{"kind": "activation", "path": "blocks.0.mlp"}] * 2),
+            _coverage_record(
+                installed=[{"kind": "activation", "path": "blocks.0.mlp"}],
+                skipped=[{"kind": "activation", "path": "blocks.0.mlp"}],
+            ),
+        ],
+    )
+    def test_invalid_coverage_is_refused_on_load(self, tmp_path: Any, recorded: Any) -> None:
+        path = tmp_path / "coverage.pt"
+        _shard(n_prompts=1).save(str(path))
+        payload = torch.load(path, weights_only=True)
+        payload["metadata"]["rule_coverage"] = recorded
+        torch.save(payload, path)
+        before = path.read_bytes()
+        with pytest.raises(ValueError, match="rule_coverage"):
+            RelevanceLens.load(str(path))
+        assert path.read_bytes() == before
+
+    def test_optional_coverage_can_be_absent(self, tmp_path: Any) -> None:
+        path = tmp_path / "without-coverage.pt"
+        _shard(n_prompts=1).save(str(path))
+        loaded = RelevanceLens.load(str(path))
+        assert loaded.rule_coverage is None
+        assert "rule_coverage" not in loaded.metadata
+
+    def test_legacy_coverage_error_requires_refitting(self) -> None:
+        with pytest.raises(ValueError, match="path-only coverage is ambiguous.*refit"):
+            _shard(
+                n_prompts=1,
+                metadata={"rule_coverage": {"installed": ["blocks.0.mlp"], "skipped": []}},
+            )
 
 
 class TestConstructorProvenance:
@@ -729,7 +869,8 @@ class TestPartialCoverageIsRecordedHonestly:
             )
 
         message = str(record[0].message)
-        assert "blocks.0.mlp" in message
+        assert "activation: blocks.0.mlp" in message
+        assert "multiplicative_gate: blocks.0.mlp" in message
         assert "normalization" in message
 
     def test_full_coverage_does_not_warn_about_skipped_mounts(self) -> None:

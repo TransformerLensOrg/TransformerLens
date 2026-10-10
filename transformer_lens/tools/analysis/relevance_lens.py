@@ -46,9 +46,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import torch
 
 from transformer_lens.model_bridge._relevance_rules import (
-    _CANONICAL_MOUNTS,
     RelevanceRuleCoverage,
     RelevanceRules,
+    _RelevanceRuleCoverageEntry,
     use_relevance_rules,
 )
 from transformer_lens.tools.analysis._model_state import require_eval_mode
@@ -71,6 +71,9 @@ ESTIMATOR_RELEVANCE = "relevance_lens"
 # so artifacts fitted under different semantics cannot be merged silently.
 RELEVANCE_RULE_VERSION = 1
 
+# Coverage schema changes do not change backward-rule semantics.
+_RULE_COVERAGE_SCHEMA_VERSION = 1
+
 # The rule set the relevance estimator installs: residual-stream norms, gated
 # MLP activations, and multiplicative MLP gates. Attention is deliberately
 # excluded (the AH-rule is out of scope).
@@ -90,32 +93,74 @@ _REQUESTED_RULE_NAMES: Tuple[str, ...] = tuple(
 
 
 def _installed_rule_names(coverage: RelevanceRuleCoverage) -> List[str]:
-    """Rule kinds that actually shaped the matrices, from the installed mounts.
-
-    A model can honor some rules and not others, so the requested set is not the
-    installed set. Deriving the names from the mounts that were installed keeps
-    the recorded provenance from claiming a rule contributed when every mount
-    for it was skipped.
-    """
-    installed_mounts = {name.rsplit(".", 1)[-1] for name in coverage.installed}
-    return [
-        kind
-        for kind in _REQUESTED_RULE_NAMES
-        if installed_mounts & set(_CANONICAL_MOUNTS.get(kind, ()))
-    ]
+    """Rule kinds that actually shaped the matrices, in request order."""
+    installed_kinds = {entry.kind for entry in coverage.installed}
+    return [kind for kind in _REQUESTED_RULE_NAMES if kind in installed_kinds]
 
 
-def _coverage_from_metadata(
-    metadata: Dict[str, Any],
-) -> Optional[RelevanceRuleCoverage]:
-    """Rebuild rule coverage from persisted metadata, if it is present."""
-    recorded = metadata.get("rule_coverage")
+def _decode_rule_coverage(recorded: Any) -> RelevanceRuleCoverage:
+    """Validate kind-aware coverage without inferring kinds from legacy paths."""
     if not isinstance(recorded, dict):
-        return None
-    return RelevanceRuleCoverage(
-        installed=tuple(str(name) for name in recorded.get("installed", ())),
-        skipped=tuple(str(name) for name in recorded.get("skipped", ())),
+        raise ValueError("rule_coverage must be a kind-aware coverage dictionary")
+    if "schema_version" not in recorded:
+        raise ValueError(
+            "rule_coverage requires schema_version and kind/path entries; "
+            "legacy path-only coverage is ambiguous, so refit the relevance lens"
+        )
+    schema_version = recorded["schema_version"]
+    if type(schema_version) is not int or schema_version != _RULE_COVERAGE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported rule_coverage schema_version: {schema_version!r}")
+    if set(recorded) != {"schema_version", "installed", "skipped"}:
+        raise ValueError("rule_coverage requires schema_version, installed, and skipped fields")
+
+    def decode_entries(field: str) -> Tuple[_RelevanceRuleCoverageEntry, ...]:
+        raw_entries = recorded[field]
+        if not isinstance(raw_entries, (list, tuple)):
+            raise ValueError(f"rule_coverage.{field} must be a sequence of kind/path entries")
+        entries = []
+        for raw_entry in raw_entries:
+            if not isinstance(raw_entry, dict) or set(raw_entry) != {"kind", "path"}:
+                raise ValueError(f"rule_coverage.{field} entries must contain kind and path")
+            kind = raw_entry["kind"]
+            path = raw_entry["path"]
+            if not isinstance(kind, str) or kind not in _REQUESTED_RULE_NAMES:
+                raise ValueError(f"rule_coverage.{field} records unknown rule kind {kind!r}")
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError(f"rule_coverage.{field} paths must be non-empty strings")
+            entries.append(_RelevanceRuleCoverageEntry(kind=kind, path=path))
+        if len(set(entries)) != len(entries):
+            raise ValueError(f"rule_coverage.{field} contains duplicate kind/path entries")
+        return tuple(entries)
+
+    coverage = RelevanceRuleCoverage(
+        installed=decode_entries("installed"), skipped=decode_entries("skipped")
     )
+    if set(coverage.installed) & set(coverage.skipped):
+        raise ValueError("rule_coverage cannot install and skip the same kind/path entry")
+    return coverage
+
+
+def _encode_rule_coverage(coverage: RelevanceRuleCoverage) -> Dict[str, Any]:
+    """Encode coverage as safe, versioned artifact metadata."""
+    recorded = {
+        "schema_version": _RULE_COVERAGE_SCHEMA_VERSION,
+        "installed": [{"kind": entry.kind, "path": entry.path} for entry in coverage.installed],
+        "skipped": [{"kind": entry.kind, "path": entry.path} for entry in coverage.skipped],
+    }
+    _decode_rule_coverage(recorded)
+    return recorded
+
+
+def _coverage_from_metadata(metadata: Dict[str, Any]) -> Optional[RelevanceRuleCoverage]:
+    """Restore optional coverage, rejecting malformed or ambiguous records."""
+    if "rule_coverage" not in metadata:
+        return None
+    return _decode_rule_coverage(metadata["rule_coverage"])
+
+
+def _coverage_labels(entries: Sequence[_RelevanceRuleCoverageEntry]) -> List[str]:
+    """Distinguish rule kinds sharing a component path in diagnostics."""
+    return [f"{entry.kind}: {entry.path}" for entry in entries]
 
 
 class RelevanceLens(JacobianLens):
@@ -129,7 +174,7 @@ class RelevanceLens(JacobianLens):
     unlabelled artifacts and Jacobian running-sum checkpoints are refused.
 
     Attributes:
-        rule_coverage: Which canonical mounts the rule scope installed versus
+        rule_coverage: Rule-kind and canonical-path pairs installed versus
             skipped during the fit.
         relevance_rule_version: Version of the rule semantics used.
         enabled_rules: Names of the ``RelevanceRules`` fields that were enabled.
@@ -169,21 +214,18 @@ class RelevanceLens(JacobianLens):
             enabled_rules = recorded_rules
         self.relevance_rule_version = int(relevance_rule_version)
         self.enabled_rules: List[str] = list(enabled_rules)
+        recorded_coverage = _coverage_from_metadata(self.metadata)
         if rule_coverage is None:
-            rule_coverage = _coverage_from_metadata(self.metadata)
+            rule_coverage = recorded_coverage
+        elif recorded_coverage is not None and recorded_coverage != rule_coverage:
+            raise ValueError("rule_coverage does not match recorded coverage provenance")
         self.rule_coverage = rule_coverage
         # Normalize recorded configuration so attributes and saved provenance agree.
         self.metadata["estimator"] = ESTIMATOR_RELEVANCE
         self.metadata["relevance_rule_version"] = self.relevance_rule_version
         self.metadata["enabled_rules"] = list(self.enabled_rules)
         if self.rule_coverage is not None:
-            self.metadata.setdefault(
-                "rule_coverage",
-                {
-                    "installed": list(self.rule_coverage.installed),
-                    "skipped": list(self.rule_coverage.skipped),
-                },
-            )
+            self.metadata["rule_coverage"] = _encode_rule_coverage(self.rule_coverage)
 
     @classmethod
     def _validate_artifact_metadata(cls, path: str, metadata: Any) -> None:
@@ -317,7 +359,7 @@ class RelevanceLens(JacobianLens):
                     "no relevance rule could be installed on this model, so the "
                     "fit would return ordinary Jacobian matrices labelled as a "
                     "relevance lens. Skipped mounts: "
-                    f"{list(coverage.skipped)}. The relevance estimator needs "
+                    f"{_coverage_labels(coverage.skipped)}. The relevance estimator needs "
                     "residual-stream norms on the native-autograd path and gated "
                     "MLPs with GELU or SiLU activations; use JacobianLens for "
                     "models without them."
@@ -327,7 +369,7 @@ class RelevanceLens(JacobianLens):
                     "some relevance-rule mounts were skipped, so the transport "
                     "matrices mix rule-modified and ordinary gradients. Installed "
                     f"rules: {_installed_rule_names(coverage)}. Skipped mounts: "
-                    f"{list(coverage.skipped)}.",
+                    f"{_coverage_labels(coverage.skipped)}.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -363,10 +405,7 @@ class RelevanceLens(JacobianLens):
             "transformer_lens_fit": True,
             "relevance_rule_version": RELEVANCE_RULE_VERSION,
             "enabled_rules": _installed_rule_names(coverage),
-            "rule_coverage": {
-                "installed": list(coverage.installed),
-                "skipped": list(coverage.skipped),
-            },
+            "rule_coverage": _encode_rule_coverage(coverage),
         }
         reserved = sorted(set(fit_metadata).intersection(metadata or {}))
         if reserved:

@@ -1,6 +1,6 @@
 """LN-rule integration on NormalizationBridge's native-autograd path.
 
-Covers the commit-5 contract: the rule-wrapped native forward is bit-identical to
+The rule-wrapped native forward is bit-identical to
 today's native forward by construction (the wrapping calls ``original_component(x)``
 itself rather than reproducing its numerics), the backward follows the LN-rule
 (denominator treated as constant) while weight/bias keep their ordinary gradient,
@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRuleConflictError,
     RelevanceRules,
+    _RelevanceRuleCoverageEntry,
     use_relevance_rules,
 )
 from transformer_lens.model_bridge.generalized_components.normalization import (
@@ -263,16 +264,14 @@ class TestRuleInactiveRegression:
         assert torch.equal(actual, expected)
 
     def test_non_native_path_rule_request_is_skipped_and_forward_unaffected(self):
-        """A python-norm-path bridge (no native autograd, no folding) never reaches
-        the branch the LN-rule wraps, so it must be reported skipped rather than
-        silently leaving ordinary gradients in place under a claimed rule."""
+        """A Python-path norm cannot claim that the LN-rule shaped its gradients."""
         bridge = _make_bridge(native=False)
         block = _Block(bridge)
         x = torch.randn(2, 5, 16)
         baseline = bridge(x)
         with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
             assert coverage.installed == ()
-            assert coverage.skipped == ("ln1",)
+            assert coverage.skipped == (_RelevanceRuleCoverageEntry("normalization", "ln1"),)
             active = bridge(x)
         assert torch.equal(active, baseline)
 
@@ -285,7 +284,7 @@ class TestRuleInactiveRegression:
         x = torch.randn(2, 5, 16)
         baseline = bridge(x)
         with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
-            assert coverage.installed == ("ln1",)
+            assert coverage.installed == (_RelevanceRuleCoverageEntry("normalization", "ln1"),)
             active = bridge(x)
         assert torch.equal(active, baseline)
 
@@ -302,7 +301,7 @@ class TestRuleInactiveRegression:
         baseline = bridge(x)
         with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
             assert coverage.installed == ()
-            assert coverage.skipped == ("ln1",)
+            assert coverage.skipped == (_RelevanceRuleCoverageEntry("normalization", "ln1"),)
             active = bridge(x)
         assert torch.equal(active, baseline)
 
@@ -328,7 +327,7 @@ class TestMissingWeightTreatedAsIdentity:
         x = torch.randn(2, 5, 16)
         baseline = bridge.original_component(x)
         with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
-            assert coverage.installed == ("ln1",)
+            assert coverage.installed == (_RelevanceRuleCoverageEntry("normalization", "ln1"),)
             active = bridge(x)
         assert torch.equal(active, baseline)
 

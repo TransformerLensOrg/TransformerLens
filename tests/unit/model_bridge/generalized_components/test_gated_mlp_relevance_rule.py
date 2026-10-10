@@ -22,6 +22,7 @@ from transformers.pytorch_utils import Conv1D
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRules,
     RelevanceRuleUnsupportedError,
+    _RelevanceRuleCoverageEntry,
     half_rule,
     identity_rule,
     use_relevance_rules,
@@ -232,7 +233,9 @@ class TestGatedMLPRelevanceRuleCapability:
         x = torch.randn(2, 4)
         baseline = block(x)
         with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)) as coverage:
-            assert coverage.installed == ("mlp",)
+            assert coverage.installed == (
+                _RelevanceRuleCoverageEntry("multiplicative_gate", "mlp"),
+            )
             assert torch.equal(block(x), baseline)
 
 
