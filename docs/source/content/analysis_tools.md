@@ -109,6 +109,101 @@ Both node and edge granularity use plain attribution with `ig_steps=1`.
 
 API: {func}`~transformer_lens.tools.analysis.attribution_patching.attribution_patch`.
 
+#### Faithfulness: check that a circuit actually explains the behavior
+
+A ranked edge list is a hypothesis, not a result. `faithfulness()` tests one aligned
+clean/corrupt pair at a time by ablating every edge *outside* the candidate circuit
+and reporting how much of the clean-to-corrupt metric gap the circuit recovers:
+
+```python
+from transformer_lens.tools.analysis import (
+    EdgeAttributionConfig,
+    attribution_patch,
+    faithfulness,
+)
+
+ranked = attribution_patch(
+    model, clean, corrupt, metric_fn, config=EdgeAttributionConfig(granularity="edge")
+)
+report = faithfulness(model, clean, corrupt, metric_fn, ranked.top_edges(k=50))
+print(report.recovered, report.circuit_size, report.total_edges)
+```
+
+`recovered` is a fraction, not a percentage: `1.0` means the circuit reproduces
+the clean metric, `0.0` means it reproduces the corrupt metric. Values outside
+`[0, 1]` are possible and meaningful, since a circuit can overshoot.
+
+The residual stream is a running sum, so each reader's input is rebuilt exactly
+by subtracting the excluded writers' live contributions and adding their
+replacements. This is a forward-only measurement: it takes no gradient, so it is
+independent of the linearization that ranked the edges in the first place.
+
+`FaithfulnessConfig(ablation=...)` selects the replacement. The default,
+`"corrupt"`, substitutes the corrupt run's own contribution, which is the
+evaluation the external EAP-IG reference reports. `"mean"` requires an explicit,
+held-out calibration batch through the keyword-only `mean_tokens` argument:
+
+```python
+from transformer_lens.tools.analysis import FaithfulnessConfig
+
+calibration_tokens = model.to_tokens([
+    "The capital of Spain is",
+    "The capital of Italy is",
+]).to(clean.device)
+mean_report = faithfulness(
+    model, clean, corrupt, metric_fn, ranked.top_edges(k=50),
+    config=FaithfulnessConfig(ablation="mean"),
+    mean_tokens=calibration_tokens,
+)
+```
+
+Calibration must be a nonempty `[n_calibration, seq]` batch of `torch.int32` or
+`torch.int64` token ids, with the evaluated sequence length and the same device
+as the clean/corrupt token tensors. Align the sequence positions before averaging;
+the helper averages examples only, preserving each position and attention head.
+It captures calibration activations with the same model, hook configuration, and
+weight-processing mode used for evaluation.
+
+Mean-mode calls without calibration now raise `ValueError`; there is no fallback
+to the evaluated pair. Exact calibration rows equal to either endpoint are also
+rejected. This check cannot establish dataset independence: callers must choose
+held-out examples and avoid semantically equivalent leakage. Passing `mean_tokens`
+in corrupt mode is rejected rather than silently ignored.
+
+Recovery is still `(circuit_metric - corrupt_metric) / (clean_metric - corrupt_metric)`.
+An empty mean-ablated circuit can have nonzero recovery because its calibration
+baseline need not reproduce the corrupt run. A full circuit still reproduces the
+clean metric. Compare against a random edge set of the same size, using the same
+calibration batch, before claiming a circuit is meaningful.
+
+`report.edge_class_recovered` is circuit-relative leave-one-out recovery. For a
+candidate `C` and graph class `E_t`, each entry evaluates `C` with its retained
+edges in `E_t` removed, not the full graph with the class removed. Edges originally
+outside `C` stay ablated. Every diagnostic uses the aggregate's replacements,
+clean/corrupt endpoints, and normalization:
+
+```text
+edge_class_recovered[t] = recovered(C minus E_t)
+```
+
+An absent class leaves the candidate unchanged, so its entry equals
+`report.recovered`. For an empty circuit every class entry equals aggregate
+empty-circuit recovery, including with mean replacements. Duplicate circuit
+entries count once; `report.circuit_size` is the number of unique retained edges.
+`report.edge_class_counts` remains the full-graph count per class, not the number
+retained in `C`.
+
+The difference `report.recovered - report.edge_class_recovered[t]` measures
+conditional dependence on that class's retained edges. Interactions and inhibitory
+edges can increase recovery after removal; contributions are not additive or
+necessarily positive. This is not a measurement of attribution ranking error.
+Q/K inputs feed attention scores, but that alone does not establish which class
+is ranked most accurately. LayerNorm, MLPs, and downstream attention can introduce
+nonlinearity for the other classes too. The breakout costs one extra forward per
+class present in the candidate; absent classes reuse aggregate recovery.
+
+API: {func}`~transformer_lens.tools.analysis.attribution_patching.faithfulness`.
+
 ### Direct Path Patching: state the path and its approximation
 
 `get_act_patch_direct_path` fixes a source head and sweeps later destination heads,

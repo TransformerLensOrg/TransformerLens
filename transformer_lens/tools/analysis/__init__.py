@@ -8,15 +8,16 @@ Tools:
     - attribution_patching: Attribution patching (gradient-linearized activation
       patching) over residual-stream nodes and edges: typed computational graph,
       a names-filtered manual-backward gradient cache, and signed node and edge
-      scores (EAP). Integrated gradients (EAP-IG) and ablate-outside faithfulness
-      are not implemented yet.
+      scores (EAP), plus forward-only ablate-outside faithfulness with corrupt
+      or held-out mean replacements and circuit-relative class diagnostics.
+      Integrated gradients (EAP-IG) are not implemented.
     - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
       space with explicit raw-gradient sign semantics.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
       layers, or attention heads.
     - direct_path_patching: Direct path patching for head-to-head circuit
       analysis.
-    - jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
+    - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
       anchored coordinate patching (offline and dynamic/hooked).
@@ -43,8 +44,11 @@ Tools:
 from transformer_lens.tools.analysis.attribution_patching import (
     AttributionResult,
     EdgeAttributionConfig,
+    FaithfulnessConfig,
+    FaithfulnessResult,
     Node,
     attribution_patch,
+    faithfulness,
 )
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLens,
@@ -145,6 +149,8 @@ __all__ = [
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
+    "FaithfulnessConfig",
+    "FaithfulnessResult",
     "FunctionSpec",
     "HeadAffinityPair",
     "HeadAffinityResult",
@@ -179,6 +185,7 @@ __all__ = [
     "decompose_head",
     "direct_logit_attribution",
     "estimate_occupancy",
+    "faithfulness",
     "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
