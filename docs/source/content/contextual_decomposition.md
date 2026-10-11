@@ -6,7 +6,10 @@ attention. It supports one head/head-position or residual source, zero or suppli
 references, and downstream internal or logit targets. It does not discover
 circuits, fit references, score datasets, or establish causal faithfulness.
 
-## Runnable model-free-download example
+Start with the [executable notebook](../generated/demos/Contextual_Decomposition_Demo.ipynb)
+for head-position attribution, internal targets, supplied references, and state checks.
+
+## Runnable example without model downloads
 
 This example initializes a small HF GPT-2 locally. No Hub download, tokenizer,
 or external artifact is needed:
@@ -128,11 +131,11 @@ have the same mathematical formula but retain their distinct floating-point
 operation order. Exact GELU instead uses the Gaussian CDF. Unsupported activation
 names are rejected.
 
-The fixed private policy identity is `magnitude-affine-ordered-gelu-v1`. It names
+The supported policy identity is `magnitude-affine-ordered-gelu-v1`. It names
 the implemented allocations, with the normalization and attention extensions
 specified below. It does not claim complete paper/reference compatibility or
-permit undocumented mixtures of rules. The identity is private; its unchanged
-affine and GELU behavior is retained.
+permit undocumented mixtures of rules. It fixes the allocation equations, not a
+claim of unique causal attribution.
 
 ## Full-input LayerNorm
 
@@ -197,7 +200,7 @@ alternate score scaling are not implied. Residual addition requires identical
 shapes/devices/dtypes and does not broadcast; slicing returns independent tensor
 storage and rejects empty/scalar constituent outputs.
 
-## Private GPT-2 residual-suffix execution
+## Execution and reconstruction guarantees
 
 The private executor captures a raw fp32, evaluation-mode local GPT-2 Bridge
 with eager attention. It reads native HookPoints without editing tensors and
@@ -233,9 +236,10 @@ Compatibility/processed weights, sharding, non-fp32 parameters, cross-attention,
 repeated blocks, split-input attention forks, cached decoding, alternate scaling,
 and SDPA are explicitly unsupported. Inputs are token tensors with optional
 aligned boolean key masks and explicit position IDs; fully masked causal query
-rows are rejected. This is a private executor, not a public source-selection API.
+rows are rejected. The internal executor implements the public single-source API;
+its low-level traversal details are not separate supported user entry points.
 
-## Private single-source selection and targets
+## Source selection and target tensor spaces
 
 Single-source execution accepts a head write or a residual activation at block
 input (`pre`), the attention residual merge (`mid`), or block output (`post`).
@@ -291,6 +295,55 @@ model load. Hardware and scheduling affect these timings; they establish no
 speedup claim. Tests emit measured time/error properties for reruns, check
 parameter/hook-state preservation, and exercise observer-failure cleanup.
 Independent tensor oracles remain the constituent-share correctness gate.
+
+## Supported workflow and troubleshooting
+
+- **Model:** raw fp32 GPT-2 TransformerBridge with the local transformers driver,
+  eager attention, eval mode throughout, and full-sequence inputs on one device.
+- **Sources:** one residual at `pre`, `mid`, or `post`, or one attention head's
+  residual-space write at `mid`. Position tuples are absolute and batch-shared.
+- **Targets:** strictly downstream native internal hooks, logits, or signed logit
+  differences. Position/token tuples contain exactly one index per example.
+- **References:** zero or a supplied owned tensor; no reference fitting or data
+  alignment is inferred. Record the reference's source distribution separately.
+- **Results:** detached native target and constituents, numerical error budgets,
+  checked hook coverage, baseline description, and explicitly retained tensors.
+
+Common errors are actionable:
+
+1. An unsupported-model/mode error means the execution is not covered. Use a
+   fresh raw GPT-2 bridge; do not switch on compatibility mode to make it pass.
+2. A padding error means selected source positions contain padding or a causal
+   query has no allowed keys. Select valid source positions explicitly.
+3. An internal-target error means the hook is unsupported, precedes the anchor,
+   or has a different tensor space. Q/K/V/context targets support head selection;
+   probability targets currently require the whole tensor.
+4. A reconstruction error reports the hook, raw error, native scale budget, and
+   constituent scale. Investigate the earliest failing intermediate. Do not
+   silently redistribute cancelling shares or add a gamma correction.
+5. An editing-hook/relevance-rule conflict requires removing the conflicting
+   intervention context. Read-only observers are supported; native computation
+   must remain unchanged during capture.
+
+For a causal hypothesis, independently intervene on the selected source using
+the [hook system](hook_system.md), include no-op and matched controls, and measure
+held-out behavior. Beta is an allocation under specified equations, not the
+measured effect of removing/restoring the source.
+
+## Reference interpretation and licensing
+
+The affine nonzero-magnitude allocation follows CD-T equations 4-5. The zero
+ratio completion is explicit here. The ordered GELU rule preserves the remaining
+context, and nonlinear attention uses the printed QK/softmax/value allocation.
+The inspected authors' BERT example instead freezes full-input patterns; its
+stabilizers can redistribute cancelling constituents or lose epsilon-sized bias
+mass. Those behaviors are not silently combined with this policy.
+
+This implementation is independently derived from equations and scalar tests.
+No authors' CD code is vendored or required at runtime. Repository-wide licensing
+of the inspected external kernels was not established; a nested dataset license
+must not be assumed to cover them. Reference parity claims require an applicable
+license and an explicitly pinned, inspected comparison.
 
 ## What the tests establish
 

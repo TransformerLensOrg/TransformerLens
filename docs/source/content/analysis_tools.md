@@ -55,6 +55,28 @@ Evaluation mode and gradient recording are separate choices: `model.eval()` disa
 training behavior such as dropout; it does not disable autograd. Do not wrap a
 gradient-based analysis in `torch.no_grad()` or `torch.inference_mode()`.
 
+## Contextual decomposition: allocate a source to a downstream target
+
+For raw fp32 eager GPT-2, `ContextualDecomposition.decompose` assigns a selected
+head/head-position or residual source to beta and propagates beta/gamma through
+nonlinear attention, LayerNorm, GELU, and unembedding. Supply explicit source
+references and downstream internal/logit targets; no differentiable task metric
+is required. This is not direct-edge attribution or a circuit-discovery sweep.
+
+Numerical reconstruction checks validate beta plus gamma against native tensors.
+They do not establish that beta is a unique explanation or that the source is
+causally necessary. Keep the allocation policy, source tensor space, reference,
+positions, and target IDs explicit. Use actual interventions for causal claims.
+
+A decomposition performs native capture plus a suffix traversal for one source.
+It retains native/intermediate caches during execution; result retention options
+reduce returned tensors, not peak memory. Dataset-wide independent-source scoring,
+joint sources, generation caches, compatibility weights, and non-GPT-2 families
+are not included.
+
+See the [guide](contextual_decomposition.md) and
+[download-free notebook](../generated/demos/Contextual_Decomposition_Demo.ipynb).
+
 ## Read the output with the right interpretation
 
 ### DLA: contributions, not ablation effects

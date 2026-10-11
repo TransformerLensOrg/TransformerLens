@@ -68,6 +68,7 @@ content/backward_lens
 content/debugging_numerical_divergence
 content/sparse_probing
 content/contextual_decomposition
+generated/demos/Contextual_Decomposition_Demo
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 content/special_cases

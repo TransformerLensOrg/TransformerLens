@@ -38,6 +38,7 @@ def test_copy_demos_creates_generated_dir_when_absent(tmp_path, monkeypatch):
 
     copied = sorted(p.name for p in (generated / "demos").iterdir())
     assert copied == [
+        "Contextual_Decomposition_Demo.ipynb",
         "Exploratory_Analysis_Demo.ipynb",
         "Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb",
         "Jacobian_Lens_Decomposition_Demo.ipynb",
