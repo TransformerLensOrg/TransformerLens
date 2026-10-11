@@ -45,8 +45,14 @@ def embedding_overwrite(
         raise ValueError("injection position must be within the original prompt")
     if type(cached) is not bool:
         raise ValueError("cached must be bool")
-    unit = source / source.abs().max()
-    injected = unit / unit.norm() * scale
+    reference_source = source.float()
+    reference_norm = reference_source.norm()
+    if torch.isfinite(reference_norm).item() and reference_norm.item() >= 1e-12:
+        # Match the released client's fp32 norm and division order on its input domain.
+        injected = reference_source / (reference_norm / scale)
+    else:
+        unit = source / source.abs().max()
+        injected = unit / unit.norm() * scale
     first_call = True
 
     def overwrite(value: torch.Tensor, hook: Any) -> torch.Tensor:
@@ -129,6 +135,21 @@ def generate_explanation(
     return parse_explanation(raw, ids, activation.provenance)
 
 
+def validate_activation_provenance(
+    activation: NLAActivation, pair: NLAPairConfig, artifact_name: str
+) -> None:
+    """Reject known source incompatibilities even for caller-attested inputs."""
+    provenance = activation.provenance
+    if provenance.artifact_name != artifact_name:
+        raise ValueError("activation provenance belongs to a different artifact")
+    if provenance.target is not None and provenance.target != pair.target:
+        raise ValueError("activation target identity/revision does not match the artifact")
+    if provenance.layer is not None and provenance.layer != pair.layer:
+        raise ValueError("activation layer does not match the artifact")
+    if provenance.basis != "raw_hf":
+        raise ValueError("activation must use the raw residual basis")
+
+
 class VerbalizerRuntime:
     """Lazy fp32 actor loading with operation-local hooks and non-reentrant ownership."""
 
@@ -200,8 +221,7 @@ class VerbalizerRuntime:
                     activation,
                     ActivationProvenance(self.artifact_name, SourceProvenance.UNKNOWN_VECTOR),
                 )
-            if activation.provenance.artifact_name != self.artifact_name:
-                raise ValueError("activation provenance belongs to a different artifact")
+            validate_activation_provenance(activation, self.pair, self.artifact_name)
             directory, metadata, tokenizer = self._metadata()
             detached_vector(activation.vector)
             if activation.vector.numel() != metadata.d_model:

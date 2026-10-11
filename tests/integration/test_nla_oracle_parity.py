@@ -79,9 +79,9 @@ def actor_reference(
     model: Any, tokens: torch.Tensor, vector: torch.Tensor, position: int, scale: float
 ) -> torch.Tensor:
     """Construct post-embedding inputs explicitly, independently of the TL hook."""
-    source = vector.detach().cpu().double()
-    source = source / source.abs().max()
-    source = source / torch.linalg.vector_norm(source) * scale
+    source = vector.detach().cpu().float()
+    norm = source.norm().clamp_min(1e-12)
+    source = source / (norm / scale).to(source.dtype)
     with torch.inference_mode():
         embeddings = model.get_input_embeddings()(tokens).clone()
         embeddings[0, position] = source.to(embeddings)

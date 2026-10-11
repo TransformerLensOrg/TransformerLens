@@ -25,7 +25,7 @@ def local_artifacts(tmp_path):
     backend = Tokenizer(BPE(unk_token="UNK"))
     backend.pre_tokenizer = ByteLevel(add_prefix_space=False)
     backend.train_from_iterator(
-        ["left MARK right Summary x END"] * 10,
+        ["left MARK right Summary x END <explanation>objects in space</explanation>"] * 10,
         BpeTrainer(
             vocab_size=300, special_tokens=["UNK", "MARK"], initial_alphabet=ByteLevel.alphabet()
         ),
@@ -160,6 +160,60 @@ def test_facade_local_round_trip_and_reload(local_artifacts):
         with pytest.raises(ValueError, match="wrappers"):
             nla.reconstruct("<explanation>x</explanation>")
     assert nla._closed and nla._av._model is None and nla._ar._head is None
+
+
+def test_generated_explanation_reaches_reconstructor(local_artifacts):
+    pair, _, cache = local_artifacts
+    with NaturalLanguageAutoencoder(
+        pair, "synthetic", cache_dir=str(cache), local_files_only=True
+    ) as nla:
+        target = nla.load_target()
+        target_ref = weakref.ref(target)
+        activation = nla.extract(target, torch.tensor([1, 2, 3]))
+        del target
+        gc.collect()
+        assert target_ref() is None
+        nla.verbalize(activation, max_new_tokens=1, do_sample=False)
+        actor = nla._av._model
+        expected_text = "objects in space"
+        continuation = actor.tokenizer.encode(
+            f"<explanation>{expected_text}</explanation>", add_special_tokens=False
+        )
+        step = 0
+
+        def force_continuation(logits, hook):
+            nonlocal step
+            output = torch.full_like(logits, -1e9)
+            output[:, -1, continuation[step]] = 1e9
+            step += 1
+            return output
+
+        with actor.hooks(fwd_hooks=[("unembed.hook_out", force_continuation)]):
+            explanation = nla.verbalize(
+                activation, max_new_tokens=len(continuation), do_sample=False
+            )
+        assert explanation.text == expected_text
+        assert explanation.token_ids == tuple(continuation)
+        actor_ref = weakref.ref(actor)
+        del actor
+        nla.unload("av")
+        gc.collect()
+        assert actor_ref() is None
+        assert nla._ar._model is None
+        reconstruction = nla.reconstruct(explanation.text)
+        head = nla._ar._head
+        model = nla._ar._model
+        raw_prompt = f"Summary {expected_text} END"
+        ids = model.tokenizer.encode(raw_prompt, add_special_tokens=True)
+        with torch.no_grad():
+            residual = model.original_model.model(
+                torch.tensor([ids]), use_cache=False
+            ).last_hidden_state[0, -1]
+            expected = head(residual)
+        torch.testing.assert_close(reconstruction.vector, expected)
+        del head, model
+        nla.unload("ar")
+        assert nla._ar._model is None and nla._ar._head is None
 
 
 def test_facade_does_not_own_target(local_artifacts):

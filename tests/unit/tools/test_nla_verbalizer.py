@@ -7,6 +7,7 @@ from transformer_lens.tools.analysis._nla_artifacts import ArtifactRef, NLAPairC
 from transformer_lens.tools.analysis._nla_verbalizer import (
     VerbalizerRuntime,
     embedding_overwrite,
+    validate_activation_provenance,
 )
 
 
@@ -74,6 +75,61 @@ def test_runtime_is_lazy_and_rejects_concurrent_operations():
     finally:
         runtime._lock.release()
     runtime.unload()
+
+
+@pytest.mark.parametrize("source", ["pinned_load", "caller_attested"])
+@pytest.mark.parametrize("mismatch", ["target", "revision", "layer"])
+def test_structured_provenance_mismatches_rejected(source, mismatch):
+    from dataclasses import replace
+
+    from transformer_lens.tools.analysis._nla_contracts import (
+        ActivationProvenance,
+        NLAActivation,
+        SourceProvenance,
+    )
+
+    pair = NLAPairConfig(
+        ArtifactRef("example/target", "a" * 40),
+        ArtifactRef("example/av", "b" * 40),
+        ArtifactRef("example/ar", "c" * 40),
+        "qwen2",
+        2,
+        1,
+        3,
+    )
+    provenance = ActivationProvenance(
+        "synthetic", SourceProvenance(source), pair.target, 1, 0, "tokens"
+    )
+    if mismatch == "target":
+        provenance = replace(provenance, target=pair.ar)
+    elif mismatch == "revision":
+        provenance = replace(provenance, target=ArtifactRef(pair.target.repo_id, "d" * 40))
+    else:
+        provenance = replace(provenance, layer=0)
+    activation = NLAActivation(torch.ones(2), provenance)
+    with pytest.raises(ValueError, match="match"):
+        validate_activation_provenance(activation, pair, "synthetic")
+    runtime = VerbalizerRuntime(pair, "synthetic", local_files_only=True)
+    with pytest.raises(ValueError, match="match"):
+        runtime.verbalize(activation)
+    assert runtime._model is None
+
+
+def test_reference_normalization_operation_order():
+    vector = torch.linspace(-1.0, 1.0, 3584)
+    expected = vector / (vector.float().norm().clamp_min(1e-12) / 150).to(vector.dtype)
+    actual = embedding_overwrite(vector, 150.0, 0, 1, cached=True)(torch.zeros(1, 1, 3584), None)[
+        0, 0
+    ]
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("magnitude", [1e-300, 1e300])
+def test_extreme_input_fallback_is_scale_safe(magnitude):
+    vector = torch.tensor([magnitude, magnitude], dtype=torch.float64)
+    result = embedding_overwrite(vector, 5.0, 0, 1, cached=True)(torch.zeros(1, 1, 2), None)[0, 0]
+    assert torch.isfinite(result).all()
+    assert result.norm().item() == pytest.approx(5.0)
 
 
 def test_injection_representability():

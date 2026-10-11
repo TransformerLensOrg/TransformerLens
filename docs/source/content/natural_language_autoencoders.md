@@ -36,7 +36,10 @@ Qwen candidate). The vector replaces one reserved token's post-embedding output
 in the canonical chat template. The tokenizer encoding, placeholder count, and
 neighbor IDs are checked rather than guessed. Cached execution injects on
 prefill only; uncached execution reapplies at the original position on each
-prefix recomputation. One-token prefill is valid.
+prefix recomputation. One-token prefill is valid. On ordinary fp32 inputs,
+injection normalization matches the released client's fp32 norm and division
+order. A scale-safe fallback handles norm underflow/overflow outside that input
+domain; this fallback is not claimed as reference-client equivalence.
 
 AR takes a raw prompt, not a chat template. For the inspected Qwen candidate it
 is `Summary of the following text: <text>{explanation}</text> <summary>`.
@@ -196,9 +199,12 @@ uv build
 uv run pytest tests/integration/test_nla_packaging.py
 ```
 
-The packaging test builds a wheel in a temporary directory, reads its resources,
-and imports its artifact helper from an isolated extracted-wheel package with
-network calls forbidden. This verifies resource delivery, not model compatibility.
+The packaging test builds a wheel with a fresh uv cache, allowing build dependency
+resolution, and reads its resources. A separate isolated subprocess imports the
+actual extracted-wheel package and analysis initializers with network calls
+forbidden. Build dependencies may require network access; the package import
+check does not. These checks verify package/resource delivery, not model
+compatibility.
 
 ## References
 

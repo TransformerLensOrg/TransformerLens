@@ -21,9 +21,12 @@ _REQUIRED = (
 def test_built_wheel_nla_resources(tmp_path):
     repository = Path(__file__).resolve().parents[2]
     output = tmp_path / "dist"
+    build_environment = os.environ.copy()
+    build_environment["UV_CACHE_DIR"] = str(tmp_path / "fresh-uv-cache")
     subprocess.run(
-        ["uv", "build", "--wheel", "--offline", "--out-dir", str(output)],
+        ["uv", "build", "--wheel", "--out-dir", str(output)],
         cwd=repository,
+        env=build_environment,
         check=True,
         capture_output=True,
         text=True,
@@ -39,12 +42,9 @@ def test_built_wheel_nla_resources(tmp_path):
         assert isinstance(registry["models"], dict)
         wheel.extractall(extracted)
     script = r"""
-import importlib.util
-import json
 import pathlib
 import socket
 import sys
-import types
 
 root = pathlib.Path(sys.argv[1])
 
@@ -53,20 +53,11 @@ def forbid_network(*args, **kwargs):
 
 socket.socket.connect = forbid_network
 socket.create_connection = forbid_network
-# Empty package shells isolate resource imports from unrelated package bootstrapping.
-for name, relative in (
-    ("transformer_lens", "transformer_lens"),
-    ("transformer_lens.tools", "transformer_lens/tools"),
-    ("transformer_lens.tools.analysis", "transformer_lens/tools/analysis"),
-    ("transformer_lens.utilities", "transformer_lens/utilities"),
-):
-    module = types.ModuleType(name)
-    module.__path__ = [str(root / relative)]
-    module.__spec__ = importlib.util.spec_from_file_location(
-        name, root / relative / "__init__.py",
-        submodule_search_locations=module.__path__,
-    )
-    sys.modules[name] = module
+sys.path.insert(0, str(root))
+import transformer_lens
+import transformer_lens.tools.analysis
+assert root in pathlib.Path(transformer_lens.__file__).parents
+assert root in pathlib.Path(transformer_lens.tools.analysis.__file__).parents
 from transformer_lens.tools.analysis._nla_artifacts import load_registry
 from transformer_lens.tools.analysis._nla_contracts import NLASamplingConfig
 assert isinstance(load_registry(), dict)
