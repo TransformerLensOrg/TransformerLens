@@ -12,6 +12,9 @@ Tools:
       are not implemented yet.
     - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
       space with explicit raw-gradient sign semantics.
+    - contextual_decomposition: Single-source nonlinear GPT-2 constituent
+      allocation to downstream activations and logits, with native reconstruction
+      diagnostics and explicit source-reference conventions.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
       layers, or attention heads.
     - direct_path_patching: Direct path patching for head-to-head circuit
@@ -55,6 +58,15 @@ from transformer_lens.tools.analysis.backward_lens import (
     ProjectedFactor,
     VocabularyRanking,
     WeightLayout,
+)
+from transformer_lens.tools.analysis.contextual_decomposition import (
+    CDBaseline,
+    CDReconstructionError,
+    CDResult,
+    CDSource,
+    CDTarget,
+    CDTensor,
+    ContextualDecomposition,
 )
 from transformer_lens.tools.analysis.direct_logit_attribution import (
     DirectLogitAttribution,
@@ -141,6 +153,13 @@ __all__ = [
     "BackwardLensMatrixResult",
     "BackwardLensResult",
     "BenchmarkCorpus",
+    "CDBaseline",
+    "CDReconstructionError",
+    "CDResult",
+    "CDSource",
+    "CDTarget",
+    "CDTensor",
+    "ContextualDecomposition",
     "CoordinatePatch",
     "DegenerateDirectionError",
     "DirectLogitAttribution",

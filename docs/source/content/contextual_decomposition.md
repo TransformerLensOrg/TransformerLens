@@ -1,7 +1,69 @@
-# Contextual decomposition: normalization and attention allocation
+# Single-source contextual decomposition on GPT-2
 
-The contextual-decomposition operators are private, model-free inference kernels.
-They do not expose a model analysis API. Each activation is represented by two
+`ContextualDecomposition` provides nonlinear source-to-target constituent
+allocation on a raw fp32, evaluation-mode GPT-2 `TransformerBridge` with eager
+attention. It supports one head/head-position or residual source, zero or supplied
+references, and downstream internal or logit targets. It does not discover
+circuits, fit references, score datasets, or establish causal faithfulness.
+
+## Runnable model-free-download example
+
+This example initializes a small HF GPT-2 locally. No Hub download, tokenizer,
+or external artifact is needed:
+
+```python
+import torch
+from transformers import GPT2Config, GPT2LMHeadModel
+from transformer_lens.model_bridge.sources import build_bridge_from_module
+from transformer_lens.tools.analysis import (
+    CDBaseline, CDSource, CDTarget, ContextualDecomposition,
+)
+
+config = GPT2Config(vocab_size=16, n_positions=8, n_embd=8, n_layer=2, n_head=2)
+config._attn_implementation = "eager"
+with torch.random.fork_rng():
+    torch.manual_seed(5)
+    model = build_bridge_from_module(
+        GPT2LMHeadModel(config).eval(), "GPT2LMHeadModel", hf_config=config,
+        dtype=torch.float32, device="cpu",
+    ).eval()
+
+analysis = ContextualDecomposition(model)
+result = analysis.decompose(
+    torch.tensor([[1, 2, 3], [3, 2, 1]]),
+    source=CDSource.attention_head(0, 1, positions=(0,)),
+    target=CDTarget.logit_difference(
+        positive_token_id=(2, 3), negative_token_id=(1, 2), position=(1, 2),
+    ),
+    baseline=CDBaseline.zero(),
+    retain_intermediates=("blocks.1.ln1.hook_out",),
+)
+torch.testing.assert_close(
+    result.target_beta + result.target_gamma, result.target_total,
+    rtol=2e-5, atol=2e-6,
+)
+print(result.target_beta, result.baseline_description)
+```
+
+Use `CDSource.residual(layer, location="pre" | "mid" | "post")` for residual
+anchors, `CDTarget.internal(hook_name, position=..., head=...)` for supported
+internal tensors, and `CDTarget.logit(token_id=..., position=...)` for one logit.
+The default policy is `magnitude-affine-ordered-gelu-v1`; unknown policies are
+rejected, not silently replaced with fixed-pattern attribution.
+
+`CDBaseline.from_tensor(reference, description=...)` snapshots a finite fp32
+`[batch, sequence, width]` reference. There is no implicit dtype/device conversion.
+Results own detached tensors and read-only metadata mappings. The native target
+is retained independently as `target_total`, not reconstructed to hide drift.
+`diagnostics` reports per-hook numerical errors; `coverage` lists checked native
+locations, not proof that the allocation is causally faithful. By default no
+intermediate tensors are retained in the result; request supported downstream
+hook names explicitly. This controls returned retention, not peak executor memory.
+The executor still captures and validates the complete native suffix.
+
+## Constituent rules
+
+The underlying operators are private inference kernels. Each activation is represented by two
 constituents, $x = \beta + \gamma$. Inputs must be finite, nonempty strided
 float32 or float64 tensors with matching shapes, devices, and dtypes. Operations
 return detached tensors without mutating inputs or creating backward graphs.
@@ -200,8 +262,7 @@ Native reconstruction is checked before installing each source anchor and at
 every downstream intermediate. Highly cancelling constituents can exceed the
 stated fp32 tolerances; such cases raise rather than silently adjusting gamma or
 loosening the threshold. Source-write diagnostics and target constituents own
-independent output storage. These selectors remain private and are not exported
-from the public analysis API.
+independent output storage. The public source/target constructors validate these same selector conventions.
 
 ## What the tests establish
 
