@@ -6,12 +6,23 @@ import weakref
 import pytest
 import torch
 
-from transformer_lens.tools.analysis._nla_artifacts import ArtifactRef, NLAPairConfig
+from transformer_lens.tools.analysis._nla_artifacts import (
+    ArtifactRef,
+    NLAMetadata,
+    NLAPairConfig,
+)
+from transformer_lens.tools.analysis._nla_contracts import (
+    ActivationProvenance,
+    NLAActivation,
+    NLASamplingConfig,
+    SourceProvenance,
+)
 from transformer_lens.tools.analysis._nla_target import (
     extract_activation,
     load_target,
     validate_target_structure,
 )
+from transformer_lens.tools.analysis._nla_verbalizer import generate_explanation
 
 
 @pytest.fixture(scope="module")
@@ -115,6 +126,105 @@ def test_caller_hooks_preserved(target, target_pair):
         extract_activation(target, target_pair, "mechanical-fixture", torch.tensor([1, 2]))
         target(torch.tensor([[1, 2]]))
     assert calls == ["blocks.1.hook_out", "blocks.1.hook_out"]
+
+
+@pytest.fixture
+def actor_metadata():
+    return NLAMetadata(
+        "av",
+        32,
+        1,
+        "marker",
+        2,
+        "{injection_char}",
+        "{explanation}",
+        32**0.5,
+        5.0,
+        (1, 2, 3),
+        1,
+        None,
+    )
+
+
+@pytest.mark.parametrize("cached", [True, False])
+def test_actor_generation_hooks_and_continuation(target, actor_metadata, cached):
+    observations = []
+    activation = NLAActivation(
+        torch.ones(32), ActivationProvenance("mechanical-fixture", SourceProvenance.UNKNOWN_VECTOR)
+    )
+
+    def observe(value, hook):
+        observations.append(value.detach().clone())
+        return value
+
+    with target.hooks(fwd_hooks=[("hook_embed", observe)]):
+        first = generate_explanation(
+            target,
+            actor_metadata,
+            activation,
+            NLASamplingConfig(max_new_tokens=3, do_sample=False, use_past_kv_cache=cached),
+        )
+        second = generate_explanation(
+            target,
+            actor_metadata,
+            activation,
+            NLASamplingConfig(max_new_tokens=3, do_sample=False, use_past_kv_cache=cached),
+        )
+        target(torch.tensor([[1, 2, 3]]))
+    assert first.token_ids == second.token_ids
+    assert 0 < len(first.token_ids) <= 3
+    assert first.raw_text == target.tokenizer.decode(
+        list(first.token_ids), skip_special_tokens=True
+    )
+    assert len(observations) == 7
+    assert [x.shape[1] for x in observations[:3]] == ([3, 1, 1] if cached else [3, 4, 5])
+
+
+def test_actor_exception_cleanup(target, actor_metadata):
+    activation = NLAActivation(
+        torch.ones(32), ActivationProvenance("mechanical-fixture", SourceProvenance.UNKNOWN_VECTOR)
+    )
+    calls = []
+
+    def fail(value, hook):
+        calls.append(1)
+        raise RuntimeError("controlled failure")
+
+    with target.hooks(fwd_hooks=[("blocks.1.hook_out", fail)]):
+        with pytest.raises(RuntimeError, match="controlled failure"):
+            generate_explanation(
+                target, actor_metadata, activation, NLASamplingConfig(max_new_tokens=1)
+            )
+    assert calls == [1]
+    assert not target.hook_dict["embed.hook_out"].fwd_hooks
+    target(torch.tensor([[1, 2, 3]]))
+
+
+def test_embedding_injection_logits_match_direct_hf(target):
+    from transformer_lens.tools.analysis._nla_verbalizer import embedding_overwrite
+
+    tokens = torch.tensor([[1, 2, 3]])
+    vector = torch.arange(1.0, 33.0)
+    replacement = vector.double() / vector.double().norm() * 5
+    with torch.no_grad():
+        embeddings = target.original_model.get_input_embeddings()(tokens).clone()
+        embeddings[0, 1] = replacement.float()
+        expected = target.original_model(inputs_embeds=embeddings).logits
+        with target.hooks(
+            fwd_hooks=[("hook_embed", embedding_overwrite(vector, 5.0, 1, 3, cached=True))]
+        ):
+            actual = target(tokens)
+    torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
+
+
+def test_actor_budget_rejected(target, actor_metadata):
+    activation = NLAActivation(
+        torch.ones(32), ActivationProvenance("mechanical-fixture", SourceProvenance.UNKNOWN_VECTOR)
+    )
+    with pytest.raises(ValueError, match="context"):
+        generate_explanation(
+            target, actor_metadata, activation, NLASamplingConfig(max_new_tokens=target.cfg.n_ctx)
+        )
 
 
 def test_non_bridge_rejected(target_pair):
