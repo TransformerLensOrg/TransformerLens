@@ -227,6 +227,106 @@ def test_actor_budget_rejected(target, actor_metadata):
         )
 
 
+def test_reconstruction_uses_raw_block_not_final_norm(target_pair):
+    from dataclasses import replace
+
+    from transformer_lens.tools.analysis._nla_reconstructor import reconstruct_vector
+
+    pair = replace(target_pair, layer=4)
+    model = load_target(pair)
+    tokens = torch.tensor([[1, 2, 3]])
+    head = torch.nn.Linear(32, 32, bias=False)
+    head.weight.data.copy_(torch.eye(32))
+    head.eval()
+    metadata = NLAMetadata(
+        "ar",
+        32,
+        4,
+        "marker",
+        2,
+        "{injection_char}",
+        "{explanation}",
+        32**0.5,
+        None,
+        None,
+        None,
+        (3,),
+    )
+    _, cache = model.run_with_cache(tokens, names_filter="blocks.4.hook_out", return_type=None)
+    expected = cache["blocks.4.hook_out"][0, -1].detach().clone()
+
+    class ForbiddenOutput(torch.nn.Module):
+        def forward(self, *args, **kwargs):
+            raise AssertionError("final output module must not execute")
+
+    # The backbone is owned by this test; shared fixture models remain untouched.
+    model.original_model.transformer.ln_f = torch.nn.Identity()
+    model.original_model.lm_head = ForbiddenOutput()
+    result = reconstruct_vector(model, head, tokens, metadata, pair)
+    torch.testing.assert_close(result.vector, expected)
+    assert not result.vector.requires_grad
+
+
+def test_qwen_truncated_loader_with_local_checkpoint(tmp_path, target):
+    from safetensors.torch import save_file
+    from transformers import Qwen2Config, Qwen2ForCausalLM
+
+    from transformer_lens.tools.analysis._nla_reconstructor import (
+        load_critic_model,
+        reconstruct_vector,
+    )
+
+    config = Qwen2Config(
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        vocab_size=1000,
+        max_position_embeddings=32,
+        tie_word_embeddings=False,
+    )
+    original = Qwen2ForCausalLM(config).eval()
+    state = {
+        key: value
+        for key, value in original.state_dict().items()
+        if key not in {"model.norm.weight", "lm_head.weight"}
+    }
+    config.save_pretrained(tmp_path)
+    save_file(state, tmp_path / "model.safetensors")
+    pair = NLAPairConfig(
+        ArtifactRef("example/target", "a" * 40),
+        ArtifactRef("example/av", "b" * 40),
+        ArtifactRef("example/ar", "c" * 40),
+        "qwen2",
+        32,
+        1,
+        3,
+    )
+    model = load_critic_model(tmp_path, pair, target.tokenizer, "cpu")
+    head = torch.nn.Linear(32, 32, bias=False).eval()
+    metadata = NLAMetadata(
+        "ar",
+        32,
+        1,
+        "marker",
+        2,
+        "{injection_char}",
+        "{explanation}",
+        32**0.5,
+        None,
+        None,
+        None,
+        (3,),
+    )
+    tokens = torch.tensor([[1, 2, 3]])
+    original.model.norm = torch.nn.Identity()
+    with torch.no_grad():
+        expected = head(original.model(tokens, use_cache=False).last_hidden_state[0, -1])
+    actual = reconstruct_vector(model, head, tokens, metadata, pair)
+    torch.testing.assert_close(actual.vector, expected, atol=1e-6, rtol=1e-5)
+
+
 def test_non_bridge_rejected(target_pair):
     with pytest.raises(TypeError, match="TransformerBridge"):
         validate_target_structure(object(), target_pair)
