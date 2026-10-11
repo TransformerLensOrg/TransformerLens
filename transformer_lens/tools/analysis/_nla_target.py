@@ -9,7 +9,12 @@ from typing import Any
 import torch
 
 from transformer_lens.model_bridge import TransformerBridge
-from transformer_lens.tools.analysis._nla_artifacts import NLAPairConfig, _integer
+from transformer_lens.tools.analysis._nla_artifacts import (
+    NLAPairConfig,
+    _integer,
+    acquire_snapshot,
+    load_snapshot_tokenizer,
+)
 from transformer_lens.tools.analysis._nla_contracts import (
     ActivationProvenance,
     NLAActivation,
@@ -92,8 +97,43 @@ def target_provenance(
     return SourceProvenance.CALLER_ATTESTED
 
 
-def load_target(pair: NLAPairConfig, *, device: str = "cpu") -> TransformerBridge:
+def load_target(
+    pair: NLAPairConfig,
+    *,
+    device: str = "cpu",
+    cache_dir: str | None = None,
+    local_files_only: bool = False,
+) -> TransformerBridge:
     """Load pinned fp32 raw weights with eager attention and caller ownership."""
+    if cache_dir is not None or local_files_only:
+        from transformers import AutoModelForCausalLM
+
+        directory = acquire_snapshot(
+            pair.target,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            include_weights=True,
+        )
+        tokenizer = load_snapshot_tokenizer(directory)
+        original = AutoModelForCausalLM.from_pretrained(
+            str(directory),
+            local_files_only=True,
+            trust_remote_code=False,
+            dtype=torch.float32,
+            attn_implementation="eager",
+        )
+        model = TransformerBridge.boot_transformers(
+            pair.target.repo_id,
+            hf_model=original,
+            tokenizer=tokenizer,
+            device=device,
+            dtype=torch.float32,
+            trust_remote_code=False,
+        )
+        model.eval()
+        validate_target_structure(model, pair)
+        model.__dict__["_nla_target_artifact"] = pair.target
+        return model
     model = TransformerBridge.boot_transformers(
         pair.target.repo_id,
         revision=pair.target.revision,

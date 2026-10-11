@@ -25,8 +25,6 @@ Role = Literal["av", "ar"]
 class Tokenizer(Protocol):
     """Tokenization operations needed to check the artifact contract."""
 
-    unk_token_id: int | None
-
     def encode(self, text: str, *, add_special_tokens: bool) -> list[int]:
         ...
 
@@ -227,7 +225,7 @@ def validate_metadata(
     left = _integer(tokens.get("injection_left_neighbor_id"), "left neighbor")
     right = _integer(tokens.get("injection_right_neighbor_id"), "right neighbor")
     live_id = _ids(tokenizer.encode(char, add_special_tokens=False), "live injection ids")
-    if live_id != (token_id,) or token_id == tokenizer.unk_token_id:
+    if live_id != (token_id,) or token_id == getattr(tokenizer, "unk_token_id", None):
         raise ValueError("injection token encoding drift or UNK")
     templates = _mapping(meta.get("prompt_templates"), "prompt_templates")
     actor_template = _template(templates.get("av"), "injection_char", "av template")
