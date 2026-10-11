@@ -135,6 +135,40 @@ alternate score scaling are not implied. Residual addition requires identical
 shapes/devices/dtypes and does not broadcast; slicing returns independent tensor
 storage and rejects empty/scalar constituent outputs.
 
+## Private GPT-2 residual-suffix execution
+
+The private executor captures a raw fp32, evaluation-mode local GPT-2 Bridge
+with eager attention. It reads native HookPoints without editing tensors and
+checks each reconstructed suffix intermediate and final logit tensor against
+that capture. A block-input residual anchor accepts beta in residual space;
+gamma is the native residual minus beta. The unchanged prefix supplies that
+anchor, while token and position embedding totals are independently checked.
+
+Q/K/V projections use the actual split native linear weights; GPT-2 Conv1D MLP
+and output projections retain their row-vector layout. The final unembedding
+uses its actual weight orientation and bias, including biases introduced by
+Bridge conversion. No residual correction is added to hide a mismatch.
+
+Native parity checks use relative tolerance `2e-5` and absolute tolerance `2e-6`;
+results record maximum absolute error and native reference magnitude for each
+checked intermediate. These bounds are tested on locally initialized GPT-2 with
+nonzero gains and biases. They are not a guarantee for every checkpoint or an
+excuse to ignore a failing native comparison.
+
+Existing read-only HookPoint observers remain installed. Activation edits,
+external computational-module hooks, active relevance rules, and parameter
+changes during capture are rejected. Scoped observation and lazily created
+Bridge/HF collector hooks are removed on success and exceptions; pre-existing
+collectors are preserved. Analysis does not consume the model's RNG stream or
+create/clear parameter gradients. Arbitrary observers that mutate unrelated
+external state are outside this guarantee.
+
+Compatibility/processed weights, sharding, non-fp32 parameters, cross-attention,
+repeated blocks, split-input attention forks, cached decoding, alternate scaling,
+and SDPA are explicitly unsupported. Inputs are token tensors with optional
+aligned boolean key masks and explicit position IDs; fully masked causal query
+rows are rejected. This is a private executor, not a public source-selection API.
+
 ## What the tests establish
 
 Tests compare both constituents against independently evaluated scalar equations,
