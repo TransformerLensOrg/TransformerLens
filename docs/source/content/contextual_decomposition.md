@@ -169,6 +169,40 @@ and SDPA are explicitly unsupported. Inputs are token tensors with optional
 aligned boolean key masks and explicit position IDs; fully masked causal query
 rows are rejected. This is a private executor, not a public source-selection API.
 
+## Private single-source selection and targets
+
+Single-source execution accepts a head write or a residual activation at block
+input (`pre`), the attention residual merge (`mid`), or block output (`post`).
+Head sources always anchor at `mid`. The selected head's native context is
+projected with only that head's output-weight slice; the shared output bias is
+not included in the source write. At the anchor, beta is the selected write minus
+a supplied residual-space reference, and gamma is the entire native residual
+minus beta, retaining all other writes and shared constants.
+
+Source positions are unique nonnegative absolute indices shared across the batch.
+Only selected positions receive beta; all downstream query positions are still
+traversed. Selecting padding is rejected, including all-position sources on
+padded batches. Supplied references must match `[batch, sequence, width]`, fp32,
+and the model device. Empty, overlapping, negative, or out-of-range selectors
+are rejected; no joint-source semantics are implied.
+
+Targets must be strictly downstream of the anchor. Internal selectors use an
+explicit supported Bridge-native hook name and its actual tensor space. Q/K/V
+and context targets can select a head; attention probabilities are head-major
+and must currently be selected as a whole tensor to avoid ambiguous position
+semantics. Logit and logit-difference targets accept a shared selector or a tuple
+with one position/token ID per example. A difference between equal token IDs
+returns zero beta and gamma. The final normalization remains part of the
+combined-input decomposition, not a separate norm of a beta vector.
+
+A native-equal reference makes the selected source difference zero and removes its beta.
+Native reconstruction is checked before installing each source anchor and at
+every downstream intermediate. Highly cancelling constituents can exceed the
+stated fp32 tolerances; such cases raise rather than silently adjusting gamma or
+loosening the threshold. Source-write diagnostics and target constituents own
+independent output storage. These selectors remain private and are not exported
+from the public analysis API.
+
 ## What the tests establish
 
 Tests compare both constituents against independently evaluated scalar equations,

@@ -20,6 +20,12 @@ from transformer_lens.tools.analysis.contextual_decomposition.rules import (
     _layer_norm,
     _residual_add,
 )
+from transformer_lens.tools.analysis.contextual_decomposition.selectors import (
+    _CDSource,
+    _CDTarget,
+    _select_target,
+    _validate_source_target,
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,8 @@ class _GPT2Decomposition:
     native_cache: dict[str, torch.Tensor]
     constituents: dict[str, _CDConstituents]
     errors: dict[str, _ReconstructionError]
+    target: Optional[_CDConstituents] = None
+    source_write: Optional[torch.Tensor] = None
 
 
 def _require_gpt2(model: TransformerBridge) -> GPT2Config:
@@ -222,6 +230,9 @@ def _decompose_gpt2(
     beta: Optional[torch.Tensor] = None,
     attention_mask: Optional[torch.Tensor] = None,
     position_ids: Optional[torch.Tensor] = None,
+    source: Optional[_CDSource] = None,
+    reference: Optional[torch.Tensor] = None,
+    target: Optional[_CDTarget] = None,
 ) -> _GPT2Decomposition:
     """Decompose from a block-input residual anchor through the native GPT-2 suffix.
 
@@ -246,6 +257,12 @@ def _decompose_gpt2(
         or tokens.shape[1] > config.n_positions
     ):
         raise ValueError("tokens exceed the vocabulary or context length")
+    if source is not None:
+        if beta is not None or layer != 0:
+            raise ValueError("source cannot be combined with legacy layer or beta arguments")
+        layer = source.layer
+    elif reference is not None or target is not None:
+        raise ValueError("reference and target require an explicit source")
     if isinstance(layer, bool) or not 0 <= layer < len(model.blocks):
         raise ValueError("layer must identify a GPT-2 block")
     if beta is not None:
@@ -268,6 +285,29 @@ def _decompose_gpt2(
         raise ValueError("attention_mask must be boolean and aligned with tokens")
     if not bool(attention_mask[:, 0].all()):
         raise ValueError("causal attention contains a fully masked query row")
+    if source is not None:
+        _validate_source_target(
+            source,
+            target,
+            batch=tokens.shape[0],
+            sequence=tokens.shape[1],
+            n_layers=len(model.blocks),
+            n_heads=config.n_head,
+            vocab_size=config.vocab_size,
+        )
+        selected_positions = (
+            source.positions if source.positions is not None else tuple(range(tokens.shape[1]))
+        )
+        if not bool(attention_mask[:, selected_positions].all()):
+            raise ValueError("source positions must not select padding")
+        if reference is not None:
+            if (
+                reference.shape != (*tokens.shape, config.n_embd)
+                or reference.dtype != torch.float32
+                or reference.device != device
+            ):
+                raise ValueError("reference must match residual-space shape, dtype, and device")
+            _CDConstituents(reference, torch.zeros_like(reference))
     if position_ids is None:
         position_ids = torch.arange(tokens.shape[1], device=device).expand_as(tokens)
     if (
@@ -304,12 +344,35 @@ def _decompose_gpt2(
                 module.__dict__.pop(name, None)
     constituents: dict[str, _CDConstituents] = {}
     errors: dict[str, _ReconstructionError] = {}
+    source_write: Optional[torch.Tensor] = None
+    anchor_beta: Optional[torch.Tensor] = None
+    if source is not None:
+        if source.kind == "head":
+            assert source.head is not None
+            context = cache[f"blocks.{source.layer}.attn.o.hook_in"][:, :, source.head]
+            projection = model.blocks[source.layer].attn.o.original_component.weight
+            start = source.head * model.cfg.d_head
+            source_write = context @ projection[start : start + model.cfg.d_head]
+        else:
+            source_write = cache[source.anchor].clone()
+        local_reference = torch.zeros_like(source_write) if reference is None else reference
+        anchor_beta = torch.zeros_like(source_write)
+        positions = (
+            source.positions if source.positions is not None else tuple(range(tokens.shape[1]))
+        )
+        anchor_beta[:, positions] = (source_write - local_reference)[:, positions]
 
     def record(name: str, parts: _CDConstituents) -> _CDConstituents:
         if name not in cache:
             raise ValueError(f"required native hook {name} did not execute")
-        total = parts.beta + parts.gamma
         native = cache[name]
+        if source is not None and name == source.anchor:
+            assert anchor_beta is not None
+            original_total = parts.beta + parts.gamma
+            if not torch.allclose(original_total, native, rtol=2e-5, atol=2e-6):
+                raise ValueError(f"native reconstruction failed before source anchor {name}")
+            parts = _CDConstituents(anchor_beta.clone(), native - anchor_beta)
+        total = parts.beta + parts.gamma
         if total.shape != native.shape:
             raise ValueError(f"native reconstruction shape mismatch at {name}")
         error = _ReconstructionError(float((total - native).abs().max()), float(native.abs().max()))
@@ -324,7 +387,13 @@ def _decompose_gpt2(
     if anchor_name not in cache:
         raise ValueError(f"required native hook {anchor_name} did not execute")
     native_anchor = cache[anchor_name]
-    relevant = native_anchor.clone() if beta is None else beta.detach().clone()
+    relevant = (
+        torch.zeros_like(native_anchor)
+        if source is not None
+        else native_anchor.clone()
+        if beta is None
+        else beta.detach().clone()
+    )
     parts = _CDConstituents(relevant, native_anchor - relevant)
     record(
         "embed.hook_out",
@@ -343,7 +412,7 @@ def _decompose_gpt2(
     for index in range(layer, len(model.blocks)):
         block = model.blocks[index]
         prefix = f"blocks.{index}"
-        record(f"{prefix}.hook_in", parts)
+        parts = record(f"{prefix}.hook_in", parts)
         norm = block.ln1.original_component
         normalized = record(
             f"{prefix}.ln1.hook_out",
@@ -389,7 +458,7 @@ def _decompose_gpt2(
         )
         record(f"{prefix}.attn.hook_out", attention.output)
         parts = _residual_add(parts, attention.output)
-        record(f"{prefix}.ln2.hook_in", parts)
+        parts = record(f"{prefix}.ln2.hook_in", parts)
         norm = block.ln2.original_component
         normalized = record(
             f"{prefix}.ln2.hook_out",
@@ -418,4 +487,11 @@ def _decompose_gpt2(
     logits = record("unembed.hook_out", _affine(parts, unembed.weight.T, unembed.bias))
     if not torch.allclose(logits.beta + logits.gamma, native_logits, rtol=2e-5, atol=2e-6):
         raise ValueError("native output transform is not covered by GPT-2 CD execution")
-    return _GPT2Decomposition(logits, native_logits, cache, constituents, errors)
+    selected_target = None
+    if target is not None:
+        target_name = target.hook_name if target.kind == "internal" else "unembed.hook_out"
+        assert target_name is not None
+        selected_target = _select_target(constituents[target_name], target)
+    return _GPT2Decomposition(
+        logits, native_logits, cache, constituents, errors, selected_target, source_write
+    )
