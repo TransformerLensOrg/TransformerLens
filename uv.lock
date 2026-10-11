@@ -2,32 +2,32 @@ version = 1
 revision = 3
 requires-python = ">=3.10, <4.0"
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version < '3.11' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version < '3.11' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version < '3.11' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version < '3.11' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 conflicts = [[
     { package = "transformer-lens", extra = "lit" },
@@ -1208,27 +1208,27 @@ name = "contourpy"
 version = "1.3.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-16-transformer-lens-lit') or (extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm')" },
@@ -1825,10 +1825,10 @@ name = "etils"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version == '3.12.*'",
-    "python_full_version == '3.11.*'",
     "python_full_version >= '3.14'",
     "python_full_version == '3.13.*'",
+    "python_full_version == '3.12.*'",
+    "python_full_version == '3.11.*'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/26/ce/6e067242fde898841922ac6fc82b0bb2fe35c38e995880bdffdfbe30182a/etils-1.14.0.tar.gz", hash = "sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4", size = 108127, upload-time = "2026-03-04T17:41:36.291Z" }
 wheels = [
@@ -2571,14 +2571,14 @@ name = "grpcio"
 version = "1.80.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version < '3.11' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version < '3.11' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version < '3.11' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version < '3.11' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 dependencies = [
     { name = "typing-extensions", marker = "(python_full_version < '3.14' and sys_platform == 'linux' and extra == 'extra-16-transformer-lens-vllm') or (python_full_version < '3.14' and extra == 'extra-16-transformer-lens-lit') or (extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm')" },
@@ -2707,10 +2707,10 @@ name = "grpcio-status"
 version = "1.62.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version == '3.13.*'",
     "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
     "python_full_version < '3.11'",
-    "python_full_version == '3.13.*'",
 ]
 dependencies = [
     { name = "googleapis-common-protos", marker = "python_full_version < '3.14'" },
@@ -3172,27 +3172,27 @@ name = "ipython"
 version = "9.10.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 dependencies = [
     { name = "colorama", marker = "(python_full_version >= '3.11' and sys_platform == 'win32') or (python_full_version < '3.11' and extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm') or (sys_platform != 'win32' and extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm')" },
@@ -3286,27 +3286,27 @@ name = "jaxtyping"
 version = "0.3.11"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 dependencies = [
     { name = "wadler-lindig", marker = "python_full_version >= '3.11' or (extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm')" },
@@ -5193,27 +5193,27 @@ name = "networkx"
 version = "3.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6c/4f/ccdb8ad3a38e583f214547fd2f7ff1fc160c43a75af88e6aec213404b96a/networkx-3.5.tar.gz", hash = "sha256:d4c6f9cf81f52d69230866796b82afbccdec3db7ae4fbd1b65ea750feed50037", size = 2471065, upload-time = "2025-05-29T11:35:07.804Z" }
 wheels = [
@@ -5333,11 +5333,11 @@ name = "numpy"
 version = "1.26.4"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14'",
+    "python_full_version == '3.13.*'",
     "python_full_version == '3.12.*'",
     "python_full_version == '3.11.*'",
     "python_full_version < '3.11'",
-    "python_full_version >= '3.14'",
-    "python_full_version == '3.13.*'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e115e71cc56a6f9031e7b8cd166c1ac8438307c14058/numpy-1.26.4.tar.gz", hash = "sha256:2a02aba9ed12e4ac4eb3ea9421c420301a0c6460d9830d74a9df87efa4912010", size = 15786129, upload-time = "2024-02-06T00:26:44.495Z" }
 wheels = [
@@ -5440,23 +5440,23 @@ name = "numpy"
 version = "2.3.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/65/21b3bc86aac7b8f2862db1e808f1ea22b028e30a225a34a5ede9bf8678f2/numpy-2.3.5.tar.gz", hash = "sha256:784db1dcdab56bf0517743e746dfb0f885fc68d948aba86eeec2cba234bdf1c0", size = 20584950, upload-time = "2025-11-16T22:52:42.067Z" }
 wheels = [
@@ -8143,10 +8143,10 @@ name = "scikit-image"
 version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version == '3.12.*'",
-    "python_full_version == '3.11.*'",
     "python_full_version >= '3.14'",
     "python_full_version == '3.13.*'",
+    "python_full_version == '3.12.*'",
+    "python_full_version == '3.11.*'",
 ]
 dependencies = [
     { name = "imageio", marker = "python_full_version >= '3.11'" },
@@ -8267,27 +8267,27 @@ name = "scikit-learn"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 dependencies = [
     { name = "joblib", marker = "python_full_version >= '3.11' or (extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm')" },
@@ -8405,27 +8405,27 @@ name = "scipy"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
+    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'darwin' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.14' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.13.*' and extra == 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version == '3.12.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
     "python_full_version == '3.11.*' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
-    "python_full_version >= '3.13' and extra != 'extra-16-transformer-lens-lit' and extra != 'extra-16-transformer-lens-vllm'",
 ]
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-16-transformer-lens-lit') or (extra == 'extra-16-transformer-lens-lit' and extra == 'extra-16-transformer-lens-vllm')" },
@@ -9099,10 +9099,10 @@ name = "tifffile"
 version = "2026.3.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version == '3.12.*'",
-    "python_full_version == '3.11.*'",
     "python_full_version >= '3.14'",
     "python_full_version == '3.13.*'",
+    "python_full_version == '3.12.*'",
+    "python_full_version == '3.11.*'",
 ]
 dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -9517,7 +9517,9 @@ dependencies = [
     { name = "packaging" },
     { name = "pandas" },
     { name = "protobuf" },
+    { name = "pyyaml" },
     { name = "rich" },
+    { name = "safetensors" },
     { name = "sentencepiece" },
     { name = "torch" },
     { name = "tqdm" },
@@ -9562,6 +9564,7 @@ dev = [
     { name = "pytest-doctestplus" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-xdist" },
+    { name = "types-pyyaml" },
 ]
 docs = [
     { name = "furo" },
@@ -9615,7 +9618,9 @@ requires-dist = [
     { name = "packaging", specifier = ">=23.0" },
     { name = "pandas", specifier = ">=1.1.5" },
     { name = "protobuf", specifier = ">=3.20.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=12.6.0" },
+    { name = "safetensors", specifier = ">=0.4.3" },
     { name = "sentencepiece" },
     { name = "torch", specifier = ">=2.6" },
     { name = "tqdm", specifier = ">=4.64.1" },
@@ -9647,6 +9652,7 @@ dev = [
     { name = "pytest-doctestplus", specifier = ">=1.0.0" },
     { name = "pytest-rerunfailures", specifier = ">=12.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 docs = [
     { name = "furo", specifier = ">=2023.3.27,<2024.0.0" },
@@ -9784,6 +9790,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c9/95/6bdde7607da2e1e99ec1c1672a759d42f26644bbacf939916e086db34870/types_python_dateutil-2.9.0.20250708.tar.gz", hash = "sha256:ccdbd75dab2d6c9696c350579f34cffe2c281e4c5f27a585b2a2438dd1d5c8ab", size = 15834, upload-time = "2025-07-08T03:14:03.382Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/72/52/43e70a8e57fefb172c22a21000b03ebcc15e47e97f5cb8495b9c2832efb4/types_python_dateutil-2.9.0.20250708-py3-none-any.whl", hash = "sha256:4d6d0cc1cc4d24a2dc3816024e502564094497b713f7befda4d5bc7a8e3fd21f", size = 17724, upload-time = "2025-07-08T03:14:02.593Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20260906"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/6e/abec85b9013db5b934b0280a6dd104904d84f7bcbaab2e2f3def87ac7463/types_pyyaml-6.0.12.20260906.tar.gz", hash = "sha256:f59c1cc05010b833d2d72287bbaa72610106b28d42d89a907313117faba85212", size = 18649, upload-time = "2026-09-06T06:35:35.362Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/15/c0/fc0644b7ddcfb969e95845837143cb5173ddd6e06ee4ba5fc493cd9329b7/types_pyyaml-6.0.12.20260906-py3-none-any.whl", hash = "sha256:bca893ff0d51df5c9053137d5d0e6ccd36e939a196356f1d5c16372422f5137b", size = 21282, upload-time = "2026-09-06T06:35:34.372Z" },
 ]
 
 [[package]]
