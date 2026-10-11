@@ -211,11 +211,15 @@ and output projections retain their row-vector layout. The final unembedding
 uses its actual weight orientation and bias, including biases introduced by
 Bridge conversion. No residual correction is added to hide a mismatch.
 
-Native parity checks use relative tolerance `2e-5` and absolute tolerance `2e-6`;
-results record maximum absolute error and native reference magnitude for each
-checked intermediate. These bounds are tested on locally initialized GPT-2 with
-nonzero gains and biases. They are not a guarantee for every checkpoint or an
-excuse to ignore a failing native comparison.
+Native parity checks bound maximum absolute error by
+`2e-6 + 2e-5 * max(abs(native_tensor))`. This is a tensor-scale criterion, not
+an elementwise relative comparison at nearly zero coordinates. Results preserve
+the observed error, native scale, constituent scale, and budget (`tolerance`).
+Constituent magnitudes do **not** enlarge the error budget. Selected logit
+projections inherit the full native logit tensor scale; differences propagate
+two input-logit budgets rather than scaling by a cancelled output difference.
+These diagnostics are not a guarantee for every checkpoint or proof of
+constituent correctness.
 
 Existing read-only HookPoint observers remain installed. Activation edits,
 external computational-module hooks, active relevance rules, and parameter
@@ -260,9 +264,33 @@ combined-input decomposition, not a separate norm of a beta vector.
 A native-equal reference makes the selected source difference zero and removes its beta.
 Native reconstruction is checked before installing each source anchor and at
 every downstream intermediate. Highly cancelling constituents can exceed the
-stated fp32 tolerances; such cases raise rather than silently adjusting gamma or
-loosening the threshold. Source-write diagnostics and target constituents own
+native tensor-scale budget; such cases raise rather than silently adjusting
+gamma or increasing the budget according to constituent magnitude. Source-write diagnostics and target constituents own
 independent output storage. The public source/target constructors validate these same selector conventions.
+
+## Trained GPT-2 characterization
+
+A serial CPU/fp32/eager characterization uses GPT-2 revision
+`607a30d783dfa663caf39e06633721c8d4cfcd7e` and explicit input IDs
+`[15496, 995, 0]`, with no implicit BOS or tokenizer conversion. It exercises a
+final residual source, a layer-10 head at position 1, and a layer-10 residual
+position source, under supplied zero-tensor references. Output targets use
+IDs 15496 minus 995 at position 2; the internal target is layer-11 ln1 output.
+
+Measurements separated native-input kernel discrepancy from propagated error:
+HF Conv1D `addmm` versus separate matmul/add differed by up to `3.43e-5` at
+layer-10 output projection on identical native activations. Combined propagation
+produced larger raw errors. Three complete runs measured maxima of `2.44e-4`,
+`3.13e-4`, and `2.82e-4`, respectively. All were checked against reported native
+tensor-scale budgets, without adjusting constituent values. The head's assigned
+logit-difference beta was negative (`-0.0483`); it is preserved, not gated away.
+These are configuration-specific numerical observations, not circuit evidence.
+
+Serial wall times in one local run were 0.36, 0.23, and 0.22 seconds excluding
+model load. Hardware and scheduling affect these timings; they establish no
+speedup claim. Tests emit measured time/error properties for reruns, check
+parameter/hook-state preservation, and exercise observer-failure cleanup.
+Independent tensor oracles remain the constituent-share correctness gate.
 
 ## What the tests establish
 

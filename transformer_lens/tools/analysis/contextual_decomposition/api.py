@@ -12,6 +12,11 @@ from transformer_lens.tools.analysis.contextual_decomposition.executor import (
     _decompose_gpt2,
     _require_gpt2,
 )
+from transformer_lens.tools.analysis.contextual_decomposition.numerics import (
+    _check_reconstruction,
+    _reconstruction_error,
+    _ReconstructionError,
+)
 from transformer_lens.tools.analysis.contextual_decomposition.rules import (
     _CDConstituents,
 )
@@ -151,11 +156,17 @@ class CDReconstructionError:
 
     max_abs: float
     reference_max_abs: float
+    constituent_max_abs: float = 0.0
+
+    @property
+    def tolerance(self) -> float:
+        """Absolute plus tensor-relative reconstruction budget."""
+        return 2e-6 + 2e-5 * self.reference_max_abs
 
     def __post_init__(self) -> None:
         if any(
             not math.isfinite(value) or value < 0
-            for value in (self.max_abs, self.reference_max_abs)
+            for value in (self.max_abs, self.reference_max_abs, self.constituent_max_abs)
         ):
             raise ValueError("reconstruction error magnitudes must be finite and nonnegative")
 
@@ -292,13 +303,20 @@ class ContextualDecomposition:
         native_target = _select_target(
             _CDConstituents(native, torch.zeros_like(native)), target
         ).beta
-        target_error = float(
-            (execution.target.beta + execution.target.gamma - native_target).abs().max()
+        target_error = _reconstruction_error(
+            execution.target.beta, execution.target.gamma, native_target
         )
-        if not torch.allclose(
-            execution.target.beta + execution.target.gamma, native_target, rtol=2e-5, atol=2e-6
-        ):
-            raise ValueError(f"native target reconstruction failed: max_abs={target_error:.6g}")
+        if target.kind == "logit_difference":
+            # Subtraction can cancel native logits; propagate the two input error budgets.
+            reference_scale = 2 * float(native.abs().max())
+            target_error = _ReconstructionError(
+                target_error.max_abs, reference_scale, target_error.constituent_max_abs
+            )
+        elif target.kind == "logit":
+            target_error = _ReconstructionError(
+                target_error.max_abs, float(native.abs().max()), target_error.constituent_max_abs
+            )
+        _check_reconstruction(target_error, "target")
         intermediates = {
             name: CDTensor(
                 execution.constituents[name].beta,
@@ -308,11 +326,13 @@ class ContextualDecomposition:
             for name in retain_intermediates
         }
         diagnostics = {
-            name: CDReconstructionError(error.max_abs, error.reference_max_abs)
+            name: CDReconstructionError(
+                error.max_abs, error.reference_max_abs, error.constituent_max_abs
+            )
             for name, error in execution.errors.items()
         }
         diagnostics["target"] = CDReconstructionError(
-            target_error, float(native_target.abs().max())
+            target_error.max_abs, target_error.reference_max_abs, target_error.constituent_max_abs
         )
         return CDResult(
             execution.target.beta,

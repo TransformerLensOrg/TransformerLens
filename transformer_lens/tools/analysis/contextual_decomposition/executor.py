@@ -12,6 +12,11 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.sources.transformers_driver import TransformersDriver
 from transformer_lens.tools.analysis._model_state import require_eval_mode
+from transformer_lens.tools.analysis.contextual_decomposition.numerics import (
+    _check_reconstruction,
+    _reconstruction_error,
+    _ReconstructionError,
+)
 from transformer_lens.tools.analysis.contextual_decomposition.rules import (
     _affine,
     _attention,
@@ -26,14 +31,6 @@ from transformer_lens.tools.analysis.contextual_decomposition.selectors import (
     _select_target,
     _validate_source_target,
 )
-
-
-@dataclass(frozen=True)
-class _ReconstructionError:
-    """Measured native reconstruction error with its reference scale."""
-
-    max_abs: float
-    reference_max_abs: float
 
 
 @dataclass(frozen=True)
@@ -238,7 +235,8 @@ def _decompose_gpt2(
 
     Beta defaults to the full residual at the anchor. Capture uses observation
     hooks only and rejects edits; each returned constituent total is checked
-    against native intermediates with rtol=2e-5 and atol=2e-6. No tensor is
+    against native intermediates using a 2e-6 absolute plus 2e-5 native tensor-
+    scale error budget. No tensor is
     corrected to conceal a reconstruction discrepancy. Fully masked queries,
     sharding, caching, alternate attention modes, and compatibility weights are
     outside this executor's contract.
@@ -368,17 +366,14 @@ def _decompose_gpt2(
         native = cache[name]
         if source is not None and name == source.anchor:
             assert anchor_beta is not None
-            original_total = parts.beta + parts.gamma
-            if not torch.allclose(original_total, native, rtol=2e-5, atol=2e-6):
-                raise ValueError(f"native reconstruction failed before source anchor {name}")
+            _check_reconstruction(_reconstruction_error(parts.beta, parts.gamma, native), name)
             parts = _CDConstituents(anchor_beta.clone(), native - anchor_beta)
         total = parts.beta + parts.gamma
         if total.shape != native.shape:
             raise ValueError(f"native reconstruction shape mismatch at {name}")
-        error = _ReconstructionError(float((total - native).abs().max()), float(native.abs().max()))
+        error = _reconstruction_error(parts.beta, parts.gamma, native)
         errors[name] = error
-        if not torch.allclose(total, native, rtol=2e-5, atol=2e-6):
-            raise ValueError(f"native reconstruction failed at {name}: max_abs={error.max_abs:.6g}")
+        _check_reconstruction(error, name)
         constituents[name] = parts
         return parts
 
@@ -485,8 +480,9 @@ def _decompose_gpt2(
     )
     unembed = model.unembed.original_component
     logits = record("unembed.hook_out", _affine(parts, unembed.weight.T, unembed.bias))
-    if not torch.allclose(logits.beta + logits.gamma, native_logits, rtol=2e-5, atol=2e-6):
-        raise ValueError("native output transform is not covered by GPT-2 CD execution")
+    _check_reconstruction(
+        _reconstruction_error(logits.beta, logits.gamma, native_logits), "output logits"
+    )
     selected_target = None
     if target is not None:
         target_name = target.hook_name if target.kind == "internal" else "unembed.hook_out"

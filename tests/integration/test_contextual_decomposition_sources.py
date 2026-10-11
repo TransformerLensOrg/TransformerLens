@@ -195,13 +195,18 @@ def test_planted_head_source_matches_scalar_normalization_and_unembed_oracle(mod
 def test_ill_conditioned_source_reconstruction_is_not_silently_corrected(model):
     with torch.no_grad():
         model.blocks[0].attn.o.original_component.bias.fill_(0.3)
-    with pytest.raises(ValueError, match="reconstruction failed"):
-        _decompose_gpt2(
-            model,
-            TOKENS,
-            source=_CDSource(0, positions=(1,)),
-            reference=torch.full((2, 4, 8), 0.01),
-        )
+    result = _decompose_gpt2(
+        model,
+        TOKENS,
+        source=_CDSource(0, positions=(1,)),
+        reference=torch.full((2, 4, 8), 0.01),
+    )
+    for name, parts in result.constituents.items():
+        error = result.errors[name]
+        measured = float((parts.beta + parts.gamma - result.native_cache[name]).abs().max())
+        assert error.max_abs == measured
+        assert measured <= error.tolerance
+    assert max(error.max_abs for error in result.errors.values()) > 0
 
 
 def test_late_final_residual_source_has_independent_expected_readout(model):
