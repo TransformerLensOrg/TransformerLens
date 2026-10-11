@@ -147,6 +147,60 @@ def test_guarded_cpu_experts_keep_grouped_execution_without_warning(monkeypatch)
     assert block.experts.config._experts_implementation == "grouped_mm"
 
 
+def test_dispatch_does_not_create_missing_policy():
+    class MissingPolicyExperts(_Experts):
+        def forward(self, hidden_states):
+            return hidden_states
+
+    experts = MissingPolicyExperts(SimpleNamespace())
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert _granite_mps_experts_forward(experts, inputs) is inputs
+    assert not caught
+    assert vars(experts.config) == {}
+
+
+def test_guarded_eager_cpu_forward_preserves_hooks_and_gradients(monkeypatch):
+    import transformers
+
+    monkeypatch.setattr(torch, "__version__", "2.11.0")
+    monkeypatch.setattr(transformers, "__version__", "5.13.0")
+    block = _block()
+    block.experts.config._experts_implementation = "eager"
+    with torch.no_grad():
+        for parameter in block.experts.parameters():
+            parameter.normal_(std=0.1)
+    reference = copy.deepcopy(block)
+    _guard_granite_mps_experts(block)
+    inputs = torch.randn(5, 8, requires_grad=True)
+    routes = torch.rand(5, 1, requires_grad=True)
+    indices = torch.tensor([[0], [0], [1], [3], [3]])
+    calls = []
+    handle = block.experts.register_forward_hook(lambda module, args, output: calls.append(args))
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            actual = block.experts(inputs, indices, routes)
+        expected = reference.experts(inputs, indices, routes)
+        assert not caught
+        assert len(calls) == 1
+        assert calls[0][1] is indices
+        assert calls[0][2] is routes
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        actual_grads = torch.autograd.grad(
+            actual.sum(), (inputs, routes, *block.experts.parameters())
+        )
+        expected_grads = torch.autograd.grad(
+            expected.sum(), (inputs, routes, *reference.experts.parameters())
+        )
+        for measured, oracle in zip(actual_grads, expected_grads):
+            torch.testing.assert_close(measured, oracle, rtol=0, atol=0)
+        assert block.experts.config._experts_implementation == "eager"
+    finally:
+        handle.remove()
+
+
 def test_unrelated_experts_and_custom_forwards_are_unchanged():
     block = nn.Module()
     block.experts = _Experts(SimpleNamespace(_experts_implementation="grouped_mm"))
