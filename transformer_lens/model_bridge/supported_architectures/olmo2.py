@@ -22,7 +22,8 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
     pre-norm models like Llama:
 
     - Post-norm: RMSNorm is applied AFTER attention and AFTER MLP, not before.
-      ln1 maps to post_attention_layernorm, ln2 maps to post_feedforward_layernorm.
+      ln1_post maps to post_attention_layernorm, ln2_post to post_feedforward_layernorm;
+      there is no ln1/ln2 (no pre-sublayer norm).
     - Q/K normalization: Per-head RMSNorm applied to queries and keys after projection.
     - No biases on any projections.
 
@@ -35,8 +36,8 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
     - blocks.{i}.mlp.b_in - No bias on MLP up_proj
     - blocks.{i}.mlp.b_gate - No bias on MLP gate_proj
     - blocks.{i}.mlp.b_out - No bias on MLP down_proj
-    - blocks.{i}.ln1.b - RMSNorm has no bias
-    - blocks.{i}.ln2.b - RMSNorm has no bias
+    - blocks.{i}.ln1_post.b - RMSNorm has no bias
+    - blocks.{i}.ln2_post.b - RMSNorm has no bias
     - ln_final.b - RMSNorm has no bias
     """
 
@@ -61,17 +62,18 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
             **self._qkvo_weight_conversions(),
         }
 
-        # Component mapping — POST-NORM architecture:
-        # ln1 = post_attention_layernorm (applied AFTER attention)
-        # ln2 = post_feedforward_layernorm (applied AFTER MLP)
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
             "blocks": BlockBridge(
                 name="model.layers",
                 submodules={
-                    "ln1": RMSNormalizationBridge(name="post_attention_layernorm", config=self.cfg),
-                    "ln2": RMSNormalizationBridge(
+                    # Post-norm only: BlockBridge derives hook_attn_out / hook_mlp_out
+                    # (norm outputs) and hook_resid_mid (mlp.hook_in) from these keys.
+                    "ln1_post": RMSNormalizationBridge(
+                        name="post_attention_layernorm", config=self.cfg
+                    ),
+                    "ln2_post": RMSNormalizationBridge(
                         name="post_feedforward_layernorm", config=self.cfg
                     ),
                     "attn": self._attention_bridge_cls(
@@ -90,18 +92,6 @@ class Olmo2ArchitectureAdapter(ArchitectureAdapter):
                     ),
                     "mlp": self._build_mlp_bridge(),
                 },
-                # Post-norm overrides: ln1/ln2 are applied AFTER attention/MLP and
-                # BEFORE the residual add, so the residual mid-point is mlp.hook_in
-                # and the additive contributions are the norm outputs, not the raw
-                # module outputs (attn.hook_out / mlp.hook_out stay raw).
-                hook_alias_overrides={
-                    "hook_resid_mid": "mlp.hook_in",
-                    "hook_attn_out": "ln1.hook_out",
-                    "hook_mlp_out": "ln2.hook_out",
-                },
-                # No pre-MLP norm: the MLP consumes the mid-residual directly, so
-                # the hook_mlp_in capture must sit on the MLP, not on ln2.
-                mlp_reads_resid_directly=True,
             ),
             "ln_final": RMSNormalizationBridge(name="model.norm", config=self.cfg),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),

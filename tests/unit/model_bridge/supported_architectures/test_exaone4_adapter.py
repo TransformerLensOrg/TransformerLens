@@ -63,8 +63,9 @@ class TestExaone4AdapterConfig:
 class TestExaone4ComponentMapping:
     def test_post_norm_positions(self, adapter):
         submodules = adapter.component_mapping["blocks"].submodules
-        assert submodules["ln1"].name == "post_attention_layernorm"
-        assert submodules["ln2"].name == "post_feedforward_layernorm"
+        assert submodules["ln1_post"].name == "post_attention_layernorm"
+        assert submodules["ln2_post"].name == "post_feedforward_layernorm"
+        assert "ln1" not in submodules and "ln2" not in submodules
 
     def test_attention_has_per_head_qk_norms(self, adapter):
         attn = adapter.component_mapping["blocks"].submodules["attn"]
@@ -88,8 +89,8 @@ class TestExaone4Registration:
 
 
 class TestExaone4PostNormResidMid:
-    """Post-norm layout: ln2.hook_in is the MLP-branch output, so the adapter
-    must override hook_resid_mid to mlp.hook_in (olmo2 precedent)."""
+    """Post-norm-only layout: no pre-MLP norm, so hook_resid_mid is mlp.hook_in
+    (olmo2 precedent)."""
 
     def test_hook_resid_mid_points_at_mlp_hook_in(self, adapter) -> None:
         block = adapter.component_mapping["blocks"]
@@ -98,8 +99,8 @@ class TestExaone4PostNormResidMid:
     def test_contribution_aliases_point_at_post_norm_outputs(self, adapter) -> None:
         """Inherited from olmo2: contributions are the post-norm outputs (#1648)."""
         block = adapter.component_mapping["blocks"]
-        assert block.hook_aliases["hook_attn_out"] == "ln1.hook_out"
-        assert block.hook_aliases["hook_mlp_out"] == "ln2.hook_out"
+        assert block.hook_aliases["hook_attn_out"] == "ln1_post.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
 
 
 class TestExaone4NoPEGating:

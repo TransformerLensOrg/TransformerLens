@@ -9,12 +9,10 @@ wiring) to lock in the structural facts that make the mechanism's "not applicabl
 behavior correct for these three documented edge cases, without needing to build a
 working forward-capable module tree per adapter:
 
-- Gemma 3n: every per-block norm (including the per-head q/k/v norms) is a plain
-  ``GeneralizedComponent`` placeholder, and none of them is keyed "ln1"/"ln2".
-- Gemma 4: ln1/ln2 exist (sandwich norms) but are plain ``GeneralizedComponent``
-  placeholders, not ``NormalizationBridge`` -- rule-incapable even though the mount
-  name matches. The per-head q/k/v norms are, like Gemma 3n, keyed under "self_attn",
-  never "ln1"/"ln2".
+- Gemma 3n and Gemma 4: ln1/ln2 exist (sandwich norms) but are plain
+  ``GeneralizedComponent`` placeholders, not ``NormalizationBridge`` --
+  rule-incapable even though the mount name matches. Gemma 3n's per-head q/k/v
+  norms are keyed under "self_attn", never "ln1"/"ln2".
 - StableLM: ln1/ln2 ARE real ``NormalizationBridge`` instances (a genuine rule
   target), but the per-head norms are keyed "q_norm"/"k_norm" under "attn" even
   though the wrapped HF module is named "q_layernorm"/"k_layernorm" -- the mount
@@ -53,10 +51,13 @@ class TestGemma3nPlaceholders:
         cfg = make_bridge_cfg("Gemma3nForConditionalGeneration", n_key_value_heads=2, d_head=8)
         return Gemma3nArchitectureAdapter(cfg)
 
-    def test_no_ln1_or_ln2_key_at_block_level(self):
+    def test_sandwich_norms_are_plain_placeholders_not_normalization_bridge(self):
         block_submodules = _block_submodules(self._adapter())
-        assert "ln1" not in block_submodules
-        assert "ln2" not in block_submodules
+        for key in ("ln1", "ln1_post", "ln2", "ln2_post"):
+            component = block_submodules[key]
+            assert type(component) is GeneralizedComponent
+            assert not isinstance(component, NormalizationBridge)
+            assert not isinstance(component, _RelevanceRuleCapable)
 
     def test_qkv_norm_placeholders_are_plain_and_rule_incapable(self):
         block_submodules = _block_submodules(self._adapter())

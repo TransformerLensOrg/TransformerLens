@@ -67,18 +67,9 @@ class TestOlmoHybridRegistration:
         assert determine_architecture_from_hf_config(cfg) == "OlmoHybridForCausalLM"
 
 
-class TestOlmoHybridResidMidDropped:
-    """No single hook_resid_mid target is correct for both layer types, so the
-    block drops the alias type-visibly (ParallelBlockBridge precedent)."""
-
-    def test_hook_resid_mid_alias_absent(self, adapter) -> None:
-        block = adapter.component_mapping["blocks"]
-        assert "hook_resid_mid" not in block.hook_aliases
-
-
 class TestOlmoHybridPerLayerContributionAliases:
-    """set_original_component selects hook_attn_out / hook_mlp_out per layer
-    type: full-attention layers are post-norm (contribution = norm output),
+    """set_original_component selects norm keys and aliases per layer type:
+    full-attention layers are post-norm (contribution = norm output),
     linear-attention layers are pre-norm (contribution = raw output). #1648."""
 
     def _bind(self, adapter, hf_layer):
@@ -94,8 +85,20 @@ class TestOlmoHybridPerLayerContributionAliases:
         hf_layer = nn.Module()
         hf_layer.post_feedforward_layernorm = nn.LayerNorm(8)
         block = self._bind(adapter, hf_layer)
-        assert block.hook_aliases["hook_attn_out"] == "ln2.hook_out"
+        assert block.hook_aliases["hook_attn_out"] == "ln1_post.hook_out"
         assert block.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
+        assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
+
+    def test_full_attention_layer_rekeys_post_attention_norm(self, adapter) -> None:
+        """post_attention_layernorm follows attention here, so it must not sit in
+        the ln2 slot that tools read as the norm feeding the MLP."""
+        import torch.nn as nn
+
+        hf_layer = nn.Module()
+        hf_layer.post_feedforward_layernorm = nn.LayerNorm(8)
+        block = self._bind(adapter, hf_layer)
+        assert "ln2" not in block.submodules
+        assert block.submodules["ln1_post"].name == "post_attention_layernorm"
 
     def test_linear_attention_layer_uses_raw_outputs(self, adapter) -> None:
         import torch.nn as nn
@@ -103,3 +106,5 @@ class TestOlmoHybridPerLayerContributionAliases:
         block = self._bind(adapter, nn.Module())
         assert block.hook_aliases["hook_attn_out"] == "linear_attn.hook_out"
         assert block.hook_aliases["hook_mlp_out"] == "mlp.hook_out"
+        assert block.hook_aliases["hook_resid_mid"] == "ln2.hook_in"
+        assert block.submodules["ln2"].name == "post_attention_layernorm"
