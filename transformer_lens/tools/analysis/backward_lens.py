@@ -1,13 +1,12 @@
-"""Backward Lens: MLP weight gradients as token-position outer products, read in vocabulary space.
-
-Supports raw dense-MLP decoder-only ``TransformerBridge`` models such as GPT-2 and Pythia.
-"""
+"""Backward Lens: MLP weight gradients as token-position outer products, read in vocabulary space;
+supports raw dense-MLP decoder-only ``TransformerBridge`` models such as GPT-2 and Pythia."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Literal, cast
 
 import torch
@@ -113,10 +112,8 @@ class BackwardLensMatrixResult:
         largest: bool,
         normalized: bool = False,
     ) -> Int[torch.Tensor, "position"]:
-        """Return zero-based competition ranks per position, from the largest if ``largest``.
-
-        Only the analyzed target's ranks are retained; other ids need ``return_full_logits=True``.
-        """
+        """Zero-based competition ranks per position, from the largest if ``largest``; ids other
+        than the analyzed target need ``return_full_logits=True``."""
         if isinstance(target_token_id, bool) or not isinstance(target_token_id, int):
             raise TypeError("target_token_id must be an integer")
         if not 0 <= target_token_id < self.vocabulary_size:
@@ -389,6 +386,23 @@ def _factor_norms_and_normalized_rows(
     return norms.clone(), zero_mask.clone(), normalized
 
 
+def _rank_logits(
+    logits: Float[torch.Tensor, "position d_vocab"], *, top_k: int, target_token_id: int
+) -> tuple[
+    VocabularyRanking,
+    VocabularyRanking,
+    Int[torch.Tensor, "position"],
+    Int[torch.Tensor, "position"],
+]:
+    """Top and bottom rankings, then the target's largest- and smallest-first ranks."""
+    return (
+        _rank_vocabulary_logits(logits, k=top_k, largest=True),
+        _rank_vocabulary_logits(logits, k=top_k, largest=False),
+        _target_vocabulary_ranks(logits, target_token_id=target_token_id, largest=True),
+        _target_vocabulary_ranks(logits, target_token_id=target_token_id, largest=False),
+    )
+
+
 def _build_matrix_result(
     model: Any,
     factors: LinearGradientFactors,
@@ -407,29 +421,20 @@ def _build_matrix_result(
     normalized_logits = (
         _project_residual_factors(model, normalized_rows) if include_normalized_logits else None
     )
-    top_ranking = _rank_vocabulary_logits(raw_logits, k=top_k, largest=True)
-    bottom_ranking = _rank_vocabulary_logits(raw_logits, k=top_k, largest=False)
-    target_largest_ranks = _target_vocabulary_ranks(
-        raw_logits, target_token_id=target_token_id, largest=True
-    )
-    target_smallest_ranks = _target_vocabulary_ranks(
-        raw_logits, target_token_id=target_token_id, largest=False
+    top_ranking, bottom_ranking, target_largest_ranks, target_smallest_ranks = _rank_logits(
+        raw_logits, top_k=top_k, target_token_id=target_token_id
     )
     normalized_top_ranking = None
     normalized_bottom_ranking = None
     normalized_target_largest_ranks = None
     normalized_target_smallest_ranks = None
     if normalized_logits is not None:
-        normalized_top_ranking = _rank_vocabulary_logits(normalized_logits, k=top_k, largest=True)
-        normalized_bottom_ranking = _rank_vocabulary_logits(
-            normalized_logits, k=top_k, largest=False
-        )
-        normalized_target_largest_ranks = _target_vocabulary_ranks(
-            normalized_logits, target_token_id=target_token_id, largest=True
-        )
-        normalized_target_smallest_ranks = _target_vocabulary_ranks(
-            normalized_logits, target_token_id=target_token_id, largest=False
-        )
+        (
+            normalized_top_ranking,
+            normalized_bottom_ranking,
+            normalized_target_largest_ranks,
+            normalized_target_smallest_ranks,
+        ) = _rank_logits(normalized_logits, top_k=top_k, target_token_id=target_token_id)
     return BackwardLensMatrixResult(
         factors=factors,
         projected_factor=projected_factor,
@@ -660,10 +665,8 @@ def _capture_dense_mlp_gradient_factors(
     target_token: str,
     layers: Sequence[int],
 ) -> _DenseMLPGradientCapture:
-    """Capture exact dense-MLP weight-gradient factors for one next-token loss.
-
-    Makes one ``torch.autograd.grad`` call; never touches ``.grad``, training state or caller hooks.
-    """
+    """Capture exact dense-MLP weight-gradient factors for one next-token loss in one
+    ``torch.autograd.grad`` call; never touches ``.grad``, training state or caller hooks."""
     if torch.is_inference_mode_enabled():
         raise ValueError(
             "Backward Lens cannot capture gradients inside torch.inference_mode(); "
@@ -771,10 +774,8 @@ class BackwardLens:
         top_k: int = DEFAULT_TOP_K,
         return_full_logits: bool = False,
     ) -> BackwardLensResult:
-        """Analyze the final-position loss for ``target_token``, which must encode to one token.
-
-        ``normalized`` adds unit-norm factor readouts; ``top_k`` bounds the retained rankings.
-        """
+        """Analyze the final-position loss for single-token ``target_token``; ``normalized`` adds
+        unit-norm factor readouts and ``top_k`` bounds the retained rankings."""
         if not isinstance(normalized, bool):
             raise TypeError("normalized must be a bool")
         if isinstance(top_k, bool) or not isinstance(top_k, int):
@@ -785,33 +786,24 @@ class BackwardLens:
         if not isinstance(return_full_logits, bool):
             raise TypeError("return_full_logits must be a bool")
         capture = _capture_dense_mlp_gradient_factors(self._model, prompt, target_token, layers)
-        layer_results: list[BackwardLensLayerResult] = []
-        for layer in capture.layers:
-            input_result = _build_matrix_result(
-                self._model,
-                layer.input_projection,
-                projected_factor="forward_inputs",
-                include_normalized_logits=normalized,
-                target_token_id=capture.target_token_id,
-                top_k=top_k,
-                return_full_logits=return_full_logits,
+        build = partial(
+            _build_matrix_result,
+            self._model,
+            include_normalized_logits=normalized,
+            target_token_id=capture.target_token_id,
+            top_k=top_k,
+            return_full_logits=return_full_logits,
+        )
+        layer_results = [
+            BackwardLensLayerResult(
+                layer=layer.layer,
+                input_projection=build(layer.input_projection, projected_factor="forward_inputs"),
+                output_projection=build(
+                    layer.output_projection, projected_factor="output_gradients"
+                ),
             )
-            output_result = _build_matrix_result(
-                self._model,
-                layer.output_projection,
-                projected_factor="output_gradients",
-                include_normalized_logits=normalized,
-                target_token_id=capture.target_token_id,
-                top_k=top_k,
-                return_full_logits=return_full_logits,
-            )
-            layer_results.append(
-                BackwardLensLayerResult(
-                    layer=layer.layer,
-                    input_projection=input_result,
-                    output_projection=output_result,
-                )
-            )
+            for layer in capture.layers
+        ]
         all_factors = [
             factors
             for layer in capture.layers

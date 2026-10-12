@@ -1388,7 +1388,6 @@ def test_edge_effects_scores_logits_reader_edges_with_finite_signed_values() -> 
 
 
 def test_edge_effects_batched_scores_match_the_naive_per_edge_reference() -> None:
-    """The batched scorer matches the naive per-edge reference."""
     model = _EdgeScoringToyBridge()
     with _edge_hook_flags(model):
         clean = torch.tensor([[1, 2, 3]])
@@ -1413,7 +1412,6 @@ def test_edge_effects_batched_scores_match_the_naive_per_edge_reference() -> Non
 
 
 def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
-    """An edge sweep restores the caller's per-head hook flags."""
     model = _EdgeScoringToyBridge()
     assert model.cfg.use_attn_result is False
     assert model.cfg.use_split_qkv_input is False

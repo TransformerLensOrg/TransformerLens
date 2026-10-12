@@ -1,8 +1,4 @@
-"""Unit tests for the logit lens and logit readout.
-
-Everything here runs on a tiny random GPT-2 built in memory (no Hub download);
-real-model exactness lives in ``tests/integration/test_logit_lens.py``.
-"""
+"""Logit lens and readout on a tiny in-memory GPT-2; real-model exactness is in integration."""
 
 from types import SimpleNamespace
 
@@ -85,7 +81,7 @@ def test_vocab_subset_is_a_gather_of_the_full_result(tiny):
     logits = logit_readout(model, resid, vocab=subset)
     torch.testing.assert_close(logits.values, ref[..., subset])
     assert logits.vocab_ids.tolist() == subset
-    # log-probs over a subset keep the full-vocabulary normalizer
+    # Log-probs over a subset keep the full-vocabulary normalizer.
     log_probs = logit_readout(model, resid, vocab=subset, return_type="log_probs")
     torch.testing.assert_close(log_probs.values, torch.log_softmax(ref, -1)[..., subset])
     probs = logit_readout(model, resid, vocab=subset, return_type="probs")
@@ -150,7 +146,7 @@ def test_incl_mid_adds_mid_entries(tiny):
 
 def test_positions_and_batch_slices(tiny):
     model, ref, cache = tiny
-    last = logit_lens(cache)  # default positions=-1
+    last = logit_lens(cache)
     assert last.values.shape == (3, 2, D_VOCAB)
     torch.testing.assert_close(last.values[-1], ref[:, -1], atol=1e-5, rtol=1e-5)
     window = logit_lens(cache, positions=(1, 4))
@@ -294,7 +290,7 @@ def test_encoder_decoder_and_headless_bridges_are_refused():
 
 
 def test_per_row_targets_next_token(tiny):
-    """[batch, pos] next-token ids give one rank per (layer, batch, pos) without a full-vocab tensor."""
+    """[batch, pos] next-token ids give one rank per (layer, batch, pos), no full-vocab tensor."""
     model, ref, cache = tiny
     nxt = torch.roll(TOKENS, -1, dims=1)
     result = logit_lens(cache, positions=None, targets=nxt)
@@ -309,7 +305,7 @@ def test_per_row_targets_next_token(tiny):
     assert result.readout.decode(_Tok())[0][1][2] == f"<{nxt[1, 2].item()}>"
     with pytest.raises(ValueError, match="one target per row"):
         result.rank_trajectory(3)
-    # log-probs per row use the full-vocabulary normalizer
+    # Per-row log-probs keep the full-vocabulary normalizer.
     lp = logit_lens(cache, positions=None, targets=nxt, return_type="log_probs")
     torch.testing.assert_close(
         lp.values[-1],

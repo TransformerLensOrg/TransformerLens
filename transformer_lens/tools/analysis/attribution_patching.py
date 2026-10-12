@@ -1,10 +1,5 @@
-"""Attribution patching and edge-ablation faithfulness on ``TransformerBridge``.
-
-Node and edge scores are the first-order ``(a_clean - a_corrupt) . g`` with ``g`` taken on the
-corrupt run (denoising form), so a positive score means patching corrupt toward clean raises the
-metric. :func:`faithfulness` ablates every edge outside a circuit by rewriting each reader's pre-LN
-fork input; the residual stream is a running sum, so that rewrite is exact.
-"""
+"""Attribution patching and edge-ablation faithfulness on ``TransformerBridge``; a positive
+``(a_clean - a_corrupt) . g`` (``g`` from the corrupt run) means patching toward clean helps."""
 
 from __future__ import annotations
 
@@ -420,10 +415,8 @@ def cache_activation_and_gradient(
             else ()
         )
 
-    # The most-upstream cached point's own backward hook never fires -- nothing
-    # requested is upstream of it, so the backward stops at it -- but its cached
-    # tensor is on-path and unconverted, so torch.autograd.grad returns that
-    # gradient directly. Backfill any point the hooks missed from that return.
+    # The backward stops at the most-upstream cached point, so its own hook never fires; its
+    # tensor is on-path and unconverted, so autograd.grad's return backfills it.
     for name, grad in zip(captured_names, returned):
         if gradients.get(name) is None:
             gradients[name] = None if grad is None else grad.detach().clone()
@@ -604,6 +597,7 @@ def _make_edge_ablation_hook(
                     f"contribution captured at {name!r}. Enable the writer's hook "
                     "family before running the ablation."
                 )
+            # Exact: the reader's pre-LN fork input is a running sum of writer outputs.
             rebuilt[index] = (
                 rebuilt[index] - _node_slice(writer, live) + _node_slice(writer, replacement)
             )

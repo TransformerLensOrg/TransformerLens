@@ -234,7 +234,9 @@ model.
 (`result.rank_trajectory(" Paris")`); a `[batch, pos]` tensor of next-token ids
 instead gives the rank of the *actual* next token at every position and layer,
 without materializing the full vocabulary; `top_k=` keeps the leading tokens with
-their ids; `vocab=` keeps a subset. Ranks, entropy and log-probabilities are always
+their ids; `vocab=` keeps a subset. A batch of strings is padded by the tokenizer, so
+with the default `positions=-1` shorter prompts are read at a pad position; pass a
+token tensor or per-prompt positions when prompts differ in length. Ranks, entropy and log-probabilities are always
 computed over the full vocabulary, whatever was selected. `logit_readout` is the
 same kernel for any `d_model` vector: a head output, a steering direction, a
 sparse-coder decoder column.

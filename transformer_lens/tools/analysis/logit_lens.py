@@ -1,35 +1,6 @@
-"""Logit lens and vocabulary readout.
+"""Logit lens over the accumulated residual stream; ``logit_readout`` for any ``d_model`` vector.
 
-The `logit lens <https://www.lesswrong.com/posts/AcKRB8wDpdaN6v6ru/interpreting-gpt-the-logit-lens>`_
-reads every intermediate residual-stream state through the model's own final
-norm and unembedding, so each layer can be asked "what would the model predict
-if it stopped here?". :func:`logit_lens` does that in one call over a cache's
-accumulated residual stream; :func:`logit_readout` is the kernel underneath it
-and reads *any* ``d_model`` vector (a head output, a steering direction, a
-sparse-coder decoder column) through the same path.
-
-Both go through the real ``ln_final`` module, ``W_U``, ``b_U`` and the
-adapter's post-unembedding transform (Gemma-style softcap, Cohere logit scale),
-so the final stack entry reproduces the model's own logits on a raw bridge and
-the model's log-probabilities in compatibility mode (``center_unembed`` shifts
-raw logits by a per-position constant). Logits are produced chunk by chunk, so
-``[layers, batch, pos, d_vocab]`` is never materialized unless the full
-vocabulary is explicitly requested.
-
-Example::
-
-    from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.tools.analysis import logit_lens
-
-    model = TransformerBridge.boot_transformers("gpt2", device="cpu")
-    result = logit_lens(model, "The Eiffel Tower is in the city of", targets=" Paris")
-    for label, rank in zip(result.labels, result.rank_trajectory(" Paris").tolist()):
-        print(f"{label:>12}: rank {rank}")
-
-    # Rank of the actual next token at every position and layer: a per-row target.
-    tokens = model.to_tokens("The Eiffel Tower is in the city of Paris")
-    nxt = logit_lens(model, tokens[:, :-1], positions=None, targets=tokens[:, 1:])
-    nxt.rank_trajectory()  # [layers, batch, pos]
+The final entry reproduces the model's logits (log-probs in compatibility mode); chunked readout.
 """
 
 import itertools
@@ -45,8 +16,7 @@ from transformer_lens.utilities import Slice, SliceInput
 from transformer_lens.utilities.logits_utils import logits_to_df
 from transformer_lens.utilities.quantization import require_readable_weight
 
-# Shared targets: one string / id or a sequence of them. A tensor means per-row
-# targets (see logit_readout).
+# A tensor means per-row targets; strings / ids are shared across rows.
 TokenInput = Union[str, int, Sequence[Union[str, int]], torch.Tensor]
 
 _RETURN_TYPES = ("logits", "log_probs", "probs")
@@ -54,40 +24,17 @@ _INDEX_DTYPES = (torch.int64, torch.int32, torch.int16, torch.int8, torch.uint8)
 # Value-column names, matching utilities.logits_utils.logits_to_df.
 _VALUE_COLUMNS = {"logits": "logit", "log_probs": "log_prob", "probs": "probability"}
 
-# Normalization types for which the model has a final norm the lens must apply.
 _FINAL_NORM_TYPES = ("LN", "LNPre", "RMS", "RMSPre")
 
-# Block variants without a ``resid_mid`` hook; mirrors direct_logit_attribution.
+# Block variants with no ``resid_mid`` hook; mirrors direct_logit_attribution.
 _HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
 
 
 @dataclass
 class LogitReadout:
-    """Result of :func:`logit_readout`.
+    """Result of :func:`logit_readout`; the trailing axis is the selected ids or the full vocab.
 
-    Exactly one of the three selectors expands the trailing axis of ``values``:
-    ``targets`` gives ``[..., n_targets]`` (``[..., 1]`` for per-row targets),
-    ``top_k`` gives ``[..., k]`` with ``top_ids``, ``vocab`` gives
-    ``[..., len(vocab)]``; with none of them the trailing axis is the full
-    vocabulary. ``entropy`` and ``target_ranks`` are always computed over the
-    full vocabulary, whatever was selected.
-
-    Attributes:
-        values: The requested quantity (see ``return_type``) with the leading
-            dims of the input vectors and the selected trailing axis.
-        return_type: ``"logits"``, ``"log_probs"`` or ``"probs"``.
-        entropy: Full-vocabulary entropy of the softmax, in nats, ``[...]``.
-        top_ids: Token ids aligned with ``values`` when ``top_k`` was used.
-        vocab_ids: The requested subset ids when ``vocab`` was used.
-        target_ids: Shared targets as ``[n_targets]``; per-row targets as a
-            tensor with the leading dims of the vectors (one id per row).
-        target_ranks: Zero-based full-vocabulary rank of each target (0 is the
-            argmax; ties count only strictly larger logits), aligned with
-            ``values``.
-        per_row_targets: Whether ``targets`` was given per row (a tensor).
-        applied_ln: Whether the model's final norm was applied to the vectors.
-        applied_output_transform: Whether the adapter's post-unembedding
-            transform was invoked (it is the identity for most architectures).
+    ``entropy`` (nats) and ``target_ranks`` (0 = argmax, strict ``>``) always span the full vocab.
     """
 
     values: Float[torch.Tensor, "... selected"]
@@ -95,7 +42,7 @@ class LogitReadout:
     entropy: Float[torch.Tensor, "..."]
     top_ids: Optional[Int[torch.Tensor, "... k"]] = None
     vocab_ids: Optional[Int[torch.Tensor, "v"]] = None
-    target_ids: Optional[torch.Tensor] = None
+    target_ids: Optional[torch.Tensor] = None  # [n_targets] shared, else the vectors' lead dims
     target_ranks: Optional[Int[torch.Tensor, "... t"]] = None
     per_row_targets: bool = False
     applied_ln: bool = True
@@ -119,12 +66,7 @@ class LogitReadout:
         return self.selected_ids
 
     def decode(self, tokenizer: Any) -> Any:
-        """Decode the trailing-axis token ids to strings, keeping the leading structure.
-
-        ``top_k`` and per-row readouts decode per row; shared ``targets`` /
-        ``vocab`` readouts decode the id list once. Full-vocabulary readouts
-        have no id list to decode.
-        """
+        """Decode trailing-axis ids to strings; ``top_k`` and per-row readouts decode per row."""
         decode = getattr(tokenizer, "decode", None)
         if not callable(decode):
             raise TypeError("tokenizer must provide a callable decode method")
@@ -142,25 +84,12 @@ class LogitReadout:
 
 @dataclass
 class LogitLensResult:
-    """Result of :func:`logit_lens`.
-
-    Attributes:
-        readout: The :class:`LogitReadout` over the accumulated stack. Its
-            leading axis is the stack entry, aligned with ``labels``; the
-            remaining leading dims are ``[batch, pos]`` after the requested
-            ``positions`` / ``batch_slice`` (an integer selection drops its axis).
-        labels: Stack entry labels from ``accumulated_resid`` (``"0_pre"``,
-            ``"3_mid"``, ``"final_post"``).
-        has_batch_dim: Whether a batch axis follows the stack axis.
-        target_names: For shared targets, the string passed for each target
-            (``None`` where an id was passed), so :meth:`rank_trajectory`
-            accepts the strings again.
-    """
+    """Result of :func:`logit_lens`; ``readout``'s leading axis is the stack entry (``labels``)."""
 
     readout: LogitReadout
     labels: List[str]
     has_batch_dim: bool
-    target_names: Optional[List[Optional[str]]] = None
+    target_names: Optional[List[Optional[str]]] = None  # strings as passed, for rank_trajectory
 
     @property
     def values(self) -> torch.Tensor:
@@ -168,11 +97,9 @@ class LogitLensResult:
         return self.readout.values
 
     def rank_trajectory(self, target: Union[str, int, None] = None) -> torch.Tensor:
-        """Full-vocabulary rank of one target at every stack entry, ``[layer, ...]``.
+        """Full-vocabulary rank of one target per stack entry, ``[layer, ...]``.
 
-        ``target`` is the string passed to ``targets`` or a token id; ``None``
-        selects the only target when exactly one was requested, and is the only
-        form for per-row targets.
+        ``target`` is a passed string or a token id; ``None`` picks the only or per-row target.
         """
         ranks = self.readout.target_ranks
         ids = self.readout.target_ids
@@ -210,15 +137,9 @@ class LogitLensResult:
         }
 
     def to_dataframe(self, tokenizer: Optional[Any] = None, top_k: Optional[int] = None) -> Any:
-        """One row per (stack entry, batch, position, token) as a pandas DataFrame.
+        """One row per (stack entry, batch, pos, token), by descending value, as a DataFrame.
 
-        Rows within a (layer, batch, pos) group are sorted by descending value and
-        ``top_k`` keeps the leading ones. Full-vocabulary ``"logits"`` readouts
-        go through :func:`transformer_lens.utilities.logits_utils.logits_to_df`
-        (columns ``logit``, ``log_prob``, ``probability``); every other readout
-        carries ``token_index``, optional ``token_string`` and one value column
-        named like ``logits_to_df`` names it (``logit`` / ``log_prob`` /
-        ``probability``).
+        Value columns are named as in :func:`~transformer_lens.utilities.logits_utils.logits_to_df`.
         """
         import pandas as pd
 
@@ -283,12 +204,7 @@ def _target_names(targets: Optional[TokenInput]) -> Optional[List[Optional[str]]
 
 
 def _final_norm(model: Any) -> Optional[torch.nn.Module]:
-    """The module to apply before unembedding, or ``None`` when the model has no final norm.
-
-    Raises rather than guessing: an unfolded affine norm applied through the
-    cached-scale path, or an unknown normalization type passed through
-    untouched, would both read the stream wrong silently.
-    """
+    """Final norm module, or ``None``; raises rather than apply a norm it cannot reproduce."""
     norm_type = getattr(model.cfg, "normalization_type", None)
     if norm_type is None:
         return None
@@ -332,12 +248,7 @@ def _validate_selectors(
     top_k: Optional[int],
     chunk_size: int,
 ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], int]:
-    """Cheap argument checks shared by both entry points; run before any forward pass.
-
-    Returns ``(vocab_ids, target_ids, d_vocab)`` where ``target_ids`` is a flat
-    ``[n_targets]`` tensor for shared targets or the caller's tensor (long) for
-    per-row targets.
-    """
+    """Cheap checks run before any forward pass; returns ``(vocab_ids, target_ids, d_vocab)``."""
     if return_type not in _RETURN_TYPES:
         raise ValueError(f"return_type must be one of {_RETURN_TYPES}, got {return_type!r}")
     if sum(x is not None for x in (vocab, targets, top_k)) > 1:
@@ -380,8 +291,7 @@ def _apply_output_transform(model: Any, logits: torch.Tensor) -> Tuple[torch.Ten
 def _run_ln_final(
     ln_final: torch.nn.Module, flat: Float[torch.Tensor, "n d_model"]
 ) -> torch.Tensor:
-    # Norm components contract on [batch, pos, d_model]; stats are per vector, so
-    # the row axis can be presented as the position axis.
+    # Norms expect [batch, pos, d_model]; stats are per vector, so rows can pose as positions.
     return ln_final(flat.unsqueeze(0)).squeeze(0)
 
 
@@ -415,46 +325,9 @@ def logit_readout(
     chunk_size: int = 64,
     enable_grad: bool = False,
 ) -> LogitReadout:
-    """Read ``d_model`` vectors through the model's final norm and unembedding.
+    """Read ``d_model`` vectors through the final norm and unembedding in ``chunk_size``-row chunks.
 
-    Computes ``transform(ln_final(x) @ W_U + b_U)`` for every vector, where
-    ``transform`` is the adapter's post-unembedding transform, in chunks of
-    ``chunk_size`` rows so at most ``chunk_size × d_vocab`` logits exist at once.
-    Everything derived from the full vocabulary (the softmax normalizer,
-    ``entropy``, ``target_ranks``) is computed per chunk and discarded; only the
-    selected columns are kept.
-
-    Args:
-        model: A ``TransformerBridge`` in eval mode.
-        vectors: Residual-stream-shaped vectors, any leading dims.
-        apply_ln: Apply the model's ``ln_final`` module first (recomputed
-            statistics per vector). ``False`` reads the raw vectors and does not
-            reproduce the model.
-        vocab: Token ids to keep along the trailing axis.
-        targets: Tokens whose values and full-vocabulary ranks to report.
-            Strings (single tokens) or ints, or a sequence of them, are
-            *shared* across every row. A tensor is *per row*: it is
-            right-aligned and broadcast to the vectors' leading dims (for
-            ``[batch, pos, d_model]`` vectors pass ``[batch, pos]`` next-token
-            ids, or ``[batch, 1]`` for one id per example) and the trailing
-            axis of ``values`` has length 1. Note the convention differs from
-            ``ActivationCache.logit_attrs``, which reads a 1-D tensor as
-            per-example first; here alignment is purely right-to-left.
-        return_type: ``"logits"``, ``"log_probs"`` or ``"probs"``.
-        top_k: Keep the ``k`` largest-logit tokens per vector, with their ids.
-        chunk_size: Rows of ``vectors`` processed per unembedding matmul.
-        enable_grad: Keep autograd on (for trainable lenses and attribution);
-            default runs under ``torch.no_grad()``.
-
-    Returns:
-        A :class:`LogitReadout`.
-
-    Raises:
-        ValueError: On a bad ``return_type``, more than one selector, a
-            ``chunk_size`` below 1, a wrong trailing dimension, empty vectors,
-            per-row targets that do not broadcast, or a model whose final norm
-            cannot be applied exactly.
-        NotImplementedError: For encoder-decoder and encoder-only bridges.
+    Tensor ``targets`` are per row and right-aligned to the leading dims (unlike ``logit_attrs``).
     """
     require_eval_mode(model, operation="logit_readout")
     _require_decoder_unembed(model)
@@ -502,6 +375,7 @@ def logit_readout(
             if ln_final is not None:
                 chunk = _run_ln_final(ln_final, chunk)
             logits = chunk @ W_U + b_U
+            # Softcap / logit scale; without it Gemma-2 and Cohere readouts miss the model.
             logits, applied_transform = _apply_output_transform(model, logits)
             log_probs = torch.log_softmax(logits.float(), dim=-1)
             out_entropy.append(-(log_probs.exp() * log_probs).sum(dim=-1))
@@ -589,41 +463,7 @@ def logit_lens(
 ) -> LogitLensResult:
     """Read the accumulated residual stream through the final norm and unembedding.
 
-    Builds the stack with
-    :meth:`~transformer_lens.ActivationCache.ActivationCache.accumulated_resid`,
-    optionally applies a per-entry ``lens`` translator, applies the final norm
-    through :meth:`~transformer_lens.ActivationCache.ActivationCache.apply_ln_to_stack`
-    with recomputed statistics, and hands the result to :func:`logit_readout`.
-    The final stack entry reproduces the model's logits (raw bridge) or
-    log-probabilities (compatibility mode).
-
-    Args:
-        model: A ``TransformerBridge``, or an :class:`ActivationCache` (then
-            ``input`` must be omitted).
-        input: Prompt(s) or token tensor to run when no ``cache`` is given. Only
-            the residual-stream hooks are cached. A batch of strings is padded
-            by the tokenizer, so with the default ``positions=-1`` the shorter
-            prompts are read at a pad position; pass a token tensor (or
-            per-prompt positions) when prompts differ in length.
-        cache: An existing cache to read instead of running the model.
-        layers: Indices into the accumulated stack (negative allowed); ``None``
-            keeps every entry.
-        incl_mid: Include ``resid_mid`` entries. Raises on hybrid stacks whose
-            SSM blocks have no ``resid_mid``.
-        positions: Position selection (``Slice`` semantics); default last token.
-        batch_slice: Batch selection (``Slice`` semantics).
-        lens: Optional ``f(entry, index) -> entry`` applied to each stack entry
-            before the norm, e.g. a tuned-lens translator. Combine with
-            ``enable_grad=True`` to fit or attribute through it.
-        targets: As in :func:`logit_readout`; a per-row tensor is aligned with
-            the stack's ``[batch, pos]`` dims *after* ``positions`` and
-            ``batch_slice`` are applied (``[batch, pos]`` next-token ids with
-            ``positions=None``, ``[batch]`` with the default last position).
-        apply_ln, vocab, return_type, top_k, chunk_size, enable_grad: As in
-            :func:`logit_readout`.
-
-    Returns:
-        A :class:`LogitLensResult`.
+    ``lens(entry, stack_index)`` runs before the norm; per-row ``targets`` align after slicing.
     """
     if isinstance(model, ActivationCache):
         if input is not None or cache is not None:
@@ -653,6 +493,7 @@ def logit_lens(
     if cache is None:
         if input is None:
             raise ValueError("logit_lens needs an input to run or a cache to read")
+        # A padded string batch reads shorter prompts at a pad position under positions=-1.
         _, cache = model.run_with_cache(
             input, names_filter=_residual_hook_names(int(model.cfg.n_layers), incl_mid)
         )
@@ -674,7 +515,7 @@ def logit_lens(
         if lens is not None:
             stack = torch.stack([lens(stack[i], keep[i]) for i in range(stack.shape[0])], dim=0)
         if ln_final is not None:
-            # Recomputed-statistics path through the ln_final module (the #1076 fix).
+            # Cached final-norm scales belong to the last layer, so each entry recomputes its own.
             stack = cache.apply_ln_to_stack(
                 stack,
                 layer=None,
@@ -693,6 +534,7 @@ def logit_lens(
         chunk_size=chunk_size,
         enable_grad=enable_grad,
     )
+    # The norm ran above, not inside logit_readout.
     readout.applied_ln = ln_final is not None
     return LogitLensResult(
         readout=readout,

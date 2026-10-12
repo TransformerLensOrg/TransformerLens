@@ -1,8 +1,5 @@
-"""Forward-equivalent relevance-rule autograd primitives and the scoped ``use_relevance_rules``.
-
-Each primitive keeps its native forward value and replaces the backward with the rule's VJP;
-the scope installs rules at canonical mount names and reports installed versus skipped mounts.
-"""
+"""Relevance-rule autograd primitives (native forward, rule VJP backward) and the scoped
+``use_relevance_rules``, which reports installed versus skipped canonical mounts."""
 
 import dataclasses
 from contextlib import contextmanager

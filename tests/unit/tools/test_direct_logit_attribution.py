@@ -1,10 +1,4 @@
-"""Unit tests for Direct Logit Attribution guards and argument validation.
-
-These exercise the fast-failing checks (argument validation, the Bridge
-compatibility-mode requirement, and the hybrid-architecture refusal) without
-loading a real model — using a ``spec``-ed mock TransformerBridge so the checks
-fire before any forward pass.
-"""
+"""DLA argument and Bridge guards, on a ``spec``-ed mock so they fire before any forward pass."""
 
 from unittest.mock import MagicMock
 

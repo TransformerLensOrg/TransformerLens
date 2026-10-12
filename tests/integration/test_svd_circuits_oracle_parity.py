@@ -1,9 +1,5 @@
-"""Slow qualitative OV sweep on GPT-2-small layer 9 head 9.
-
-Gate counts are descriptive (a sampled control mean, not a significance test; zero is allowed):
-no external numerical oracle exists for this head. Checks cover eligibility, finiteness, gate
-polarity and fixed-seed reproducibility; each sweep costs ``k * (n_baseline + 2)`` forwards.
-"""
+"""Slow qualitative OV sweep on GPT-2-small L9H9 (no external oracle): gate counts are descriptive,
+not a significance test, and may be zero; each sweep costs ``k * (n_baseline + 2)`` forwards."""
 
 from __future__ import annotations
 

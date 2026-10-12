@@ -1,9 +1,5 @@
-"""Projection Kernel utilities for comparing linear subspaces.
-
-The Projection Kernel (PK) between subspaces with orthonormal bases ``U`` and
-``V`` is ``||U.T @ V||_F^2``. It is invariant to basis choices within either
-subspace and equals the sum of squared principal-angle cosines.
-"""
+"""Projection Kernel (PK) ``||U.T @ V||_F^2`` between subspaces with orthonormal bases ``U``, ``V``:
+basis-invariant, and equal to the sum of squared principal-angle cosines."""
 
 from __future__ import annotations
 

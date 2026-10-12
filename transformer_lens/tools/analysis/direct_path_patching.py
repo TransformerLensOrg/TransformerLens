@@ -1,56 +1,5 @@
-"""Direct Path Patching.
-
-Implements direct path patching — a finer-grained variant of activation patching
-introduced for circuit analysis.
-
-Background
-----------
-Standard activation patching (see patching.py) replaces an activation at a given
-layer/position with its value from a clean run, and measures how much the model's
-output shifts. But patching the *residual stream* affects ALL downstream components,
-making it hard to isolate the direct information flow between two specific heads.
-
-Direct path patching isolates the path A → B: it patches *only* the contribution of
-source head A (at layer src_layer) into the input of destination head B (at layer
-dst_layer > src_layer), leaving every other component's view of A's output unchanged.
-
-The linear approximation used here (following Neel Nanda's description in issue #111)
-is:
-
-    delta_resid = clean_A_result - corrupted_A_result   # [batch, pos, d_model]
-    delta_q     = (delta_resid / ln1_scale) @ W_Q[hb]  # [batch, pos, d_head]
-    patched_q   = corrupted_q + delta_q
-
-This is an approximation, not exact even with LayerNorm folded: it freezes the
-corrupted run's ln1 scale, whereas the true scale shifts with the patched
-residual.  The error grows with how much ``delta_resid`` changes the residual
-norm at the destination layer.
-
-Usage
------
-    # 1. Cache clean and corrupted activations
-    _, clean_cache = model.run_with_cache(clean_tokens)
-    _, corrupted_cache = model.run_with_cache(corrupted_tokens)
-
-    # 2. Define your metric (same as activation patching)
-    def metric(logits):
-        return logit_diff(logits, ...)
-
-    # 3. Sweep all (dst_layer, dst_head) pairs for a fixed source head
-    results = get_act_patch_direct_path(
-        model, corrupted_tokens, clean_cache, corrupted_cache,
-        metric, src_layer=9, src_head=9,
-        component="q",   # patch into Q; also supports "k", "v"
-    )
-    # results.shape == (n_layers, n_heads)
-    # results[dst_layer, dst_head] = metric when A→B path is patched
-
-References
-----------
-- Neel Nanda, TransformerLens issue #111 (2022)
-- Wang et al., "Interpretability in the Wild: a Circuit for Indirect Object
-  Identification in GPT-2 small" (2022)
-"""
+"""Direct path patching (after Wang et al. 2022): add only head A's output delta to a later head
+B's q/k/v, linearised through the corrupted run's frozen ln1 scale (inexact even with LN folded)."""
 
 from __future__ import annotations
 
@@ -67,27 +16,17 @@ from transformer_lens.model_protocol import (
     TransformerLensModelWithWeights,
 )
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
 
 def _check_fold_ln(model: Any) -> None:
-    """Warn if the model's LayerNorm weights have not been folded in.
-
-    TransformerBridge wraps the original HuggingFace module, which stores the
-    learned scale as ``.weight``; legacy TransformerLens components store it as
-    ``.w``.  We check both so the guard works for either layout.
-    """
+    """Warn if the model's LayerNorm weights have not been folded in."""
     try:
-        ln1 = model.blocks[0].ln1  # type: ignore[index]
-        # .weight → TransformerBridge (wraps HF module); .w → legacy TL components
+        ln1 = model.blocks[0].ln1
+        # .weight on TransformerBridge (wraps the HF module); .w on legacy TL components.
         w = getattr(ln1, "w", None)
         if w is None:
             w = getattr(ln1, "weight", None)
         if w is not None and getattr(getattr(model, "cfg", None), "rmsnorm_uses_offset", False):
-            # Offset-RMS models (Gemma family) store w as an offset from 1:
-            # the effective scale is (1 + w) and the folded identity is 0.
+            # Offset-RMS (Gemma) stores w as an offset from 1, so the folded identity is w = 0.
             w = 1.0 + w
         if w is not None and not torch.allclose(w, torch.ones_like(w), atol=1e-3):
             warnings.warn(
@@ -99,12 +38,7 @@ def _check_fold_ln(model: Any) -> None:
                 stacklevel=3,
             )
     except (AttributeError, TypeError):
-        pass  # non-standard model — cannot inspect LN weights, proceed
-
-
-# ---------------------------------------------------------------------------
-# Core hook factory
-# ---------------------------------------------------------------------------
+        pass  # non-standard model: LN weights can't be inspected, so don't block the run
 
 
 def _make_direct_path_hook(
@@ -113,40 +47,16 @@ def _make_direct_path_hook(
     W_component: Float[torch.Tensor, "d_model d_head"],
     ln_scale_name: str,
     corrupted_cache: ActivationCache,
-    component: Literal["q", "k", "v"],
 ) -> Callable:
-    """Return a hook function that adds the linearised delta to one head's Q, K, or V.
-
-    Parameters
-    ----------
-    delta_resid:
-        (clean_A_result - corrupted_A_result), shape [batch, pos, d_model].
-    dst_head:
-        Index of the destination attention head to patch.
-    W_component:
-        The weight matrix for the component being patched:
-        W_Q[dst_head], W_K[dst_head], or W_V[dst_head].
-        Shape [d_model, d_head].
-    ln_scale_name:
-        Cache key for the layer-norm scale at the destination layer,
-        e.g. "blocks.3.ln1.hook_scale".
-    corrupted_cache:
-        Cache from the corrupted forward pass (used to look up ln1 scale).
-    component:
-        One of "q", "k", "v" — determines which QKV tensor is hooked.
-    """
+    """Hook adding the linearised ``delta_resid`` to ``dst_head``'s q, k or v."""
 
     def hook_fn(
         value: Float[torch.Tensor, "batch pos n_heads d_head"],
-        hook,  # HookPoint, unused but required by TransformerLens
+        hook,  # unused; required by the hook signature
     ) -> Float[torch.Tensor, "batch pos n_heads d_head"]:
-        # ln scale: [batch, pos, 1]
-        ln_scale = corrupted_cache[ln_scale_name]  # [batch, pos, 1]
-
-        # Linearised delta in query/key/value space
-        # delta_resid: [batch, pos, d_model]
-        # W_component: [d_model, d_head]
-        delta = (delta_resid / ln_scale) @ W_component  # [batch, pos, d_head]
+        # Frozen ln1 scale [batch, pos, 1]; error grows as delta shifts the residual norm.
+        ln_scale = corrupted_cache[ln_scale_name]
+        delta = (delta_resid / ln_scale) @ W_component
 
         if value.requires_grad:
             value = value.clone()
@@ -154,11 +64,6 @@ def _make_direct_path_hook(
         return value
 
     return hook_fn
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def get_act_patch_direct_path(
@@ -172,47 +77,8 @@ def get_act_patch_direct_path(
     component: Literal["q", "k", "v"] = "q",
     verbose: bool = True,
 ) -> Float[torch.Tensor, "n_layers n_heads"]:
-    """Sweep direct path patches from one source head to all downstream heads.
-
-    For every destination head B = (dst_layer, dst_head) where dst_layer > src_layer,
-    patch the contribution of source head A = (src_layer, src_head) into B's query
-    (or key / value) input, and record the patching metric.
-
-    The patch is a linear approximation:
-
-        delta_resid  = clean_A_result - corrupted_A_result   [batch, pos, d_model]
-        delta_B_comp = (delta_resid / ln1_scale) @ W_comp[dst_head]
-
-    where W_comp is W_Q, W_K, or W_V according to `component`.
-
-    Parameters
-    ----------
-    model:
-        Any TransformerLens model (e.g. TransformerBridge).
-    corrupted_tokens:
-        Token IDs for the corrupted input, shape [batch, seq_len].
-    clean_cache:
-        Cached activations from the clean (unpatched) run.
-    corrupted_cache:
-        Cached activations from the corrupted run (needed for ln1 scale).
-    patching_metric:
-        A function mapping the model's logits tensor to a scalar.
-    src_layer:
-        Layer index of the source attention head.
-    src_head:
-        Head index of the source attention head.
-    component:
-        Which input to patch at the destination head — "q" (default), "k", or "v".
-    verbose:
-        Whether to show a tqdm progress bar.
-
-    Returns
-    -------
-    results : Float[Tensor, "n_layers n_heads"]
-        results[dst_layer, dst_head] is the patching metric when the direct path
-        A → B is patched in.  Entries for dst_layer <= src_layer are left as 0.0
-        (no causal path from A to those layers).
-    """
+    """Patch head (src_layer, src_head) directly into each later head's ``component``.
+    Returns the metric per ``[dst_layer, dst_head]``; entries with dst_layer <= src_layer stay 0."""
     _check_fold_ln(model)
 
     n_layers = model.cfg.n_layers
@@ -220,28 +86,20 @@ def get_act_patch_direct_path(
 
     results = torch.zeros(n_layers, n_heads, device=model.cfg.device)
 
-    # Residual stream delta from source head A.
-    #
-    # hook_result (per-head residual contribution) requires cfg.use_hook_result=True
-    # and is not in the default cache. We compute it instead from hook_z and W_O,
-    # which are always available:
-    #   result_h = z[:, :, h, :] @ W_O[h]   shape [batch, pos, d_model]
+    # Rebuilt from hook_z @ W_O: hook_result is only cached when cfg.use_hook_result is set.
     src_z_name = f"blocks.{src_layer}.attn.hook_z"
-    # Static-only view of the weights surface (runtime checks use the base protocol:
-    # nn.Module submodules are invisible to getattr_static-based isinstance).
+    # Static-only cast: nn.Module submodules are invisible to getattr_static-based isinstance.
     weights_model = cast(TransformerLensModelWithWeights, model)
-    W_O = weights_model.blocks[src_layer].attn.W_O  # [n_heads, d_head, d_model]
+    W_O = weights_model.blocks[src_layer].attn.W_O
 
     def _head_result(cache, h):
-        z = cache[src_z_name][:, :, h, :]  # [batch, pos, d_head]
-        return z @ W_O[h]  # [batch, pos, d_model]
+        z = cache[src_z_name][:, :, h, :]
+        return z @ W_O[h]
 
     delta_resid = _head_result(clean_cache, src_head) - _head_result(corrupted_cache, src_head)
-    # shape: [batch, pos, d_model]
 
-    # Weight matrix for the component being patched
     _comp_map = {
-        "q": lambda attn: attn.W_Q,  # [n_heads, d_model, d_head]
+        "q": lambda attn: attn.W_Q,
         "k": lambda attn: attn.W_K,
         "v": lambda attn: attn.W_V,
     }
@@ -250,7 +108,7 @@ def get_act_patch_direct_path(
         "k": lambda lb: f"blocks.{lb}.attn.hook_k",
         "v": lambda lb: f"blocks.{lb}.attn.hook_v",
     }
-    W_all = _comp_map[component]  # callable: attn → [n_heads, d_model, d_head]
+    W_all = _comp_map[component]
     hook_name_fn = _hook_name_map[component]
 
     dst_pairs = [(lb, hb) for lb in range(src_layer + 1, n_layers) for hb in range(n_heads)]
@@ -261,7 +119,7 @@ def get_act_patch_direct_path(
         disable=not verbose,
     ):
         ln_scale_name = f"blocks.{dst_layer}.ln1.hook_scale"
-        W_comp = W_all(weights_model.blocks[dst_layer].attn)[dst_head]  # [d_model, d_head]
+        W_comp = W_all(weights_model.blocks[dst_layer].attn)[dst_head]
 
         hook_fn = _make_direct_path_hook(
             delta_resid=delta_resid,
@@ -269,7 +127,6 @@ def get_act_patch_direct_path(
             W_component=W_comp,
             ln_scale_name=ln_scale_name,
             corrupted_cache=corrupted_cache,
-            component=component,
         )
 
         patched_logits = model.run_with_hooks(
@@ -291,18 +148,8 @@ def get_act_patch_direct_path_all_sources(
     component: Literal["q", "k", "v"] = "q",
     verbose: bool = True,
 ) -> Float[torch.Tensor, "n_layers n_heads n_layers n_heads"]:
-    """Full sweep: all (src_layer, src_head) → (dst_layer, dst_head) direct paths.
-
-    Returns a 4-D tensor of shape [n_layers, n_heads, n_layers, n_heads].
-    result[sl, sh, dl, dh] = patching metric when head (sl,sh)'s output is
-    patched directly into head (dl,dh)'s query/key/value input.
-
-    Entries where dl <= sl are 0 (no causal path).
-
-    This runs O(n_layers * n_heads * n_layers * n_heads) forward passes and is
-    intended for small models or targeted sub-sweeps.  For large models prefer
-    calling get_act_patch_direct_path per source head.
-    """
+    """Every source head into every later head: ``result[sl, sh, dl, dh]``, 0 where dl <= sl.
+    One forward pass per (source, destination) pair; prefer per-source calls on large models."""
     _check_fold_ln(model)
 
     n_layers = model.cfg.n_layers

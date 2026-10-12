@@ -1,23 +1,5 @@
-"""Integration tests for the Direct Logit Attribution tool.
-
-DLA decomposes the part of a logit that comes from the residual stream via the
-unembedding *direction* ``W_U[:, token]``. The unembedding *bias* ``b_U`` is a
-per-token constant that no component produces, so the exact correctness
-invariant is::
-
-    sum(component DLA for token) + b_U[token] == logit[token]
-
-and, for a difference of two tokens, the two bias terms do **not** generally
-cancel (gpt2's folded ``ln_final`` bias makes them differ), so::
-
-    sum(component DLA, correct vs incorrect) == logit_diff - (b_U[c] - b_U[i])
-
-We assert these for ``TransformerBridge``
-(compatibility mode) — the latter is the reason issue #1263 exists.
-
-These tests load gpt2 (cached), so they live in ``integration/`` per
-``tests/AGENTS.md``.
-"""
+"""DLA on gpt2 (compat-mode bridge): sum(DLA) == logit - b_U, and the diff form, whose b_U terms
+don't cancel because gpt2's folded ln_final bias makes them differ."""
 
 import pytest
 
@@ -52,8 +34,7 @@ def _assert_complete_decomposition(model, unit):
     )
     single = direct_logit_attribution(model, PROMPT, answer_tokens=CORRECT, unit=unit)
 
-    # accumulated_resid ("layer") is cumulative: the last entry is the full
-    # residual stream, so it (not the column sum) is the reconstruction.
+    # "layer" is cumulative: the last entry, not the sum, is the full residual stream.
     diff_total = diff.attribution[-1].sum() if unit == "layer" else diff.attribution.sum()
     single_total = single.attribution[-1].sum() if unit == "layer" else single.attribution.sum()
 
@@ -80,7 +61,6 @@ class TestDirectLogitAttributionCore:
         )
         assert res.unit == "component"
         assert res.attribution.shape[0] == len(res.labels)
-        # Embedding term(s) plus each layer's attn_out and mlp_out.
         assert "embed" in res.labels
         assert (
             sum(label.endswith("_attn_out") for label in res.labels)
@@ -137,7 +117,7 @@ class TestDirectLogitAttributionCore:
 
 
 class TestDirectLogitAttributionBridge:
-    """The point of #1263: DLA must work on TransformerBridge."""
+    """DLA decomposition on TransformerBridge."""
 
     @pytest.mark.parametrize("unit", ["component", "head"])
     def test_decomposition_reconstructs_logit(self, gpt2_bridge_compat, unit):
@@ -145,11 +125,7 @@ class TestDirectLogitAttributionBridge:
 
 
 class TestDirectLogitAttributionBridgeGuards:
-    """Guards required for correctness on TransformerBridge (from PR #1316).
-
-    Without compatibility mode the projection direction is wrong on a Bridge and
-    DLA would silently return incorrect numbers — verify the explicit refusal.
-    """
+    """Without compat mode the projection direction is wrong, so DLA must refuse."""
 
     def test_non_compat_bridge_raises(self, gpt2_bridge):
         from transformer_lens.tools.analysis import direct_logit_attribution

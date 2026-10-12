@@ -1,11 +1,4 @@
-"""Tests for transformer_lens/tools/analysis/direct_path_patching.py
-
-Run with:
-    pytest tests/unit/test_direct_path_patching.py -v
-
-These tests use a tiny randomly-initialised 3-layer model so they run
-in seconds on CPU without downloading any weights.
-"""
+"""Direct path patching on a tiny random 3-layer native bridge (no downloads)."""
 
 import warnings
 
@@ -19,10 +12,6 @@ from transformer_lens.tools.analysis.direct_path_patching import (
     get_act_patch_direct_path,
     get_act_patch_direct_path_all_sources,
 )
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 def _tiny_cfg(**overrides):
@@ -45,12 +34,8 @@ def _tiny_cfg(**overrides):
 
 @pytest.fixture(scope="module")
 def tiny_model():
-    """A small, randomly-initialised native bridge with LN folded in.
-
-    seed pins the weight init: without it the weights depend on the ambient
-    RNG state of the xdist worker, and unlucky draws push the linear-LN
-    approximation error past tolerance.
-    """
+    """Tiny native bridge with LN folded; seed pins the init because unlucky xdist-worker RNG
+    draws push the linear-LN error past tolerance."""
     model = TransformerBridge.boot_native(_tiny_cfg())
     model.process_weights(
         fold_ln=True, center_writing_weights=True, center_unembed=True, fold_value_biases=True
@@ -78,11 +63,6 @@ def simple_metric(logits):
     return logits[0, -1, :].sum()
 
 
-# ---------------------------------------------------------------------------
-# _check_fold_ln tests
-# ---------------------------------------------------------------------------
-
-
 class TestCheckFoldLn:
     def test_folded_model_no_warning(self, tiny_model):
         """No warning when LN is already folded (tiny_model fixture calls process_weights())."""
@@ -96,7 +76,6 @@ class TestCheckFoldLn:
         """UserWarning fires when LN has a non-unit learned scale (pretrained, pre-fold)."""
         model = TransformerBridge.boot_native(_tiny_cfg(n_layers=2, seed=1))
         model.eval()
-        # Simulate a pretrained model that has learned non-unit LN scale (not yet folded).
         with torch.no_grad():
             model.blocks[0].ln1.weight.fill_(2.0)
         with warnings.catch_warnings(record=True) as w:
@@ -178,13 +157,7 @@ class TestCheckFoldLn:
             class blocks:
                 pass
 
-        # Should not raise — the except block in _check_fold_ln catches AttributeError
-        _check_fold_ln(WeirdModel())  # type: ignore[arg-type]
-
-
-# ---------------------------------------------------------------------------
-# Shape tests
-# ---------------------------------------------------------------------------
+        _check_fold_ln(WeirdModel())
 
 
 class TestOutputShape:
@@ -236,11 +209,6 @@ class TestOutputShape:
                 verbose=False,
             )
         assert results.shape == (tiny_model.cfg.n_layers, tiny_model.cfg.n_heads)
-
-
-# ---------------------------------------------------------------------------
-# Causal structure tests
-# ---------------------------------------------------------------------------
 
 
 class TestCausalStructure:
@@ -309,11 +277,6 @@ class TestCausalStructure:
         )
 
 
-# ---------------------------------------------------------------------------
-# Correctness: independent verification for a single pair
-# ---------------------------------------------------------------------------
-
-
 class TestCorrectness:
     @pytest.mark.parametrize("component", ["q", "k", "v"])
     def test_matches_frozen_ln_scale_reference(self, tiny_model, tokens_and_caches, component):
@@ -328,14 +291,12 @@ class TestCorrectness:
         def logit_diff(logits):
             return logits[0, -1, correct_tok] - logits[0, -1, incorrect_tok]
 
-        # Compute delta_resid from src head
-        W_O = tiny_model.blocks[src_layer].attn.W_O  # type: ignore[union-attr]
+        W_O = tiny_model.blocks[src_layer].attn.W_O
         clean_z = clean_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
         corrupted_z = corrupted_cache[f"blocks.{src_layer}.attn.hook_z"][:, :, src_head, :]
-        delta_resid = (clean_z @ W_O[src_head]) - (corrupted_z @ W_O[src_head])  # type: ignore[index]
+        delta_resid = (clean_z @ W_O[src_head]) - (corrupted_z @ W_O[src_head])
 
-        # Not the true LN forward: its gap to the approximation is weight-dependent and, on
-        # tiny_model, about as large as the patch effect, so it can't catch scale bugs.
+        # Not the true LN forward: on tiny_model its gap rivals the patch effect, hiding scale bugs.
         ln_scale = corrupted_cache[f"blocks.{dst_layer}.ln1.hook_scale"]
         W_comp = getattr(tiny_model.blocks[dst_layer].attn, f"W_{component.upper()}")[dst_head]
         ref_delta = (delta_resid / ln_scale) @ W_comp
@@ -400,11 +361,6 @@ class TestCorrectness:
             )
 
         assert torch.allclose(single, all_sources[src_layer, src_head], atol=1e-5)
-
-
-# ---------------------------------------------------------------------------
-# Edge cases
-# ---------------------------------------------------------------------------
 
 
 class TestEdgeCases:

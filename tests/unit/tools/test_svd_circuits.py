@@ -1,7 +1,4 @@
-"""Unit tests for per-head QK/OV singular-vector decomposition.
-
-Mostly synthetic weights; a tiny random CPU TransformerBridge where a real head is needed.
-"""
+"""QK/OV SVD unit tests: synthetic weights, plus a tiny random CPU Bridge for real heads."""
 
 import dataclasses
 import math
@@ -46,10 +43,8 @@ class _StubBlock:
 
 
 class _StubModel:
-    """Model-free stand-in with GQA-layout ``blocks[i].attn.W_*`` (W_K/W_V: n_kv_heads rows).
-
-    Each layer draws its own weights so a read from the wrong layer is visible.
-    """
+    """Model-free stand-in with GQA-layout ``blocks[i].attn.W_*`` (W_K/W_V: n_kv_heads rows); each
+    layer draws its own weights so a read from the wrong layer is visible."""
 
     def __init__(
         self,
@@ -91,10 +86,8 @@ def _random_ov(seed=0):
 
 
 def _factored_with_spectrum(spectrum, seed=0):
-    """Build (A, B) with A @ B == U0 @ diag(spectrum) @ V0.T, U0 and V0 orthonormal.
-
-    A repeated value in the descending ``spectrum`` plants an exactly-degenerate block.
-    """
+    """Build (A, B) with A @ B == U0 @ diag(spectrum) @ V0.T, U0 and V0 orthonormal; a repeated
+    value in the descending ``spectrum`` plants an exactly-degenerate block."""
     s = torch.as_tensor(spectrum, dtype=torch.float32)
     g = torch.Generator().manual_seed(seed)
     U0, _ = torch.linalg.qr(torch.randn(D_MODEL, len(s), generator=g))

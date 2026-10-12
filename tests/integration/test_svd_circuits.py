@@ -1,7 +1,4 @@
-"""Integration test: OV vocab readout and the patch comparison on a real GPT-2 head.
-
-The suite's only pretrained download: name-mover head L9H9 on a minimal IOI prompt.
-"""
+"""OV vocab readout and the patch comparison on GPT-2 name-mover head L9H9, minimal IOI prompt."""
 
 from __future__ import annotations
 

@@ -15,7 +15,10 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     DEFAULT_K,
     JSpaceDecomposition,
     _linalg_on_cpu_if_mps,
+    _nnls_tolerances,
+    _project_onto_column_span,
     _validate_nnls_kkt,
+    _validate_vector_and_dictionary,
     get_sparse_decomposition,
 )
 
@@ -50,13 +53,7 @@ class CoordinatePatch:
 
 
 def _validate_inputs(x: torch.Tensor, dictionary: torch.Tensor) -> torch.Tensor:
-    if dictionary.ndim != 2:
-        raise ValueError(
-            f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
-        )
-    num_atoms, d_model = dictionary.shape
-    if x.ndim != 1 or x.shape[0] != d_model:
-        raise ValueError(f"x must be 1-D of length d_model={d_model}, got shape {tuple(x.shape)}")
+    num_atoms, _ = _validate_vector_and_dictionary(x, dictionary)
     if num_atoms == 0:
         raise ValueError("dictionary must contain at least one atom")
     if torch.is_complex(x) or torch.is_complex(dictionary):
@@ -166,12 +163,12 @@ def _validate_decomposition(
     # The reconstruction check passes any self-consistently rescaled pair, so certify the NNLS KKT
     # conditions against ``target`` too, with the solver's result-dtype (float32) tolerances.
     active_atoms = support_atoms.T
-    tiny = torch.finfo(target.dtype).tiny
-    relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
-    atom_norms = active_atoms.norm(dim=0).clamp_min(tiny)
-    scale = (target.norm() + (active_atoms.abs() @ coordinates.abs()).norm()).clamp_min(tiny)
-    dual_tol = relative_tolerance * atom_norms * scale
-    coefficient_tol = relative_tolerance * scale / atom_norms
+    dual_tol, coefficient_tol = _nnls_tolerances(
+        active_atoms,
+        target,
+        coordinates,
+        relative_tolerance=math.sqrt(torch.finfo(target.dtype).eps),
+    )
     try:
         _validate_nnls_kkt(active_atoms, target, coordinates, dual_tol, coefficient_tol)
     except RuntimeError as error:
@@ -181,11 +178,7 @@ def _validate_decomposition(
     if not _close(local_vectors[1] + local_vectors[2], target, span_condition):
         raise ValueError("precomputed decomposition is incompatible with activation")
     if selected_atoms is not None:
-        expected_component = _linalg_on_cpu_if_mps(
-            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
-            selected_atoms,
-            target,
-        )
+        expected_component = _project_onto_column_span(selected_atoms, target)
     else:
         expected_component = torch.zeros_like(target)
     if not _close(local_vectors[1], expected_component, span_condition):

@@ -1,10 +1,5 @@
-"""J-space sparse decomposition for the Jacobian lens (Gurnee et al., 2026).
-
-Model-free greedy nonnegative decomposition of a vector over a dictionary of J-lens vectors,
-by nonnegative OMP (float64 Lawson-Hanson NNLS re-solve, the default) or gradient pursuit
-(Blumensath & Davies, 2008), plus the occupancy estimator. ``support`` is the numerically active
-subset of ``selected_support``; ``j_space_component`` projects onto the full selected span.
-"""
+"""Greedy nonnegative J-space decomposition (Gurnee et al., 2026) by NNLS-backed OMP or gradient
+pursuit (Blumensath & Davies, 2008), plus the occupancy estimator."""
 
 from __future__ import annotations
 
@@ -29,15 +24,13 @@ _ACTIVE_RELATIVE_TOLERANCE = _NNLS_RELATIVE_TOLERANCE
 
 _GRADIENT_BACKTRACK_STEPS = 20
 
-#: Early-stop threshold on the best normalized correlation over ``||x||``. It sits at the float32
-#: residual noise floor so a full-rank target stops instead of selecting noise atoms, which keeps
-#: the selected support scale-invariant; coarser than the float64 activity threshold on purpose.
+#: Early stop on the best normalized correlation over ``||x||``, set at the float32 noise floor:
+#: a full-rank target stops instead of selecting noise atoms, keeping the support scale-invariant.
 _CORRELATION_RELATIVE_TOLERANCE = math.sqrt(torch.finfo(torch.float32).eps)
 
 #: Near-parallel warning threshold shared by ``swap_hooks`` and the anchored coordinate patch.
 _SWAP_WARN_COSINE = 0.99
-#: ``swap_hooks`` raises above this: inverting a near-collinear two-atom basis is hopeless. The
-#: coordinate patch inverts nothing, so it only warns, bypassing ``_diagnose_intervention_pair``.
+#: ``swap_hooks`` raises above this: inverting a near-collinear two-atom basis is hopeless.
 _SWAP_ERROR_COSINE = 0.999
 
 
@@ -48,6 +41,23 @@ def _linalg_on_cpu_if_mps(op: Callable[..., torch.Tensor], *tensors: torch.Tenso
     if device.type == "mps":
         return op(*(tensor.cpu() for tensor in tensors)).to(device)
     return op(*tensors)
+
+
+def _project_onto_column_span(atoms: torch.Tensor, vector: torch.Tensor) -> torch.Tensor:
+    """``atoms @ pinv(atoms) @ vector`` with the default pinv rtol, routed to CPU on MPS."""
+    return _linalg_on_cpu_if_mps(lambda a, v: a @ (torch.linalg.pinv(a) @ v), atoms, vector)
+
+
+def _validate_vector_and_dictionary(x: torch.Tensor, dictionary: torch.Tensor) -> Tuple[int, int]:
+    """Shared ``dictionary``/``x`` shape checks; returns ``(num_atoms, d_model)``."""
+    if dictionary.ndim != 2:
+        raise ValueError(
+            f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
+        )
+    num_atoms, d_model = dictionary.shape
+    if x.ndim != 1 or x.shape[0] != d_model:
+        raise ValueError(f"x must be 1-D of length d_model={d_model}, got shape {tuple(x.shape)}")
+    return num_atoms, d_model
 
 
 def _diagnose_intervention_pair(
@@ -250,13 +260,7 @@ def get_sparse_decomposition(
             "algorithm must be 'nonnegative_orthogonal_matching_pursuit' or "
             f"'gradient_pursuit', got {algorithm!r}"
         )
-    if dictionary.ndim != 2:
-        raise ValueError(
-            f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
-        )
-    num_atoms, d_model = dictionary.shape
-    if x.ndim != 1 or x.shape[0] != d_model:
-        raise ValueError(f"x must be 1-D of length d_model={d_model}, got shape {tuple(x.shape)}")
+    num_atoms, d_model = _validate_vector_and_dictionary(x, dictionary)
     if not 1 <= k <= num_atoms:
         raise ValueError(f"k must be between 1 and num_atoms={num_atoms}, got {k}")
     if torch.is_complex(x) or torch.is_complex(dictionary):
@@ -314,11 +318,7 @@ def get_sparse_decomposition(
     # Paper appendix: project onto the whole selected span, which can exceed the active support,
     # with the same default-rtol pinv construction as swap_hooks.
     if selected:
-        j_space_component = _linalg_on_cpu_if_mps(
-            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
-            selected_atoms,
-            target,
-        )
+        j_space_component = _project_onto_column_span(selected_atoms, target)
     else:
         j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
@@ -376,13 +376,7 @@ def estimate_occupancy(
 ) -> JSpaceOccupancy:
     """Estimate how many atoms are meaningfully active in ``x``: the step where the real cumulative
     captured variance most exceeds the mean over seeded random unit-norm control dictionaries."""
-    if dictionary.ndim != 2:
-        raise ValueError(
-            f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
-        )
-    num_atoms, d_model = dictionary.shape
-    if x.ndim != 1 or x.shape[0] != d_model:
-        raise ValueError(f"x must be 1-D of length d_model={d_model}, got shape {tuple(x.shape)}")
+    num_atoms, d_model = _validate_vector_and_dictionary(x, dictionary)
     if not 1 <= max_atoms <= num_atoms:
         raise ValueError(f"max_atoms must be between 1 and num_atoms={num_atoms}, got {max_atoms}")
     if num_control_dictionaries < 1:

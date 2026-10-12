@@ -1,7 +1,5 @@
-"""Leakage-safe k-sparse binary probes over ``[example, feature]`` activation tensors.
-
-Model-free; feature selection and optional standardization see only the training split.
-"""
+"""Leakage-safe k-sparse binary probes over ``[example, feature]`` activation tensors; feature
+selection and optional standardization see only the training split."""
 
 from __future__ import annotations
 
@@ -400,9 +398,8 @@ def _newton_direction(
     curvature = sample_weights * probabilities * (1.0 - probabilities) / count
     hessian = (design * curvature[:, None]).T @ design
     hessian.diagonal()[: features.shape[1]] += l2_strength
-    # Saturated sigmoids zero the (unregularised) intercept curvature, so the solve is done on
-    # the Jacobi-equilibrated matrix with a ridge relative to each pivot; a raw factorisation
-    # fails on converged fits there.
+    # Saturated sigmoids zero the unregularised intercept curvature, failing a raw factorisation
+    # on converged fits, so solve the Jacobi-equilibrated matrix with a pivot-relative ridge.
     diagonal = hessian.diagonal()
     scale = torch.where(diagonal > 0, diagonal.rsqrt(), torch.ones_like(diagonal))
     scaled = scale[:, None] * hessian * scale[None, :]
@@ -724,6 +721,21 @@ def _control_result(
     )
 
 
+def _split_and_rank(
+    validated: _ValidatedInputs,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Train/test indices, train class-mean-gap scores, and features ranked by ``|score|``."""
+    generator = torch.Generator(device="cpu").manual_seed(validated.seed)
+    train_indices, test_indices = _stratified_split(
+        validated.canonical_labels, validated.test_fraction, generator
+    )
+    feature_scores = _feature_scores(
+        validated.features, validated.canonical_labels[train_indices], train_indices
+    )
+    ranked_features = torch.argsort(feature_scores.abs(), descending=True, stable=True)
+    return train_indices, test_indices, feature_scores, ranked_features
+
+
 def fit_sparse_probe(
     features: Float[torch.Tensor, "example feature"],
     labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
@@ -740,10 +752,8 @@ def fit_sparse_probe(
     max_refinement_steps: int = 25,
     decrement_tolerance: int | float = 1e-12,
 ) -> SparseProbeResult:
-    """Fit a logistic probe on the k features with the largest absolute train class-mean gap.
-
-    Accepted only once the Newton decrement ``g^T H^-1 g / 2`` (nats) is ``<= decrement_tolerance``.
-    """
+    """Fit a logistic probe on the k features with the largest absolute train class-mean gap,
+    accepted once the Newton decrement ``g^T H^-1 g / 2`` (nats) is ``<= decrement_tolerance``."""
     validated = _validate_inputs(
         features,
         labels,
@@ -759,23 +769,18 @@ def fit_sparse_probe(
         max_refinement_steps=max_refinement_steps,
         decrement_tolerance=decrement_tolerance,
     )
-    generator = torch.Generator(device="cpu").manual_seed(validated.seed)
-    train_indices, test_indices = _stratified_split(
-        validated.canonical_labels, validated.test_fraction, generator
-    )
-    feature_scores = _feature_scores(
-        validated.features, validated.canonical_labels[train_indices], train_indices
-    )
-    selected_features = torch.argsort(feature_scores.abs(), descending=True, stable=True)[
-        : validated.k
-    ]
+    train_indices, test_indices, feature_scores, ranked_features = _split_and_rank(validated)
     return _fit_result(
-        validated, train_indices, test_indices, feature_scores, selected_features, validated.k
+        validated,
+        train_indices,
+        test_indices,
+        feature_scores,
+        ranked_features[: validated.k],
+        validated.k,
     )
 
 
 def _control_generator(seed: int, k: int, arm: ArmMode, repeat: int) -> torch.Generator:
-    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``."""
     # Short arm names in the key keep previously released control draws reproducible.
     key_arm = "random" if arm == "random_coordinate" else "shuffle"
     return derive_generator(seed, k, key_arm, repeat)
@@ -799,10 +804,8 @@ def sweep_sparse_probe(
     max_refinement_steps: int = 25,
     decrement_tolerance: int | float = 1e-12,
 ) -> SparseProbeSweep:
-    """Fit probes for each k of a strictly increasing grid on one split, plus raw null controls.
-
-    Shuffle controls score on true held-out labels; non-converged controls go to ``rejections``.
-    """
+    """Fit probes for each k of a strictly increasing grid on one split, plus raw null controls
+    (shuffles score on true held-out labels); non-converged controls go to ``rejections``."""
     if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence) or not ks:
         raise ValueError("ks must be a non-empty sequence of positive integers")
     k_values = tuple(ks)
@@ -827,13 +830,8 @@ def sweep_sparse_probe(
         max_refinement_steps=max_refinement_steps,
         decrement_tolerance=decrement_tolerance,
     )
-    generator = torch.Generator(device="cpu").manual_seed(validated.seed)
-    train_indices, test_indices = _stratified_split(
-        validated.canonical_labels, validated.test_fraction, generator
-    )
+    train_indices, test_indices, feature_scores, ranked_features = _split_and_rank(validated)
     train_labels = validated.canonical_labels[train_indices]
-    feature_scores = _feature_scores(validated.features, train_labels, train_indices)
-    ranked_features = torch.argsort(feature_scores.abs(), descending=True, stable=True)
     results = tuple(
         _fit_result(validated, train_indices, test_indices, feature_scores, ranked_features[:k], k)
         for k in k_values

@@ -1,11 +1,6 @@
-"""Integration tests for the logit lens: exactness against real models.
+"""Logit lens final-entry exactness against real models and tiny in-memory Gemma-2 / NemotronH.
 
-The contract under test is that the final entry of the accumulated stack,
-read through the real final norm, ``W_U``, ``b_U`` and the adapter's output
-transform, reproduces the bridge's own logits. gpt2 (cached fixture),
-Pythia-14m and Qwen2.5-0.5B cover LayerNorm with bias, parallel residuals, and
-RMSNorm with GQA; a softcapped Gemma-2 and a hybrid NemotronH are built from
-tiny configs in memory so the softcap and SSM paths run in regular CI.
+Tiny configs keep the softcap and SSM paths in regular CI without Hub downloads.
 """
 
 import pytest

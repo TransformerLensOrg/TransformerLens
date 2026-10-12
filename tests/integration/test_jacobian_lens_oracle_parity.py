@@ -1,30 +1,14 @@
-"""External-oracle parity test for TL JacobianLens.
+"""Parity of JacobianLens readouts with the anthropics/jacobian-lens oracle on gemma-2-2b-it.
 
-Compares TransformerBridge-based JacobianLens readouts against the reference
-anthropics/jacobian-lens oracle on google/gemma-2-2b-it.
-
-Pass criteria (per the #1539 Tier-1 spec, matching the #1505 spike numbers):
-  - Worst-case top-8 token overlap >= 7/8 across all 75 layer x prompt cells
-  - Spearman rank-correlation >= 0.95 on the top-64 logit union per cell
-
-The oracle is pinned to commit 581d398613e5602a5af361e1c34d3a92ea82ba8e
-(Apache-2.0) so the threshold is reproducible independent of upstream drift.
-
-Install the oracle before running this test:
-    uv pip install git+https://github.com/anthropics/jacobian-lens.git@<ORACLE_COMMIT>
-
-Marked @pytest.mark.slow; requires ~4 GB VRAM and network access.
-"""
+Every layer x prompt cell needs top-8 overlap >= 7/8 and Spearman >= 0.95 on the top-64 logit union.
+The oracle is pinned to ``ORACLE_COMMIT`` (install ``ORACLE_PKG`` with ``uv pip install``) so the
+threshold is immune to upstream drift. Slow; needs ~4 GB VRAM and network access."""
 
 from typing import List, Set
 
 import numpy as np
 import pytest
 import torch
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 ORACLE_COMMIT = "581d398613e5602a5af361e1c34d3a92ea82ba8e"
 ORACLE_PKG = f"git+https://github.com/anthropics/jacobian-lens.git@{ORACLE_COMMIT}"
@@ -54,11 +38,6 @@ SPEARMAN_TOP_K = 64
 SPEARMAN_MIN_R = 0.95
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _spearman_r(a: np.ndarray, b: np.ndarray) -> float:
     """Spearman rank correlation — avoids a scipy dependency."""
     ra = np.argsort(np.argsort(a)).astype(np.float64)
@@ -83,19 +62,9 @@ def _spearman_top_union(tl_logits: torch.Tensor, oracle_logits: torch.Tensor, k:
     )
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="module")
 def oracle_package():
-    """Return oracle symbols; skips if the pinned package is not installed.
-
-    Install out-of-band before running:
-        uv pip install {ORACLE_PKG}
-    Or let .github/workflows/oracle-parity.yml handle it in CI.
-    """
+    """Return oracle symbols; skip unless ``ORACLE_PKG`` is installed (oracle-parity.yml in CI)."""
     jlens_hf = pytest.importorskip(
         "jlens.hf",
         reason=(f"requires the pinned oracle: uv pip install {ORACLE_PKG}"),
@@ -143,19 +112,9 @@ def oracle_lens_and_model(oracle_package, gemma_bridge):
     return oracle_lens, oracle_model
 
 
-# ---------------------------------------------------------------------------
-# Parity test
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.slow
 def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridge):
-    """TL JacobianLens readouts match the anthropics oracle within #1539 tolerances.
-
-    Checks all 75 (5 prompts × 15 layers) layer x prompt cells:
-      - top-8 token overlap >= 7 in every cell
-      - Spearman r >= 0.95 on the top-64 logit union in every cell
-    """
+    """TL readouts match the oracle in every layer x prompt cell (top-8 overlap, Spearman r)."""
     oracle_lens, oracle_model = oracle_lens_and_model
 
     final_layer = gemma_bridge.cfg.n_layers - 1
@@ -164,7 +123,6 @@ def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridg
     failures: List[str] = []
 
     for prompt in PARITY_PROMPTS:
-        # TL: one readout call for all layers at once.
         tl_result = tl_lens.readout(
             gemma_bridge,
             prompt,
@@ -183,10 +141,9 @@ def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridg
             positions=[-1],
         )
 
-        # --- source layers: compare oracle transport vs TL transport ---
         for layer in source_layers:
-            tl_vec = tl_result.lens_logits[layer][-1].float()  # [vocab]
-            or_vec = oracle_logits_dict[layer][-1].float()  # [vocab]
+            tl_vec = tl_result.lens_logits[layer][-1].float()
+            or_vec = oracle_logits_dict[layer][-1].float()
 
             overlap = len(_top_k_set(tl_vec, TOP_K) & _top_k_set(or_vec, TOP_K))
             if overlap < TOP_K_MIN_OVERLAP:
@@ -202,9 +159,9 @@ def test_jacobian_lens_oracle_parity(tl_lens, oracle_lens_and_model, gemma_bridg
                     f"(layer={layer}, prompt={prompt[:35]!r})"
                 )
 
-        # --- final layer: TL identity == oracle model_logits ---
-        tl_final = tl_result.lens_logits[final_layer][-1].float()  # [vocab]
-        or_final = oracle_model_logits[-1].float()  # [vocab]
+        # The final layer is identity transport, so it is compared with the oracle's model logits.
+        tl_final = tl_result.lens_logits[final_layer][-1].float()
+        or_final = oracle_model_logits[-1].float()
 
         final_overlap = len(_top_k_set(tl_final, TOP_K) & _top_k_set(or_final, TOP_K))
         if final_overlap < TOP_K_MIN_OVERLAP:

@@ -1,23 +1,9 @@
-"""Kurtosis-profile check for JacobianLens readouts (#1539 Tier-1).
+"""J-lens readout kurtosis (Gurnee et al. 2026, §4): excess kurtosis rises past depth 1/3.
 
-Gurnee et al. (Transformer Circuits 2026, §4) report excess kurtosis of J-lens
-readout logits near zero through the first third of depth, rising through the
-workspace band. Absolute levels do not transfer between families (early-third
-medians run 0.2 on gpt2-small to ~140 on pythia-70m-deduped, see #1539), so
-the shape is asserted relative to each model's own baseline and to a
-logit-lens control through the identical code path:
-
-  1. Qwen3.5-0.8B: interior peak beats the early-third median by >= 0.35
-     (measured +0.78 on the 40-prompt reference run; this test uses 12).
-  2. That rise beats the logit-lens control's rise (measured gap +0.59).
-  3. gpt2-small shows no rise (measured +0.16) — negative control.
-  4. The final layer is identity transport in both arms; profiles must match.
-
-Prompts are wikitext-103 validation rows; the published lenses were fitted on
-train. Artifacts pinned to the same revision as
-test_jacobian_lens_oracle_parity.py. Slow: downloads Qwen3.5-0.8B (~1.6 GB),
-runs on CPU in a few minutes.
-"""
+Absolute levels differ across families, so the rise is asserted against each model's early-third
+median and a logit-lens control through the same code path: Qwen3.5-0.8B rises, gpt2-small (negative
+control) does not, and the identity final layer matches in both arms. Prompts are wikitext-103
+validation rows (the lenses were fitted on train). Slow: downloads Qwen3.5-0.8B (~1.6 GB)."""
 
 from typing import Dict, List
 
@@ -38,9 +24,8 @@ MAX_SEQ_LEN = 128
 SKIP_FIRST_POSITIONS = 16  # matches the published fit configs
 MIN_PROMPT_CHARS = 400
 
-# Measured on 40 prompts x 8 positions (see #1539): qwen rise +0.78,
-# control rise +0.19, gpt2 rise +0.16. Thresholds at ~half the measured
-# effect / double the negative control.
+# Measured on 40 prompts x 8 positions: qwen rise +0.78, control rise +0.19, gpt2 rise +0.16.
+# Thresholds sit at ~half the measured effect / double the negative control.
 QWEN_MIN_BAND_RISE = 0.35
 QWEN_MIN_RISE_OVER_CONTROL = 0.25
 GPT2_MAX_BAND_RISE = 0.35

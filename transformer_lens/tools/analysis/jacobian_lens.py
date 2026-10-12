@@ -1,64 +1,10 @@
-"""Jacobian Lens (J-lens).
+"""Jacobian lens (J-lens), from https://transformer-circuits.pub/2026/workspace/index.html.
 
-The Jacobian lens characterizes an intermediate residual-stream activation by its
-first-order causal effect on the model's output, averaged over a corpus of contexts.
-For each layer :math:`\\ell` it fits a single :math:`d_{model} \\times d_{model}` matrix
-
-.. math::
-
-    J_\\ell = \\mathbb{E}_{\\text{prompt}}\\left[
-        \\frac{1}{|V|}\\sum_{t \\in V}\\sum_{t' \\in V,\\,t' \\geq t}
-        \\frac{\\partial h_{\\text{final},t'}}{\\partial h_{\\ell,t}}
-        \\right]
-
-where ``V`` is the set of valid positions after the configured leading skip
-and final-position exclusion. Target-position effects are summed for each
-source; only source positions and prompts are averaged.
-
-mapping the output of block :math:`\\ell` to the final block's output (pre final
-norm). Reading the lens applies the model's own final norm and unembedding:
-:math:`\\text{lens}(h_\\ell) = W_U\\,\\mathrm{norm}(J_\\ell h_\\ell)`.
-The logit lens is the special case :math:`J_\\ell = I`. The rows of
-:math:`W_U J_\\ell` ("J-lens vectors") are residual-stream directions associated
-with single vocabulary tokens, and support causal interventions: steering,
-ablation, and exchanging one concept for another via a pseudoinverse coordinate
-swap.
-
-Introduced in `Verbalizable Representations Form a Global Workspace in Language
-Models <https://transformer-circuits.pub/2026/workspace/index.html>`_ (Gurnee et
-al., Transformer Circuits Thread, 2026). The fitting estimator and the artifact
-format follow Anthropic's Apache-2.0 reference implementation
-(`anthropics/jacobian-lens <https://github.com/anthropics/jacobian-lens>`_), so
-lenses fitted here interoperate with artifacts published on the Hugging Face Hub
-(e.g. `neuronpedia/jacobian-lens
-<https://huggingface.co/neuronpedia/jacobian-lens>`_); the interventions are
-implemented from the paper's Methods section.
-
-Warning:
-    Published lens artifacts are fitted on **raw** HuggingFace activations.
-    Jacobian lens supports only a freshly booted
-    ``TransformerBridge.boot_transformers`` model, whose weights are raw by
-    default. Compatibility mode and direct ``process_weights`` calls change the
-    residual basis and are refused rather than returning silently wrong
-    readouts. The model must also be a causal decoder whose adapter supports
-    text generation, use single-stream block outputs, and expose the standard
-    direct ``ln_final -> d_model-width unembed`` output path.
-
-Example::
-
-    import torch
-    from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.tools.analysis import JacobianLens
-
-    model = TransformerBridge.boot_transformers("gpt2", device="cpu")
-    lens = JacobianLens.from_pretrained(
-        "neuronpedia/jacobian-lens",
-        filename="gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt",
-        model=model,
-    )
-    result = lens.readout(model, "The Eiffel Tower is in the city of")
-    print(result.top_tokens(model.tokenizer, k=5)[8][-1])  # layer 8, final position
-"""
+``J[l]`` is d(final block output)/d(block ``l`` output), summed over targets ``t' >= t`` and
+averaged over source positions and prompts; the lens reads ``W_U norm(J[l] h)`` (``J = I`` is the
+logit lens). Fitting and the artifact format follow anthropics/jacobian-lens, so Hub artifacts
+load as-is. Only a freshly booted raw ``TransformerBridge`` is supported: compatibility mode and
+processed weights change the residual basis and are refused."""
 
 import json
 import warnings
@@ -111,10 +57,6 @@ BackwardProvider = Callable[
     Tuple[torch.Tensor, ...],
 ]
 
-# ---------------------------------------------------------------------------
-# Registry helpers
-# ---------------------------------------------------------------------------
-
 _REGISTRY_CACHE: Optional[Dict[str, Any]] = None
 
 
@@ -122,7 +64,6 @@ def _load_registry() -> Dict[str, Any]:
     """Return the bundled artifact registry, loading it once on first call."""
     global _REGISTRY_CACHE
     if _REGISTRY_CACHE is None:
-        import json
         import pathlib
 
         registry_path = pathlib.Path(__file__).with_name("jacobian_lens_registry.json")
@@ -132,15 +73,7 @@ def _load_registry() -> Dict[str, Any]:
 
 
 def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
-    """Return ``(repo_id, filename)`` if *name_or_path* matches the registry.
-
-    Matching is tried in two passes:
-    1. Direct key match against short model names (e.g. ``"gemma-2-2b"``).
-    2. Alias match against Hugging Face model IDs (e.g. ``"google/gemma-2-2b"``).
-
-    Returns ``None`` when there is no match so callers can fall through to the
-    generic Hub download path.
-    """
+    """Return ``(repo_id, filename)`` for a registry short name or HF-model-id alias, else None."""
     registry = _load_registry()
     if name_or_path in registry:
         entry = registry[name_or_path]
@@ -162,11 +95,8 @@ ESTIMATOR_JACOBIAN = "jacobian_lens"
 # Ordinary-Jacobian estimator labels; workspace-lenses J-lens arms record "standard".
 _JACOBIAN_ESTIMATOR_NAMES: frozenset = frozenset({ESTIMATOR_JACOBIAN, "standard"})
 
-# Keys written by fit() that must not appear in converted-lens metadata so that
-# merge() can refuse to mix TL-fitted lenses with externally converted ones.
-# Note: "target_layer" is intentionally NOT listed here — it must survive
-# conversion so that validate_model() can detect and refuse checkpoints that
-# were fitted against a non-final target layer.
+# Stripped from converted checkpoints so merge() refuses to mix them with TL fits; target_layer
+# is deliberately absent so validate_model() can still refuse non-final targets.
 _FIT_RESERVED_KEYS: frozenset = frozenset(
     {
         "transformer_lens_fit",
@@ -181,38 +111,14 @@ _FIT_RESERVED_KEYS: frozenset = frozenset(
     }
 )
 
-# Top-level payload keys that some checkpoint writers store as flat provenance
-# (rather than nested under a "metadata" key).
+# Provenance some checkpoint writers store at the top level rather than under "metadata".
 _CHECKPOINT_FLAT_PROVENANCE: frozenset = frozenset({"model_name", "model_revision", "corpus"})
 
 
 @dataclass
 class JacobianLensReadout:
-    """Result of a :meth:`JacobianLens.readout` call.
-
-    Attributes:
-        lens_topk_values:
-            Per-layer retained top-k pre-softmax values, on CPU.
-        lens_topk_indices:
-            Per-layer retained top-k vocabulary ids, on CPU.
-        model_topk_values:
-            The model output's retained top-k pre-softmax values, on CPU.
-        model_topk_indices:
-            The model output's retained top-k vocabulary ids, on CPU.
-        lens_logits:
-            Optional full per-layer logits, on CPU. Present only when
-            ``readout(return_full_logits=True)`` was requested.
-        model_logits:
-            Optional full model logits, on CPU. Present only when
-            ``readout(return_full_logits=True)`` was requested.
-        tokens:
-            The token ids of the run prompt, ``[seq]``.
-        positions:
-            The (normalized, non-negative) positions the readout covers, aligned
-            with the ``pos`` axis of retained top-k and optional full logits.
-        use_jacobian:
-            Whether the Jacobian transport was applied (``False`` = logit lens).
-    """
+    """Result of :meth:`JacobianLens.readout`; tensors are on CPU and ``pos`` axes align with the
+    normalized non-negative ``positions``. ``use_jacobian=False`` means a logit-lens readout."""
 
     lens_topk_values: Dict[int, Float[torch.Tensor, "pos k"]]
     lens_topk_indices: Dict[int, Int[torch.Tensor, "pos k"]]
@@ -225,16 +131,7 @@ class JacobianLensReadout:
     model_logits: Optional[Float[torch.Tensor, "pos d_vocab"]] = None
 
     def top_tokens(self, tokenizer: Any, k: int = 5) -> Dict[int, List[List[str]]]:
-        """Decode the top-``k`` tokens per layer and position.
-
-        Args:
-            tokenizer: The model's tokenizer (``model.tokenizer``).
-            k: Number of top tokens to decode per (layer, position).
-
-        Returns:
-            ``{layer: [ [top-k strings] per position ]}``, positions aligned with
-            :attr:`positions`.
-        """
+        """Decode ``{layer: [top-k strings per position]}``."""
         out: Dict[int, List[List[str]]] = {}
         retained = next(iter(self.lens_topk_indices.values())).shape[-1]
         if not 1 <= k <= retained:
@@ -245,23 +142,8 @@ class JacobianLensReadout:
 
 
 class JacobianLens:
-    """A fitted Jacobian lens: one transport matrix per source layer.
-
-    Layer convention (matching the reference implementation and the published
-    artifacts): index ``l`` refers to the **output of block** ``l`` at the
-    Bridge-native hook ``blocks.{l}.hook_out``. ``J[l]`` maps that activation
-    to the final block's output, pre final norm. The final layer itself is never
-    fitted (its transport is the identity), so
-    ``source_layers == [0, ..., n_layers - 2]`` for a full fit.
-
-    Attributes:
-        jacobians: ``{layer: [d_model, d_model]}`` transport matrices, fp32, CPU.
-        n_prompts: Number of prompts averaged into the fit.
-        d_model: Residual stream width the lens was fitted for.
-        metadata: Optional provenance (model name, TransformerLens version, fit
-            hyperparameters). Preserved by :meth:`save`/:meth:`load`; artifacts
-            from the reference implementation load with empty metadata.
-    """
+    """Fitted lens: ``J[l]`` maps ``blocks.{l}.hook_out`` to the final block's pre-norm output,
+    as fp32 CPU matrices; the final layer is the identity and is never fitted."""
 
     # The bundled registry holds only Jacobian lens artifacts; other estimators opt out.
     _uses_artifact_registry: bool = True
@@ -298,7 +180,7 @@ class JacobianLens:
 
     @property
     def source_layers(self) -> List[int]:
-        """Sorted list of layers this lens has transport matrices for."""
+        """Sorted fitted source layers."""
         return sorted(self.jacobians)
 
     def __repr__(self) -> str:
@@ -320,24 +202,9 @@ class JacobianLens:
     def _validate_merge_inputs(cls, lenses: Sequence["JacobianLens"]) -> None:
         """Allow generic lenses whose recorded provenance agrees."""
 
-    # ------------------------------------------------------------------ #
-    # persistence                                                        #
-    # ------------------------------------------------------------------ #
-
     def save(self, path: str, *, dtype: torch.dtype = torch.float16) -> None:
-        """Save the lens in the reference implementation's artifact format.
-
-        The four official keys (``J``, ``n_prompts``, ``source_layers``,
-        ``d_model``) are written unchanged so the file stays loadable by the
-        reference package; TransformerLens provenance is stored under an
-        additive ``metadata`` key.
-
-        Args:
-            path: Destination ``.pt`` path.
-            dtype: Storage dtype. Defaults to fp16 like the reference
-                implementation — Jacobian entries are order-one, so the smaller
-                dtype costs little precision and halves the artifact on disk.
-        """
+        """Save in the reference artifact format plus an additive ``metadata`` key; fp16 by
+        default like the reference, since Jacobian entries are order-one."""
         _validate_metadata(self.metadata)
         payload: Dict[str, Any] = {
             "J": {layer: matrix.to(dtype) for layer, matrix in self.jacobians.items()},
@@ -351,59 +218,8 @@ class JacobianLens:
 
     @classmethod
     def load(cls: Type[_LensT], path: str) -> _LensT:
-        """Load a lens artifact or fit checkpoint saved in a supported schema.
-
-        Two file schemas are accepted:
-
-        **Artifact** (the reference format, written by :meth:`save` or the
-        Anthropic reference package): must contain a ``J`` key mapping layer
-        indices to transport matrices, plus ``n_prompts``, ``d_model``, and an
-        optional ``metadata`` dict. A top-level workspace-lenses ``provenance`` dict
-        supplies ``target_layer`` and must record a Jacobian estimator.
-
-        **Fit checkpoint** (running-sum format, written by the reference
-        implementation's ``write_checkpoint()`` during fitting): must contain
-        a ``jacobian_sum`` key mapping layer indices to *running-sum* matrices
-        (i.e. the sum over prompts, not yet divided by the prompt count), plus
-        ``n_done``.  ``d_model`` is inferred from the first matrix's shape;
-        no explicit ``d_model`` key is required or expected.  The per-layer
-        means are reconstructed on load.  A
-        ``converted_from: "jacobian_lens_checkpoint"`` key is added to
-        metadata so :meth:`merge` refuses to silently combine checkpoints with
-        natively TL-fitted lenses.  Fit-reserved provenance keys
-        (``transformer_lens_fit``, etc.) are stripped; scalar fields that can
-        be serialised under ``weights_only=True`` are preserved.
-        Tensor-valued metadata fields that would fail :func:`_validate_metadata`
-        are recorded by name in a ``dropped_fields`` list.
-
-        Fit checkpoint schema (reference ``write_checkpoint()`` format)
-        ---------------------------------------------------------------
-        The reference implementation writes exactly six top-level keys; all
-        other keys in the payload are ignored::
-
-            {
-                "jacobian_sum":   {<layer int>: <float32 tensor [d, d]>, ...},
-                "n_done":         <int>,        # prompts accumulated into jacobian_sum
-                "next_idx":       <int>,        # next prompt index (informational)
-                "source_layers":  [<int>, ...], # documented layer indices (informational)
-                "target_layer":   <int>,        # target layer — harvested into metadata
-                "skip_first":     <int>,        # leading positions skipped (informational)
-                # optional flat provenance accepted from alternative checkpoint writers:
-                "model_name":     <str>,
-                "model_revision": <str>,
-                "corpus":         <str>,
-                # optional nested provenance accepted from alternative writers:
-                "metadata":       {<str>: <scalar/list/dict>, ...},
-            }
-
-        Args:
-            path: Path to the ``.pt`` file.
-
-        Raises:
-            ValueError: If the file lacks both a ``J`` key (artifact) and a
-                ``jacobian_sum`` key (checkpoint), or if a checkpoint records a
-                non-positive ``n_prompts``.
-        """
+        """Load a ``J`` artifact or a reference ``jacobian_sum`` fit checkpoint; both schemas are in
+        docs/source/content/jacobian_lens_fitting.md."""
         payload = torch.load(path, map_location="cpu", weights_only=True)
         if "J" in payload:
             metadata = _harvest_artifact_provenance(path, payload)
@@ -425,13 +241,8 @@ class JacobianLens:
 
     @classmethod
     def _from_checkpoint_payload(cls: Type[_LensT], path: str, payload: Dict[str, Any]) -> _LensT:
-        """Reconstruct a JacobianLens from a fit-checkpoint payload.
-
-        Divides the running Jacobian sums by ``n_prompts``, strips fit-reserved
-        provenance keys, harvests safe scalar metadata, records dropped tensor
-        fields, and marks the result as converted so :meth:`merge` refuses to
-        mix it with natively TL-fitted lenses.
-        """
+        """Divide running sums by the prompt count and keep only reload-safe, non-fit-reserved
+        provenance, marked ``converted_from`` so :meth:`merge` refuses to mix it with TL fits."""
         n_prompts = int(payload.get("n_done", payload.get("n_prompts", 0)))
         if n_prompts <= 0:
             raise ValueError(
@@ -450,21 +261,15 @@ class JacobianLens:
             for layer, matrix in payload["jacobian_sum"].items()
         }
 
-        # Collect raw provenance: first from nested "metadata", then supplement
-        # with flat top-level keys that some checkpoint writers place directly
-        # in the payload (model_name, model_revision, corpus).
         raw_meta: Dict[str, Any] = dict(payload.get("metadata") or {})
         for key in _CHECKPOINT_FLAT_PROVENANCE:
             if key in payload and key not in raw_meta:
                 raw_meta[key] = payload[key]
-        # target_layer lives at the top level in the reference checkpoint format;
-        # harvest it into metadata so validate_model() can check the fitting target.
+        # Harvested so validate_model() can refuse checkpoints fitted against a non-final target.
         if "target_layer" in payload and "target_layer" not in raw_meta:
             raw_meta["target_layer"] = payload["target_layer"]
 
-        # Build clean metadata: drop fit-reserved keys, record tensor-valued
-        # fields that _validate_metadata would reject (they cannot survive a
-        # weights_only=True reload), and keep everything else that validates.
+        # Tensors cannot survive a weights_only=True reload; record what was dropped.
         dropped_fields: List[str] = []
         clean_meta: Dict[str, Any] = {}
         for key, value in raw_meta.items():
@@ -494,58 +299,8 @@ class JacobianLens:
         revision: Optional[str] = None,
         model: Any = None,
     ) -> "JacobianLens":
-        """Load a lens from a local path, a short model name, or a Hub repo.
-
-        Resolution order
-        ----------------
-        1. **Local file** — if *name_or_path* is an existing ``.pt`` file,
-           load it directly.
-        2. **Local directory** — if *name_or_path* is a directory, load
-           ``<name_or_path>/<filename>``.
-        3. **Registry short name or HF model ID** — if *name_or_path* matches
-           a key or alias in the bundled ``jacobian_lens_registry.json`` (e.g.
-           ``"gemma-2-2b"`` or ``"google/gemma-2-2b"``), the corresponding
-           artifact in ``neuronpedia/jacobian-lens`` is fetched automatically.
-           The *filename* argument is ignored in this case because the registry
-           already encodes the correct subpath. With ``_uses_artifact_registry``
-           False this step is skipped and bare short names are refused.
-        4. **Explicit Hub repo** — otherwise *name_or_path* is treated as a Hub
-           repo id and *filename* is used as-is, preserving full backward
-           compatibility (e.g. ``from_pretrained("neuronpedia/jacobian-lens",
-           filename="gpt2-small/jlens/...")``).
-
-        Args:
-            name_or_path: A local ``.pt`` file, a local directory, a short
-                model name such as ``"gemma-2-2b"`` or ``"llama3.1-8b"``, a
-                Hugging Face model ID such as ``"google/gemma-2-2b"``, or an
-                explicit Hub repo id paired with *filename*.
-            filename: File (or subpath) inside a local directory or an explicit
-                Hub repo.  Ignored when *name_or_path* resolves via the
-                registry.
-            revision: Optional Hub revision (branch, tag, or commit) to pin.
-                When omitted, the Hub repository's mutable default branch is
-                followed; pin a commit hash for reproducible analyses.
-            model: If given, :meth:`validate_model` is called so dimension or
-                weight-processing mismatches fail here rather than at first use.
-
-        Returns:
-            The loaded (and, if ``model`` was given, validated) lens.
-
-        Examples::
-
-            # Short model name — no need to remember the HF subpath
-            lens = JacobianLens.from_pretrained("gemma-2-2b", model=model)
-
-            # HF model ID also works
-            lens = JacobianLens.from_pretrained("google/gemma-2-2b", model=model)
-
-            # Explicit Hub repo + subpath (backward-compatible)
-            lens = JacobianLens.from_pretrained(
-                "neuronpedia/jacobian-lens",
-                filename="gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt",
-                model=model,
-            )
-        """
+        """Load from a ``.pt`` file, ``<dir>/<filename>``, a registry short name or HF model id
+        (``filename`` ignored), or a Hub repo; passing ``model`` runs :meth:`validate_model`."""
         import os
 
         if os.path.isfile(name_or_path):
@@ -583,23 +338,8 @@ class JacobianLens:
 
     @classmethod
     def merge(cls, lenses: Sequence["JacobianLens"]) -> "JacobianLens":
-        """Combine lenses fitted on disjoint prompt slices.
-
-        The per-layer matrices are averaged weighted by each lens's
-        ``n_prompts``, matching the reference implementation, so fitting can be
-        parallelized across processes or machines and merged afterwards.
-        Provenance must match across shards (apart from ``n_prompts``), so a
-        merge cannot silently relabel matrices fitted with different models,
-        corpora, dtypes, or estimator settings. The merged count replaces the
-        per-shard count.
-
-        Args:
-            lenses: Lenses that agree exactly on ``source_layers`` and
-                ``d_model``.
-
-        Raises:
-            ValueError: On an empty sequence or mismatched lenses or estimators.
-        """
+        """Average shards fitted on disjoint prompt slices, weighted by ``n_prompts``; all
+        provenance other than ``n_prompts`` must match."""
         if not lenses:
             raise ValueError("cannot merge an empty sequence of lenses")
         invalid_counts = [
@@ -643,30 +383,9 @@ class JacobianLens:
             metadata["n_prompts"] = total
         return cls(merged, n_prompts=total, d_model=first.d_model, metadata=metadata)
 
-    # ------------------------------------------------------------------ #
-    # model validation                                                   #
-    # ------------------------------------------------------------------ #
-
     def validate_model(self, model: Any) -> "JacobianLens":
-        """Check that ``model`` matches this lens; raise loudly if not.
-
-        Requires a raw causal ``TransformerBridge`` with the standard direct
-        final-norm/unembed path, verifies recorded model provenance, residual
-        width and layer range, and enforces the published final-block target
-        convention.
-
-        Args:
-            model: A raw ``TransformerBridge``.
-
-        Returns:
-            ``self``, for chaining.
-
-        Raises:
-            TypeError: If model is not a ``TransformerBridge``.
-            ValueError: On model provenance or ``d_model`` mismatch,
-                out-of-range source layers, compatibility mode, unsupported
-                attention/output paths, or a non-final target convention.
-        """
+        """Raise unless ``model`` is a raw causal Bridge matching this lens's provenance,
+        ``d_model``, layer range and final-layer target; returns ``self``."""
         _require_raw_bridge(model, estimator=type(self).__name__)
         artifact_model_name = self.metadata.get("model_name")
         current_model_name = getattr(model.cfg, "model_name", None)
@@ -705,10 +424,6 @@ class JacobianLens:
             )
         return self
 
-    # ------------------------------------------------------------------ #
-    # reading                                                            #
-    # ------------------------------------------------------------------ #
-
     def clear_device_cache(self) -> None:
         """Release cached Jacobians, dictionaries, and unembedding snapshots on devices."""
         self._device_jacobians.clear()
@@ -735,14 +450,7 @@ class JacobianLens:
         residual: Float[torch.Tensor, "... d_model"],
         layer: int,
     ) -> Float[torch.Tensor, "... d_model"]:
-        """Map layer-``layer`` activations into the final block's output basis.
-
-        Computes ``J[layer] @ h`` per activation vector, in fp32.
-
-        Args:
-            residual: Activations from the output of block ``layer``.
-            layer: Source layer index.
-        """
+        """Map block-``layer`` output to the final block's output basis: fp32 ``J[layer] @ h``."""
         matrix = self._matrix_on(layer, residual.device)
         return residual.float() @ matrix.T
 
@@ -758,38 +466,8 @@ class JacobianLens:
         top_k: int = DEFAULT_TOP_K,
         return_full_logits: bool = False,
     ) -> JacobianLensReadout:
-        """Read per-layer vocabulary logits for a prompt.
-
-        Runs the model once with caching, transports the residual stream at each
-        requested layer through ``J[layer]`` (or the identity when
-        ``use_jacobian=False`` — the logit lens), and applies the model's own
-        final norm, unembedding, architecture logit scaling, and logit soft cap.
-
-        Args:
-            model: A raw ``TransformerBridge``.
-            input: A prompt string, or a ``[1, seq]`` token tensor.
-            layers: Layers to read. Defaults to every fitted layer plus the
-                final layer. The final layer (``n_layers - 1``) is always read
-                with the identity transport — by construction its lens equals
-                the model's own output distribution.
-            positions: Token positions to read (negative indices allowed).
-                Defaults to all positions.
-            use_jacobian: Apply the Jacobian transport. ``False`` gives the
-                logit-lens baseline through the identical code path.
-            top_k: Number of values and vocabulary ids retained per layer and
-                position. Defaults to 10.
-            return_full_logits: Also retain full vocabulary tensors on CPU.
-                This is opt-in because a 64-token Gemma readout across all
-                layers is roughly 1.7 GB.
-
-        Returns:
-            A :class:`JacobianLensReadout`.
-
-        Raises:
-            ValueError: If the model fails :meth:`validate_model`, ``input`` is
-                batched, ``top_k`` is invalid, or a requested layer has no
-                transport matrix.
-        """
+        """Per-layer top-k logits via ``J[layer]`` (identity if ``use_jacobian=False``) and the
+        model's final norm and unembed; full logits are opt-in (~1.7 GB for 64 Gemma tokens)."""
         self.validate_model(model)
         tokens = model.to_tokens(input) if isinstance(input, str) else input
         if tokens.ndim != 2 or tokens.shape[0] != 1:
@@ -869,25 +547,11 @@ class JacobianLens:
         tokens: Union[TokenInput, Sequence[TokenInput]],
         layer: int,
     ) -> Float[torch.Tensor, "n d_model"]:
-        """Residual-stream directions for vocabulary tokens at a layer.
-
-        The J-lens vector for token ``t`` is row ``t`` of ``W_U J[layer]``
-        expressed in layer-``layer`` residual coordinates:
-        ``v_t = J[layer]^T W_U[:, t]``.
-
-        Args:
-            model: The model supplying ``W_U``.
-            tokens: A token string / id, or a sequence of them. Strings must
-                encode to a single token.
-            layer: Source layer for the vectors.
-
-        Returns:
-            One vector per token, fp32, on the model's device.
-        """
+        """J-lens vectors ``v_t = J[layer]^T W_U[:, t]``, fp32 on the model's device."""
         self.validate_model(model)
         layer = _normalize_layer(layer, model.cfg.n_layers)
         token_ids = _to_token_ids(model, tokens)
-        unembed_columns = model.W_U[:, token_ids].float()  # [d_model, n]
+        unembed_columns = model.W_U[:, token_ids].float()
         matrix = self._matrix_on(layer, unembed_columns.device)
         return (matrix.T @ unembed_columns).T
 
@@ -895,22 +559,13 @@ class JacobianLens:
     def lens_vector_dictionary(
         self, model: Any, layer: int
     ) -> Float[torch.Tensor, "d_vocab d_model"]:
-        """Full-vocabulary J-lens dictionary at ``layer``: ``[d_vocab, d_model]``.
-
-        Row ``t`` is the J-lens vector ``v_t = J[layer]^T W_U[:, t]`` -- this is
-        :meth:`lens_vectors` over the entire vocabulary. The result is cached while the
-        model's unembedding is unchanged so a sparse decomposition can reuse it;
-        :meth:`clear_device_cache` releases it.
-
-        The dictionary is vocabulary-sized and cached on the model's device
-        (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
-        vocabulary), one entry per requested layer. One detached copy of ``W_U`` is
-        retained per device to detect changes without transferring weights to the host.
-        """
+        """``[d_vocab, d_model]`` J-lens vectors at ``layer``, cached on device (GB-scale for large
+        vocabularies) until ``W_U`` changes; :meth:`clear_device_cache` releases it."""
         self.validate_model(model)
         layer = _normalize_layer(layer, model.cfg.n_layers)
         unembed = model.W_U
         device = torch.device(unembed.device)
+        # A device-resident W_U copy detects edits without a host transfer of the weights.
         snapshot = self._unembedding_snapshots.get(device)
         if snapshot is None or not torch.equal(snapshot, unembed):
             self._unembedding_snapshots[device] = unembed.detach().clone()
@@ -921,7 +576,7 @@ class JacobianLens:
         key = (layer, device)
         dictionary = self._dictionary_cache.get(key)
         if dictionary is None:
-            matrix = self._matrix_on(layer, device)  # [d_model, d_model]
+            matrix = self._matrix_on(layer, device)
             dictionary = (matrix.T @ unembed.float()).T  # [d_vocab, d_model]
             self._dictionary_cache[key] = dictionary
         return dictionary
@@ -1143,10 +798,6 @@ class JacobianLens:
             layers=resolved_layers, median=median, pooled=pooled, per_position=per_position
         )
 
-    # ------------------------------------------------------------------ #
-    # interventions                                                      #
-    # ------------------------------------------------------------------ #
-
     def steering_hooks(
         self,
         model: Any,
@@ -1156,32 +807,8 @@ class JacobianLens:
         alpha: float = 4.0,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
-        """Hooks that steer the residual stream along a token's J-lens vector.
-
-        At each layer the unit-normalized lens vector is added, scaled by
-        ``alpha`` times the activation's **median** per-position residual norm:
-        ``h <- h + alpha * median||h|| * v̂``. This norm-matched
-        parameterization follows the steering description in the reference
-        implementation's experiment protocols; the paper's minimal form is
-        the unscaled ``h <- h + alpha * v_t``, recoverable by passing the raw
-        :meth:`lens_vectors` output to your own hook. The median (not mean) is
-        used so attention-sink positions — whose residual norms run orders of
-        magnitude above typical positions — do not inflate the scale.
-
-        Args:
-            model: The model the hooks will run on.
-            token: The concept token to steer toward.
-            layers: Layers to intervene at.
-            alpha: Steering strength scalar; ``0`` disables. Because of the
-                norm-matched scale, values of order 1 already perturb the
-                stream by roughly its own magnitude.
-            positions: Chunk-local positions to steer (negative indices allowed
-                and normalized on every hook invocation). Defaults to all.
-
-        Returns:
-            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)`` or
-            ``model.run_with_hooks(fwd_hooks=...)``.
-        """
+        """Hooks adding ``alpha * median||h|| * v̂`` (reference norm-matched steering; the median
+        ignores attention-sink norms); the paper's raw ``h + alpha * v_t`` needs a custom hook."""
         self.validate_model(model)
         hooks = []
         for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
@@ -1214,21 +841,7 @@ class JacobianLens:
         *,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
-        """Hooks that project token directions out of the residual stream.
-
-        For each token's unit lens vector ``v̂``: ``h <- h - (h·v̂) v̂``,
-        applied sequentially when several tokens are given.
-
-        Args:
-            model: The model the hooks will run on.
-            tokens: Concept token(s) to suppress.
-            layers: Layers to intervene at.
-            positions: Chunk-local positions to ablate (negative indices allowed
-                and normalized on every hook invocation). Defaults to all.
-
-        Returns:
-            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
-        """
+        """Hooks projecting each token's unit lens vector out of ``h``, sequentially."""
         self.validate_model(model)
         hooks = []
         for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
@@ -1266,33 +879,8 @@ class JacobianLens:
         alpha: float = 1.0,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
-        """Hooks that swap two concepts' *live* coordinates in lens space.
-
-        The paper's patching-in-lens-coordinates intervention: with
-        ``V = [v_s, v_t]`` and lens coordinates ``c = V⁺ h`` (pseudoinverse),
-        the update is ``h <- h + alpha * V (sigma(c) - c)`` where ``sigma``
-        exchanges the two coordinates. The component of ``h`` orthogonal to
-        ``span{v_s, v_t}`` is untouched. ``alpha=2`` is the paper's
-        "double-strength" swap.
-
-        This transform re-reads ``c`` from the activation seen by every hook.
-        It is therefore an involution when applied repeatedly in a subspace
-        whose coordinates are preserved between layers: a second application
-        can undo the first. For the paper's multi-layer clamp protocol, use
-        :meth:`swap_clamp_hooks` with activations cached from the clean run.
-
-        Args:
-            model: The model the hooks will run on.
-            source_token: The concept to remove (e.g. ``" France"``).
-            target_token: The concept to install (e.g. ``" China"``).
-            layers: Layers to intervene at.
-            alpha: Swap strength.
-            positions: Chunk-local positions to swap (negative indices allowed
-                and normalized on every hook invocation). Defaults to all.
-
-        Returns:
-            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
-        """
+        """Hooks applying ``h + alpha * V (swap(V⁺h) - V⁺h)``, ``V = [v_s, v_t]``; re-read per hook,
+        so later layers can undo the swap (the paper's clamp is :meth:`swap_clamp_hooks`)."""
         self.validate_model(model)
         source_id, target_id = _to_token_ids(model, [source_token, target_token])
         if source_id == target_id:
@@ -1344,29 +932,8 @@ class JacobianLens:
         *,
         positions: Optional[Sequence[int]] = None,
     ) -> List[Tuple[str, Any]]:
-        """Hooks that clamp lens coordinates to their clean-run exchange.
-
-        For each layer, this projects the corresponding activation from
-        ``clean_cache`` into that layer's lens basis, exchanges its source and
-        target coordinates once, and holds the live activation at that fixed
-        target. Unlike :meth:`swap_hooks`, the update is idempotent at each
-        layer: ``h <- h + V (c_target - V⁺h)``.
-
-        Args:
-            model: The model the hooks will run on.
-            source_token: The concept to remove (e.g. ``" France"``).
-            target_token: The concept to install (e.g. ``" China"``).
-            layers: Layers to intervene at.
-            clean_cache: Activations from an unmodified ``run_with_cache`` at
-                each requested layer's ``blocks.{layer}.hook_out`` name. Either
-                the ``ActivationCache`` it returns by default or the plain dict
-                from ``return_cache_object=False`` is accepted.
-            positions: Chunk-local positions to clamp (negative indices allowed
-                and normalized against the clean activations). Defaults to all.
-
-        Returns:
-            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
-        """
+        """Hooks clamping ``h + V (c_target - V⁺h)`` to the clean run's exchanged coordinates;
+        ``clean_cache`` must hold ``blocks.{layer}.hook_out`` for every layer."""
         self.validate_model(model)
         source_id, target_id = _to_token_ids(model, [source_token, target_token])
         if source_id == target_id:
@@ -1510,10 +1077,6 @@ class JacobianLens:
             hooks.append((_resid_post_hook_name(layer), hook_fn))
         return hooks
 
-    # ------------------------------------------------------------------ #
-    # fitting                                                            #
-    # ------------------------------------------------------------------ #
-
     @classmethod
     def fit(
         cls,
@@ -1528,55 +1091,8 @@ class JacobianLens:
         show_progress: bool = True,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> "JacobianLens":
-        """Fit a Jacobian lens on a hooked model.
-
-        Implements the reference estimator exactly. For each prompt: one forward
-        pass (the prompt replicated ``dim_batch`` times along the batch axis),
-        then ``ceil(d_model / dim_batch)`` backward passes. Each backward plants
-        a one-hot cotangent for one output dimension at *every* valid target
-        position simultaneously — causal attention guarantees the gradient at
-        source position ``t`` is then the sum over target positions
-        ``t' >= t`` with no explicit masking. Rows are averaged over valid
-        source positions (the first ``skip_first_positions`` and the final
-        position are excluded), and prompts contribute equally to the final
-        mean. There is no randomness: the computation is deterministic given
-        the prompts.
-
-        The reference implementation reports that fit quality saturates
-        quickly — on the order of 100 prompts of 128 tokens is usable; the
-        published lenses use up to 1000. Use :meth:`merge` to parallelize
-        across prompt slices.
-
-        Args:
-            model: A raw ``TransformerBridge``. Model parameters are temporarily
-                frozen (``requires_grad=False``) during fitting and restored
-                after. Cotangents and activation gradients use the model dtype;
-                fit with a float32 model for the highest-fidelity estimator. The
-                model and all of its submodules must be in evaluation mode.
-            prompts: Prompt strings. Prompts too short to contain a valid
-                position (``seq_len <= skip_first_positions + 1``) are skipped
-                with a warning and do not count toward ``n_prompts``.
-            corpus: Stable identifier for the prompt corpus or slice, recorded
-                in artifact provenance.
-            source_layers: Layers to fit. Defaults to every layer below
-                the final layer. Negative indices count from ``n_layers``.
-            dim_batch: Output dimensions per backward pass. Higher is faster
-                but replicates the prompt ``dim_batch`` times in memory; total
-                backward FLOPs are unchanged.
-            max_seq_len: Prompts are truncated to this many tokens.
-            skip_first_positions: Leading positions excluded from the source
-                average.
-            show_progress: Show a tqdm progress bar over prompts.
-            metadata: Extra provenance merged into :attr:`metadata`.
-
-        Returns:
-            The fitted :class:`JacobianLens`.
-
-        Raises:
-            TypeError: If model is not a ``TransformerBridge``.
-            ValueError: On compatibility mode, training mode, invalid provenance
-                or layer indices, or if no prompt was long enough to fit on.
-        """
+        """Fit with the reference estimator: per prompt, one forward replicated ``dim_batch``
+        times, then ``ceil(d_model / dim_batch)`` one-hot backwards; short prompts are skipped."""
         options = _prepare_fit(
             model,
             operation=cls.__name__,
@@ -1938,12 +1454,8 @@ def _make_intervention_hook(
 def _unembed(
     model: Any, residual: Float[torch.Tensor, "pos d_model"]
 ) -> Float[torch.Tensor, "pos d_vocab"]:
-    """Apply the model's own final norm, unembedding, logit scale, and soft cap.
-
-    The norm/unembed components contract on ``[batch, pos, d_model]``, so the
-    position rows are passed through with a singleton batch axis. The residual
-    is moved to the unembedding's device for sharded/multi-GPU models.
-    """
+    """Apply the model's final norm, unembedding, logit scale and soft cap on the unembed's
+    device; the components contract on ``[batch, pos, d_model]``, hence the singleton batch axis."""
     unembed_weight = model.W_U
     compute_dtype = unembed_weight.dtype
     batched = residual.to(device=unembed_weight.device, dtype=compute_dtype).unsqueeze(0)
@@ -1995,12 +1507,7 @@ def _normalize_layer(layer: int, n_layers: int) -> int:
 
 
 class _frozen_parameters:
-    """Context manager: freeze all parameters, restore their flags on exit.
-
-    Freezing keeps the autograd graph rooted at the residual stream rather than
-    at the weights, so fitting retains only the blocks between the earliest
-    source layer and the target layer.
-    """
+    """Freeze parameters (restoring flags on exit) so the fit graph roots at the residual stream."""
 
     def __init__(self, model: Any) -> None:
         self.model = model
@@ -2040,12 +1547,8 @@ def _jacobian_for_prompt(
     skip_first_positions: int,
     backward_provider: BackwardProvider,
 ) -> Dict[int, Float[torch.Tensor, "d_model d_model"]]:
-    """Exact per-prompt Jacobian rows via batched one-hot cotangents.
-
-    Assumes parameters are already frozen (see :class:`_frozen_parameters`) so
-    that marking the earliest source activation ``requires_grad`` roots the
-    graph there.
-    """
+    """Per-prompt Jacobian rows via batched one-hot cotangents; expects frozen parameters so
+    the graph roots at the earliest source activation."""
     d_model = model.cfg.d_model
     target_layer = model.cfg.n_layers - 1
     seq_len = tokens.shape[1]
@@ -2079,11 +1582,12 @@ def _jacobian_for_prompt(
         layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in source_layers
     }
     cotangent = torch.zeros_like(target)
-    n_passes = -(-d_model // dim_batch)  # ceil division
+    n_passes = -(-d_model // dim_batch)
     for pass_index in range(n_passes):
         dim_start = pass_index * dim_batch
         n_dims = min(dim_batch, d_model - dim_start)
         cotangent.zero_()
+        # One-hot at every valid target at once: causality makes each source grad sum over t' >= t.
         cotangent[
             batch_index[:n_dims, None],
             positions_index[None, :],

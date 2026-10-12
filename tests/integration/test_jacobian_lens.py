@@ -1,10 +1,5 @@
-"""Real-model integration tests for the TransformerBridge Jacobian lens paths.
-
-The cached GPT-2 model exercises published-artifact loading, top-k and full-logit
-readouts, a native fit, and causal steering. A tiny random Gemma2 bridge keeps
-RMSNorm and logit-softcap coverage in the regular CI suite, while a slow
-Gemma-2-2b-it test checks the published artifact on the real architecture.
-"""
+"""Real-model Jacobian lens tests: cached GPT-2 (artifact load, readouts, fit, steering), tiny
+random Gemma2/Granite bridges (RMSNorm, softcap, logit scaling) and a slow Gemma-2-2b-it check."""
 
 import subprocess
 import sys
@@ -435,9 +430,8 @@ def test_gemma_published_artifact_parity_topk_and_softcap():
 
 
 def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2_lens, gpt2_bridge):
-    """decompose on a real GPT-2 activation: up to k active nonnegative atoms, the non-J-space
-    residual is orthogonal to the selected J-lens vectors, and component + residual recover the
-    activation."""
+    """decompose on a real GPT-2 activation: at most k nonnegative atoms, a residual orthogonal to
+    the selected J-lens vectors, and component + residual recovering the activation."""
     layer, k = 6, 8
     result = published_gpt2_lens.decompose(gpt2_bridge, PROMPT, layer=layer, position=-1, k=k)
 
@@ -448,10 +442,9 @@ def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2
     ), f"active={result.support.numel()} selected={result.selected_support.numel()} k={k}"
     assert set(result.support.tolist()).issubset(set(result.selected_support.tolist()))
     assert result.coordinates.numel() == result.support.numel()
-    assert (result.coordinates > 0).all()  # every returned coordinate is active
+    assert (result.coordinates > 0).all()
     assert (result.support >= 0).all() and (result.support < gpt2_bridge.cfg.d_vocab).all()
 
-    # the decomposed activation is the model's blocks.{layer}.hook_out at the last position
     tokens = gpt2_bridge.to_tokens(PROMPT)
     hook = f"blocks.{layer}.hook_out"
     _, cache = gpt2_bridge.run_with_cache(tokens, names_filter=lambda name: name == hook)
@@ -460,8 +453,7 @@ def test_decompose_gpt2_activation_reconstructs_and_is_orthogonal(published_gpt2
         result.j_space_component + result.non_j_space_component, activation, atol=1e-3
     )
 
-    # the non-J-space residual is orthogonal to every selected J-lens vector (the projection
-    # span is the whole selected support, not only the active atoms); cosine ~ 0
+    # The projection span is the whole selected support, not only the active atoms.
     dictionary = published_gpt2_lens.lens_vector_dictionary(gpt2_bridge, layer)
     residual = result.non_j_space_component
     for atom_id in result.selected_support.tolist():
@@ -527,9 +519,8 @@ def test_coordinate_patch_gpt2_preserves_anchored_frame(published_gpt2_lens, gpt
 def test_coordinate_patch_hooks_gpt2_no_op_and_leaves_other_positions_unchanged(
     published_gpt2_lens, gpt2_bridge
 ):
-    """coordinate_patch_hooks through a real run_with_hooks pass: alpha=0 is an exact no-op and
-    untouched positions are bit-identical -- algebraic invariants only, no token-flip claim (see
-    build-plan.md §9's policy against behavior-dependent assertions)."""
+    """coordinate_patch_hooks in a real run: alpha=0 is an exact no-op and untouched positions are
+    bit-identical (algebraic invariants only, no token-flip claim)."""
     layer = 6
     tokens = gpt2_bridge.to_tokens(PROMPT)
     hook = f"blocks.{layer}.hook_out"
@@ -569,10 +560,8 @@ def test_coordinate_patch_hooks_gpt2_no_op_and_leaves_other_positions_unchanged(
 
 
 def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_lens, gpt2_bridge):
-    """occupancy on a real GPT-2 activation returns a positive integer within ``[1, max_atoms]``,
-    with per-step real and control captured-variance curves of the right shape. We assert shape and
-    bounds -- not the paper's closed-model count (an open-weight observation, recorded on failure).
-    A reduced control count keeps CI fast."""
+    """occupancy on a real GPT-2 activation: a count in ``[1, max_atoms]`` and right-shaped curves;
+    the paper's closed-model count is not asserted, only reported on failure."""
     layer, max_atoms = 6, 12
     result = published_gpt2_lens.occupancy(
         gpt2_bridge,
@@ -595,7 +584,6 @@ def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_le
     assert (result.marginal_captured_variance >= -1e-4).all()
     assert (real_cumulative >= -1e-4).all() and (real_cumulative <= 1.0 + 1e-4).all()
 
-    # Deterministic given the seed: an identical call reproduces the count and both curves exactly.
     repeat = published_gpt2_lens.occupancy(
         gpt2_bridge,
         PROMPT,
@@ -610,10 +598,8 @@ def test_occupancy_gpt2_activation_is_a_small_positive_integer(published_gpt2_le
 
 
 def test_fraction_of_variance_gpt2_is_a_small_ratio(published_gpt2_lens, gpt2_bridge):
-    """fraction_of_variance over a small corpus: each layer's median and pooled ratio land in
-    ``[0, 1]`` with samples recorded, consistent with the paper's "J-space is a small fraction of
-    total variance" (an open-weight observation, not a numeric match to the closed-model figures).
-    FIT_PROMPTS are long enough to clear the default 16-position skip."""
+    """fraction_of_variance median and pooled ratios land in ``[0, 1]`` with samples recorded (an
+    open-weight observation, not a numeric match to the paper's closed-model figures)."""
     layers = [3, 6]
     profile = published_gpt2_lens.fraction_of_variance(gpt2_bridge, FIT_PROMPTS, layers=layers, k=8)
 
@@ -621,13 +607,11 @@ def test_fraction_of_variance_gpt2_is_a_small_ratio(published_gpt2_lens, gpt2_br
     for layer in layers:
         per_position = profile.per_position[layer]
         assert per_position.numel() > 0
-        # Each fraction is ||projection||^2 / ||activation||^2, a variance ratio in [0, 1].
         assert (per_position >= 0.0).all() and (per_position <= 1.0).all()
         assert 0.0 <= profile.median[layer] <= 1.0
         assert 0.0 <= profile.pooled[layer] <= 1.0
 
-    # positions= overrides the skip_first sweep: one explicit position per prompt over the
-    # two-prompt corpus exercises the override path and cross-prompt pooling (one sample each).
+    # positions= overrides the skip_first sweep: one sample per prompt, pooled across prompts.
     pinned = published_gpt2_lens.fraction_of_variance(
         gpt2_bridge, FIT_PROMPTS, layers=layers, k=8, positions=[-1]
     )
@@ -667,22 +651,8 @@ def test_decompose_gemma_activation_is_valid():
     )
 
 
-# --------------------------------------------------------------------------- #
-# Ordinary-estimator fit regression fixture                                   #
-# --------------------------------------------------------------------------- #
-#
-# This pins the exact numerics of the current ``JacobianLens.fit`` drive loop
-# before the estimator-independent driver is extracted. The
-# refactor must reproduce these golden transport matrices, so a change to
-# cotangent batching, valid-position selection, source-position averaging,
-# prompt accumulation, or the graph root would surface here as a failure.
-#
-# The fixture avoids brittleness two ways: it builds a tiny GPT-2 locally (no
-# model download) and overwrites every parameter with an RNG-version-independent
-# arithmetic ramp, so the fitted matrices are byte-identical across machines and
-# torch versions. In-run determinism is asserted with ``torch.equal`` (a repeat
-# fit) and the golden comparison uses a tight tolerance that only absorbs
-# cross-BLAS float rounding on the 4-wide matmuls.
+# Golden fit numerics: pins cotangent batching, position selection and averaging, prompt
+# accumulation and the graph root. The tolerance absorbs only cross-BLAS rounding on 4-wide matmuls.
 
 REGRESSION_CORPUS = "jlens-drive-loop-regression-v1"
 REGRESSION_PROMPTS = [
@@ -696,7 +666,6 @@ REGRESSION_FIT_KWARGS: dict[str, Any] = dict(
     skip_first_positions=1,
     show_progress=False,
 )
-# Golden transport matrices captured from the pre-refactor JacobianLens.fit.
 REGRESSION_GOLDEN_JACOBIANS = {
     0: [
         [1.0194597244262695, -0.10382787883281708, 0.01114815566688776, 0.07321998476982117],
@@ -714,11 +683,8 @@ REGRESSION_GOLDEN_JACOBIANS = {
 
 
 def _build_tiny_deterministic_gpt2():
-    """A 4-wide, 3-layer GPT-2 bridge with fixed arithmetic weights and a real tokenizer.
-
-    Weights are RNG-independent so the fit is reproducible across environments; the
-    GPT-2 tokenizer (small, cached) lets ``JacobianLens.fit`` take string prompts.
-    """
+    """4-wide, 3-layer GPT-2 bridge with RNG-independent arithmetic weights and the real GPT-2
+    tokenizer, so the fit is reproducible across environments and takes string prompts."""
     from transformers import AutoTokenizer, GPT2Config, GPT2LMHeadModel
 
     from transformer_lens.model_bridge.sources import build_bridge_from_module
@@ -751,7 +717,7 @@ def _build_tiny_deterministic_gpt2():
 
 
 def test_fit_ordinary_estimator_regression_fixture():
-    """JacobianLens.fit reproduces frozen golden matrices, guarding the driver-extraction refactor."""
+    """JacobianLens.fit reproduces the frozen golden matrices."""
     from transformer_lens.tools.analysis import JacobianLens
 
     model = _build_tiny_deterministic_gpt2()
@@ -793,23 +759,9 @@ def test_fit_ordinary_estimator_regression_fixture():
         )
 
 
-# --------------------------------------------------------------------------- #
-# Backward-provider seam                                                      #
-# --------------------------------------------------------------------------- #
-#
-# The estimator-independent driver (``_fit_transport_matrices``) takes its
-# backward step through a ``backward_provider`` callable so a future estimator
-# can reuse the capture / cotangent-batching / averaging machinery
-# unchanged. This test proves the seam works before anything depends on it: an
-# alternate provider that scales the ordinary VJP by an exact power of two flows
-# linearly through the driver, so every transport matrix must come out scaled by
-# exactly that constant, while the public ``JacobianLens.fit`` path -- which
-# passes ``_ordinary_vjp`` -- stays pinned to the golden regression matrices.
-
-
 def test_fit_driver_honors_alternate_backward_provider():
-    """The driver routes its backward step through the provider seam without
-    disturbing the ordinary ``JacobianLens.fit`` numerics."""
+    """A power-of-two-scaled backward_provider scales every fitted matrix exactly, and the public
+    fit path stays on the golden matrices."""
     from transformer_lens.tools.analysis import JacobianLens
     from transformer_lens.tools.analysis.jacobian_lens import (
         _fit_transport_matrices,
@@ -818,8 +770,7 @@ def test_fit_driver_honors_alternate_backward_provider():
 
     model = _build_tiny_deterministic_gpt2()
 
-    # The ordinary provider through the driver reproduces the pinned golden
-    # matrices, anchoring the alternate-provider comparison to the fit fixture.
+    # Anchors the alternate-provider comparison to the golden fit.
     baseline, n_ordinary = _fit_transport_matrices(
         model, REGRESSION_PROMPTS, backward_provider=_ordinary_vjp, **REGRESSION_FIT_KWARGS
     )
@@ -829,9 +780,7 @@ def test_fit_driver_honors_alternate_backward_provider():
             baseline[layer], torch.tensor(golden, dtype=torch.float32), atol=1e-5, rtol=1e-4
         )
 
-    # An alternate provider that scales the ordinary VJP by an exact power of two.
-    # Power-of-two scaling commutes bit-exactly with the driver's mean / sum /
-    # divide reductions, so the honored result is byte-identical to SCALE*baseline.
+    # Power-of-two scaling commutes bit-exactly with the driver's mean / sum / divide reductions.
     SCALE = 2.0
     calls = 0
 
@@ -841,13 +790,8 @@ def test_fit_driver_honors_alternate_backward_provider():
         grads = _ordinary_vjp(target, sources, cotangent, retain_graph)
         return tuple(SCALE * grad for grad in grads)
 
-    # Count top-level bridge forwards independently of the backward seam. The
-    # driver replicates each prompt once and runs a single forward per prompt,
-    # batching every one-hot cotangent through that one captured graph; the
-    # backward-provider call count above cannot witness this because it rises
-    # with dim_batch chunking, not with forwards. A forward pre-hook on the
-    # bridge fires once per model(...) call, so it pins the invariant directly:
-    # exactly one bridge forward per contributing prompt.
+    # Provider calls scale with dim_batch chunking, not forwards; a forward pre-hook pins exactly
+    # one bridge forward per contributing prompt.
     forward_calls = 0
 
     def _count_forward(_module, _args):
@@ -868,8 +812,6 @@ def test_fit_driver_honors_alternate_backward_provider():
     for layer in baseline:
         assert torch.equal(scaled[layer], SCALE * baseline[layer])
 
-    # Exercising the seam leaves the public fit path untouched: it still routes
-    # through the ordinary VJP and reproduces the golden regression matrices.
     lens = JacobianLens.fit(
         model, REGRESSION_PROMPTS, corpus=REGRESSION_CORPUS, **REGRESSION_FIT_KWARGS
     )
@@ -880,14 +822,8 @@ def test_fit_driver_honors_alternate_backward_provider():
 
 
 def test_fit_attributes_short_prompt_warning_to_caller_frame():
-    """The short-prompt skip warning must point at the ``JacobianLens.fit`` call site, one
-    frame up from ``_fit_transport_matrices`` where the warning is actually raised.
-
-    This runs in a bare subprocess rather than in-process: this suite's pytest config wraps
-    every ``transformer_lens`` call for runtime type-checking (``--jaxtyping-packages`` in
-    pyproject.toml), and each wrapper layer adds its own interpreter frame, which would
-    otherwise swallow the one-frame difference this test exists to catch.
-    """
+    """The short-prompt warning points at the ``JacobianLens.fit`` call site; a subprocess avoids
+    the pytest jaxtyping wrapper frames that would hide the one-frame difference."""
     script = textwrap.dedent(
         """
         import warnings

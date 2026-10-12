@@ -1,16 +1,9 @@
-"""Unit tests for JacobianLens.load() checkpoint support.
-
-All tests use synthetic in-memory fixtures — no model, no Hub access.
-"""
+"""JacobianLens.load() artifact and checkpoint tests on synthetic in-memory fixtures."""
 
 import pytest
 import torch
 
 from transformer_lens.tools.analysis.jacobian_lens import JacobianLens
-
-# ---------------------------------------------------------------------------
-# Fixture helpers
-# ---------------------------------------------------------------------------
 
 
 def _save_artifact(path, *, n_layers=3, d_model=8, n_prompts=10, metadata=None):
@@ -36,11 +29,7 @@ def _save_checkpoint(
     flat_provenance=None,
     n_prompts_override=None,
 ):
-    """Write a minimal fit-checkpoint (jacobian_sum format) to *path*.
-
-    *n_prompts_override* lets callers inject a bad value without changing the
-    sums (useful for zero/negative n_prompts tests).
-    """
+    """Write a minimal fit checkpoint; ``n_prompts_override`` injects a bad count."""
     payload = {
         "jacobian_sum": {i: torch.randn(d_model, d_model) * n_prompts for i in range(n_layers)},
         "n_prompts": n_prompts if n_prompts_override is None else n_prompts_override,
@@ -52,11 +41,6 @@ def _save_checkpoint(
     if flat_provenance is not None:
         payload.update(flat_provenance)
     torch.save(payload, path)
-
-
-# ---------------------------------------------------------------------------
-# Artifact loading (regression tests — existing behaviour must be preserved)
-# ---------------------------------------------------------------------------
 
 
 class TestLoadArtifact:
@@ -93,11 +77,6 @@ class TestLoadArtifact:
         torch.save({"random_key": 42}, str(p))
         with pytest.raises(ValueError, match="does not look like"):
             JacobianLens.load(p)
-
-
-# ---------------------------------------------------------------------------
-# Checkpoint loading (new functionality)
-# ---------------------------------------------------------------------------
 
 
 class TestLoadCheckpoint:
@@ -144,7 +123,6 @@ class TestLoadCheckpoint:
         assert "transformer_lens_fit" not in lens.metadata
         assert "transformer_lens_version" not in lens.metadata
         assert "model_system" not in lens.metadata
-        # safe keys survive
         assert lens.metadata.get("corpus") == "wiki"
 
     def test_safe_scalar_metadata_preserved(self, tmp_path):
@@ -175,7 +153,7 @@ class TestLoadCheckpoint:
             "d_model": d_model,
             "metadata": {
                 "model_name": "gpt2",
-                "embedding_stats": torch.randn(4),  # tensor — will be dropped
+                "embedding_stats": torch.randn(4),
             },
         }
         torch.save(payload, p)
@@ -183,7 +161,6 @@ class TestLoadCheckpoint:
         assert "embedding_stats" not in lens.metadata
         dropped = lens.metadata.get("dropped_fields", [])
         assert any("embedding_stats" in f for f in dropped)
-        # safe field survives
         assert lens.metadata.get("model_name") == "gpt2"
 
     def test_flat_provenance_harvested(self, tmp_path):
@@ -237,11 +214,6 @@ class TestLoadCheckpoint:
         assert reloaded.n_prompts == 3
         assert reloaded.source_layers == [0, 1]
         assert reloaded.metadata.get("converted_from") == "jacobian_lens_checkpoint"
-
-
-# ---------------------------------------------------------------------------
-# merge() refuses to mix converted and TL-fitted lenses
-# ---------------------------------------------------------------------------
 
 
 class TestMergeProvenance:

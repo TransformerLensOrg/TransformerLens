@@ -1,8 +1,4 @@
-"""Analysis tools for TransformerLens.
-
-This subpackage collects high-level, single-call interpretability analyses that
-sit on top of the hook/cache system. Model support is documented per tool;
-new analyses may target the ``TransformerBridge`` API exclusively.
+"""Single-call interpretability analyses on the hook/cache system; model support is per tool.
 
 Tools:
     - attribution_patching: Node and edge attribution patching (EAP) and faithfulness.

@@ -1,10 +1,5 @@
-"""Artifact-generation entry point for the causal coordinate-swap benchmark.
-
-Separate from the library module, which the package ``__init__`` imports, so ``python -m`` runs
-it once instead of twice. Reproduce the frozen artifact (GPT-2 is ungated) with::
-
-    uv run python -m transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli
-"""
+"""``python -m`` entry point that writes the frozen GPT-2 causal-swap artifact; kept out of the
+library module, which the package ``__init__`` imports, so ``python -m`` runs it only once."""
 
 from __future__ import annotations
 

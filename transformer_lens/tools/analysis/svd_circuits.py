@@ -1,10 +1,5 @@
-"""Per-head SVD of attention QK (``W_Q W_K^T``) and OV (``W_V W_O``) maps, plus OV consumers.
-
-Weight-space, kept factored through :class:`~transformer_lens.FactoredMatrix.FactoredMatrix`
-(rank <= ``d_head``), with a report flagging rotation-ambiguous blocks and null directions.
-``U`` columns are input (read) directions and ``V`` columns output directions: OV's ``V`` is
-what the head writes, the basis to project through ``W_U``; QK only scores, so both are reads.
-"""
+"""Per-head SVD of attention QK (``W_Q W_K^T``) and OV (``W_V W_O``) maps, plus OV consumers;
+kept factored (rank <= ``d_head``), with rotation-ambiguous blocks and null directions flagged."""
 
 import math
 from dataclasses import dataclass
@@ -26,8 +21,7 @@ _DEFAULT_EPS = 1e-2
 # Absolute floor so relative-gap and ratio computations never divide by ~0.
 _SIGMA_FLOOR = 1e-12
 
-# Seeds the patch comparison's random baseline so a bare call is reproducible, matching
-# estimate_occupancy's seeded controls.
+# Seeds the patch comparison's random baseline so a bare call is reproducible.
 _DEFAULT_BASELINE_SEED = 0
 
 # Per-draw control magnitudes are heavy-tailed, so the averaged threshold still varies with the
@@ -130,10 +124,8 @@ class HeadDecomposition:
 
 
 def _read_weight(weight: torch.Tensor) -> torch.Tensor:
-    """Detach a weight for SVD: fp16/bf16 promote to float32 (unstable SVD), float64 stays.
-
-    float64 is kept so the default ``null_rtol`` matches the precision actually decomposed.
-    """
+    """Detach for SVD: fp16/bf16 promote to float32 (unstable SVD); float64 stays so the default
+    ``null_rtol`` matches the precision actually decomposed."""
     weight = weight.detach()
     return weight if weight.dtype == torch.float64 else weight.float()
 
@@ -146,13 +138,10 @@ def _head_weights(
     Float[torch.Tensor, "d_model d_head"],
     Float[torch.Tensor, "d_head d_model"],
 ]:
-    """``(W_Q_h, W_K_h, W_V_h, W_O_h)`` read from one block, not the full-model stacks.
-
-    On GQA ``W_K``/``W_V`` hold one row per kv head, so each query head reads its group's.
-    """
+    """``(W_Q_h, W_K_h, W_V_h, W_O_h)`` read from one block, not the full-model stacks."""
     attn = model.blocks[layer].attn
     n_kv_heads = attn.W_K.shape[0]
-    kv_head = head // (model.cfg.n_heads // n_kv_heads)
+    kv_head = head // (model.cfg.n_heads // n_kv_heads)  # GQA: a query head reads its group's
     W_Q_h = _read_weight(attn.W_Q[head])
     W_K_h = _read_weight(attn.W_K[kv_head])
     W_V_h = _read_weight(attn.W_V[kv_head])
@@ -179,10 +168,8 @@ def _weight_fingerprint(*weights: torch.Tensor) -> Tuple[float, ...]:
 def _degeneracy_blocks(
     S: Float[torch.Tensor, "rank"], eps: float, null_rtol: float
 ) -> List[List[int]]:
-    """Blocks of descending ``S``: ``i`` joins if ``1 - S[i]/S[i-1] < eps`` or both are null.
-
-    Predecessor gap only: a block may chain wider than ``eps``; every boundary is an ``eps`` gap.
-    """
+    """Blocks of descending ``S``: ``i`` joins if ``1 - S[i]/S[i-1] < eps`` or both are null, so a
+    block may chain wider than ``eps`` but every boundary is an ``eps`` gap."""
     n = int(S.shape[0])
     if n == 0:
         return []
@@ -239,12 +226,10 @@ def _factored_head_svd(
     folded_ln: bool = False,
     weight_fingerprint: Optional[Tuple[float, ...]] = None,
 ) -> HeadSVD:
-    """SVD of the factored map ``A @ B`` (OV: ``W_V_h, W_O_h``; QK: ``W_Q_h, W_K_h^T``).
-
-    ``null_rtol=None`` is ``d_model * finfo(S.dtype).eps``, ``torch.linalg.matrix_rank``'s default.
-    """
+    """SVD of the factored map ``A @ B`` (OV: ``W_V_h, W_O_h``; QK: ``W_Q_h, W_K_h^T``)."""
     U, S, V = FactoredMatrix(A, B).svd()
     d_model = U.shape[0]
+    # torch.linalg.matrix_rank's default tolerance.
     resolved_null_rtol = null_rtol if null_rtol is not None else d_model * torch.finfo(S.dtype).eps
     blocks = _degeneracy_blocks(S, eps, null_rtol=resolved_null_rtol)
     rank_report = _build_rank_report(S, blocks, null_rtol=resolved_null_rtol)
@@ -318,11 +303,8 @@ def _folded_ln_state(model) -> bool:
 
 
 def _validate_bridge_compatibility(model) -> None:
-    """Reject a ``TransformerBridge`` whose ``W_U`` lacks the folded final LayerNorm.
-
-    Unlike DLA's check, no hybrid-arch refusal: a rank-1 ``W_U`` projection needs no block layout.
-    """
-    # Lazy import - keeps the module importable without the bridge as a hard dependency.
+    """Reject a ``TransformerBridge`` whose ``W_U`` lacks the folded final LayerNorm; hybrid archs
+    pass, since a rank-1 ``W_U`` projection needs no block layout."""
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):
@@ -383,10 +365,8 @@ def _require_ov(head_svd: HeadSVD, operation: str) -> None:
 
 
 def vocab_readout(model, head_svd: HeadSVD, *, k: int = 10) -> Float[torch.Tensor, "d_vocab k"]:
-    """``W_U.T @ V[:, :k]``: the top-``k`` OV output directions projected into vocab space.
-
-    Not gated on degeneracy: a degenerate direction's readout is still a well-defined projection.
-    """
+    """``W_U.T @ V[:, :k]``: the top-``k`` OV output directions projected into vocab space; not
+    gated on degeneracy, as a degenerate direction's readout is still well-defined."""
     _require_ov(head_svd, "vocab_readout")
     _validate_decomposition_matches_model(model, head_svd)
     rank = head_svd.V.shape[1]
@@ -442,10 +422,7 @@ class ActivationProjection:
 def project_activations(
     model, head_svd: HeadSVD, prompt: Union[str, torch.Tensor]
 ) -> ActivationProjection:
-    """Project a head's per-position ``hook_result`` for one prompt onto its OV directions.
-
-    ``use_attn_result`` is enabled for the forward and restored afterwards.
-    """
+    """Project a head's per-position ``hook_result`` for one prompt onto its OV directions."""
     _require_ov(head_svd, "project_activations")
     _validate_decomposition_matches_model(model, head_svd)
     # Reject non-single-prompt tensors before the forward; a list of strings shows its batch
@@ -495,10 +472,7 @@ def _validate_retained_blocks(head_svd: HeadSVD, retained: Sequence[int]) -> Non
 def _resolve_retained(
     head_svd: HeadSVD, keep: Optional[Sequence[int]], ablate: Optional[Sequence[int]]
 ) -> List[int]:
-    """Sorted retained indices from exactly one of ``keep`` or ``ablate`` (complemented).
-
-    Bounds are checked explicitly so a negative index cannot wrap and a bad ablate cannot no-op.
-    """
+    """Sorted retained indices from exactly one of ``keep`` or ``ablate`` (complemented)."""
     if (keep is None) == (ablate is None):
         raise ValueError("patch_along_directions requires exactly one of keep or ablate")
     rank = head_svd.V.shape[1]
@@ -507,6 +481,7 @@ def _resolve_retained(
         resolved: List[int] = []
         for raw in indices:
             index = int(raw)
+            # Explicit, so a negative index cannot wrap and a bad ablate cannot no-op.
             if not 0 <= index < rank:
                 raise ValueError(f"{name} index {index} out of range [0, {rank})")
             resolved.append(index)
@@ -539,10 +514,7 @@ def _make_subspace_hook(head: int, projector: Float[torch.Tensor, "d_model d_mod
 
 @dataclass
 class PatchResult:
-    """A head's output patched onto an OV subspace, compared with same-width in-span controls.
-
-    ``gated``: whether the retained set's delta beat the sampled control mean for its mode.
-    """
+    """A head's output patched onto an OV subspace, compared with same-width in-span controls."""
 
     head_svd: HeadSVD
     retained: List[int]
@@ -566,10 +538,8 @@ def patch_along_directions(
     rng: Optional[torch.Generator] = None,
     n_baseline: int = _DEFAULT_N_BASELINE,
 ) -> PatchResult:
-    """Patch a head's output onto an OV subspace; compare the metric change to in-span controls.
-
-    ``threshold`` overrides the control mean; :class:`PatchResult` gives each mode's polarity.
-    """
+    """Patch a head's output onto an OV subspace and compare the metric change to in-span controls;
+    ``threshold`` overrides the control mean."""
     _require_ov(head_svd, "patch_along_directions")
     if n_baseline < 1:
         raise ValueError(f"n_baseline must be at least 1, got {n_baseline}")

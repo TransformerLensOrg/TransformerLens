@@ -1,9 +1,5 @@
-"""Relevance Lens: a Jacobian lens whose transport matrices use RelP relevance-rule backward.
-
-``RelevanceLens.fit`` installs the LN-rule (residual-stream norms), Identity-rule (GELU/SiLU)
-and Half-rule (MLP gate products) for the fit; the forward pass is unchanged, attention keeps
-ordinary autograd, and every analysis method is inherited from ``JacobianLens``.
-"""
+"""Relevance Lens: a Jacobian lens fitted under RelP LN-, Identity- and Half-rule backward; the
+forward pass is unchanged and attention keeps ordinary autograd."""
 
 from __future__ import annotations
 
