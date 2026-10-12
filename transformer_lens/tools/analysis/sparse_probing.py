@@ -298,68 +298,109 @@ def _validate_inputs(
     )
 
 
+def _class_test_count(test_fraction: float, count: int) -> int:
+    return min(max(math.ceil(test_fraction * count), 1), count - 1)
+
+
 def _stratified_split(
     canonical_labels: torch.Tensor,
     test_fraction: float,
     generator: torch.Generator,
     groups: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    if groups is None:
-        split_labels = canonical_labels
-        row_groups = None
-    else:
-        if not isinstance(groups, torch.Tensor):
-            raise ValueError(f"groups must be a torch.Tensor, got {type(groups).__name__}")
-        if groups.ndim != 1:
-            raise ValueError(f"groups must be one-dimensional, got shape {tuple(groups.shape)}")
-        if groups.shape[0] != canonical_labels.shape[0]:
-            raise ValueError("groups and labels must contain the same number of examples")
-        if (
-            torch.is_floating_point(groups)
-            or torch.is_complex(groups)
-            or groups.dtype == torch.bool
-            or groups.is_quantized
-        ):
-            raise ValueError(f"groups must have an integer dtype, got {groups.dtype}")
-
-        row_groups, group_indices = torch.unique(
-            groups.detach().to(device="cpu"), sorted=True, return_inverse=True
-        )
-        group_sizes = torch.bincount(group_indices, minlength=row_groups.numel())
-        positive_counts = torch.bincount(
-            group_indices[canonical_labels], minlength=row_groups.numel()
-        )
-        mixed_groups = (positive_counts > 0) & (positive_counts < group_sizes)
-        if bool(mixed_groups.any()):
-            raise ValueError("each group must contain examples from only one label class")
-        split_labels = positive_counts == group_sizes
-        group_class_counts = torch.bincount(split_labels.to(torch.int64), minlength=2)
-        if int(group_class_counts.min()) < 2:
-            raise ValueError("groups must provide at least two groups per class")
-
+    if groups is not None:
+        return _grouped_split(canonical_labels, test_fraction, generator, groups)
     train_parts = []
     test_parts = []
     for class_value in (False, True):
-        indices = torch.where(split_labels == class_value)[0]
+        indices = torch.where(canonical_labels == class_value)[0]
         permutation = torch.randperm(indices.numel(), generator=generator)
         shuffled = indices[permutation]
-        test_count = min(max(math.ceil(test_fraction * indices.numel()), 1), indices.numel() - 1)
+        test_count = _class_test_count(test_fraction, indices.numel())
         test_parts.append(shuffled[:test_count])
         train_parts.append(shuffled[test_count:])
+    return torch.cat(train_parts), torch.cat(test_parts)
 
-    train_indices = torch.cat(train_parts)
-    test_indices = torch.cat(test_parts)
-    if row_groups is None:
-        return train_indices, test_indices
 
-    train_group_mask = torch.zeros(row_groups.numel(), dtype=torch.bool)
-    test_group_mask = torch.zeros(row_groups.numel(), dtype=torch.bool)
-    train_group_mask[train_indices] = True
-    test_group_mask[test_indices] = True
-    return (
-        torch.where(train_group_mask[group_indices])[0],
-        torch.where(test_group_mask[group_indices])[0],
+def _grouped_split(
+    canonical_labels: torch.Tensor,
+    test_fraction: float,
+    generator: torch.Generator,
+    groups: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Hold out whole groups, aiming each class's held-out rows at the row-split target."""
+    if not isinstance(groups, torch.Tensor):
+        raise ValueError(f"groups must be a torch.Tensor, got {type(groups).__name__}")
+    if groups.ndim != 1:
+        raise ValueError(f"groups must be one-dimensional, got shape {tuple(groups.shape)}")
+    if groups.shape[0] != canonical_labels.shape[0]:
+        raise ValueError("groups and labels must contain the same number of examples")
+    if (
+        torch.is_floating_point(groups)
+        or torch.is_complex(groups)
+        or groups.dtype == torch.bool
+        or groups.is_quantized
+    ):
+        raise ValueError(f"groups must have an integer dtype, got {groups.dtype}")
+
+    row_groups, group_indices = torch.unique(
+        groups.detach().to(device="cpu"), sorted=True, return_inverse=True
     )
+    group_count = row_groups.numel()
+    negatives = torch.bincount(group_indices[~canonical_labels], minlength=group_count).tolist()
+    positives = torch.bincount(group_indices[canonical_labels], minlength=group_count).tolist()
+    counts = list(zip(negatives, positives))
+    if min(sum(1 for c in counts if c[k] > 0) for k in (0, 1)) < 2:
+        raise ValueError("groups must provide at least two groups per class")
+    totals = (sum(negatives), sum(positives))
+    targets = tuple(_class_test_count(test_fraction, total) for total in totals)
+
+    def cost(test_counts: tuple[int, int]) -> float:
+        return sum(((test_counts[k] - targets[k]) / totals[k]) ** 2 for k in (0, 1))
+
+    def shifted(test_counts: tuple[int, int], group: int, sign: int) -> tuple[int, int]:
+        return (
+            test_counts[0] + sign * counts[group][0],
+            test_counts[1] + sign * counts[group][1],
+        )
+
+    order = torch.randperm(group_count, generator=generator).tolist()
+    in_test = [False] * group_count
+    test_counts = (0, 0)
+    for group in order:
+        candidate = shifted(test_counts, group, 1)
+        if cost(candidate) < cost(test_counts):
+            in_test[group] = True
+            test_counts = candidate
+
+    # Balancing can leave a side without a class. Each class sits in two or more groups, so some
+    # group holding the missing class can always move without the donor losing a class it has.
+    while True:
+        train_counts = (totals[0] - test_counts[0], totals[1] - test_counts[1])
+        gaps = [
+            (to_test, k)
+            for to_test, held in ((True, test_counts), (False, train_counts))
+            for k in (0, 1)
+            if held[k] == 0
+        ]
+        if not gaps:
+            break
+        to_test, missing = gaps[0]
+        donor = train_counts if to_test else test_counts
+        sign = 1 if to_test else -1
+        movable = [
+            group
+            for group in order
+            if in_test[group] != to_test
+            and counts[group][missing] > 0
+            and all(donor[k] == 0 or donor[k] > counts[group][k] for k in (0, 1))
+        ]
+        group = min(movable, key=lambda group: cost(shifted(test_counts, group, sign)))
+        in_test[group] = to_test
+        test_counts = shifted(test_counts, group, sign)
+
+    test_rows = torch.tensor(in_test, dtype=torch.bool)[group_indices]
+    return torch.where(~test_rows)[0], torch.where(test_rows)[0]
 
 
 def _feature_scores(
@@ -832,10 +873,11 @@ def fit_sparse_probe(
             ``[example, feature]``.
         labels: Boolean or integer binary labels shaped ``[example]``.
         k: Number of coordinates selected by absolute train class-mean difference.
-        test_fraction: Requested held-out fraction within each class.
+        test_fraction: Requested held-out fraction within each class. With ``groups`` it
+            targets held-out rows per class, which whole groups only approximate.
         positive_label: Label defining the positive class and score sign.
-        groups: Optional integer group IDs; each group must have one label class, with at least
-            two distinct groups per class. Groups are split as units instead of individual rows.
+        groups: Optional integer group IDs; each group is held out whole, with both classes on
+            both sides. Groups may mix classes, but each class must appear in two or more.
         preprocess: ``"none"`` or train-only ``"standardize"``.
         std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, so a
             near-constant column is not amplified to unit scale; ``0`` disables it.
@@ -936,10 +978,11 @@ def sweep_sparse_probe(
             ``[example, feature]``.
         labels: Boolean or integer binary labels shaped ``[example]``.
         ks: Strictly increasing unique sparsity levels.
-        test_fraction: Requested held-out fraction within each class.
+        test_fraction: Requested held-out fraction within each class. With ``groups`` it
+            targets held-out rows per class, which whole groups only approximate.
         positive_label: Label defining the positive class and score sign.
-        groups: Optional integer group IDs; each group must have one label class, with at least
-            two distinct groups per class. Groups are split as units instead of individual rows.
+        groups: Optional integer group IDs; each group is held out whole, with both classes on
+            both sides. Groups may mix classes, but each class must appear in two or more.
         preprocess: ``"none"`` or train-only ``"standardize"``.
         std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, shared by
             every fit; ``0`` disables it.

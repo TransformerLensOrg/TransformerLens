@@ -199,9 +199,12 @@ groups = torch.arange(n_prompts).repeat_interleave(rows_per_prompt)
 result = fit_sparse_probe(features, labels, groups=groups, k=8)
 ```
 
-Grouped stratification requires every group to contain one label class and at least two distinct
-groups per class. `sweep_sparse_probe` accepts the same `groups` argument and reuses one grouped
-split for every sparsity level. Omitting `groups` retains the row-level split.
+Groups may mix classes, as with per-token labels, but each class must appear in at least two
+groups so both sides of the split can hold both classes. Because whole groups move together,
+`test_fraction` is a target for held-out rows per class rather than an exact share; with groups of
+uneven size, check `test_positive_count` and `test_negative_count` for the realized split.
+`sweep_sparse_probe` accepts the same `groups` argument and reuses one grouped split for every
+sparsity level. Omitting `groups` retains the row-level split.
 
 ## Reference
 
