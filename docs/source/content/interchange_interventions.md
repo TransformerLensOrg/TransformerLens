@@ -69,6 +69,36 @@ parameters.
 Run every basis on the same pairs. A basis whose IIA does not clearly exceed a random basis of
 the same rank is not evidence that the subspace carries the variable.
 
+## Learn the subspace with DAS
+
+Distributed alignment search (DAS; Geiger et al., 2024) learns the basis instead of fixing it.
+`fit_das` trains an orthonormal basis so that the interchange makes the model produce, for each
+base/source pair, the class the high-level model predicts:
+
+```python
+from transformer_lens.tools.analysis import fit_das
+
+targets = torch.tensor([1, 0])  # " are" for the base given a plural source, " is" otherwise
+result = fit_das(
+    bridge, hook, base, source, targets, task_logits, rank=1,
+    base_positions=subject, source_positions=subject, epochs=10,
+)
+logits = intervened_logits(
+    bridge, hook, SubspaceInterchange(result.subspace), base, source_acts, task_logits,
+    positions=subject,
+)
+```
+
+`targets[i]` is the high-level model's output for base `i` with the variable taken from source
+`i`. Fit on one set of pairs and evaluate the IIA on pairs the basis was not trained on. Include
+training pairs where several variables differ between base and source, labelled by the high-level
+model's interchange: otherwise the basis can learn whatever the training pairs happen to move
+together. The model's parameters are frozen during training and restored afterwards;
+`micro_batch_size` accumulates gradients over smaller parts of each batch to save memory.
+
+DAS is expressive enough to fit arbitrary label mappings and to find effects in randomly
+initialised models (Arora et al., 2024), so its IIA needs controls trained the same way.
+
 ## Placebo
 
 `NormMatchedPlacebo(reference, basis)` moves each base exactly as far as `reference` does, but
@@ -86,5 +116,9 @@ IIA beside the placebo and the baselines.
 ## References
 
 - Geiger, Lu, Icard and Potts (2021). Causal Abstractions of Neural Networks. NeurIPS.
+- Arora, Jurafsky and Potts (2024). CausalGym: Benchmarking causal interpretability methods on
+  linguistic tasks. ACL.
+- Geiger, Wu, Potts, Icard and Goodman (2024). Finding Alignments Between Interpretable Causal
+  Variables and Distributed Neural Representations. CLeaR.
 - Makelov, Lange and Nanda (2024). Is This the Subspace You Are Looking for? An Interpretability
   Illusion for Subspace Activation Patching. ICLR.

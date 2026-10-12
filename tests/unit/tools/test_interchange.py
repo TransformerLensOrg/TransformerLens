@@ -8,9 +8,11 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.tools.analysis import SubspaceInterchange as exported_interchange
 from transformer_lens.tools.analysis.interchange import (
+    LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
     collect_activations,
+    fit_das,
     intervened_logits,
     mean_difference_basis,
     probe_basis,
@@ -227,3 +229,74 @@ def test_intervened_logits_matches_one_pass_in_bounded_batches():
     assert not batched.requires_grad and batched.device.type == "cpu"
     with pytest.raises(ValueError, match="one row per base"):
         intervened_logits(model, "hook_mid", intervention, base, acts[:-1], model)
+
+
+class _Planted(HookedRootModule):
+    """The output depends on the hidden state only through one planted direction."""
+
+    def __init__(self, direction: torch.Tensor):
+        super().__init__()
+        self.register_buffer("direction", direction / direction.norm())
+        self.scale = nn.Parameter(torch.tensor(4.0))
+        self.hook_mid = HookPoint()
+        self.setup()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        score = self.scale * (self.hook_mid(x) @ self.direction)
+        return torch.stack([-score, score], dim=-1)
+
+
+def _planted_pairs(n: int = 256, seed: int = 0):
+    generator = torch.Generator().manual_seed(seed)
+    direction = torch.randn(D_MODEL, generator=generator)
+    model = _Planted(direction)
+    base = torch.randn(n, D_MODEL, generator=generator)
+    source = torch.randn(n, D_MODEL, generator=generator)
+    targets = (source @ model.direction > 0).long()  # the variable comes from the source
+    return model, base, source, targets
+
+
+def test_learned_subspace_stays_orthonormal_and_checks_its_rank():
+    subspace = LearnedSubspace(D_MODEL, 3)
+    assert subspace.basis.shape == (D_MODEL, 3) and _orthonormal(subspace.basis.detach())
+    with pytest.raises(ValueError, match="rank must be in"):
+        LearnedSubspace(D_MODEL, 0)
+    with pytest.raises(ValueError, match="rank must be in"):
+        LearnedSubspace(D_MODEL, D_MODEL + 1)
+
+
+def test_das_recovers_a_planted_direction():
+    model, base, source, targets = _planted_pairs()
+    result = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=30, lr=5e-2)
+    cosine = (result.basis[:, 0] @ model.direction).abs()
+    assert cosine > 0.95
+    assert result.losses[-1] < result.losses[0]
+
+    _, test_base, test_source, _ = _planted_pairs(seed=1)
+    source_acts = collect_activations(model, "hook_mid", test_source, model)
+    logits = intervened_logits(
+        model, "hook_mid", SubspaceInterchange(result.subspace), test_base, source_acts, model
+    )
+    # The planted direction differs per seed, so evaluate on the training model's direction
+    held_out_targets = (test_source @ model.direction > 0).long()
+    assert (logits.argmax(-1) == held_out_targets).float().mean() > 0.9
+
+
+def test_splitting_batches_trains_the_same_way():
+    model, base, source, targets = _planted_pairs()
+    kwargs = dict(rank=1, epochs=30, lr=5e-2, batch_size=64)
+    whole = fit_das(model, "hook_mid", base, source, targets, model, **kwargs)
+    split = fit_das(model, "hook_mid", base, source, targets, model, micro_batch_size=16, **kwargs)
+    # Gradients agree up to rounding; Adam's sign-like first steps can amplify that slightly
+    assert abs(whole.losses[0] - split.losses[0]) < 1e-2
+    for result in (whole, split):
+        assert (result.basis[:, 0] @ model.direction).abs() > 0.95
+
+
+def test_das_leaves_the_model_untouched():
+    model, base, source, targets = _planted_pairs(n=32)
+    before = model.scale.detach().clone()
+    fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=2)
+    assert model.scale.requires_grad and torch.equal(model.scale.detach(), before)
+    with pytest.raises(ValueError, match="same length"):
+        fit_das(model, "hook_mid", base, source[:-1], targets, model, rank=1)
