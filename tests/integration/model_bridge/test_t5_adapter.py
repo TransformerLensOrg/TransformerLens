@@ -41,6 +41,9 @@ def t5_setup():
         num_layers=N_LAYERS,
         num_decoder_layers=N_LAYERS,
         num_heads=N_HEADS,
+        # The sdpa default never materializes attention weights on
+        # Transformers >= 5.15, for HF's own output_attentions included.
+        attn_implementation="eager",
     )
     model = T5ForConditionalGeneration(cfg).eval()
     # Bridge construction rewires the module in place; keep an untouched copy

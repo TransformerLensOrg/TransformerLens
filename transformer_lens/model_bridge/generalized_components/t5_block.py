@@ -5,6 +5,7 @@ structure than standard transformer blocks (3 layers in decoder vs 2 layers).
 """
 from __future__ import annotations
 
+import inspect
 import types
 from typing import Any, Callable, Dict, Optional
 
@@ -93,6 +94,13 @@ class T5BlockBridge(GeneralizedComponent):
         if self.original_component is None:
             return
         self._original_block_forward = self.original_component.forward
+        # The stack reads block outputs the way the block's own forward lays
+        # them out. Transformers >= 5.15 dropped output_attentions from
+        # T5Block.forward, which now returns a fixed (hidden, self_bias,
+        # cross_bias); LongT5Block kept the parameter and the older layout.
+        returns_optional_attentions = (
+            "output_attentions" in inspect.signature(self._original_block_forward).parameters
+        )
 
         def patched_forward(
             block_self,
@@ -112,8 +120,6 @@ class T5BlockBridge(GeneralizedComponent):
             **kwargs,
         ):
             """Patched T5 block forward with hooks."""
-            import inspect
-
             hidden_states = self.hook_in(hidden_states)
             if not hasattr(block_self, "layer"):
                 raise RuntimeError(f"T5 block {block_self} does not have 'layer' attribute")
@@ -153,6 +159,7 @@ class T5BlockBridge(GeneralizedComponent):
             if "layer_head_mask" in self_attn_params:
                 self_attn_kwargs["layer_head_mask"] = layer_head_mask
             self_attention_outputs = layers[0](**self_attn_kwargs)
+            cross_attention_outputs = None
             hidden_states = _clamp_fp16_inf(self_attention_outputs[0])
             # Keep self-attention outputs and relative position weights
             # attention_outputs contains: (position_bias,) or (position_bias, attn_weights)
@@ -189,6 +196,13 @@ class T5BlockBridge(GeneralizedComponent):
                 hidden_states = feed_forward_outputs
             hidden_states = _clamp_fp16_inf(hidden_states)
             hidden_states = self.hook_out(hidden_states)
+            if not returns_optional_attentions:
+                # hidden-states, self-attention position bias, cross-attention position bias
+                return (
+                    hidden_states,
+                    self_attention_outputs[1],
+                    cross_attention_outputs[1] if cross_attention_outputs is not None else None,
+                )
             outputs: tuple[Any, ...] = (hidden_states,)
             # Return: hidden-states, (self-attention position bias), (self-attention weights),
             # (cross-attention position bias), (cross-attention weights)
