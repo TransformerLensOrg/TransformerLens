@@ -4,7 +4,7 @@ import pytest
 import torch
 from jaxtyping import TypeCheckError
 
-from transformer_lens.tools.analysis._nla import NaturalLanguageAutoencoder
+from transformer_lens.tools.analysis import NaturalLanguageAutoencoder
 from transformer_lens.tools.analysis._nla_artifacts import ArtifactRef, NLAPairConfig
 
 
@@ -79,7 +79,12 @@ def test_in_memory_tokenizer_bos_does_not_require_loading_path():
     assert get_tokenizer_with_bos(tokenizer) is tokenizer
 
 
-def test_no_public_support_export():
+def test_public_support_export():
     import transformer_lens.tools.analysis as analysis
+    from transformer_lens.tools.analysis.nla import (
+        NaturalLanguageAutoencoder,
+        NLAActivation,
+    )
 
-    assert not hasattr(analysis, "NaturalLanguageAutoencoder")
+    assert analysis.NaturalLanguageAutoencoder is NaturalLanguageAutoencoder
+    assert analysis.NLAActivation is NLAActivation

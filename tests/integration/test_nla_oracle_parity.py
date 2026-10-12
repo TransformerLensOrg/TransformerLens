@@ -36,9 +36,7 @@ from transformer_lens.tools.analysis._nla_artifacts import (
     load_snapshot_tokenizer,
     validate_value_head_file,
 )
-from transformer_lens.tools.analysis._nla_contracts import NLASamplingConfig
 from transformer_lens.tools.analysis._nla_reconstructor import (
-    ReconstructorRuntime,
     load_critic_model,
     prepare_critic_tokens,
     reconstruct_vector,
@@ -315,23 +313,31 @@ def test_released_qwen_critic_vector_parity():
 
 @pytest.mark.slow
 def test_released_qwen_sequential_round_trip():
+    from transformer_lens.tools.analysis import NaturalLanguageAutoencoder
+
     require_storage((QWEN_PAIR.target, QWEN_PAIR.av, QWEN_PAIR.ar))
-    activation = _normal_activation()
-    actor = VerbalizerRuntime(QWEN_PAIR, "qwen-parity", device="cpu")
-    try:
-        explanation = actor.verbalize(activation, NLASamplingConfig(max_new_tokens=512))
-    finally:
-        actor.unload()
-        del actor
+    with NaturalLanguageAutoencoder.from_pretrained(
+        "qwen2.5-7b-instruct-L20", device="cpu", local_files_only=True
+    ) as nla:
+        target = nla.load_target()
+        activation = nla.extract(
+            target,
+            "The auditor asked about the model's internal reasoning.",
+            prepend_bos=False,
+        )
+        del target
         gc.collect()
-    assert (
-        explanation.text is not None
-    ), f"AV parse failure: {explanation.parse_status}; {explanation.raw_text!r}"
-    critic = ReconstructorRuntime(QWEN_PAIR, device="cpu")
-    try:
-        result = critic.reconstruct(explanation.text)
-    finally:
-        critic.unload()
-    assert result.vector.shape == activation.shape
-    assert torch.isfinite(result.vector).all()
-    assert torch.any(result.vector != 0)
+        explanation = nla.verbalize(activation, max_new_tokens=512)
+        nla.unload("av")
+        gc.collect()
+        assert (
+            explanation.text is not None
+        ), f"AV parse failure: {explanation.parse_status}; {explanation.raw_text!r}"
+        result = nla.reconstruct(explanation.text)
+        nla.unload("ar")
+        assert result.vector.shape == activation.vector.shape
+        assert torch.isfinite(result.vector).all()
+        assert torch.any(result.vector != 0)
+        score = nla.score(activation, result)
+        assert -1 <= score.cosine <= 1
+        assert 0 <= score.normalized_mse <= 4

@@ -30,6 +30,8 @@ Tools:
       the ``logit_readout`` kernel that reads any ``d_model`` vector through the
       real final norm, unembedding and adapter output transform, chunked over
       the vocabulary with target ranks, top-k and vocabulary subsets.
+    - nla: Raw Qwen activation verbalization, reconstruction, and directional
+      scoring with pinned artifacts and lazy role loading.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
@@ -95,6 +97,17 @@ from transformer_lens.tools.analysis.logit_lens import (
     logit_lens,
     logit_readout,
 )
+from transformer_lens.tools.analysis.nla import (
+    ActivationProvenance,
+    ExplanationStatus,
+    NLAActivation,
+    NLAExplanation,
+    NLAReconstruction,
+    NLAReconstructionScore,
+    NLASamplingConfig,
+    NaturalLanguageAutoencoder,
+    SourceProvenance,
+)
 from transformer_lens.tools.analysis.projection_kernel import (
     AttentionHeadRef,
     HeadAffinityPair,
@@ -134,6 +147,7 @@ from transformer_lens.tools.analysis.svd_circuits import (
 
 __all__ = [
     "ActivationProjection",
+    "ActivationProvenance",
     "AttentionHeadRef",
     "AttributionResult",
     "BackwardLens",
@@ -145,6 +159,7 @@ __all__ = [
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
+    "ExplanationStatus",
     "FunctionSpec",
     "HeadAffinityPair",
     "HeadAffinityResult",
@@ -159,12 +174,19 @@ __all__ = [
     "LogitLensResult",
     "LogitReadout",
     "LogitSignature",
+    "NLAActivation",
+    "NLAExplanation",
+    "NLAReconstruction",
+    "NLAReconstructionScore",
+    "NLASamplingConfig",
+    "NaturalLanguageAutoencoder",
     "Node",
     "PatchResult",
     "ProjectedFactor",
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "RankReportRow",
+    "SourceProvenance",
     "SparseProbeControl",
     "SparseProbeConvergenceError",
     "SparseProbeMetrics",

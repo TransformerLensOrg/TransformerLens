@@ -1,4 +1,23 @@
 {
   "schema_version": 1,
-  "models": {}
+  "models": {
+    "qwen2.5-7b-instruct-L20": {
+      "target": {
+        "repo_id": "Qwen/Qwen2.5-7B-Instruct",
+        "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+      },
+      "av": {
+        "repo_id": "kitft/nla-qwen2.5-7b-L20-av",
+        "revision": "b88469162777ae6553bc14208eb0cb579336f8f4"
+      },
+      "ar": {
+        "repo_id": "kitft/nla-qwen2.5-7b-L20-ar",
+        "revision": "e2c9e57eac213d37a31612087f645ab6332c1bb6"
+      },
+      "model_type": "qwen2",
+      "d_model": 3584,
+      "layer": 20,
+      "target_layers": 28
+    }
+  }
 }

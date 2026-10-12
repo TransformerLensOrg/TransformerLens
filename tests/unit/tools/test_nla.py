@@ -279,7 +279,9 @@ def registry_entry():
 
 
 def test_registry_resource_and_parser(pair):
-    assert load_registry() == {}
+    registered = load_registry()["qwen2.5-7b-instruct-L20"]
+    assert registered.d_model == 3584 and registered.layer == 20
+    assert registered.target.repo_id == "Qwen/Qwen2.5-7B-Instruct"
     assert parse_registry({"schema_version": 1, "models": {"tiny": registry_entry()}}) == {
         "tiny": pair
     }

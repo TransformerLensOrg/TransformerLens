@@ -2,18 +2,17 @@
 
 ## Availability and validation boundary
 
-Natural language autoencoder (NLA) execution is currently private experimental
-infrastructure. There is no supported public `NaturalLanguageAutoencoder` export,
-and the bundled support registry contains no verified pair. Calling its private
-`from_pretrained` resolver fails for unregistered names rather than silently
-loading an unverified artifact. Private interfaces may change.
+`NaturalLanguageAutoencoder` is available from `transformer_lens.tools.analysis`.
+The supported registry name is `qwen2.5-7b-instruct-L20`, with immutable target,
+AV, and AR revisions. The released pair passed direct-HF AV-logit and AR-vector
+checks on CPU in fp32 with eager attention, with zero maximum and mean absolute
+error for two inputs per path. The sequential released-model round trip also
+completed. These finite test inputs do not guarantee explanation quality.
 
-Local synthetic checkpoints exercise the inference mechanics. This does not
-establish numerical compatibility with the released Qwen checkpoints. The slow
-released-artifact checks must pass before any pair is advertised as supported.
-The implementation currently uses raw fp32, eager-attention, single-device
-execution; this is an execution restriction, not a universal precision/device
-compatibility claim.
+Only raw fp32/eager single-device execution is implemented. CPU is the validated
+configuration; CUDA/MPS, quantization, arbitrary dispatch, and other released
+pairs are not advertised as verified. Local synthetic tests complement, but do
+not replace, slow released-artifact checks.
 
 ## What the round trip does
 
@@ -79,13 +78,11 @@ These scores are directional diagnostics, not raw vector MSE, dataset FVE, or
 proof of human-readable faithfulness. A low reconstruction error can coexist
 with misleading text. Do not infer causal validity from fluent explanations.
 
-## Experimental execution examples
+## Execution examples
 
-The following examples are for contributors with an explicitly constructed,
-immutable `NLAPairConfig` whose artifacts they are validating. They deliberately
-use the private constructor rather than claiming a working public registry name.
-Replace `pair` with that explicit configuration; do not copy test fixture identities
-into a real analysis or interpret these examples as verified model support.
+The registry pins the target and both role checkpoints. Metadata and tokenizer
+contracts are checked before full role-model loading. Use the context manager to
+release owned AV/AR resources, including on exceptions.
 
 ### Convenience workflow
 
@@ -93,9 +90,11 @@ This retains the caller-owned target while AV and AR execute and may require
 multiple models to fit in memory:
 
 ```python
-from transformer_lens.tools.analysis._nla import NaturalLanguageAutoencoder
+from transformer_lens.tools.analysis import NaturalLanguageAutoencoder
 
-with NaturalLanguageAutoencoder(pair, "experimental-pair", device="cpu") as nla:
+with NaturalLanguageAutoencoder.from_pretrained(
+    "qwen2.5-7b-instruct-L20", device="cpu"
+) as nla:
     target = nla.load_target()
     try:
         activation = nla.extract(target, prompt="The auditor asked about reasoning.")
@@ -115,9 +114,11 @@ Extraction and reconstruction return detached owned vectors on CPU by default.
 Release the target before loading AV, and unload AV before AR:
 
 ```python
-from transformer_lens.tools.analysis._nla import NaturalLanguageAutoencoder
+from transformer_lens.tools.analysis import NaturalLanguageAutoencoder
 
-with NaturalLanguageAutoencoder(pair, "experimental-pair", device="cpu") as nla:
+with NaturalLanguageAutoencoder.from_pretrained(
+    "qwen2.5-7b-instruct-L20", device="cpu"
+) as nla:
     target = nla.load_target()
     try:
         activation = nla.extract(
@@ -169,8 +170,14 @@ The workflow involves three separate 7B-class checkpoints. A pinned-artifact fil
 inventory measured 38.5 GiB of missing safetensor files for target, AV, and AR on
 an empty-weight cache, excluding tokenizer assets and temporary/runtime overhead.
 The slow checker adds a 2 GiB free-space reserve. Sequential execution reduces
-peak residency, not retained checkpoint storage. Released-checkpoint peak RAM/VRAM
-and timing have not been measured; no accelerator fit claim is made.
+peak residency, not retained checkpoint storage. A cached serial CPU/fp32 run of
+all three released tests, including public `from_pretrained()` and the round trip,
+completed in 281.10 seconds (284.33 seconds wall time including process overhead).
+The child process maximum resident set size reported by macOS `time -l` was
+36,417,159,168 bytes, approximately 33.92 GiB, on a machine with 48 GiB RAM.
+This measures the complete test process, not a per-role minimum or accelerator
+VRAM requirement. Downloads are excluded from this cached-run timing; no CUDA/MPS
+fit or timing claim is made.
 
 Run validation serially on a machine with sufficient storage and memory. Source
 `.env` before Hub access. Set `HF_HOME` to a larger cache volume before starting

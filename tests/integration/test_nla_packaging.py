@@ -15,6 +15,7 @@ _REQUIRED = (
     "transformer_lens/tools/analysis/_nla_verbalizer.py",
     "transformer_lens/tools/analysis/_nla_reconstructor.py",
     "transformer_lens/tools/analysis/_nla.py",
+    "transformer_lens/tools/analysis/nla.py",
 )
 
 
@@ -60,7 +61,9 @@ assert root in pathlib.Path(transformer_lens.__file__).parents
 assert root in pathlib.Path(transformer_lens.tools.analysis.__file__).parents
 from transformer_lens.tools.analysis._nla_artifacts import load_registry
 from transformer_lens.tools.analysis._nla_contracts import NLASamplingConfig
-assert isinstance(load_registry(), dict)
+assert "qwen2.5-7b-instruct-L20" in load_registry()
+from transformer_lens.tools.analysis import NaturalLanguageAutoencoder, NLAActivation
+assert NaturalLanguageAutoencoder is not None and NLAActivation is not None
 assert NLASamplingConfig().max_new_tokens == 512
 from transformer_lens.tools.analysis import _nla_artifacts
 assert root in pathlib.Path(_nla_artifacts.__file__).parents
