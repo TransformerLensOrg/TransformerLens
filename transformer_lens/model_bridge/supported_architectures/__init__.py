@@ -166,6 +166,9 @@ from transformer_lens.model_bridge.supported_architectures.modernbert_decoder im
     ModernBertDecoderArchitectureAdapter,
 )
 from transformer_lens.model_bridge.supported_architectures.mpt import MPTArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.muse_glimmer import (
+    MuseGlimmerArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.music_flamingo import (
     MusicFlamingoArchitectureAdapter,
 )
@@ -405,6 +408,7 @@ __all__ = [
     "MixtralArchitectureAdapter",
     "ModernBertDecoderArchitectureAdapter",
     "MPTArchitectureAdapter",
+    "MuseGlimmerArchitectureAdapter",
     "MusicFlamingoArchitectureAdapter",
     "NanogptArchitectureAdapter",
     "NanoChatArchitectureAdapter",

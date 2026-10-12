@@ -3,6 +3,7 @@
 This module contains the bridge component for attention layers.
 """
 import logging
+import warnings
 from typing import Any, Dict, Optional, Tuple
 
 import einops
@@ -842,40 +843,169 @@ class AttentionBridge(GeneralizedComponent):
             args = (hooked,) + args[1:]
         # Modules exposing the pattern seam (NativeAttention) run the pattern
         # through hook_pattern INSIDE the computation, so hook edits re-weight
-        # the output; post-hoc firing below would be a silent no-op for writes.
+        # the output; post-hoc firing below cannot (see _fire_post_hoc_hook).
         pattern_hooked_inside = bool(getattr(self.original_component, "accepts_pattern_fn", False))
         if pattern_hooked_inside:
             kwargs["pattern_fn"] = self.hook_pattern
+        # Relative-position-bias modules (T5 family) return position_bias, not
+        # attention weights, in output[1]: force the real weights into the
+        # output and capture Q/K to rebuild the pre-softmax scores.
+        reroute_position_bias = self.requires_relative_position_bias
+        caller_output_attentions = bool(kwargs.get("output_attentions", False))
+        qk_capture: Dict[str, torch.Tensor] = {}
+        capture_handles: list = []
+        if reroute_position_bias:
+            kwargs["output_attentions"] = True
+            capture_handles = self._capture_qk_outputs(qk_capture)
         # try/finally so the captured tensor (and its autograd graph) is
         # released even if original_component raises.
         try:
             output = self.original_component(*args, **kwargs)
         finally:
             self._captured_pre_ln_residual = None
+            for handle in capture_handles:
+                handle.remove()
         if isinstance(output, tuple) and len(output) >= 2:
             # output[0] is attention output
             # output[1] may be attention weights (pattern) or position_bias (T5)
             # Additional elements may include position_bias, attention weights, etc.
             attn_output = self.hook_out(output[0])
-            second_element = output[1]
-
-            # Fire hook_pattern if the second element is attention weights (4D tensor)
-            # For T5, second element is position_bias which should be passed through
-            if isinstance(second_element, torch.Tensor) and second_element.dim() == 4:
-                # This looks like attention weights [batch, heads, seq, seq]
-                if not pattern_hooked_inside:
-                    second_element = self.hook_pattern(second_element)
-                # Also store for potential hook_attn_scores (before softmax)
-                # Note: Most HF implementations return post-softmax weights
-                self.hook_attn_scores(second_element)
-
-            # Preserve all output elements (important for T5 position_bias and other models)
-            output = (attn_output, second_element) + output[2:]
+            if reroute_position_bias:
+                output = (attn_output,) + self._fire_position_bias_module_hooks(
+                    output[1:], qk_capture, caller_output_attentions
+                )
+            else:
+                second_element = output[1]
+                # Fire hook_pattern if the second element is attention weights (4D tensor)
+                if isinstance(second_element, torch.Tensor) and second_element.dim() == 4:
+                    # This looks like attention weights [batch, heads, seq, seq]
+                    if not pattern_hooked_inside:
+                        second_element = self._fire_post_hoc_hook(
+                            self.hook_pattern, second_element, "hook_pattern"
+                        )
+                    # Also store for potential hook_attn_scores (before softmax)
+                    # Note: Most HF implementations return post-softmax weights
+                    self._fire_post_hoc_hook(
+                        self.hook_attn_scores, second_element, "hook_attn_scores"
+                    )
+                output = (attn_output, second_element) + output[2:]
         elif isinstance(output, tuple) and len(output) == 1:
             output = (self.hook_out(output[0]),)
         else:
             output = self.hook_out(output)
         return output
+
+    def _capture_qk_outputs(self, store: Dict[str, torch.Tensor]) -> list:
+        """Capture the Q/K projection outputs during the wrapped module's forward.
+
+        The relative-position-bias path rebuilds pre-softmax scores from these
+        (the wrapped module exposes neither the scores nor a seam to hook them).
+        Returns the handles; the caller removes them after the forward.
+        """
+        handles = []
+        for key in ("q", "k"):
+            proj = self._modules.get(key)
+            if proj is None:
+                continue
+
+            def make_capture(name: str):
+                def capture(module: Any, inputs: Any, out: Any) -> None:
+                    if isinstance(out, torch.Tensor):
+                        store[name] = out
+
+                return capture
+
+            handles.append(proj.register_forward_hook(make_capture(key)))
+        return handles
+
+    def _fire_position_bias_module_hooks(
+        self,
+        rest: Tuple[Any, ...],
+        qk_capture: Dict[str, torch.Tensor],
+        caller_output_attentions: bool,
+    ) -> Tuple[Any, ...]:
+        """Fire pattern/scores hooks for a module whose output[1] is position_bias.
+
+        ``rest`` is the wrapped module's output after the attention output:
+        (position_bias, attn_weights?) with the weights present because forward
+        forced ``output_attentions``. The forced element is stripped again
+        unless the caller asked for it, so upstream tuple indexing (the HF
+        stack reads fixed positions) stays intact. The bias itself gets no
+        hooks: it is a broadcast [1, heads, q, k] additive term, not a pattern.
+        """
+        position_bias = rest[0]
+        weights = rest[1] if len(rest) >= 2 else None
+        if not (isinstance(weights, torch.Tensor) and weights.dim() == 4):
+            return rest
+        scores = self._reconstruct_bias_scores(qk_capture, position_bias, weights)
+        if scores is not None:
+            self._fire_post_hoc_hook(self.hook_attn_scores, scores, "hook_attn_scores")
+        weights = self._fire_post_hoc_hook(self.hook_pattern, weights, "hook_pattern")
+        if caller_output_attentions:
+            return (position_bias, weights) + rest[2:]
+        return (position_bias,) + rest[2:]
+
+    def _reconstruct_bias_scores(
+        self,
+        qk_capture: Dict[str, torch.Tensor],
+        position_bias: Any,
+        attn_weights: torch.Tensor,
+    ) -> Optional[torch.Tensor]:
+        """Rebuild pre-softmax scores as q @ k^T + position_bias.
+
+        T5-family attention applies no 1/sqrt(d) scaling, and the returned bias
+        already folds in the attention mask, so this reproduces the exact tensor
+        HF softmaxed. Returns None when Q or K was not captured this forward
+        (e.g. cross-attention K served from an encoder-decoder cache) or the
+        captured shapes disagree with the weights (e.g. cached decode steps).
+        """
+        q = qk_capture.get("q")
+        k = qk_capture.get("k")
+        if q is None or k is None or q.dim() != 3 or k.dim() != 3:
+            return None
+        batch, n_heads, q_len, k_len = attn_weights.shape
+        if (
+            q.shape[0] != batch
+            or q.shape[1] != q_len
+            or k.shape[0] != batch
+            or k.shape[1] != k_len
+            or q.shape[2] != k.shape[2]
+            or q.shape[2] % n_heads != 0
+        ):
+            return None
+        q4 = q.view(batch, q_len, n_heads, -1).transpose(1, 2)
+        k4 = k.view(batch, k_len, n_heads, -1).transpose(1, 2)
+        scores = torch.matmul(q4, k4.transpose(3, 2))
+        if isinstance(position_bias, torch.Tensor):
+            scores = scores + position_bias
+        return scores
+
+    def _fire_post_hoc_hook(
+        self, hook: HookPoint, tensor: torch.Tensor, hook_label: str
+    ) -> torch.Tensor:
+        """Fire a hook on a tensor the wrapped HF module already consumed.
+
+        An edit returned from such a hook cannot flow back into the attention
+        output, so it earns a warning instead of silently doing nothing.
+        Read-only hooks (e.g. caching) return the tensor unchanged and stay
+        silent.
+        """
+        result = hook(tensor)
+        if isinstance(result, torch.Tensor) and result is not tensor:
+            try:
+                unchanged = result.shape == tensor.shape and torch.equal(result, tensor)
+            except RuntimeError:
+                unchanged = False
+            if not unchanged:
+                warnings.warn(
+                    f"A hook on {self.name or type(self).__name__}.{hook_label} returned a "
+                    "modified tensor, but this attention delegates its computation to the "
+                    "wrapped HF module, which has already consumed the original values. The "
+                    "edit is discarded and does not affect the model's output.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        return result
 
     @property
     def W_Q(self) -> torch.Tensor:

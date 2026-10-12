@@ -371,3 +371,44 @@ class TestCohere2Registration:
         )
 
         assert cfg.sliding_window_pattern == 4
+
+
+class TestCohere2Parity:
+    """Cohere2 shares Cohere's RoPE convention, so the bridge must reproduce HF logits."""
+
+    def test_logits_match_hf(self) -> None:
+        import copy
+
+        import torch
+        from transformers import Cohere2Config, Cohere2ForCausalLM
+
+        from tests.tiny_checkpoints import assert_tiny_parity
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        torch.manual_seed(0)
+        hf_config = Cohere2Config(
+            hidden_size=32,
+            num_hidden_layers=4,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            intermediate_size=64,
+            vocab_size=64,
+            max_position_embeddings=64,
+            sliding_window=4,
+            tie_word_embeddings=False,
+        )
+        hf_model = Cohere2ForCausalLM(hf_config).eval()
+        with torch.no_grad():
+            # Wide weights so that a wrong rotation changes the logits clearly.
+            for param in hf_model.parameters():
+                param.add_(0.3 * torch.randn_like(param))
+        # The bridge wraps the modules of the model it is given, so keep an untouched reference.
+        reference = copy.deepcopy(hf_model)
+        tokens = torch.randint(3, 60, (2, 12))
+        with torch.no_grad():
+            hf_logits = reference(tokens).logits
+            bridge = build_bridge_from_module(
+                hf_model, architecture="Cohere2ForCausalLM", hf_config=hf_config
+            )
+            bridge_logits = bridge(tokens, return_type="logits")
+        assert_tiny_parity(bridge_logits, hf_logits, "Cohere2ForCausalLM")

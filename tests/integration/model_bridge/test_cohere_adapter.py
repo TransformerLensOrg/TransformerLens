@@ -6,13 +6,12 @@ Model: trl-internal-testing/tiny-CohereForCausalLM
   - logit_scale=0.125 (canonical Command-R is 0.0625; tiny diverges so
     regression tests catch silent-fallback bugs in the passthrough)
 
-NOTE: The tiny model has use_qk_norm=False, so QK-norm is not exercised here.
-Cohere's QK-norm is a per-head LayerNorm inside CohereAttention.forward; it is
-handled via HF delegation (PositionEmbeddingsAttentionBridge calls the original
-CohereAttention.forward directly), so functional correctness for that path relies
-on the same delegation mechanism verified in test_forward_matches_hf.
+NOTE: The Hub tiny model has use_qk_norm=False. Cohere's QK-norm is a per-head
+CohereLayerNorm that the bridge applies inside its reconstructed attention
+(post-reshape phase); TestCohereQKNorm below covers it with in-memory tiny models.
 """
 
+import copy
 from typing import Any
 
 import pytest
@@ -53,6 +52,40 @@ def _tiny_cohere_bridge(logit_scale: float = 0.5) -> TransformerBridge:
         dtype=torch.float32,
         device="cpu",
     )
+
+
+def _qk_bridge_and_reference(use_qk_norm: bool) -> tuple[TransformerBridge, Any]:
+    """Tiny in-memory Cohere bridge plus an untouched HF reference copy."""
+    torch.manual_seed(0)
+    config = CohereConfig(
+        vocab_size=64,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        max_position_embeddings=64,
+        use_qk_norm=use_qk_norm,
+        tie_word_embeddings=False,
+        bos_token_id=1,
+        eos_token_id=2,
+        pad_token_id=0,
+    )
+    model = CohereForCausalLM(config).eval()
+    with torch.no_grad():
+        # Wide weights so a wrong norm layout or rotation moves the logits clearly;
+        # default-init norms are all-ones, which would hide a weight-broadcast bug.
+        for param in model.parameters():
+            param.add_(0.3 * torch.randn_like(param))
+    reference = copy.deepcopy(model)
+    bridge = build_bridge_from_module(
+        model,
+        "CohereForCausalLM",
+        hf_config=config,
+        dtype=torch.float32,
+        device="cpu",
+    )
+    return bridge, reference
 
 
 def _enable_fold_only_compatibility(bridge: TransformerBridge) -> None:
@@ -200,7 +233,7 @@ class TestCohereForwardEquivalence:
         assert not torch.isinf(output).any()
 
     def test_forward_matches_hf(self, cohere_bridge: TransformerBridge, cohere_hf: Any) -> None:
-        """Bridge delegates to HF native forward — logits should be identical."""
+        """Bridge reconstructs attention in its own forward — logits must still match HF."""
         tokens = torch.tensor([[1, 2, 3, 4]])
         with torch.no_grad():
             bridge_out = cohere_bridge(tokens)
@@ -402,15 +435,17 @@ class TestCohereTiedEmbedding:
 
 
 # ---------------------------------------------------------------------------
-# 5. HF delegation — RoPE, attention, normalization go through HF modules
+# 5. original_component wiring — bridge components hold live HF modules
 # ---------------------------------------------------------------------------
 
 
 class TestCohereHFDelegation:
-    """Spot-check that bridge submodules delegate to actual HF modules.
+    """Pin original_component wiring to the live HF modules.
 
-    This confirms setup_component_testing wired rotary_emb correctly and that
-    NormalizationBridge and PositionEmbeddingsAttentionBridge hold live HF objects.
+    Attention itself is reconstructed in the bridge (not delegated), but the
+    reconstruction reads projections, norms, and rotary cos/sin from the wrapped
+    HF objects — so these must be the real CohereLayerNorm/CohereAttention
+    instances, not copies or stubs.
     """
 
     def test_ln1_original_component_is_hf_norm(self, cohere_bridge: TransformerBridge) -> None:
@@ -440,7 +475,50 @@ class TestCohereHFDelegation:
 
 
 # ---------------------------------------------------------------------------
-# 6. Parallel-attn hooks fire correctly
+# 6. QK-norm — per-head CohereLayerNorm through the reconstructed attention
+# ---------------------------------------------------------------------------
+
+
+class TestCohereQKNorm:
+    """use_qk_norm=True checkpoints load and match HF; use_qk_norm=False is unaffected."""
+
+    def test_qk_norm_forward_matches_hf(self) -> None:
+        bridge, reference = _qk_bridge_and_reference(use_qk_norm=True)
+        # 10 positions vs 4 heads: a head/position axis mix-up in the per-head
+        # norm cannot silently broadcast when the two sizes differ.
+        tokens = torch.randint(3, 60, (2, 10))
+        with torch.no_grad():
+            bridge_out = bridge(tokens, return_type="logits")
+            hf_out = reference(tokens).logits
+        max_diff = (bridge_out - hf_out).abs().max().item()
+        assert max_diff < 1e-4, f"use_qk_norm=True bridge vs HF max diff = {max_diff:.6f}"
+
+    def test_qk_norm_hooks_fire(self) -> None:
+        bridge, _ = _qk_bridge_and_reference(use_qk_norm=True)
+        tokens = torch.randint(3, 60, (2, 10))
+        _, cache = bridge.run_with_cache(tokens)
+        for layer in range(2):
+            assert f"blocks.{layer}.attn.hook_q_normed" in cache
+            assert f"blocks.{layer}.attn.hook_k_normed" in cache
+        # [batch, heads, pos, d_head]; K carries the 2 KV heads of the GQA layout.
+        assert cache["blocks.0.attn.hook_q_normed"].shape == (2, 4, 10, 8)
+        assert cache["blocks.0.attn.hook_k_normed"].shape == (2, 2, 10, 8)
+
+    def test_qk_norm_false_still_matches_hf(self) -> None:
+        bridge, reference = _qk_bridge_and_reference(use_qk_norm=False)
+        tokens = torch.randint(3, 60, (2, 10))
+        with torch.no_grad():
+            bridge_out = bridge(tokens, return_type="logits")
+            hf_out = reference(tokens).logits
+        max_diff = (bridge_out - hf_out).abs().max().item()
+        assert max_diff < 1e-4, f"use_qk_norm=False bridge vs HF max diff = {max_diff:.6f}"
+
+        _, cache = bridge.run_with_cache(tokens)
+        assert "blocks.0.attn.hook_q_normed" not in cache
+
+
+# ---------------------------------------------------------------------------
+# 7. Parallel-attn hooks fire correctly
 # ---------------------------------------------------------------------------
 
 

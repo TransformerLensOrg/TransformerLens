@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import warnings
 from types import SimpleNamespace
 from typing import Any, ClassVar
 
@@ -154,3 +155,34 @@ def fake_hf_model_with_eager_targets(rotary_emb: object) -> SimpleNamespace:
         config=SimpleNamespace(_attn_implementation="sdpa"),
         model=SimpleNamespace(rotary_emb=rotary_emb, layers=layers),
     )
+
+
+def randomize_rmsnorm_weights(model: torch.nn.Module, std: float = 0.3) -> None:
+    """Move every RMSNorm weight off its init, so a dropped weight or offset changes outputs."""
+    generator = torch.Generator().manual_seed(0)
+    with torch.no_grad():
+        for module in model.modules():
+            if type(module).__name__.endswith("RMSNorm"):
+                module.weight.copy_(torch.randn(module.weight.shape, generator=generator) * std)
+
+
+def identity_hook_logit_error(bridge: Any, hook_name: str, *, backward: bool = False) -> float:
+    """Relative logit change caused by an identity hook at ``hook_name``.
+
+    On a native-autograd norm, a forward ``t.clone()`` edit makes the bridge rebuild the
+    output from the hooked values, and a backward hook makes it run its python-norm
+    forward. Both must leave the logits unchanged.
+    """
+    tokens = torch.arange(1, 9).unsqueeze(0)
+    with torch.no_grad():
+        clean = bridge(tokens)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # both fallbacks warn by design
+        if backward:
+            hooked = bridge.run_with_hooks(tokens, bwd_hooks=[(hook_name, lambda g, hook: g)])
+        else:
+            with torch.no_grad():
+                hooked = bridge.run_with_hooks(
+                    tokens, fwd_hooks=[(hook_name, lambda t, hook: t.clone())]
+                )
+    return ((hooked.detach() - clean).norm() / clean.norm()).item()

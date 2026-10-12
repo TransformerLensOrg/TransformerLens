@@ -136,7 +136,14 @@ class OuroArchitectureAdapter(ArchitectureAdapter):
             model_kwargs: The kwargs dict for from_pretrained()
         """
         # Force-import the modeling module so we can patch it
-        if force_import_remote_class(model_name, "modeling_ouro.OuroForCausalLM") is None:
+        if (
+            force_import_remote_class(
+                model_name,
+                "modeling_ouro.OuroForCausalLM",
+                revision=model_kwargs.get("code_revision") or model_kwargs.get("revision"),
+            )
+            is None
+        ):
             return
 
         # Each checkpoint revision gets its own module in sys.modules; patch all.

@@ -124,6 +124,50 @@ class TestCheckFoldLn:
         user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
         assert len(user_warnings) == 1
 
+    def test_offset_norm_identity_weight_no_warning(self):
+        """Offset-RMS (Gemma) folded identity is w = 0; reading it raw would misfire."""
+
+        class OffsetCfg:
+            rmsnorm_uses_offset = True
+
+        class OffsetLN:
+            weight = torch.zeros(8)
+
+        class Block:
+            ln1 = OffsetLN()
+
+        class OffsetModel:
+            cfg = OffsetCfg()
+            blocks = [Block()]
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_fold_ln(OffsetModel())
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 0, "offset identity (w=0) must read as folded"
+
+    def test_offset_norm_learned_weight_warns(self):
+        """Offset-RMS with a learned scale (1 + w != 1) still warns."""
+
+        class OffsetCfg:
+            rmsnorm_uses_offset = True
+
+        class OffsetLN:
+            weight = torch.full((8,), 0.7)
+
+        class Block:
+            ln1 = OffsetLN()
+
+        class OffsetModel:
+            cfg = OffsetCfg()
+            blocks = [Block()]
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _check_fold_ln(OffsetModel())
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 1
+
     def test_no_crash_on_missing_attribute(self):
         """_check_fold_ln silently passes when the model has no .blocks[0].ln1."""
 

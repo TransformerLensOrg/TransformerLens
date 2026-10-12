@@ -1065,35 +1065,38 @@ def test_resolve_state_dict_key_dense_mlp_fallback():
     from transformer_lens.weight_processing import ProcessWeights
 
     # standard key present -> returned unchanged (no dense rewrite)
-    sd = {"blocks.0.mlp.in.weight": 1, "blocks.0.mlp.dense_in.weight": 2}
+    sd = {"blocks.0.mlp.in.weight": torch.zeros(1), "blocks.0.mlp.dense_in.weight": torch.zeros(2)}
     assert ProcessWeights._resolve_state_dict_key(sd, "blocks.0.mlp.in.weight", 0) == (
         "blocks.0.mlp.in.weight"
     )
 
     # standard absent, dense present -> dense variant (in/gate/out)
     for name in ("in", "gate", "out"):
-        sd2 = {f"blocks.0.mlp.dense_{name}.weight": 2}
+        sd2 = {f"blocks.0.mlp.dense_{name}.weight": torch.zeros(2)}
         assert (
             ProcessWeights._resolve_state_dict_key(sd2, f"blocks.0.mlp.{name}.weight", 0)
             == f"blocks.0.mlp.dense_{name}.weight"
         )
 
     # neither present -> original key unchanged (does not invent a dense key)
-    sd3 = {"blocks.0.attn.q.weight": 1}
+    sd3 = {"blocks.0.attn.q.weight": torch.zeros(1)}
     assert ProcessWeights._resolve_state_dict_key(sd3, "blocks.0.mlp.in.weight", 0) == (
         "blocks.0.mlp.in.weight"
     )
 
     # a real mlp.gate (e.g. a router) is found by standard resolution first and
     # is never shadowed by the dense fallback, even if dense_gate also exists.
-    sd4 = {"blocks.0.mlp.gate.weight": 1, "blocks.0.mlp.dense_gate.weight": 2}
+    sd4 = {
+        "blocks.0.mlp.gate.weight": torch.zeros(1),
+        "blocks.0.mlp.dense_gate.weight": torch.zeros(2),
+    }
     assert ProcessWeights._resolve_state_dict_key(sd4, "blocks.0.mlp.gate.weight", 0) == (
         "blocks.0.mlp.gate.weight"
     )
 
     # nested mlp paths (e.g. a shared_expert's own projections) are NOT rewritten
     # — the fallback is anchored to a block's top-level MLP.
-    sd5 = {"blocks.0.mlp.shared_expert.dense_in.weight": 1}
+    sd5 = {"blocks.0.mlp.shared_expert.dense_in.weight": torch.zeros(1)}
     assert (
         ProcessWeights._resolve_state_dict_key(sd5, "blocks.0.mlp.shared_expert.in.weight", 0)
         == "blocks.0.mlp.shared_expert.in.weight"

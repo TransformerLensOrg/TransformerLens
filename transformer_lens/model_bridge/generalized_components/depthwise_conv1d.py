@@ -15,6 +15,10 @@ class DepthwiseConv1DBridge(GeneralizedComponent):
         hook_in:  [batch, channels, seq_len]
         hook_out: [batch, channels, seq_len + conv_kernel - 1]  (pre causal trim)
 
+    Because ``hook_out`` is captured before the causal trim, negative ``pos_slice``
+    values index the causal padding rather than real tokens — slice positive
+    positions from the left, or trim the last ``conv_kernel - 1`` entries first.
+
     Decode-step limitation: on stateful generation, HF's Mamba/Mamba-2 mixers
     bypass ``self.conv1d(...)`` and read ``self.conv1d.weight`` directly, so the
     forward hook never fires on decode steps — only on prefill. For per-step
@@ -22,6 +26,12 @@ class DepthwiseConv1DBridge(GeneralizedComponent):
     and ``conv1d.original_component.weight``, or run token-by-token via
     ``forward()`` instead of ``generate()``.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Channel-first: the sequence axis is dim 2 (see the class docstring).
+        self.hook_in.pos_dim = 2
+        self.hook_out.pos_dim = 2
 
     def forward(self, input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         if self.original_component is None:

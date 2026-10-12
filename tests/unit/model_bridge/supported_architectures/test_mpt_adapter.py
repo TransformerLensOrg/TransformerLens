@@ -480,3 +480,38 @@ class TestMPTAttentionScaleAndClip:
         torch.testing.assert_close(out_zero, out_none)
         # A genuinely active clip must change the output, or the check is vacuous.
         assert not torch.allclose(out_active, out_none, atol=1e-5)
+
+
+class TestMPTCachedGeneration:
+    """Cached decoding must see the prompt, so it has to match HF and uncached decoding."""
+
+    def test_cached_generation_matches_hf(self) -> None:
+        from transformers import MptConfig, MptForCausalLM
+
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
+
+        torch.manual_seed(0)
+        hf_config = MptConfig(
+            d_model=32, n_heads=4, n_layers=2, vocab_size=64, max_seq_len=64, expansion_ratio=2
+        )
+        hf_model = MptForCausalLM(hf_config).eval()
+        with torch.no_grad():
+            # Wide weights so that ignoring the cached tokens changes the generated ids.
+            for param in hf_model.parameters():
+                param.add_(0.3 * torch.randn_like(param))
+        # The bridge wraps the modules of the model it is given, so keep an untouched reference.
+        reference = copy.deepcopy(hf_model)
+        tokens = torch.randint(3, 60, (2, 5))
+        with torch.no_grad():
+            expected = reference.generate(tokens, max_new_tokens=6, do_sample=False, pad_token_id=0)
+            # A single repeated continuation token would let a cache that ignores
+            # the prompt still match, so demand some variety.
+            assert expected[:, tokens.shape[1] :].unique().numel() > 1
+            bridge = build_bridge_from_module(
+                hf_model, architecture="MptForCausalLM", hf_config=hf_config
+            )
+            kwargs = dict(max_new_tokens=6, do_sample=False, stop_at_eos=False, verbose=False)
+            cached = bridge.generate(tokens, use_past_kv_cache=True, **kwargs)
+            uncached = bridge.generate(tokens, use_past_kv_cache=False, **kwargs)
+        assert torch.equal(torch.as_tensor(uncached), expected)
+        assert torch.equal(torch.as_tensor(cached), expected)

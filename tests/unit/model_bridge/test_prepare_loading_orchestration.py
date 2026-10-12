@@ -8,11 +8,17 @@ are CI-invisible, so this is the only coverage those load-bearing patches get.
 """
 
 import importlib
+import inspect
 import sys
 import types
+from pathlib import Path
 
 import pytest
 import torch
+
+from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    REVISION_FORWARDING_ARCHITECTURES,
+)
 
 
 def _make_fake_modeling_module(module_name, causal_name, pretrained_name, tied_to):
@@ -109,3 +115,63 @@ def test_prepare_loading_applies_both_v5_patches(planted_module, monkeypatch):
     # Idempotent: a second run must not double-wrap or crash.
     adapter.prepare_loading("fake/model", {})
     assert causal_cls._tied_weights_keys == planted_module._expected_tied_mapping
+
+
+def _force_imported_revisions(architecture, monkeypatch, model_kwargs):
+    """Run one adapter's prepare_loading and capture every force-imported revision."""
+    import transformers.dynamic_module_utils as dmu
+
+    from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    revisions = []
+
+    def fake_import(class_ref, model_name, revision=None, **kwargs):
+        revisions.append(revision)
+        return type(class_ref.rsplit(".", 1)[-1], (), {"forward": lambda self: None})
+
+    monkeypatch.setitem(sys.modules, "fla", None)
+    monkeypatch.setattr(dmu, "get_class_from_dynamic_module", fake_import)
+
+    adapter = SUPPORTED_ARCHITECTURES[architecture](make_bridge_cfg(architecture))
+    adapter.prepare_loading("fake/model", model_kwargs)
+    return revisions
+
+
+@pytest.mark.parametrize("architecture", sorted(REVISION_FORWARDING_ARCHITECTURES))
+def test_prepare_loading_imports_the_requested_revision(architecture, monkeypatch):
+    """Each revision is its own module copy, imported by from_pretrained only after
+    prepare_loading ran; force-imports must use it so that copy is the one patched."""
+    revisions = _force_imported_revisions(architecture, monkeypatch, {"revision": "abc123"})
+    assert revisions and set(revisions) == {"abc123"}
+
+
+@pytest.mark.parametrize("architecture", sorted(REVISION_FORWARDING_ARCHITECTURES))
+def test_prepare_loading_prefers_code_revision(architecture, monkeypatch):
+    """from_pretrained imports the modeling file at code_revision when given, so the
+    force-import must patch that module copy, not the weights revision's."""
+    revisions = _force_imported_revisions(
+        architecture, monkeypatch, {"revision": "weights-rev", "code_revision": "code-rev"}
+    )
+    assert revisions and set(revisions) == {"code-rev"}
+
+
+def test_revision_forwarding_registry_matches_adapter_sources():
+    """Static source scan: the registry lists exactly the architectures whose adapter
+    pins remote-code imports to code_revision-or-revision. Scans text only —
+    prepare_loading's patches are process-global, so it is never executed here."""
+    from transformer_lens.factories.architecture_adapter_factory import (
+        SUPPORTED_ARCHITECTURES,
+    )
+
+    needle = 'revision=model_kwargs.get("code_revision")ormodel_kwargs.get("revision")'
+    forwarding = set()
+    for architecture, adapter_cls in SUPPORTED_ARCHITECTURES.items():
+        source_file = inspect.getsourcefile(adapter_cls)
+        assert source_file is not None
+        # Whitespace-insensitive match so formatter line breaks can't hide a caller.
+        if needle in "".join(Path(source_file).read_text().split()):
+            forwarding.add(architecture)
+    assert forwarding == set(REVISION_FORWARDING_ARCHITECTURES)

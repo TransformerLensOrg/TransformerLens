@@ -9,8 +9,6 @@ subclasses the Gemma 2 adapter and rebuilds the block entry without
 ln1_post/ln2_post.
 """
 
-from typing import Any
-
 from transformer_lens.model_bridge.generalized_components import RMSNormalizationBridge
 from transformer_lens.model_bridge.supported_architectures.gemma2 import (
     Gemma2ArchitectureAdapter,
@@ -25,16 +23,6 @@ class VaultGemmaArchitectureAdapter(Gemma2ArchitectureAdapter):
     # is gated off so enable_compatibility_mode() raises rather than silently diverging.
     applicable_phases: list[int] = [1, 2, 4]
     supports_compatibility_mode: bool = False
-
-    def __init__(self, cfg: Any) -> None:
-        """Initialize the VaultGemma architecture adapter."""
-        super().__init__(cfg)
-
-        # Gemma 2 minus the post-norms: drop the inherited RMS-offset
-        # conversions for the ln1_post/ln2_post norms this variant removes.
-        if self.weight_processing_conversions is not None:
-            for dead in ("blocks.{i}.ln1_post.weight", "blocks.{i}.ln2_post.weight"):
-                self.weight_processing_conversions.pop(dead, None)
 
     def _block_norms(self):
         """Gemma 2 minus the post-norms: only input and pre-feedforward norms."""

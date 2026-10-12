@@ -61,6 +61,12 @@ from .multi_gpu import (
 )
 from .parameter_swap import temporarily_swap_parameter
 from .slice import Slice, SliceInput
+from .statistics import (
+    bootstrap_ci,
+    derive_generator,
+    sign_flip_permutation_pvalue,
+    standard_error,
+)
 from .tensors import (
     check_structure,
     filter_dict_by_prefix,

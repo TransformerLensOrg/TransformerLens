@@ -6,13 +6,7 @@ variant of Gemma 3 used by models like MedGemma.
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    ArithmeticTensorConversion,
-    TransposeTensorConversion,
-)
-from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
-    OperationTypes,
-)
+from transformer_lens.conversion_utils.conversion_steps import TransposeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -77,29 +71,9 @@ class Gemma3MultimodalArchitectureAdapter(ArchitectureAdapter):
         self.weight_processing_conversions = {
             # Q/K/V weight conversions for language model
             **self._qkvo_weight_conversions(),
-            # RMSNorm weight conversions - Gemma adds 1.0 to weights
-            "blocks.{i}.ln1.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "blocks.{i}.ln1_post.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "blocks.{i}.ln2.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "blocks.{i}.ln2_post.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "ln_final.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            # Gemma-3 q_norm and k_norm in attention
-            "blocks.{i}.attn.q_norm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "blocks.{i}.attn.k_norm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
+            # Norm weights (incl. q_norm/k_norm) carry no conversion entry:
+            # cfg.rmsnorm_uses_offset is the only offset signal — weight processing
+            # and the runtime norm read it directly and apply (1 + w) themselves.
             # MLP weight conversions
             "blocks.{i}.mlp.gate.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),

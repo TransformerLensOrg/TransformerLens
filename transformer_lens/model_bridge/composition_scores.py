@@ -1,5 +1,5 @@
 """Tensor-like container for composition score results with layer-index metadata."""
-from typing import List
+from typing import Any, List
 
 import torch
 
@@ -25,14 +25,22 @@ class CompositionScores:
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
-        """Unwrap CompositionScores args so torch.isnan, torch.where, etc. work."""
+        """Unwrap CompositionScores, including those inside argument containers."""
         if kwargs is None:
             kwargs = {}
-        unwrapped_args = tuple(a.scores if isinstance(a, CompositionScores) else a for a in args)
-        unwrapped_kwargs = {
-            k: v.scores if isinstance(v, CompositionScores) else v for k, v in kwargs.items()
-        }
-        return func(*unwrapped_args, **unwrapped_kwargs)
+
+        def unwrap(value: Any) -> Any:
+            if isinstance(value, CompositionScores):
+                return value.scores
+            if isinstance(value, list):
+                return [unwrap(item) for item in value]
+            if isinstance(value, tuple):
+                return tuple(unwrap(item) for item in value)
+            if isinstance(value, dict):
+                return {key: unwrap(item) for key, item in value.items()}
+            return value
+
+        return func(*unwrap(args), **unwrap(kwargs))
 
     @property
     def shape(self) -> torch.Size:

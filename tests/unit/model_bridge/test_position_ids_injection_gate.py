@@ -18,10 +18,15 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.utilities.position_ids import accepts_mask_derived_position_ids
 
-# Unbound so it can run against a stand-in that owns only ``_driver``; the gate
-# reads nothing else off the bridge.
-gate = TransformerBridge._accepts_derived_position_ids
+
+# Exercise the shared helper alongside the local driver's cached gate.
+def gate(bridge: Any) -> bool:
+    verdict = TransformerBridge._accepts_derived_position_ids(bridge)
+    model = bridge._driver.underlying_model
+    assert verdict == (accepts_mask_derived_position_ids(model) if model is not None else False)
+    return verdict
 
 
 def _bridge_over(model: Optional[nn.Module]) -> Any:

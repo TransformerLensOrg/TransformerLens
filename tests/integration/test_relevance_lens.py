@@ -16,12 +16,18 @@ upstream matches its closed-form VJP given the gradient it actually
 received downstream in the real graph.
 """
 
+from typing import Any
+
 import pytest
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import Whitespace
+from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedTokenizerFast
 
 from transformer_lens.model_bridge._relevance_rules import (
     RelevanceRules,
+    _RelevanceRuleCoverageEntry,
     half_rule,
     identity_rule,
     ln_rule_grad,
@@ -38,6 +44,8 @@ from transformer_lens.model_bridge.supported_architectures.phi3 import (
 from transformer_lens.model_bridge.supported_architectures.qwen2 import (
     Qwen2ArchitectureAdapter,
 )
+from transformer_lens.tools.analysis import RelevanceLens
+from transformer_lens.tools.analysis.relevance_lens import RELEVANCE_RULES
 
 TOKENS = torch.tensor([[1, 5, 7, 42, 9]])
 N_LAYERS = 2
@@ -54,9 +62,39 @@ TINY_DIMS = dict(
     eos_token_id=2,
 )
 
+# Fitting needs prompts long enough to contain a valid source position, so these
+# are word lists rather than short phrases.
+FIT_CORPUS = "integration-fit-corpus"
+FIT_SKIP_FIRST = 2
+FIT_PROMPTS = [
+    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi "
+    "omicron pi rho sigma tau upsilon phi chi psi omega",
+    "one two three four five six seven eight nine ten eleven twelve thirteen "
+    "fourteen fifteen sixteen seventeen eighteen nineteen twenty",
+    "red orange yellow green blue indigo violet cyan magenta amber teal olive "
+    "maroon navy silver gold bronze copper crimson scarlet azure",
+    "north south east west up down left right forward backward inside outside "
+    "above below near far early late always never",
+]
+
 
 class _MockTokenizer:
     """Stand-in to satisfy TransformerBridge(tokenizer=...)."""
+
+
+def _offline_tokenizer(prompts: list[str]) -> PreTrainedTokenizerFast:
+    """Word-level tokenizer over the prompts' own vocabulary, built offline."""
+    words = sorted({word for prompt in prompts for word in prompt.split()})
+    vocabulary = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3}
+    vocabulary.update({word: index + 4 for index, word in enumerate(words)})
+    backend = Tokenizer(WordLevel(vocabulary, unk_token="<unk>"))
+    backend.pre_tokenizer = Whitespace()
+    return PreTrainedTokenizerFast(
+        tokenizer_object=backend,
+        eos_token="<eos>",
+        pad_token="<pad>",
+        unk_token="<unk>",
+    )
 
 
 def _build_qwen2_bridge() -> TransformerBridge:
@@ -97,12 +135,17 @@ def bridge(request: pytest.FixtureRequest) -> TransformerBridge:
     return FIXTURE_BUILDERS[request.param]()
 
 
-def _expected_canonical_mounts() -> set[str]:
-    ln_mounts = {f"blocks.{i}.ln1" for i in range(N_LAYERS)} | {
-        f"blocks.{i}.ln2" for i in range(N_LAYERS)
-    }
-    mlp_mounts = {f"blocks.{i}.mlp" for i in range(N_LAYERS)}
-    return ln_mounts | mlp_mounts
+def _expected_canonical_mounts() -> tuple[_RelevanceRuleCoverageEntry, ...]:
+    return tuple(
+        _RelevanceRuleCoverageEntry(kind=kind, path=f"blocks.{layer}.{mount}")
+        for kind, mounts in (
+            ("normalization", ("ln1", "ln2")),
+            ("activation", ("mlp",)),
+            ("multiplicative_gate", ("mlp",)),
+        )
+        for layer in range(N_LAYERS)
+        for mount in mounts
+    )
 
 
 class TestForwardIdentity:
@@ -127,7 +170,7 @@ class TestCoverage:
             bridge, RelevanceRules(normalization=True, activation=True, multiplicative_gate=True)
         ) as coverage:
             pass
-        assert set(coverage.installed) == _expected_canonical_mounts()
+        assert coverage.installed == _expected_canonical_mounts()
         assert coverage.skipped == ()
 
 
@@ -220,3 +263,127 @@ class TestGradientMatchesClosedFormOracle:
         torch.testing.assert_close(
             captured["mlp_grad_in"], expected_mlp_grad_in, atol=1e-5, rtol=1e-4
         )
+
+
+def _fit_bridge() -> TransformerBridge:
+    """A tiny Qwen2 with a real offline tokenizer, so fit() can tokenize."""
+    hf_config = AutoConfig.for_model("qwen2", **TINY_DIMS)
+    torch.manual_seed(0)
+    hf_model = AutoModelForCausalLM.from_config(hf_config, attn_implementation="eager").eval()
+    bridge_config = build_bridge_config_from_hf(
+        hf_model.config, "Qwen2ForCausalLM", "qwen2-tiny", torch.float32
+    )
+    adapter = Qwen2ArchitectureAdapter(bridge_config)
+    return TransformerBridge(
+        model=hf_model,
+        adapter=adapter,
+        tokenizer=_offline_tokenizer(FIT_PROMPTS),
+    )
+
+
+def _fit_relevance(bridge: TransformerBridge, prompts: list[str], *, corpus: str) -> RelevanceLens:
+    return RelevanceLens.fit(
+        bridge,
+        prompts,
+        corpus=corpus,
+        source_layers=[0],
+        dim_batch=8,
+        skip_first_positions=FIT_SKIP_FIRST,
+        show_progress=False,
+    )
+
+
+def _residual_gradient(bridge: TransformerBridge) -> torch.Tensor:
+    """Probe a rule-sensitive residual VJP on a fresh graph."""
+    captured: dict[str, torch.Tensor] = {}
+
+    def capture(activation: torch.Tensor, hook: Any) -> torch.Tensor:
+        captured["residual"] = activation.detach().requires_grad_(True)
+        return captured["residual"]
+
+    with torch.enable_grad(), bridge.hooks(fwd_hooks=[("blocks.0.hook_out", capture)]):
+        logits = bridge(TOKENS)
+        (gradient,) = torch.autograd.grad(logits[0, -1, 0], captured["residual"])
+    assert torch.isfinite(gradient).all()
+    assert gradient.count_nonzero() > 0
+    return gradient.detach().clone()
+
+
+class TestRelevanceLensFitOnRealBridge:
+    def test_full_requested_rule_coverage_is_installed(self) -> None:
+        bridge = _fit_bridge()
+
+        lens = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        assert lens.rule_coverage.installed == _expected_canonical_mounts()
+        assert lens.rule_coverage.skipped == ()
+
+    def test_fit_leaves_the_forward_pass_bit_identical(self) -> None:
+        bridge = _fit_bridge()
+        with torch.no_grad():
+            before = bridge(TOKENS)
+
+        _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        with torch.no_grad():
+            after = bridge(TOKENS)
+        assert torch.equal(after, before)
+
+    def test_fit_restores_ordinary_gradients(self) -> None:
+        bridge = _fit_bridge()
+        before = _residual_gradient(bridge)
+        torch.testing.assert_close(_residual_gradient(bridge), before, atol=0, rtol=0)
+        parameter_flags = [parameter.requires_grad for parameter in bridge.parameters()]
+
+        _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        after_fit = _residual_gradient(bridge)
+        with use_relevance_rules(bridge, RELEVANCE_RULES):
+            active_gradient = _residual_gradient(bridge)
+        assert not torch.allclose(active_gradient, before, atol=1e-6, rtol=1e-4)
+        torch.testing.assert_close(after_fit, before, atol=0, rtol=0)
+        assert [parameter.requires_grad for parameter in bridge.parameters()] == parameter_flags
+        assert all(parameter.grad is None for parameter in bridge.parameters())
+
+    def test_fit_records_rule_provenance(self) -> None:
+        bridge = _fit_bridge()
+
+        lens = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+
+        assert lens.estimator == "relevance_lens"
+        assert lens.metadata["estimator"] == "relevance_lens"
+        assert lens.metadata["corpus"] == FIT_CORPUS
+        assert lens.metadata["enabled_rules"] == [
+            "normalization",
+            "activation",
+            "multiplicative_gate",
+        ]
+        assert lens.metadata["relevance_rule_version"] == lens.relevance_rule_version
+
+
+class TestJointFitEqualsWeightedMerge:
+    def test_joint_fit_matches_prompt_count_weighted_merge(self) -> None:
+        bridge = _fit_bridge()
+        # Deliberately unequal shards: an unweighted mean of the two shard
+        # matrices would differ from the joint fit, so this only passes when the
+        # merge really weights by prompt count.
+        split = 1
+        first, second = FIT_PROMPTS[:split], FIT_PROMPTS[split:]
+
+        joint = _fit_relevance(bridge, FIT_PROMPTS, corpus=FIT_CORPUS)
+        shard_a = _fit_relevance(bridge, first, corpus=FIT_CORPUS)
+        shard_b = _fit_relevance(bridge, second, corpus=FIT_CORPUS)
+        merged = RelevanceLens.merge([shard_a, shard_b])
+
+        assert shard_a.n_prompts != shard_b.n_prompts
+        assert merged.n_prompts == joint.n_prompts
+        assert merged.estimator == joint.estimator
+        assert merged.relevance_rule_version == joint.relevance_rule_version
+        assert merged.enabled_rules == joint.enabled_rules
+        for layer in joint.source_layers:
+            torch.testing.assert_close(
+                merged.jacobians[layer],
+                joint.jacobians[layer],
+                atol=1e-6,
+                rtol=1e-5,
+            )

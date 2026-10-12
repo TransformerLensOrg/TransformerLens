@@ -786,6 +786,32 @@ def test_compute_test_head_results_does_not_compute_results_twice():
     assert cache.cache_dict["blocks.0.attn.hook_result"][0, 0, 0, 0] == float("inf")
 
 
+@torch.no_grad()
+def test_compute_head_results_preserves_batchless_forward_results():
+    model = TransformerBridge.boot_transformers("distilgpt2", device="cpu")
+    model.set_use_attn_result(True)
+    tokens = torch.tensor([[1, 2, 3, 4]])
+
+    for results_only in (True, False):
+        names_filter = (lambda name: name.endswith(".attn.hook_result")) if results_only else None
+        _, cache = model.run_with_cache(tokens, remove_batch_dim=True, names_filter=names_filter)
+        assert not cache.has_batch_dim
+        results = [cache[("result", layer, "attn")] for layer in range(model.cfg.n_layers)]
+        assert all(result.ndim == 3 and result.shape[-2] == model.cfg.n_heads for result in results)
+        if results_only:
+            assert all(key.endswith(".attn.hook_result") for key in cache.cache_dict)
+            assert all(
+                f"blocks.{layer}.attn.hook_z" not in cache.cache_dict
+                for layer in range(model.cfg.n_layers)
+            )
+
+        stacked = cache.stack_head_results()
+
+        torch.testing.assert_close(stacked, torch.cat(results, dim=-2).movedim(-2, 0))
+        for layer, result in enumerate(results):
+            assert cache[("result", layer, "attn")] is result
+
+
 @torch.no_grad
 def test_get_neuron_results():
     model = load_model("distilgpt2")

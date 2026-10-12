@@ -29,6 +29,8 @@ class Qwen3_5ArchitectureAdapter(Qwen3ArchitectureAdapter):
         # q_proj stays 2x-wide through weight processing: HF and the attention bridge both
         # split [query|gate] per head at forward time; slicing the gate out changes outputs.
         setattr(cfg, "gated_q_proj", True)
+        # HF's Qwen3_5RMSNorm scales by (1 + weight), not weight (cf. Gemma).
+        setattr(cfg, "rmsnorm_uses_offset", True)
         super().__init__(cfg, hybrid=True)
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:

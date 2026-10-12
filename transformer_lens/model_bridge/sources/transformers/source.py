@@ -8,7 +8,12 @@ import warnings
 from typing import Any
 
 import torch
-from transformers import AutoConfig, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
 # Module import (not a name import): architecture_adapter_factory imports model_bridge,
 # which imports this module, so its names may not be defined yet at this point.
@@ -50,6 +55,7 @@ def boot(
     hf_model: Any | None = None,
     n_ctx: int | None = None,
     revision: str | None = None,
+    code_revision: str | None = None,
     checkpoint_index: int | None = None,
     checkpoint_value: int | None = None,
     # Multi-device placement (accelerate-dispatched). Mutually exclusive with device.
@@ -107,6 +113,10 @@ def boot(
         revision: Optional HF revision string (branch, tag, or commit). Forwarded to
             config, model, and tokenizer loading.
             Mutually exclusive with ``checkpoint_index`` and ``checkpoint_value``.
+        code_revision: Optional HF revision string pinning the ``trust_remote_code``
+            modeling file separately from the weights (HF's own ``code_revision``).
+            Forwarded alongside ``revision`` to config and model loading and to the
+            adapters' remote-code patching; weights and tokenizer keep ``revision``.
         checkpoint_index: Index into the available training checkpoints for the model family.
             Convenience over ``revision`` for checkpointed models like EleutherAI/pythia* and
             stanford-crfm/*. Resolved to a revision string via the known per-family naming
@@ -152,6 +162,7 @@ def boot(
             trust_remote_code=trust_remote_code,
             token=_hf_token,
             revision=revision,
+            code_revision=code_revision,
         )
     _n_ctx_field: str | None = None
     if n_ctx is not None:
@@ -266,6 +277,8 @@ def boot(
         model_kwargs["trust_remote_code"] = True
     if revision is not None:
         model_kwargs["revision"] = revision
+    if code_revision is not None:
+        model_kwargs["code_revision"] = code_revision
     if resolved_device_map is not None:
         model_kwargs["device_map"] = resolved_device_map
     if resolved_max_memory is not None:
@@ -313,6 +326,11 @@ def boot(
         with contextlib.redirect_stdout(None):
             hf_model = model_class.from_config(prepared_config, **from_config_kwargs)
     else:
+        # Only Auto classes resolve remote code, so only they accept code_revision;
+        # a concrete PreTrainedModel subclass rejects it with a TypeError. The pin
+        # already did its work in AutoConfig and prepare_loading above.
+        if isinstance(model_class, type) and issubclass(model_class, PreTrainedModel):
+            model_kwargs.pop("code_revision", None)
         try:
             hf_model = model_class.from_pretrained(model_name, **model_kwargs)
         except RuntimeError as e:

@@ -76,7 +76,7 @@ Optional overrides on the class:
 | Decoder-only causal LM, RMSNorm + RoPE | [`llama.py`](llama.py) | Canonical modern shape; already handles GQA via `n_key_value_heads` |
 | Decoder-only causal LM, LayerNorm + combined QKV | [`gpt2.py`](gpt2.py) | Older GPT-style; demonstrates QKV split/rearrange |
 | GQA / MQA | [`llama.py`](llama.py) | Pass `n_kv_heads=` to `_qkvo_weight_conversions()` |
-| RMSNorm with offset | [`gemma1.py`](gemma1.py) | Uses `rmsnorm_uses_offset = True` + `ArithmeticTensorConversion` |
+| RMSNorm with offset | [`gemma1.py`](gemma1.py) | Sets `cfg.rmsnorm_uses_offset = True` only — weight processing and the runtime norm read the flag and apply the +1 themselves; conversion entries on norm weights are never read |
 | Mixture-of-experts | [`mixtral.py`](mixtral.py) | Uses `MoEBridge` with batched experts |
 | Vision-language | [`llava.py`](llava.py) | Dual encoder + projection pathways |
 | Encoder-decoder (T5-style) | [`t5.py`](t5.py) | Sets `supports_generation = False`, separate encoder/decoder block lists |
@@ -262,7 +262,7 @@ Failure message names the missing set. (`INTENTIONAL_EXCLUDES` in the test handl
 |---|---|---|
 | RoPE (rotary positional embeddings) | `llama.py`, `mistral.py`, `qwen2.py`+ | `RotaryEmbeddingBridge(name="model.rotary_emb")` + `cfg.positional_embedding_type = "rotary"` |
 | GQA / MQA (`n_key_value_heads < n_heads`) | `llama.py`, `mistral.py`, `falcon.py`, `cohere.py` | Set `cfg.n_key_value_heads`; pass `n_kv_heads=` to `_qkvo_weight_conversions()` |
-| RMSNorm with offset | `gemma1.py`, `gemma2.py`, `gemma3.py` | `cfg.rmsnorm_uses_offset = True` + `ArithmeticTensorConversion(ADDITION, 1.0)` |
+| RMSNorm with offset | `gemma1.py`, `gemma2.py`, `gemma3.py` | `cfg.rmsnorm_uses_offset = True` only (no conversion entry: processing reads norm weights directly and applies the offset from the flag; conversion entries on norm weights are never read) |
 | Standard LayerNorm | `gpt2.py`, `bloom.py` | `cfg.normalization_type = "LN"` |
 | Gated MLP (`gate_proj`, `up_proj`, `down_proj`) | `llama.py`, `mistral.py`, `gemma1.py`, `qwen2.py`+ | `GatedMLPBridge` with submodules `{gate, in, out}` |
 | Combined QKV (`c_attn`) | `gpt2.py`, `bloom.py` | `QKVSplitRearrangeConversion` to split + rearrange |

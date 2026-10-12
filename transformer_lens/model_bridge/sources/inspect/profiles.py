@@ -32,9 +32,15 @@ class TLBridgeProfile:
     # only populate the gen position; lets RemoteBridge.forward reject loss/both there.
     provides_sequence_logits = True
 
-    def __init__(self, supported_kinds: Any = None, provides_sequence_logits: bool = True) -> None:
+    def __init__(
+        self,
+        supported_kinds: Any = None,
+        provides_sequence_logits: bool = True,
+        supports_attention_mask: bool = True,
+    ) -> None:
         self._kinds = supported_kinds
         self.provides_sequence_logits = provides_sequence_logits
+        self.supports_attention_mask = supports_attention_mask
 
     def supported_hooks(self, n_layers: int) -> frozenset[str]:
         return hooks.supported_hook_points(n_layers, self._kinds)
@@ -79,6 +85,7 @@ class VLLMLensProfile:
     """
 
     provides_sequence_logits = False
+    supports_attention_mask = False
 
     def supported_hooks(self, n_layers: int) -> frozenset[str]:
         return frozenset(f"blocks.{i}.hook_out" for i in range(n_layers))
@@ -142,7 +149,7 @@ def for_provider(provider: str) -> Any:
     if provider.startswith("vllm-lens"):
         return VLLMLensProfile()
     if provider in ("tl_bridge", "tl_bridge_vllm"):
-        return TLBridgeProfile()
+        return TLBridgeProfile(supports_attention_mask=False)
     # An unknown provider would otherwise get full-capability codec and NaN downstream.
     raise ValueError(
         f"No Inspect codec for provider {provider!r}. Known providers: 'tl_bridge', "

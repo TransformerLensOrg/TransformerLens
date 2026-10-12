@@ -12,6 +12,9 @@ from transformer_lens.model_bridge.supported_architectures.falcon_h1 import (
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.muse_glimmer import (
+    MuseGlimmerArchitectureAdapter,
+)
 
 
 def _text_config(**overrides: object) -> SimpleNamespace:
@@ -92,4 +95,43 @@ def test_granite_and_falcon_apply_declared_output_scalars() -> None:
     torch.testing.assert_close(
         FalconH1ArchitectureAdapter(falcon_cfg).apply_output_logits_transform(logits),
         torch.tensor([[-2.0, 1.0]]),
+    )
+
+
+def test_nested_text_config_muse_multiplier_is_used() -> None:
+    wrapper = SimpleNamespace(
+        text_config=_text_config(final_logit_softcapping=20.0, output_multiplier=0.5)
+    )
+    cfg = build_bridge_config_from_hf(
+        wrapper,
+        "MuseGlimmerForConditionalGeneration",
+        "tiny-muse-output-contract",
+        torch.float32,
+    )
+
+    assert cfg.output_logits_soft_cap == 20.0
+    assert cfg.output_multiplier == 0.5
+
+
+def test_muse_glimmer_applies_multiplier_before_the_softcap() -> None:
+    """Muse Glimmer scales logits by ``output_multiplier`` and then tanh-softcaps them.
+
+    The tiny model's logits are too small for the cap to change anything, so the
+    forward-parity tests cannot catch a missing factor; this pins the contract with
+    logits large enough for both the multiplier and the cap to matter.
+    """
+    wrapper = SimpleNamespace(
+        text_config=_text_config(final_logit_softcapping=20.0, output_multiplier=0.5)
+    )
+    cfg = build_bridge_config_from_hf(
+        wrapper,
+        "MuseGlimmerForConditionalGeneration",
+        "tiny-muse-output-contract",
+        torch.float32,
+    )
+    logits = torch.tensor([[-40.0, -6.0, 6.0, 40.0]])
+
+    torch.testing.assert_close(
+        MuseGlimmerArchitectureAdapter(cfg).apply_output_logits_transform(logits),
+        20.0 * torch.tanh(logits * 0.5 / 20.0),
     )

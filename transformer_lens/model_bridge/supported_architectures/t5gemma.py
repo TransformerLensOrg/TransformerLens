@@ -15,12 +15,8 @@ Key differences from plain T5:
 from typing import Any
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    ArithmeticTensorConversion,
     RearrangeTensorConversion,
     TransposeTensorConversion,
-)
-from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
-    OperationTypes,
 )
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
@@ -83,19 +79,9 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
             "encoder_blocks.{i}.self_attn.o_proj.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=enc_heads),
             ),
-            # Encoder RMSNorm offset - HF stores raw weight; Gemma applies weight+1
-            "encoder_blocks.{i}.pre_self_attn_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "encoder_blocks.{i}.post_self_attn_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "encoder_blocks.{i}.pre_feedforward_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "encoder_blocks.{i}.post_feedforward_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
+            # Norm weights carry no conversion entry: cfg.rmsnorm_uses_offset is the
+            # only offset signal — weight processing and the runtime norm read it
+            # directly and apply (1 + w) themselves.
             # Encoder MLP (gated)
             "encoder_blocks.{i}.mlp.gate_proj.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),
@@ -132,25 +118,6 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
             "decoder_blocks.{i}.cross_attn.o_proj.weight": ParamProcessingConversion(
                 tensor_conversion=RearrangeTensorConversion("m (n h) -> n h m", n=n_heads),
             ),
-            # Decoder RMSNorm offset
-            "decoder_blocks.{i}.pre_self_attn_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "decoder_blocks.{i}.post_self_attn_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "decoder_blocks.{i}.pre_cross_attn_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "decoder_blocks.{i}.post_cross_attn_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "decoder_blocks.{i}.pre_feedforward_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "decoder_blocks.{i}.post_feedforward_layernorm.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
             # Decoder MLP (gated)
             "decoder_blocks.{i}.mlp.gate_proj.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),
@@ -160,13 +127,6 @@ class T5GemmaArchitectureAdapter(ArchitectureAdapter):
             ),
             "decoder_blocks.{i}.mlp.down_proj.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),
-            ),
-            # Final layer norms
-            "encoder_ln_final.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "decoder_ln_final.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
             ),
             # Unembed
             "unembed.weight": ParamProcessingConversion(

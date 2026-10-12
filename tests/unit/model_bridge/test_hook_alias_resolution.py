@@ -71,12 +71,8 @@ _KNOWN_DEAD_ALIASES = {
     "GPT2LMHeadCustomModel": "stale adapter, delete candidate",
     "NanoGPTForCausalLM": "broken weight conversion, delete candidate",
     "NeelSoluOldForCausalLM": "orphan weight conversion, delete candidate",
-    "LlavaForConditionalGeneration": "vision-encoder layer submodules unwired",
-    "LlavaNextForConditionalGeneration": "vision-encoder submodules unwired; tiling path opaque",
-    "LlavaOnevisionForConditionalGeneration": "vision-encoder submodules unwired; video-frame path opaque",
-    # Gemma3 and Idefics3 both build their tower from SiglipVisionEncoderBridge,
-    # whose layers now wire attn/mlp submodules, so their aliases resolve. The
-    # Llava family above still routes through its own opaque vision path.
+    # Gemma3 and Idefics3 build their tower from SiglipVisionEncoderBridge;
+    # the LLaVA family uses the equivalent CLIP layer wiring.
 }
 
 

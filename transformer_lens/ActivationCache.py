@@ -29,7 +29,6 @@ from typing import (
 )
 
 import einops
-import numpy as np
 import torch
 from jaxtyping import Float, Int
 from typing_extensions import Literal
@@ -167,14 +166,21 @@ class ActivationCache:
         counts = Counter(v.size(0) for v in self.cache_dict.values() if v.ndim > 0)
         return counts.most_common(1)[0][0] if counts else 1
 
-    def remove_batch_dim(self) -> ActivationCache:
+    def remove_batch_dim(self, batch_size: Optional[int] = None) -> ActivationCache:
         """Remove the Batch Dimension (if a single batch item).
+
+        Args:
+            batch_size:
+                The true batch size, when the caller knows it. By default it is inferred from
+                the most common leading dimension of the cached entries, which is wrong for a
+                cache holding only flattened or position-indexed activations.
 
         Returns:
             The ActivationCache with the batch dimension removed.
         """
         if self.has_batch_dim:
-            batch_size = self._batch_size()
+            if batch_size is None:
+                batch_size = self._batch_size()
             assert (
                 batch_size == 1
             ), f"Cannot remove batch dimension from cache with batch size {batch_size}"
@@ -386,6 +392,10 @@ class ActivationCache:
         style analysis, where it can be thought of as what the model "believes" at each point in the
         residual stream.
 
+        :meth:`logit_lens` does the whole projection below in one call (final norm, ``W_U``,
+        ``b_U`` and the adapter's output transform, chunked over the vocabulary); the recipe
+        here shows what it computes.
+
         To project this into the vocabulary space, remember that there is a final layer norm in most
         decoder-only transformers. Therefore, you need to first apply the final layer norm (which
         can be done with `apply_ln`), and then multiply by the unembedding matrix (:math:`W_U`)
@@ -528,6 +538,20 @@ class ActivationCache:
         else:
             return components
 
+    def logit_lens(self, **kwargs: Any) -> Any:
+        """One-call logit lens over this cache's accumulated residual stream.
+
+        Delegates to :func:`transformer_lens.tools.analysis.logit_lens.logit_lens`
+        with this cache; see it for the keyword arguments (``layers``,
+        ``positions``, ``targets``, ``top_k``, ``vocab``, ``return_type`` ...).
+        The final stack entry reproduces the model's logits through the real
+        final norm, ``W_U``, ``b_U`` and the adapter's output transform.
+        """
+        # Lazy import: tools.analysis imports this module.
+        from transformer_lens.tools.analysis.logit_lens import logit_lens
+
+        return logit_lens(self.model, cache=self, **kwargs)
+
     def logit_attrs(
         self,
         residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
@@ -579,7 +603,12 @@ class ActivationCache:
             residual_stack:
                 Stack of components of residual stream to get logit attributions for.
             tokens:
-                Tokens to compute logit attributions on.
+                Tokens to compute logit attributions on. A [batch] tensor selects one token
+                per example across all retained positions. A 1-D tensor whose length differs
+                from the batch size selects one token per position, shared across examples.
+                Use [1, position] to share per-position targets when batch and position sizes
+                are equal; [batch, position] selects targets for each example and position.
+                Token tensors should already match any batch/position slices.
             incorrect_tokens:
                 If provided, compute attributions on logit difference between tokens and
                 incorrect_tokens. Must have the same shape as tokens.
@@ -643,6 +672,16 @@ class ActivationCache:
             batch_slice=batch_slice,
             has_batch_dim=has_batch_dim,
         )
+
+        if (
+            has_batch_dim
+            and batch_slice.mode != "int"
+            and scaled_residual_stack.ndim == 4
+            and logit_directions.ndim == 2
+            and logit_directions.shape[0] == scaled_residual_stack.shape[1]
+        ):
+            # Per-example directions must broadcast over positions, not across the batch.
+            logit_directions = logit_directions.unsqueeze(-2)
 
         logit_attrs = (scaled_residual_stack * logit_directions).sum(dim=-1)
         return logit_attrs
@@ -747,37 +786,42 @@ class ActivationCache:
         Intended use is to enable use_attn_results when running and caching the model, but this can
         be useful if you forget.
 
+        Existing per-head results are preserved, including those without a batch dimension.
+        Missing or invalid results are recomputed from cached ``hook_z`` and the model's
+        ``W_O`` weights. A per-head contraction avoids materializing the broadcast product
+        over both ``d_head`` and ``d_model``. As in the bridge forward pass, the contraction
+        follows active autocast settings.
+
         TransformerBridge exposes ``blocks[i].attn.W_O`` via its component-mapping
         compatibility shim.
         """
-        # Return if valid 4D results exist; replace stale 3D Bridge entries if needed
-        first_key = "blocks.0.attn.hook_result"
-        if first_key in self.cache_dict:
-            val = self.cache_dict[first_key]
-            if isinstance(val, torch.Tensor) and val.ndim >= 4:
-                logging.warning("Tried to compute head results when they were already cached")
-                return
-            # Remove stale 3D entries before recomputing
-            for layer in range(self.model.cfg.n_layers):
-                key = f"blocks.{layer}.attn.hook_result"
-                if key in self.cache_dict:
-                    del self.cache_dict[key]
+        if self._ensure_head_results():
+            logging.warning("Tried to compute head results when they were already cached")
+
+    def _ensure_head_results(self) -> bool:
+        """Recompute missing or invalid per-head results; True if all were already cached."""
+        expected_ndim = 4 if self.has_batch_dim else 3
+        all_cached = True
         for layer in range(self.model.cfg.n_layers):
-            # Note that we haven't enabled set item on this object so we need to edit the underlying
-            # cache_dict directly.
+            result_key = f"blocks.{layer}.attn.hook_result"
+            cached_result = self.cache_dict.get(result_key)
+            # Batchless per-head results are valid 3D tensors.
+            if (
+                isinstance(cached_result, torch.Tensor)
+                and cached_result.ndim == expected_ndim
+                and cached_result.shape[-2] == self.model.cfg.n_heads
+            ):
+                continue
+            all_cached = False
 
-            # Add singleton dimension to match W_O's shape for broadcasting
-            z = einops.rearrange(
-                self[("z", layer, "attn")],
-                "... head_index d_head -> ... head_index d_head 1",
-            )
-
-            # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
-            block = self.model.blocks[layer]
-            result = z * block.attn.W_O
-
-            # Sum over d_head to get the contribution of each head to the residual stream
-            self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
+            z = self[("z", layer, "attn")]
+            weights = self.model.blocks[layer].attn.W_O
+            if z.dtype != weights.dtype:
+                # Preserve broadcast promotion for caches collected under autocast.
+                dtype = torch.promote_types(z.dtype, weights.dtype)
+                z, weights = z.to(dtype), weights.to(dtype)
+            self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
+        return all_cached
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
         """Return the block indices whose mixer is an SSM / recurrent mixer.
@@ -998,8 +1042,9 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        # Idempotent; cleans up stale Bridge entries
-        self.compute_head_results()
+        # Idempotent; cleans up stale Bridge entries without the 'already cached' warning,
+        # which is only meaningful for direct compute_head_results callers.
+        self._ensure_head_results()
 
         components: Any = []
         labels = []
@@ -1124,7 +1169,7 @@ class ActivationCache:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
         projected = W_out @ project_output_onto
-        if projected.ndim == 1:
+        if project_output_onto.ndim == 1:
             return neuron_acts * projected
         return neuron_acts[..., None] * projected
 
@@ -1162,16 +1207,16 @@ class ActivationCache:
         pos_slice: Slice,
         neuron_slice: Slice,
         project_2d: torch.Tensor,
+        mlp_input: bool = False,
     ) -> torch.Tensor:
         """LN-applied neuron stack with projection folded in — no d_mlp×d_model intermediate.
 
         Analytical formula (LN models, cached scale ``s``):
             ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
-        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). Always uses the
-        ln1 scale (mlp_input=False) since ``stack_neuron_results`` doesn't expose mlp_input.
-
+        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the ln2
+        scale of ``layer`` when ``mlp_input`` is set, else the ln1 scale.
         """
-        scale = self._get_cached_ln_scale(layer, mlp_input=False, pos_slice=pos_slice)
+        scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
         apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
         sum_p = project_2d.sum(dim=0) if apply_centering else None  # [n_outs]
@@ -1212,6 +1257,7 @@ class ActivationCache:
         incl_remainder: bool = False,
         apply_ln: bool = False,
         project_output_onto: Optional[torch.Tensor] = None,
+        mlp_input: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[str]]]:
         """Stack Neuron Results
 
@@ -1227,13 +1273,16 @@ class ActivationCache:
         Args:
             layer:
                 Layer index - heads at all layers strictly before this are included. layer must be
-                in [1, n_layers]
+                in [1, n_layers]. ``layer=0`` follows the negative-index convention: the neuron
+                stack is empty and with ``incl_remainder=True`` the remainder is the final layer's
+                residual stream (``resid_post`` of layer ``n_layers - 1``), i.e. the whole model.
             pos_slice:
                 Slice of the positions.
             neuron_slice:
-                Slice of the neurons.
+                Slice of the neurons. An int or an integer-mode ``Slice(n)`` selects a single
+                neuron and is treated like ``[n]``.
             return_labels:
-                Whether to also return a list of labels of the form "L0H0" for the heads.
+                Whether to also return a list of labels of the form "L0N0" for the neurons.
             incl_remainder:
                 Whether to return a final term which is "the rest of the residual stream".
             apply_ln:
@@ -1244,13 +1293,31 @@ class ActivationCache:
                 direction analyses; see ``get_neuron_results``). Combined with ``apply_ln=True``,
                 the projection is folded into the analytical cached-scale LN so the
                 ``[..., d_mlp, d_model]`` intermediate is still never materialized.
+            mlp_input:
+                Treat the stack as the input to ``layer``'s MLP rather than its attention, as in
+                ``decompose_resid``: with ``incl_remainder=True`` the remainder fills the stack up to
+                ``resid_mid`` instead of ``resid_pre``, and with ``apply_ln=True`` the LN scale of
+                ln2 is used instead of ln1. The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        if not isinstance(neuron_slice, Slice):
-            neuron_slice = Slice(neuron_slice)
+        # layer=0 is the documented whole-model case (remainder reads resid_post of layer -1, the
+        # final layer). Anything below it would wrap the remainder target to an arbitrary late
+        # layer via __getitem__, silently returning the wrong residual stream.
+        if incl_remainder and layer < 0:
+            raise ValueError(
+                f"layer must be >= 0 with incl_remainder=True (-1/None mean n_layers); got {layer}."
+            )
+
+        # Layers are concatenated along the neuron axis, so it must not collapse. unwrap turns an
+        # int into [n] but leaves a Slice as is, so an integer-mode Slice(n) is rebuilt as [n]
+        # here. A new Slice is made, so the caller's Slice still collapses elsewhere.
+        neuron_slice = Slice.unwrap(neuron_slice)
+        if neuron_slice.mode == "int":
+            assert isinstance(neuron_slice.slice, int)  # narrow for mypy
+            neuron_slice = Slice([neuron_slice.slice])
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
@@ -1258,28 +1325,27 @@ class ActivationCache:
 
         d_mlp = self.model.cfg.d_mlp
         assert d_mlp is not None, "model.cfg.d_mlp must be set"
-        neuron_labels: Union[torch.Tensor, np.ndarray] = neuron_slice.apply(
-            torch.arange(d_mlp), dim=0
-        )
-        if isinstance(neuron_labels, int):
-            neuron_labels = np.array([neuron_labels])
+        neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
         labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
+        # The remainder fills the stack up to the residual stream that layer's LN normalizes:
+        # resid_mid (the MLP input) with mlp_input, else resid_pre (resid_post of layer - 1).
+        remainder_target = ("resid_mid", layer) if mlp_input else ("resid_post", layer - 1)
         components: Any
         ln_folded = apply_ln and project_2d is not None
         if ln_folded:
             assert project_2d is not None  # narrow for mypy
             # Analytical LN+projection — no d_mlp×d_model intermediate.
             components = self._stack_neuron_results_apply_ln_projected(
-                layer, pos_slice, neuron_slice, project_2d
+                layer, pos_slice, neuron_slice, project_2d, mlp_input=mlp_input
             )
             if incl_remainder:
-                # Linearity of cached-scale LN: remainder is LN_s(resid_post) @ p - sum(neurons).
-                resid_post = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
-                resid_post_ln = self.apply_ln_to_stack(
-                    resid_post[None], layer, pos_slice=pos_slice
+                # Linearity of cached-scale LN: remainder is LN_s(target) @ p - sum(neurons).
+                target = pos_slice.apply(self[remainder_target], dim=-2)
+                target_ln = self.apply_ln_to_stack(
+                    target[None], layer, pos_slice=pos_slice, mlp_input=mlp_input
                 )[0]
-                remainder = resid_post_ln @ project_2d
+                remainder = target_ln @ project_2d
                 if components.shape[0] > 0:
                     remainder = remainder - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
@@ -1302,14 +1368,14 @@ class ActivationCache:
                     "... concat_neuron_index d_model -> concat_neuron_index ... d_model",
                 )
                 if incl_remainder:
-                    remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                    remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                     if project_2d is not None:
                         remainder_full = remainder_full @ project_2d
                     remainder = remainder_full - components.sum(dim=0)
                     components = torch.cat([components, remainder[None]], dim=0)
                     labels.append("remainder")
             elif incl_remainder:
-                remainder_full = pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)
+                remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                 if project_2d is not None:
                     remainder_full = remainder_full @ project_2d
                 components = torch.cat([remainder_full[None]], dim=0)
@@ -1321,7 +1387,9 @@ class ActivationCache:
                 components = torch.zeros(0, *empty_shape_src.shape, device=self.model.cfg.device)
 
             if apply_ln:
-                components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
+                components = self.apply_ln_to_stack(
+                    components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                )
 
         if squeeze_projected:
             components = components.squeeze(-1)
@@ -1383,9 +1451,6 @@ class ActivationCache:
                 to each component with statistics recomputed from that component. Defaults to False.
 
         """
-        if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
-            # The model does not use LayerNorm, so we don't need to do anything.
-            return residual_stack
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
         if not isinstance(batch_slice, Slice):
@@ -1398,6 +1463,11 @@ class ActivationCache:
         if has_batch_dim:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
+
+        # Checked only after slicing so callers like logit_attrs still get their
+        # batch_slice honoured on models without LayerNorm/RMSNorm.
+        if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
+            return residual_stack
 
         # Logit lens: apply final layer norm to each component with recomputed statistics
         if recompute_ln and layer == self.model.cfg.n_layers and hasattr(self.model, "ln_final"):
@@ -1518,6 +1588,7 @@ class ActivationCache:
                     return_labels=True,
                     apply_ln=ln_folded,
                     project_output_onto=project_2d,
+                    mlp_input=mlp_input,
                 )
                 labels.extend(neuron_labels)
                 components.append(neuron_stack)

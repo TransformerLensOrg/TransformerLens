@@ -439,34 +439,23 @@ class TestT5Gemma2ConversionTableAlignment:
     @pytest.mark.parametrize(
         "hf_key",
         [
-            # Encoder self-attn q/k/v/o + qk-norm
+            # Encoder self-attn q/k/v/o
             "model.encoder.text_model.layers.0.self_attn.q_proj.weight",
             "model.encoder.text_model.layers.0.self_attn.k_proj.weight",
             "model.encoder.text_model.layers.0.self_attn.v_proj.weight",
             "model.encoder.text_model.layers.0.self_attn.o_proj.weight",
-            "model.encoder.text_model.layers.0.self_attn.q_norm.weight",
-            "model.encoder.text_model.layers.0.self_attn.k_norm.weight",
-            # Encoder RMSNorm
-            "model.encoder.text_model.layers.0.pre_self_attn_layernorm.weight",
-            "model.encoder.text_model.layers.0.post_self_attn_layernorm.weight",
-            "model.encoder.text_model.layers.0.pre_feedforward_layernorm.weight",
-            "model.encoder.text_model.layers.0.post_feedforward_layernorm.weight",
+            # Norm weights (incl. q_norm/k_norm) deliberately have no entry: the
+            # offset comes from cfg.rmsnorm_uses_offset, read directly by weight
+            # processing.
             # Encoder MLP
             "model.encoder.text_model.layers.0.mlp.gate_proj.weight",
             "model.encoder.text_model.layers.0.mlp.up_proj.weight",
             "model.encoder.text_model.layers.0.mlp.down_proj.weight",
-            # Decoder merged self-attn q/k/v/o + qk-norm
+            # Decoder merged self-attn q/k/v/o
             "model.decoder.layers.0.self_attn.q_proj.weight",
             "model.decoder.layers.0.self_attn.k_proj.weight",
             "model.decoder.layers.0.self_attn.v_proj.weight",
             "model.decoder.layers.0.self_attn.o_proj.weight",
-            "model.decoder.layers.0.self_attn.q_norm.weight",
-            "model.decoder.layers.0.self_attn.k_norm.weight",
-            # Decoder RMSNorm
-            "model.decoder.layers.0.pre_self_attn_layernorm.weight",
-            "model.decoder.layers.0.post_self_attn_layernorm.weight",
-            "model.decoder.layers.0.pre_feedforward_layernorm.weight",
-            "model.decoder.layers.0.post_feedforward_layernorm.weight",
             # Decoder MLP
             "model.decoder.layers.0.mlp.gate_proj.weight",
             "model.decoder.layers.0.mlp.up_proj.weight",

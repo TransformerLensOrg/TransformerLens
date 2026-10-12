@@ -26,6 +26,7 @@ from transformer_lens.model_bridge.driver_protocol import (
 from transformer_lens.model_bridge.sources._driver_base import DriverBase
 
 from . import hooks, wire
+from .masks import normalize_attention_mask
 from .profiles import TLBridgeProfile
 
 # Cap a single provider call so a hung remote/provider forward unblocks the sync caller
@@ -68,6 +69,7 @@ class InspectDriver(DriverBase):
         intervene: Mapping[str, Intervention] | None = None,
         max_new_tokens: int = 1,
         return_logits: bool = True,
+        attention_mask: TensorLike | None = None,
         **kwargs: Any,
     ) -> ForwardResult:
         if self._model is None:
@@ -79,6 +81,11 @@ class InspectDriver(DriverBase):
                 "InspectDriver supports max_new_tokens=1 only (single-forward capture)."
             )
         ids = self._normalize_input_ids(input_ids)
+        mask = None
+        if attention_mask is not None:
+            if not getattr(self._profile, "supports_attention_mask", False):
+                raise NotImplementedError("This Inspect provider does not support attention_mask.")
+            mask = normalize_attention_mask(attention_mask, len(ids))
         # capture is authoritative: the bridge passes exactly the hooks with handlers,
         # so () means "capture nothing" (logits only), not "capture everything".
         names = list(capture)
@@ -89,6 +96,8 @@ class InspectDriver(DriverBase):
         prompt, extra_args = self._profile.build_request(
             ids, wire_keys, interventions, return_logits, self.tokenizer
         )
+        if mask is not None:
+            extra_args["attention_mask"] = mask
 
         output = self._run_coro(self._generate(prompt, extra_args))
 

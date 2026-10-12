@@ -570,11 +570,8 @@ class TestT5GemmaConversionTableAlignment:
             "model.encoder.layers.0.self_attn.k_proj.weight",
             "model.encoder.layers.0.self_attn.v_proj.weight",
             "model.encoder.layers.0.self_attn.o_proj.weight",
-            # Encoder RMSNorm
-            "model.encoder.layers.0.pre_self_attn_layernorm.weight",
-            "model.encoder.layers.0.post_self_attn_layernorm.weight",
-            "model.encoder.layers.0.pre_feedforward_layernorm.weight",
-            "model.encoder.layers.0.post_feedforward_layernorm.weight",
+            # Norm weights deliberately have no entry: the offset comes from
+            # cfg.rmsnorm_uses_offset, read directly by weight processing.
             # Encoder MLP
             "model.encoder.layers.0.mlp.gate_proj.weight",
             "model.encoder.layers.0.mlp.up_proj.weight",
@@ -589,13 +586,6 @@ class TestT5GemmaConversionTableAlignment:
             "model.decoder.layers.0.cross_attn.k_proj.weight",
             "model.decoder.layers.0.cross_attn.v_proj.weight",
             "model.decoder.layers.0.cross_attn.o_proj.weight",
-            # Decoder RMSNorm
-            "model.decoder.layers.0.pre_self_attn_layernorm.weight",
-            "model.decoder.layers.0.post_self_attn_layernorm.weight",
-            "model.decoder.layers.0.pre_cross_attn_layernorm.weight",
-            "model.decoder.layers.0.post_cross_attn_layernorm.weight",
-            "model.decoder.layers.0.pre_feedforward_layernorm.weight",
-            "model.decoder.layers.0.post_feedforward_layernorm.weight",
             # Decoder MLP
             "model.decoder.layers.0.mlp.gate_proj.weight",
             "model.decoder.layers.0.mlp.up_proj.weight",

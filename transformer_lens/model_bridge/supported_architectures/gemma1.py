@@ -2,13 +2,7 @@
 
 from typing import Any
 
-from transformer_lens.conversion_utils.conversion_steps import (
-    ArithmeticTensorConversion,
-    TransposeTensorConversion,
-)
-from transformer_lens.conversion_utils.conversion_steps.arithmetic_tensor_conversion import (
-    OperationTypes,
-)
+from transformer_lens.conversion_utils.conversion_steps import TransposeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
 )
@@ -50,17 +44,9 @@ class Gemma1ArchitectureAdapter(ArchitectureAdapter):
             #
             # Attention weight conversions
             **self._qkvo_weight_conversions(),
-            # RMSNorm weight conversions - Gemma adds 1.0 to weights before applying
-            # See: https://github.com/huggingface/transformers/pull/29402
-            "blocks.{i}.ln1.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "blocks.{i}.ln2.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
-            "ln_final.weight": ParamProcessingConversion(
-                tensor_conversion=ArithmeticTensorConversion(OperationTypes.ADDITION, 1.0),
-            ),
+            # Norm weights carry no conversion entry: cfg.rmsnorm_uses_offset is the
+            # only offset signal — weight processing and the runtime norm read it
+            # directly and apply (1 + w) themselves.
             # MLP weight conversions - transpose from [out, in] to [in, out]
             "blocks.{i}.mlp.gate.weight": ParamProcessingConversion(
                 tensor_conversion=TransposeTensorConversion(),

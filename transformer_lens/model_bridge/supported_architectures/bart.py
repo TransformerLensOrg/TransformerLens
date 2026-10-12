@@ -194,6 +194,12 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
         with torch.no_grad():
             lm_head.bias.add_(buf.reshape(-1).to(lm_head.bias.dtype))
             buf.zero_()
+        # Accelerate's offload map snapshotted the bias before this fold ran,
+        # so re-sync it or offloaded forwards keep using the pre-fold value.
+        # Post-wrap, lm_head is the bridge; the offload hook sits on the Linear.
+        UnembeddingBridge._update_offloaded_bias(
+            getattr(lm_head, "original_component", None) or lm_head
+        )
 
 
 class BartArchitectureAdapter(BartFamilyArchitectureAdapter):

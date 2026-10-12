@@ -5,6 +5,7 @@ Asserts the gated-q_proj gate signal (``hook_q_gate``) is hookable under the nes
 never exercises it, so this guards the gate as an interpretability surface.
 """
 
+import pytest
 import torch
 
 from transformer_lens.model_bridge import TransformerBridge
@@ -48,3 +49,16 @@ def test_hook_q_gate_fires_under_nested_language_model_path():
     assert torch.isfinite(gate).all()
     # A real (non-degenerate) gate signal, not an all-zero placeholder.
     assert gate.float().std() > 0
+
+
+@pytest.mark.filterwarnings("ignore:A forward hook edited")
+@pytest.mark.parametrize("norm", ["blocks.0.ln1", "ln_final"])
+def test_identity_norm_edit_preserves_logits(norm):
+    """HF's Qwen3_5RMSNorm scales by (1 + weight); the bridge's edit fallback must match it."""
+    bridge = TransformerBridge.boot_transformers(MODEL_NAME, device="cpu", dtype=torch.float32)
+    with torch.no_grad():
+        clean = bridge("The quick brown fox")
+        edited = bridge.run_with_hooks(
+            "The quick brown fox", fwd_hooks=[(f"{norm}.hook_scale", lambda t, hook: t.clone())]
+        )
+    assert ((edited - clean).norm() / clean.norm()).item() < 1e-5

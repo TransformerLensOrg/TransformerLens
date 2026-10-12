@@ -36,6 +36,9 @@ from transformer_lens.utilities.aliases import resolve_alias
 from transformer_lens.utilities.lm_utils import lm_cross_entropy_loss
 from transformer_lens.utilities.slice import Slice, SliceInput
 
+# Aliased: the caching methods take a ``remove_batch_dim`` flag that would shadow it.
+from transformer_lens.utilities.tensors import remove_batch_dim as drop_batch_dim
+
 _BLOCK_PATTERN = re.compile("blocks\\.(\\d+)")
 
 # Block-list container attributes a bridge may expose.
@@ -43,6 +46,22 @@ _BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "
 # Encoder blocks name self-attention ``attn``; decoder blocks name it ``self_attn``
 # (``cross_attn`` is a separate submodule, deliberately excluded from stacking).
 _SELF_ATTENTION_NAMES = {"attn": ("attn", "self_attn")}
+
+
+def _input_batch_size(*inputs: Any) -> Optional[int]:
+    """The batch size of the first input that states it (a string, list of strings or tensor).
+
+    A 1-D tensor is one sequence. Returns None when no input says, so the caller can fall
+    back to inferring it from what was cached.
+    """
+    for value in inputs:
+        if isinstance(value, str):
+            return 1
+        if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+            return len(value)
+        if isinstance(value, torch.Tensor) and value.ndim > 0:
+            return 1 if value.ndim == 1 else int(value.shape[0])
+    return None
 
 
 def build_alias_to_canonical_map(hook_dict: Any, prefix: str = "") -> dict:
@@ -939,8 +958,18 @@ class BridgeCore:
         raise ValueError("names_filter must be None, a string, a list of strings, or a callable")
 
     @staticmethod
-    def _pos_slice_dim(name: str) -> int:
-        """Position dimension for a hook's activation (see ``run_with_cache``)."""
+    def _pos_slice_dim(name: str, hook_point: Any = None) -> int:
+        """Position axis of a hook's activation in its batched layout.
+
+        Position is dim 1 for most bridge activations (resid ``[b, p, d]``, per-head
+        ``[b, p, h, d]``, token ids ``[b, p]``) and -2 for attention patterns/scores
+        (``[b, h, q_pos, k_pos]``). Hooks fired on another layout, such as a
+        post-reshape qk-norm (``[b, h, p, d]``) or a Mamba conv input
+        (``[b, channels, p]``), declare their axis via ``HookPoint.pos_dim``.
+        """
+        pos_dim = getattr(hook_point, "pos_dim", None)
+        if pos_dim is not None:
+            return pos_dim
         return -2 if name.endswith(("hook_pattern", "hook_attn_scores")) else 1
 
     def get_caching_hooks(
@@ -954,41 +983,71 @@ class BridgeCore:
     ) -> Tuple[dict, list, list]:
         """Build caching hooks without adding them. Mirrors ``HookedRootModule.get_caching_hooks``.
 
+        ``remove_batch_dim`` drops a leading dimension of size 1 and leaves any other tensor as
+        it is, so a batch larger than 1 keeps its batch dimension instead of losing examples.
+        The check is per tensor, so a broadcast activation with a size-1 leading dimension
+        (e.g. rotary ``hook_cos``/``hook_sin``) is squeezed even when the batch is larger.
+        Unlike ``run_with_cache``, which raises for a batch larger than 1, a hook sees one tensor
+        at a time and cannot tell a batch dimension from a flattened ``[batch * pos, ...]`` one.
+        Hooks that run under ``run_with_hooks(remove_batch_dim=True)`` already receive tensors
+        without a batch dimension, so set the flag on only one of the two.
+
         Returns ``(cache, fwd_hooks, bwd_hooks)`` where each hook is a
         ``(name, hook_fn)`` pair suitable for ``hooks()`` / ``run_with_hooks``.
-        Activations are keyed by the HookPoint's canonical name; backward hooks
-        append ``"_grad"``. ``bwd_hooks`` is empty unless ``incl_bwd``.
+        Activations are keyed by the HookPoint's canonical name, and also by any
+        alias spelling that ``names_filter`` matched. This is broader than
+        ``run_with_cache`` for callable filters: one that matches only an alias
+        yields both the canonical and alias keys here, while ``run_with_cache``
+        stores only the alias. Backward hooks append ``"_grad"``. ``bwd_hooks``
+        is empty unless ``incl_bwd``.
         """
         if cache is None:
             cache = {}
         pos_slice_obj = Slice.unwrap(pos_slice)
         filter_fn = self._normalize_names_filter(names_filter)
 
-        def save_hook(tensor: Any, hook: Any, is_backward: bool = False) -> None:
+        def save_hook(
+            tensor: Any, hook: Any, is_backward: bool = False, alias_names: Tuple[str, ...] = ()
+        ) -> None:
             assert hook.name is not None
-            key = hook.name + "_grad" if is_backward else hook.name
+            suffix = "_grad" if is_backward else ""
             stored = tensor.detach().to(device)
-            if remove_batch_dim:
-                stored = stored[0]
+            # Slice before dropping the batch dim: _pos_slice_dim indexes the
+            # batched layout, so the order must match run_with_cache.
             if pos_slice_obj is not None and stored.dim() >= 2:
-                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name))
-            cache[key] = stored
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(hook.name, hook))
+            if remove_batch_dim:
+                stored = drop_batch_dim(stored)
+            for key in (hook.name, *alias_names):
+                cache[key + suffix] = stored
+
+        # One hook point can be reachable under several names (canonical + aliases).
+        # Gather every name the filter matched so the cache has an entry under the
+        # spelling the caller asked for, not just the canonical one.
+        matched: Dict[int, Tuple[str, HookPoint, List[str]]] = {}
+        for name, hook_point in self.hook_dict.items():
+            if not filter_fn(name):
+                continue
+            entry = matched.setdefault(id(hook_point), (name, hook_point, []))
+            if name != hook_point.name:
+                entry[2].append(name)
 
         fwd_hooks: list = []
         bwd_hooks: list = []
-        seen: set = set()
-        for name, hook_point in self.hook_dict.items():
-            if filter_fn(name) and id(hook_point) not in seen:
-                seen.add(id(hook_point))
-                # The default sweep must not emit gated-off points: they never
-                # fire (empty cache entries at best), and feeding them to
-                # hooks()/run_with_hooks — the advertised composition — would
-                # raise. An explicit filter keeps them so downstream can warn.
-                if names_filter is None and self._gated_hook_reason(hook_point.name or name):
-                    continue
-                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
-                if incl_bwd:
-                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
+        for name, hook_point, alias_names in matched.values():
+            # The default sweep must not emit gated-off points: they never
+            # fire (empty cache entries at best), and feeding them to
+            # hooks()/run_with_hooks — the advertised composition — would
+            # raise. An explicit filter keeps them so downstream can warn.
+            if names_filter is None and self._gated_hook_reason(hook_point.name or name):
+                continue
+            # The unfiltered sweep matches every alias too; keep it canonical-only.
+            extra_names = () if names_filter is None else tuple(alias_names)
+            fwd_hooks.append((name, partial(save_hook, is_backward=False, alias_names=extra_names)))
+            if incl_bwd:
+                bwd_hooks.append(
+                    (name, partial(save_hook, is_backward=True, alias_names=extra_names))
+                )
         return cache, fwd_hooks, bwd_hooks
 
     def add_caching_hooks(
@@ -1002,7 +1061,8 @@ class BridgeCore:
         """Attach caching hooks to the model (does not run it). Returns the cache dict.
 
         Mirrors ``HookedRootModule.add_caching_hooks``. The hooks persist until
-        ``reset_hooks()``.
+        ``reset_hooks()``. ``remove_batch_dim`` behaves as in :meth:`get_caching_hooks`: a leading
+        dimension of size 1 is dropped and a larger batch keeps its batch dimension.
         """
         cache, fwd_hooks, bwd_hooks = self.get_caching_hooks(
             names_filter,
@@ -1189,7 +1249,10 @@ class BridgeCore:
         (KV cache cleaned up on stop). ``start_at_layer`` treats ``input`` as the
         residual entering block ``k`` (see :meth:`forward`); hooks on blocks below
         ``k`` are skipped to match HookedTransformer. ``remove_batch_dim``
-        squeezes/unsqueezes the batch dim around hook callbacks (batch_size==1 only).
+        squeezes/unsqueezes the leading dim around each hook callback whenever
+        that tensor's leading dim is 1 — a per-tensor rule, so broadcast
+        activations such as rotary ``hook_cos``/``hook_sin`` lose their size-1
+        leading dim even at batch > 1.
         ``reset_hooks_end`` removes the hooks this call added when it finishes —
         hooks the caller attached beforehand are left alone either way;
         ``clear_contexts`` also wipes the touched hook points' ``ctx``.
@@ -1262,7 +1325,7 @@ class BridgeCore:
                         if tensor.shape[0] == 1:
                             tensor_no_batch = tensor.squeeze(0)
                             result = _orig_fn(tensor_no_batch, hook)
-                            if result.dim() == tensor_no_batch.dim():
+                            if result is not None and result.dim() == tensor_no_batch.dim():
                                 result = result.unsqueeze(0)
                             return result
                         else:
@@ -1386,8 +1449,9 @@ class BridgeCore:
         (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
         match HookedTransformer. ``pos_slice`` slices each cached activation along
         its position dimension (dim 1 for resid/per-head/token-id activations; the
-        query position ``-2`` for attention patterns/scores). ``incl_bwd`` also
-        caches gradients under ``"<name>_grad"`` by running ``output.backward()``;
+        query position ``-2`` for attention patterns/scores; ``HookPoint.pos_dim``
+        for hooks fired on another layout). ``incl_bwd`` also caches gradients
+        under ``"<name>_grad"`` by running ``output.backward()``;
         the caller must request a scalar output (``return_type="loss"``) and the
         model must be on the gradients-capable transformers driver.
         ``reset_hooks_end`` removes the hooks this call added when it finishes —
@@ -1446,14 +1510,12 @@ class BridgeCore:
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
 
-        def _store(name: str, value: torch.Tensor, suffix: str = "") -> None:
+        def _store(name: str, value: torch.Tensor, hook: Any, suffix: str = "") -> None:
             stored = value.detach().to(cache_device)
             if pos_slice_obj is not None and stored.dim() >= 2:
-                # Position is dim 1 for every bridge activation (resid [b,p,d], per-head
-                # [b,p,h,d], token ids [b,p]) except attention patterns/scores, which
-                # slice the query position at -2 — see _pos_slice_dim. A gradient has its
-                # activation's layout, so the axis comes from the unsuffixed name.
-                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name))
+                # A gradient has its activation's layout, so the axis comes from
+                # the unsuffixed name — see _pos_slice_dim.
+                stored = pos_slice_obj.apply(stored, dim=self._pos_slice_dim(name, hook))
             cache[name + suffix] = stored
 
         def make_cache_hook(name: str):
@@ -1461,16 +1523,16 @@ class BridgeCore:
                 if tensor is None:
                     cache[name] = None
                 elif isinstance(tensor, torch.Tensor):
-                    _store(name, tensor)
+                    _store(name, tensor, hook)
                 elif isinstance(tensor, tuple):
                     if len(tensor) > 0 and isinstance(tensor[0], torch.Tensor):
-                        _store(name, tensor[0])
+                        _store(name, tensor[0], hook)
                     else:
                         pass
                 else:
                     try:
                         if hasattr(tensor, "detach"):
-                            _store(name, tensor)
+                            _store(name, tensor, hook)
                     except:
                         pass
                 return tensor
@@ -1519,7 +1581,7 @@ class BridgeCore:
         def make_grad_cache_hook(name: str):
             def grad_hook(tensor: torch.Tensor, *, hook: Any) -> None:
                 if isinstance(tensor, torch.Tensor):
-                    _store(name, tensor, suffix="_grad")
+                    _store(name, tensor, hook, suffix="_grad")
                 # A non-None return from a backward hook replaces grad_input; stay read-only.
                 return None
 
@@ -1703,15 +1765,25 @@ class BridgeCore:
                         if single_target + suffix in cache:
                             cache[alias_name + suffix] = cache[single_target + suffix]
                             break
+        # The input states the batch size; inferring it from the cached shapes goes wrong
+        # when the filter selects only flattened or position-indexed hooks.
+        batch_size = _input_batch_size(
+            processed_args[0] if processed_args else None,
+            filtered_kwargs.get("input_ids"),
+            filtered_kwargs.get("inputs_embeds"),
+        )
         if return_cache_object:
             activation_cache = ActivationCache(cache, self, has_batch_dim=True)
             if remove_batch_dim:
-                activation_cache.remove_batch_dim()
+                activation_cache.remove_batch_dim(batch_size=batch_size)
             return (output, activation_cache)
         else:
             if remove_batch_dim:
-                for key in cache:
-                    if cache[key] is not None and isinstance(cache[key], torch.Tensor):
-                        if cache[key].size(0) == 1:
-                            cache[key] = cache[key][0]
+                # Same batch-size check and squeeze rule as the ActivationCache path.
+                tensors = {k: v for k, v in cache.items() if isinstance(v, torch.Tensor)}
+                cache.update(
+                    ActivationCache(tensors, self)
+                    .remove_batch_dim(batch_size=batch_size)
+                    .cache_dict
+                )
             return (output, cache)

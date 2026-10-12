@@ -29,6 +29,8 @@ from inspect_ai.model import (
     modelapi,
 )
 
+from transformer_lens.utilities.position_ids import accepts_mask_derived_position_ids
+
 from . import hooks, wire
 from ._provider_base import (
     _InspectModelAPIBase,
@@ -37,6 +39,7 @@ from ._provider_base import (
     _require_served,
     _warn_unsupported_config,
 )
+from .masks import normalize_attention_mask
 
 # NOT "transformer_lens" — inspect_ai ships a built-in provider by that name (the
 # reverse direction: serving a HookedTransformer as an Inspect model for generation).
@@ -83,6 +86,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
 
     # Real per-position logits via direct HF forward — loss/both via RemoteBridge work.
     provides_sequence_logits = True
+    supports_attention_mask = True
 
     def __init__(
         self,
@@ -145,6 +149,19 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         input_ids = extra_args.get("input_ids")
         if input_ids is None:
             input_ids = self._messages_to_ids(input)[0].tolist()
+        mask_value = extra_args.get("attention_mask")
+        mask = (
+            normalize_attention_mask(mask_value, len(input_ids)) if mask_value is not None else None
+        )
+        forward_kwargs: dict[str, Any] = {}
+        if mask is not None:
+            attention_mask = torch.tensor([mask], device=self._device)
+            forward_kwargs["attention_mask"] = attention_mask
+            positions = (attention_mask.cumsum(-1) - 1).clamp_min(0)
+            default_positions = torch.arange(len(input_ids), device=self._device)
+            needs_positions = bool(((positions != default_positions) & attention_mask.bool()).any())
+            if needs_positions and accepts_mask_derived_position_ids(self._hf):
+                forward_kwargs["position_ids"] = positions
         # capture/interventions are keyed by "<layer>:<kind>" (hooks.wire_key).
         capture_keys = list(extra_args.get("capture", []))
         for key in capture_keys:
@@ -170,7 +187,7 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         try:
             with torch.no_grad():
                 ids = torch.tensor([list(input_ids)], device=self._device)
-                outputs = self._hf(ids, output_attentions=bool(pattern_layers))
+                outputs = self._hf(ids, output_attentions=bool(pattern_layers), **forward_kwargs)
                 logits = outputs.logits  # (1, seq, vocab)
         finally:
             for handle in handles:
@@ -188,9 +205,11 @@ class TransformerLensTransformersModelAPI(_InspectModelAPIBase):
         if want_logits:
             metadata["tl_logits"] = wire.encode_array(logits[0].float().cpu().numpy())
 
-        next_id = int(logits[0, -1].argmax())
+        last_token = max(i for i, keep in enumerate(mask) if keep) if mask is not None else -1
+        next_logits = logits[0, last_token]
+        next_id = int(next_logits.argmax())
         logprobs = (
-            Logprobs(content=[self._logprob_entry(next_id, logits[0, -1], config.top_logprobs)])
+            Logprobs(content=[self._logprob_entry(next_id, next_logits, config.top_logprobs)])
             if config.logprobs
             else None
         )

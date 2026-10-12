@@ -8,15 +8,16 @@ Tools:
     - attribution_patching: Attribution patching (gradient-linearized activation
       patching) over residual-stream nodes and edges: typed computational graph,
       a names-filtered manual-backward gradient cache, and signed node and edge
-      scores (EAP). Integrated gradients (EAP-IG) and ablate-outside faithfulness
-      are not implemented yet.
+      scores (EAP), plus forward-only ablate-outside faithfulness with corrupt
+      or held-out mean replacements and circuit-relative class diagnostics.
+      Integrated gradients (EAP-IG) are not implemented.
     - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
       space with explicit raw-gradient sign semantics.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
       layers, or attention heads.
     - direct_path_patching: Direct path patching for head-to-head circuit
       analysis.
-    - jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
+    - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
       anchored coordinate patching (offline and dynamic/hooked).
@@ -26,8 +27,17 @@ Tools:
       intervals, and a versioned, fingerprinted JSON artifact schema. Its
       ``_cli`` sibling is the artifact-generation entry point and is deliberately
       not imported here, so ``python -m`` runs it once.
+    - logit_lens: One-call logit lens over the accumulated residual stream and
+      the ``logit_readout`` kernel that reads any ``d_model`` vector through the
+      real final norm, unembedding and adapter output transform, chunked over
+      the vocabulary with target ranks, top-k and vocabulary subsets.
     - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
       attention-head OQ/OK/OV affinity.
+    - relevance_lens: The Relevance lens (R-lens) -- a Jacobian lens whose
+      per-layer transport matrices are estimated with scoped Layer-wise
+      Relevance Propagation rules on residual-stream norms and gated MLPs,
+      reusing the Jacobian lens readout, vocabulary vectors, sparse
+      decomposition, and interventions unchanged.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
       activation tensors, with train-only selection and raw null controls.
     - svd_circuits: Per-head QK/OV singular-vector decomposition with a
@@ -39,8 +49,11 @@ Tools:
 from transformer_lens.tools.analysis.attribution_patching import (
     AttributionResult,
     EdgeAttributionConfig,
+    FaithfulnessConfig,
+    FaithfulnessResult,
     Node,
     attribution_patch,
+    faithfulness,
 )
 from transformer_lens.tools.analysis.backward_lens import (
     BackwardLens,
@@ -85,6 +98,12 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     estimate_occupancy,
     get_sparse_decomposition,
 )
+from transformer_lens.tools.analysis.logit_lens import (
+    LogitLensResult,
+    LogitReadout,
+    logit_lens,
+    logit_readout,
+)
 from transformer_lens.tools.analysis.projection_kernel import (
     AttentionHeadRef,
     HeadAffinityPair,
@@ -97,9 +116,12 @@ from transformer_lens.tools.analysis.projection_kernel import (
     projection_kernel,
     random_projection_kernel_moments,
 )
+from transformer_lens.tools.analysis.relevance_lens import RelevanceLens
 from transformer_lens.tools.analysis.sparse_probing import (
     SparseProbeControl,
+    SparseProbeConvergenceError,
     SparseProbeMetrics,
+    SparseProbeRejection,
     SparseProbeResult,
     SparseProbeSweep,
     fit_sparse_probe,
@@ -133,6 +155,8 @@ __all__ = [
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
+    "FaithfulnessConfig",
+    "FaithfulnessResult",
     "FunctionSpec",
     "HeadAffinityPair",
     "HeadAffinityResult",
@@ -144,6 +168,8 @@ __all__ = [
     "JacobianLens",
     "JacobianLensReadout",
     "LinearGradientFactors",
+    "LogitLensResult",
+    "LogitReadout",
     "LogitSignature",
     "Node",
     "PatchResult",
@@ -151,8 +177,11 @@ __all__ = [
     "ProjectionKernelResult",
     "RandomSubspaceReference",
     "RankReportRow",
+    "RelevanceLens",
     "SparseProbeControl",
+    "SparseProbeConvergenceError",
     "SparseProbeMetrics",
+    "SparseProbeRejection",
     "SparseProbeResult",
     "SparseProbeSweep",
     "SubspaceBasis",
@@ -163,11 +192,14 @@ __all__ = [
     "decompose_head",
     "direct_logit_attribution",
     "estimate_occupancy",
+    "faithfulness",
     "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
     "load_artifact",
+    "logit_lens",
+    "logit_readout",
     "logit_signature",
     "orthonormal_subspace",
     "patch_along_directions",

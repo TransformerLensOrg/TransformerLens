@@ -425,7 +425,7 @@ def run_causal_swap_trial(
             source_id,
             target_id,
             excluded_ids={source_answer_id, target_answer_id},
-            active_support=decomposition.support,
+            active_support=decomposition.support.tolist(),
             tolerance=control_tolerance,
             seed=seed,
         )
