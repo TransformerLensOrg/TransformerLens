@@ -1,9 +1,7 @@
 """Model-free unit tests for the attribution-patching substrate.
 
-These tests target the ``TransformerBridge`` API exclusively (TransformerLens v4
-deprecates ``HookedTransformer``). They use a tiny, deliberately *linear*
-``TransformerBridge`` subclass so gradients have a closed form and, later, the
-first-order attribution identity holds exactly.
+These tests target the ``TransformerBridge`` API using tiny linear subclasses
+with closed-form gradients and exact first-order attribution identities.
 """
 
 from __future__ import annotations
@@ -22,21 +20,34 @@ from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis.attribution_patching import (
     AttributionResult,
     EdgeAttributionConfig,
+    EdgeClass,
+    FaithfulnessConfig,
+    FaithfulnessResult,
     GradientCache,
     Node,
+    NodeKind,
+    _ablate_edges,
     _assert_edges_unique,
     _check_required_hooks,
+    _edge_class,
     _edge_effects,
     _edge_hook_flags,
     _edge_hook_names,
     _ensure_edge_hook_flags,
+    _excluded_writers_by_reader,
+    _mean_writer_contributions,
     _node_effects,
+    _normalize_circuit,
+    _reader_hook_names,
     _required_hook_names,
     _writer_hook_name,
+    _writer_hook_names,
     attribution_patch,
     cache_activation_and_gradient,
+    capture_writer_outputs,
     enumerate_edges,
     enumerate_nodes,
+    faithfulness,
 )
 
 D_MODEL = 4
@@ -227,7 +238,7 @@ def test_gradient_cache_activation_only_skips_gradients() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 2 — typed computational-graph node model
+# Typed computational-graph node model
 # ---------------------------------------------------------------------------
 
 N_HEADS = 2
@@ -311,7 +322,7 @@ def test_enumerate_nodes_raises_on_missing_hook() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 3 — config + result API
+# Configuration and result API
 # ---------------------------------------------------------------------------
 
 
@@ -383,7 +394,7 @@ def test_top_edges_empty_when_no_edge_sweep_has_run() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 4 — node attribution_patch entry point
+# Node attribution entry point
 # ---------------------------------------------------------------------------
 
 
@@ -391,7 +402,7 @@ class _AttnMlpBlock(nn.Module):
     """A block exposing the standard node-granularity hook points.
 
     ``hook_z`` carries the per-head output ``[batch, seq, n_heads, d_head]`` and
-    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` — the two per-layer
+    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` -- the two per-layer
     hook families ``enumerate_nodes`` reads. The block is linear; the test only
     needs a real hook graph with gradients flowing to those points, not attention.
     """
@@ -609,10 +620,10 @@ def test_attribution_patch_identical_inputs_are_exactly_zero_in_eval_mode() -> N
 
 
 # ---------------------------------------------------------------------------
-# Commit 5 — linear-model reconstruction identity
+# Linear-model reconstruction identity
 # ---------------------------------------------------------------------------
 #
-# ``_NodeGraphToyBridge`` is fully linear by construction — the remaining
+# ``_NodeGraphToyBridge`` is fully linear by construction -- the remaining
 # nonlinearities on the residual->metric path are neutralized without extra
 # freezing: ``ln_final`` is ``nn.Identity``, the
 # attention projection is a plain linear map with no softmax pattern, the MLP has
@@ -662,8 +673,8 @@ def test_linear_reconstruction_identity_holds_on_a_complete_cut() -> None:
     post-attention residual, which already contains the embed and attention writes),
     so a node's full-model gradient re-counts the paths of every node upstream of
     it: summing embed + attention + MLP scores overcounts. The embed layer is the
-    input-side complete cut — every path to the metric passes through exactly one
-    embed position — so its scores alone reconstruct the exact metric delta for a
+    input-side complete cut -- every path to the metric passes through exactly one
+    embed position -- so its scores alone reconstruct the exact metric delta for a
     linear model.
     """
     model = _NodeGraphToyBridge()
@@ -774,7 +785,7 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
     With an input-dependent Jacobian the clean and corrupt caches hold *different*
     gradients, so pairing the clean-activation delta with the clean gradient (the
     reversed convention) yields different scores from the corrupt-gradient one the
-    docstring promises. This pins ``attribution_patch`` to the corrupt gradient — a
+    docstring promises. This pins ``attribution_patch`` to the corrupt gradient -- a
     guard the linear tests structurally cannot provide.
     """
     model = _NonlinearNodeGraphToyBridge()
@@ -1295,7 +1306,7 @@ def test_enumerate_edges_drops_same_layer_heads_from_mlp_reader_on_parallel_attn
 
 
 # ---------------------------------------------------------------------------
-# Commit 3 - edge scoring in attribution_patch
+# Edge attribution scoring
 # ---------------------------------------------------------------------------
 #
 # Edge scoring needs every reader hook to actually participate in the forward
@@ -1376,7 +1387,7 @@ class _EdgeScoringBlock(nn.Module):
         )
 
         w_o_per_head = self.w_o.weight.reshape(d_model, self.n_heads, self.d_head).permute(1, 2, 0)
-        per_head_out_raw = torch.einsum("bshd,hdm->bshm", z, w_o_per_head)
+        per_head_out_raw = self._attention_output(torch.einsum("bshd,hdm->bshm", z, w_o_per_head))
         if self.cfg.use_attn_result:
             per_head_out = self.hook_result(per_head_out_raw)
         else:
@@ -1386,6 +1397,28 @@ class _EdgeScoringBlock(nn.Module):
         mlp_in = self.hook_mlp_in(residual) if self.cfg.use_hook_mlp_in else residual
         mlp_out = self.hook_mlp_out(self.w_mlp(mlp_in))
         return self.hook_resid_post(residual + mlp_out)
+
+    def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
+        """Transform the per-head attention output before it joins the residual.
+
+        Identity here. A subclass can make the block nonlinear, which is what
+        stops a circuit from reproducing the metric merely by containing every
+        edge into the logits reader.
+        """
+        return per_head_out
+
+
+class _NonlinearEdgeScoringBlock(_EdgeScoringBlock):
+    """``_EdgeScoringBlock`` with a GELU on the attention output path.
+
+    The nonlinearity breaks the linear relation between a writer's contribution
+    and the metric, so a circuit cannot recover the metric just by containing
+    every edge into the logits reader. That is what makes a random edge set of
+    the same size a meaningful baseline rather than a coin flip.
+    """
+
+    def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.gelu(per_head_out)
 
 
 class _EdgeScoringToyBridge(_LinearToyBridge):
@@ -1464,6 +1497,30 @@ class _EdgeScoringToyBridge(_LinearToyBridge):
 
     def set_use_hook_mlp_in(self, use_hook_mlp_in: bool) -> None:
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
+
+class _NonlinearEdgeScoringToyBridge(_EdgeScoringToyBridge):
+    """``_EdgeScoringToyBridge`` whose attention output passes through a GELU.
+
+    Reuses the parent's hook graph and ``hooks()`` plumbing but swaps in
+    :class:`_NonlinearEdgeScoringBlock`, so a writer's contribution reaches the
+    metric nonlinearly. On a linear toy any circuit holding every edge into the
+    logits reader recovers the metric outright, which makes a random baseline
+    meaningless; the nonlinearity is what gives the comparison teeth.
+    """
+
+    def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
+        super().__init__(dtype=dtype)
+        torch.manual_seed(1)
+        self.blocks = nn.ModuleList(
+            [
+                _NonlinearEdgeScoringBlock(D_MODEL, N_HEADS, D_HEAD, layer, dtype, self.cfg)
+                for layer in range(N_LAYERS)
+            ]
+        )
+        # The parent's eval() ran before these blocks existed, so they would
+        # otherwise start in training mode and trip require_eval_mode.
+        self.eval()
 
 
 def test_attribution_patch_edge_granularity_scores_every_edge_with_finite_values() -> None:
@@ -1647,10 +1704,10 @@ def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Commit 4 - exact-patch parity and mutation-checked reconstruction
+# Exact-patch parity and mutation-checked reconstruction
 # ---------------------------------------------------------------------------
 #
-# Two guards on the edge-scoring identity Risk 1 warns about: a genuine
+# Two guards on the edge-scoring identity: a genuine
 # activation patch of a single edge must match _edge_effects' estimate (sign
 # always; magnitude too on this linear toy model), and mutating one writer's
 # captured contribution must change only the edges that writer feeds, never a
@@ -1719,6 +1776,45 @@ def test_edge_scores_sum_to_the_readers_direct_input_change() -> None:
     assert checked > 0
 
 
+def _assert_mutation_only_changes_the_perturbed_writers_edges(
+    edges: list[tuple[Node, Node]],
+    writer: Node,
+    perturbation: torch.Tensor,
+    baseline_scores: dict[tuple[Node, Node], float],
+    mutated_scores: dict[tuple[Node, Node], float],
+    corrupt_cache: GradientCache,
+) -> None:
+    """Assert a single-writer perturbation moved exactly that writer's edges.
+
+    The scorer indexes writer deltas and reader gradients independently.
+    Perturbing one head at one position must not change sibling writers' scores.
+    """
+    changed = 0
+    moved = 0
+    for edge in edges:
+        edge_writer, reader = edge
+        if edge_writer == writer:
+            grad = corrupt_cache.gradients[reader.hook_name]
+            assert grad is not None
+            if reader.kind in ("q_input", "k_input", "v_input"):
+                grad_vec = grad[0, reader.position, reader.head]
+            else:
+                grad_vec = grad[0, reader.position]
+            shift = float((perturbation * grad_vec).sum())
+            expected = baseline_scores[edge] + shift
+            # Cancellation in float32 needs an absolute tolerance.
+            assert mutated_scores[edge] == pytest.approx(expected, abs=1e-6)
+            changed += 1
+            if abs(shift) > 1e-6:
+                assert mutated_scores[edge] != pytest.approx(baseline_scores[edge])
+                moved += 1
+        else:
+            assert mutated_scores[edge] == baseline_scores[edge]
+
+    assert changed > 0
+    assert moved > 0  # the perturbation genuinely shifts scores at the readout position
+
+
 def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> None:
     """Perturbing one writer's captured contribution changes only that writer's edges.
 
@@ -1768,30 +1864,9 @@ def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> Non
 
     mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
 
-    changed = 0
-    moved = 0
-    for edge in edges:
-        edge_writer, reader = edge
-        if edge_writer == writer:
-            grad = corrupt_cache.gradients[reader.hook_name]
-            assert grad is not None
-            if reader.kind in ("q_input", "k_input", "v_input"):
-                grad_vec = grad[0, reader.position, reader.head]
-            else:
-                grad_vec = grad[0, reader.position]
-            shift = float((perturbation * grad_vec).sum())
-            expected = baseline_scores[edge] + shift
-            # float32: baseline and shift partly cancel, so the default rel=1e-6 is too tight
-            assert mutated_scores[edge] == pytest.approx(expected, abs=1e-6)
-            changed += 1
-            if abs(shift) > 1e-6:
-                assert mutated_scores[edge] != pytest.approx(baseline_scores[edge])
-                moved += 1
-        else:
-            assert mutated_scores[edge] == baseline_scores[edge]
-
-    assert changed > 0
-    assert moved > 0  # the perturbation genuinely shifts scores at the readout position
+    _assert_mutation_only_changes_the_perturbed_writers_edges(
+        edges, writer, perturbation, baseline_scores, mutated_scores, corrupt_cache
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1956,3 +2031,1259 @@ def test_top_edges_can_surface_a_head_to_logits_edge() -> None:
 
     # At least one carries a real signed effect, so the ranking is not over zeros.
     assert any(abs(score) > 1e-6 for _writer, _reader, score in head_to_logits)
+
+
+# ---------------------------------------------------------------------------
+# Writer-output capture (forward-only)
+# ---------------------------------------------------------------------------
+#
+# Rewriting a reader's input during a live forward pass needs the writers'
+# current contributions rather than a gradient estimate. The capture is
+# therefore forward-only and names-filtered to the writer families, the
+# opposite contract from cache_activation_and_gradient.
+
+
+def test_writer_hook_names_cover_the_three_writer_families() -> None:
+    names = _writer_hook_names(N_LAYERS)
+
+    assert names[0] == "hook_embed"
+    for layer in range(N_LAYERS):
+        assert f"blocks.{layer}.attn.hook_result" in names
+        assert f"blocks.{layer}.hook_mlp_out" in names
+    # Writer families only: no reader inputs, and no pre-hook_result attn-z.
+    assert not any("hook_q_input" in name for name in names)
+    assert not any("hook_mlp_in" in name for name in names)
+    assert not any(name.endswith("attn.hook_z") for name in names)
+
+
+def test_reader_hook_names_cover_the_reader_input_families() -> None:
+    names = _reader_hook_names(N_LAYERS)
+
+    for layer in range(N_LAYERS):
+        for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
+            assert f"blocks.{layer}.attn.{input_hook}" in names
+        assert f"blocks.{layer}.hook_mlp_in" in names
+    # Reader inputs only: no writer outputs.
+    assert not any("hook_result" in name for name in names)
+    assert not any("hook_mlp_out" in name for name in names)
+
+
+def test_capture_writer_outputs_populates_only_the_writer_family() -> None:
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+
+    with _edge_hook_flags(model):
+        captured = capture_writer_outputs(model, tokens)
+
+    assert set(captured) == set(_writer_hook_names(N_LAYERS))
+    # The reader-input family and the pre-hook_result attn-z are not captured.
+    assert "blocks.0.attn.hook_q_input" not in captured
+    assert "blocks.0.hook_mlp_in" not in captured
+    assert "blocks.0.attn.hook_z" not in captured
+
+    assert captured["hook_embed"].shape == (1, SEQ_LEN, D_MODEL)
+    for layer in range(N_LAYERS):
+        assert captured[f"blocks.{layer}.attn.hook_result"].shape == (
+            1,
+            SEQ_LEN,
+            N_HEADS,
+            D_MODEL,
+        )
+        assert captured[f"blocks.{layer}.hook_mlp_out"].shape == (
+            1,
+            SEQ_LEN,
+            D_MODEL,
+        )
+
+
+def test_capture_writer_outputs_returns_detached_tensors() -> None:
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+
+    with _edge_hook_flags(model):
+        captured = capture_writer_outputs(model, tokens)
+
+    for tensor in captured.values():
+        assert not tensor.requires_grad
+        assert tensor.grad_fn is None
+
+
+def test_capture_writer_outputs_raises_when_the_filter_matches_nothing() -> None:
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+
+    with pytest.raises(ValueError, match="matched no hook points"):
+        capture_writer_outputs(model, tokens, names_filter=["blocks.0.not_a_hook"])
+
+
+def test_capture_writer_outputs_needs_no_grad() -> None:
+    """The capture runs with autograd off, where the gradient helper refuses.
+
+    The two helpers have opposite contracts: this one is forward-only and must
+    work under ``torch.no_grad()``, while ``cache_activation_and_gradient``
+    exists to retain gradients and raises without autograd.
+    """
+    model = _EdgeScoringToyBridge()
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+
+    with _edge_hook_flags(model), torch.no_grad():
+        captured = capture_writer_outputs(model, tokens)
+        assert set(captured) == set(_writer_hook_names(N_LAYERS))
+
+        with pytest.raises(ValueError, match="autograd"):
+            cache_activation_and_gradient(model, tokens, metric)
+
+
+# ---------------------------------------------------------------------------
+# Reader-input rewrite (edge ablation core)
+# ---------------------------------------------------------------------------
+#
+# The residual stream is a running sum, so a reader's input is exactly the sum
+# of its writers' contributions. Ablating an edge means subtracting that
+# writer's live contribution and adding its replacement at the reader's fork
+# hook, which fires before the layer norm -- an exact correction, not an
+# approximation. Partial circuits need independent reader and logit references;
+# boundary circuits alone cannot expose incorrect upstream corrections.
+
+
+def _ablation_replacement(
+    model: _EdgeScoringToyBridge, tokens: torch.Tensor
+) -> dict[str, torch.Tensor]:
+    """The value standing in for an ablated writer: the corrupt run's own."""
+    with _edge_hook_flags(model):
+        return capture_writer_outputs(model, tokens)
+
+
+def test_excluded_writers_by_reader_groups_only_out_of_circuit_edges() -> None:
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+
+    # Keeping the whole graph excludes nothing.
+    assert _excluded_writers_by_reader(edges, edges) == {}
+
+    # Keeping nothing excludes every writer, grouped once per reader.
+    excluded = _excluded_writers_by_reader(edges, [])
+    readers = {reader for _writer, reader in edges}
+    assert set(excluded) == readers
+    for reader, writers in excluded.items():
+        expected = [writer for writer, edge_reader in edges if edge_reader == reader]
+        assert writers == expected
+
+    # A single kept edge excludes exactly that edge's writer from its reader.
+    # Pick a reader with more than one incoming edge, so the exclusion is
+    # observable rather than emptying the reader's writer list.
+    kept_edge = next(
+        edge for edge in edges if len([writer for writer, reader in edges if reader == edge[1]]) > 1
+    )
+    excluded = _excluded_writers_by_reader(edges, [kept_edge])
+    kept_writer, kept_reader = kept_edge
+    incoming = [writer for writer, reader in edges if reader == kept_reader]
+    assert kept_writer not in excluded[kept_reader]
+    assert len(excluded[kept_reader]) == len(incoming) - 1
+
+
+def test_ablating_the_full_circuit_reproduces_the_clean_metric() -> None:
+    """Keeping every edge leaves each reader's input untouched."""
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, corrupt, metric, names_filter=edge_hook_names
+    )
+    clean_cache = cache_activation_and_gradient(
+        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    replacements = _ablation_replacement(model, corrupt)
+
+    with _edge_hook_flags(model):
+        ablated_logits = _ablate_edges(model, clean, edges, edges, replacements)
+
+    ablated = float(metric(ablated_logits))
+    assert ablated == pytest.approx(float(clean_cache.metric), abs=1e-6)
+    # Discriminating: the clean and corrupt runs genuinely differ, so this
+    # cannot pass on a degenerate pair.
+    assert ablated != pytest.approx(float(corrupt_cache.metric), abs=1e-6)
+
+
+def test_ablation_installs_one_hook_per_reader_node() -> None:
+    """Each reader node is corrected once, not once per incoming edge.
+
+    Several reader nodes share one hook point (one per head, one per position),
+    and each rewrites a disjoint slice of it. Installing one hook per excluded
+    edge would apply the correction repeatedly and overshoot, so the count of
+    hooks on each fork point must equal the number of reader nodes reading it --
+    not the number of edges into those nodes.
+    """
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+    replacements = _ablation_replacement(model, tokens)
+
+    readers = {reader for _writer, reader in edges}
+    assert len(readers) > 0
+    # Some readers have several incoming edges, so a per-edge hook would
+    # register several hooks on the same point.
+    crowded = {
+        reader
+        for reader in readers
+        if len([writer for writer, edge_reader in edges if edge_reader == reader]) > 1
+    }
+    assert crowded
+
+    # The ablation's hooks live only for the duration of its forward, so count
+    # them from a pre-hook on the model root, which fires while they are
+    # registered.
+    counts: dict[str, int] = {}
+
+    def snapshot(_module: nn.Module, _args: tuple) -> None:
+        for reader in readers:
+            counts[reader.hook_name] = len(model.hook_dict[reader.hook_name].fwd_hooks)
+
+    handle = model.register_forward_pre_hook(snapshot)
+    try:
+        with _edge_hook_flags(model):
+            _ablate_edges(model, tokens, edges, [], replacements)
+    finally:
+        handle.remove()
+
+    expected = {
+        name: len([reader for reader in readers if reader.hook_name == name])
+        for name in {reader.hook_name for reader in readers}
+    }
+    assert counts == expected
+    # Fewer hooks than edges: the grouping collapsed the per-edge corrections.
+    assert sum(counts.values()) < len(edges)
+
+
+def _toy_ablation_edges() -> list[tuple[Node, Node]]:
+    """Explicit topology for the two-layer, two-head sequential toy."""
+    edges: list[tuple[Node, Node]] = []
+    for position in range(SEQ_LEN):
+        writers = [
+            Node("embed", position),
+            Node("attn_head_out", position, layer=0, head=0),
+            Node("attn_head_out", position, layer=0, head=1),
+            Node("mlp_out", position, layer=0),
+            Node("attn_head_out", position, layer=1, head=0),
+            Node("attn_head_out", position, layer=1, head=1),
+            Node("mlp_out", position, layer=1),
+        ]
+        kinds: tuple[NodeKind, ...] = ("q_input", "k_input", "v_input")
+        for layer, upstream, post_attention in ((0, 1, 3), (1, 4, 6)):
+            for kind in kinds:
+                for head in range(N_HEADS):
+                    reader = Node(kind, position, layer=layer, head=head)
+                    edges.extend((writer, reader) for writer in writers[:upstream])
+            reader = Node("mlp_in", position, layer=layer)
+            edges.extend((writer, reader) for writer in writers[:post_attention])
+        reader = Node("logits", position, layer=1)
+        edges.extend((writer, reader) for writer in writers)
+    return edges
+
+
+@torch.no_grad()
+def _functional_toy_ablation(
+    model: _EdgeScoringToyBridge,
+    tokens: torch.Tensor,
+    excluded: set[tuple[Node, Node]],
+    replacements: dict[Node, torch.Tensor],
+) -> tuple[torch.Tensor, dict[Node, torch.Tensor], dict[Node, torch.Tensor]]:
+    """Evaluate the linear toy by summing edge values, without invoking hooks."""
+    writers: dict[Node, torch.Tensor] = {}
+    readers: dict[Node, torch.Tensor] = {}
+
+    def read(reader: Node, available: list[Node]) -> torch.Tensor:
+        value = torch.stack(
+            [
+                replacements[writer] if (writer, reader) in excluded else writers[writer]
+                for writer in available
+            ]
+        ).sum(dim=0)
+        readers[reader] = value
+        return value
+
+    outputs = []
+    for position in range(tokens.shape[1]):
+        embed = Node("embed", position)
+        writers[embed] = model.embed.weight[tokens[0, position]]
+        available = [embed]
+        for layer, block in enumerate(model.blocks):
+            heads = []
+            for head in range(N_HEADS):
+                z = torch.zeros(D_HEAD, dtype=model.cfg.dtype)
+                projections: tuple[tuple[NodeKind, torch.Tensor], ...] = (
+                    ("q_input", block.w_q.weight),
+                    ("k_input", block.w_k.weight),
+                    ("v_input", block.w_v.weight),
+                )
+                for kind, weight in projections:
+                    reader = Node(kind, position, layer=layer, head=head)
+                    z += weight[head * D_HEAD : (head + 1) * D_HEAD] @ read(reader, available)
+                writer = Node("attn_head_out", position, layer=layer, head=head)
+                writers[writer] = block.w_o.weight[:, head * D_HEAD : (head + 1) * D_HEAD] @ z
+                heads.append(writer)
+            available.extend(heads)
+            reader = Node("mlp_in", position, layer=layer)
+            writer = Node("mlp_out", position, layer=layer)
+            writers[writer] = block.w_mlp.weight @ read(reader, available)
+            available.append(writer)
+        final = read(Node("logits", position, layer=1), available)
+        outputs.append(model.unembed.weight @ final)
+    return torch.stack(outputs).unsqueeze(0), writers, readers
+
+
+def _toy_replacement_tensors(writers: dict[Node, torch.Tensor]) -> dict[str, torch.Tensor]:
+    tensors = {"hook_embed": torch.stack([writers[Node("embed", p)] for p in range(SEQ_LEN)])[None]}
+    for layer in range(N_LAYERS):
+        tensors[f"blocks.{layer}.attn.hook_result"] = torch.stack(
+            [
+                torch.stack(
+                    [writers[Node("attn_head_out", p, layer=layer, head=h)] for h in range(N_HEADS)]
+                )
+                for p in range(SEQ_LEN)
+            ]
+        )[None]
+        tensors[f"blocks.{layer}.hook_mlp_out"] = torch.stack(
+            [writers[Node("mlp_out", p, layer=layer)] for p in range(SEQ_LEN)]
+        )[None]
+    return tensors
+
+
+def _observed_toy_ablation(
+    model: _EdgeScoringToyBridge,
+    clean: torch.Tensor,
+    circuit: list[tuple[Node, Node]],
+    replacements: dict[Node, torch.Tensor],
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[torch.Tensor, dict[Node, torch.Tensor]]:
+    observed: dict[Node, torch.Tensor] = {}
+    original_hooks = model.hooks
+    edges = _toy_ablation_edges()
+
+    def observer(reader: Node) -> Callable[..., None]:
+        def capture(tensor: torch.Tensor, *, hook: Any) -> None:
+            del hook
+            if reader.head is None:
+                observed[reader] = tensor[0, reader.position].clone()
+            else:
+                observed[reader] = tensor[0, reader.position, reader.head].clone()
+
+        return capture
+
+    @contextmanager
+    def hooks(fwd_hooks: list[tuple[str, Any]], **kwargs: Any) -> Iterator[Any]:
+        # Observers run after all corrections sharing the reader's hook point.
+        observers = [
+            (reader.hook_name, observer(reader))
+            for reader in dict.fromkeys(reader for _, reader in edges)
+        ]
+        with original_hooks(fwd_hooks=fwd_hooks + observers, **kwargs):
+            yield model
+
+    with monkeypatch.context() as patch, _edge_hook_flags(model):
+        patch.setattr(model, "hooks", hooks)
+        logits = _ablate_edges(model, clean, edges, circuit, _toy_replacement_tensors(replacements))
+    return logits, observed
+
+
+@pytest.mark.parametrize("kind", ["q_input", "k_input", "v_input", "mlp_in", "logits"])
+@pytest.mark.parametrize("head,position", [(0, 0), (1, 2)])
+def test_partial_ablation_matches_functional_toy_reference(
+    kind: NodeKind, head: int, position: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    assert edges == enumerate_edges(model, _synthetic_edge_cache())
+    clean_logits, clean_writers, clean_readers = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    with torch.no_grad():
+        torch.testing.assert_close(clean_logits, model(clean))
+        torch.testing.assert_close(corrupt_logits, model(corrupt))
+    writer = Node("attn_head_out", position, layer=0, head=head)
+    reader = Node(kind, position, layer=1, head=head if kind.endswith("input") else None)
+    excluded = {(writer, reader)}
+    assert excluded <= set(edges)
+    assert not torch.allclose(clean_writers[writer], replacements[writer])
+    circuit = [edge for edge in edges if edge not in excluded]
+    expected, _, expected_readers = _functional_toy_ablation(model, clean, excluded, replacements)
+    actual, observed = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+    assert not torch.allclose(actual, clean_logits)
+    assert not torch.allclose(observed[reader], clean_readers[reader])
+    assert observed.keys() == expected_readers.keys()
+    for node, value in expected_readers.items():
+        torch.testing.assert_close(observed[node], value, atol=1e-12, rtol=1e-12)
+
+
+def test_sparse_partial_ablation_matches_functional_toy_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    clean_logits, _, _ = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    circuit = edges[::2]
+    excluded = set(edges) - set(circuit)
+    expected, _, readers = _functional_toy_ablation(model, clean, excluded, replacements)
+    actual, observed = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+    assert not torch.allclose(actual, clean_logits)
+    assert not torch.allclose(actual, corrupt_logits)
+    for reader, value in readers.items():
+        torch.testing.assert_close(observed[reader], value, atol=1e-12, rtol=1e-12)
+
+
+def test_coupled_partial_ablation_uses_intervened_live_writers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    clean_logits, clean_writers, clean_readers = _functional_toy_ablation(model, clean, set(), {})
+    _, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    embed = Node("embed", 2)
+    writer = Node("attn_head_out", 2, layer=0, head=0)
+    downstream = Node("v_input", 2, layer=1, head=1)
+    excluded = {
+        (embed, Node("q_input", 2, layer=0, head=0)),
+        (writer, Node("k_input", 2, layer=1, head=0)),
+    }
+    circuit = [edge for edge in edges if edge not in excluded]
+    assert (writer, downstream) in circuit
+    expected, live_writers, readers = _functional_toy_ablation(model, clean, excluded, replacements)
+    actual, observed = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    shift = live_writers[writer] - clean_writers[writer]
+    assert not torch.allclose(shift, torch.zeros_like(shift))
+    mlp = Node("mlp_out", 2, layer=0)
+    mlp_shift = live_writers[mlp] - clean_writers[mlp]
+    torch.testing.assert_close(readers[downstream], clean_readers[downstream] + shift + mlp_shift)
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+    assert not torch.allclose(actual, clean_logits)
+    for reader, value in readers.items():
+        torch.testing.assert_close(observed[reader], value, atol=1e-12, rtol=1e-12)
+
+
+def test_ablation_replacement_mutation_isolates_direct_reader_slices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    _, replacements, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    writer = Node("attn_head_out", 2, layer=0, head=1)
+    excluded_readers = {
+        Node("q_input", 2, layer=1, head=0),
+        Node("k_input", 2, layer=1, head=1),
+        Node("v_input", 2, layer=1, head=0),
+    }
+    excluded = {(writer, reader) for reader in excluded_readers}
+    circuit = [edge for edge in edges if edge not in excluded]
+    perturbation = torch.tensor([0.37, -0.19, 0.23, -0.41], dtype=torch.float64)
+    mutated = dict(replacements)
+    mutated[writer] = replacements[writer] + perturbation
+    _, baseline = _observed_toy_ablation(model, clean, circuit, replacements, monkeypatch)
+    logits, observed = _observed_toy_ablation(model, clean, circuit, mutated, monkeypatch)
+    expected, _, readers = _functional_toy_ablation(model, clean, excluded, mutated)
+    torch.testing.assert_close(logits, expected, atol=1e-12, rtol=1e-12)
+    for reader, value in readers.items():
+        torch.testing.assert_close(observed[reader], value, atol=1e-12, rtol=1e-12)
+        # Later MLP and logits readers can change through causal propagation.
+        if reader.kind in ("q_input", "k_input", "v_input"):
+            shift = perturbation if reader in excluded_readers else torch.zeros_like(perturbation)
+            torch.testing.assert_close(
+                observed[reader] - baseline[reader], shift, atol=1e-12, rtol=1e-12
+            )
+
+
+def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
+    """An uncaptured writer raises rather than silently skipping the correction."""
+    model = _EdgeScoringToyBridge()
+    _ensure_edge_hook_flags(model)
+    tokens = model.to_tokens("prompt")
+    metric = _metric_fn(answer=1, wrong=2)
+    edge_hook_names = _edge_hook_names(N_LAYERS)
+
+    corrupt_cache = cache_activation_and_gradient(
+        model, tokens, metric, names_filter=edge_hook_names
+    )
+    edges = enumerate_edges(model, corrupt_cache)
+
+    with _edge_hook_flags(model), pytest.raises(ValueError, match="no contribution captured"):
+        _ablate_edges(model, tokens, edges, [], {})
+
+
+# ---------------------------------------------------------------------------
+# Faithfulness (public API)
+# ---------------------------------------------------------------------------
+#
+# faithfulness() ablates every edge outside a candidate circuit and reports how
+# much of the clean-to-corrupt metric gap the circuit recovers. The two boundary
+# circuits pin it: keeping nothing must reproduce the corrupt run, keeping
+# everything must reproduce the clean run.
+
+
+def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tensor, Callable]:
+    model = _EdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    return model, clean, corrupt, _metric_fn(answer=1, wrong=2)
+
+
+def _graph_edges(model: _EdgeScoringToyBridge, corrupt: torch.Tensor, metric: Callable) -> list:
+    _ensure_edge_hook_flags(model)
+    with _edge_hook_flags(model):
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=_edge_hook_names(N_LAYERS)
+        )
+        return enumerate_edges(model, corrupt_cache)
+
+
+def test_faithfulness_recovers_the_full_metric_for_the_full_circuit() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    report = faithfulness(model, clean, corrupt, metric, edges)
+
+    assert isinstance(report, FaithfulnessResult)
+    assert report.recovered == pytest.approx(1.0, abs=1e-6)
+    assert report.circuit_size == len(edges)
+    assert report.total_edges == len(edges)
+
+
+def test_faithfulness_recovers_nothing_for_the_empty_circuit() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    assert report.recovered == pytest.approx(0.0, abs=1e-6)
+    assert report.circuit_size == 0
+    assert report.total_edges > 0
+
+
+def test_faithfulness_full_and_corrupt_metrics_match_direct_evaluation() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    with torch.no_grad():
+        assert report.full_metric == pytest.approx(float(metric(model(clean))), abs=1e-6)
+        assert report.corrupt_metric == pytest.approx(float(metric(model(corrupt))), abs=1e-6)
+    # The pair genuinely separates, so the recovered fraction is well defined.
+    assert report.full_metric != pytest.approx(report.corrupt_metric)
+
+
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_faithfulness_is_forward_only_and_preserves_parameter_gradients(
+    config: FaithfulnessConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    circuit = _toy_ablation_edges()[::2]
+    mean_tokens = _toy_mean_calibration() if config.ablation == "mean" else None
+    baseline = faithfulness(model, clean, corrupt, metric, circuit, config, mean_tokens=mean_tokens)
+    parameters = list(model.parameters())
+    for index, parameter in enumerate(parameters):
+        parameter.grad = torch.full_like(parameter, 0.17) if index % 2 else None
+    saved = [None if parameter.grad is None else parameter.grad.clone() for parameter in parameters]
+
+    def forbidden_backward(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("faithfulness must not request a backward pass")
+
+    def forward_metric(logits: torch.Tensor) -> torch.Tensor:
+        assert not logits.requires_grad
+        return metric(logits)
+
+    monkeypatch.setattr(torch.autograd, "grad", forbidden_backward)
+    monkeypatch.setattr(torch.Tensor, "backward", forbidden_backward)
+    for enabled in (False, True):
+        with torch.set_grad_enabled(enabled):
+            report = faithfulness(
+                model, clean, corrupt, forward_metric, circuit, config, mean_tokens=mean_tokens
+            )
+        assert report == baseline
+        for parameter, previous in zip(parameters, saved):
+            if previous is None:
+                assert parameter.grad is None
+            else:
+                torch.testing.assert_close(parameter.grad, previous, atol=0, rtol=0)
+
+
+def test_faithfulness_defaults_to_corrupt_ablation() -> None:
+    assert FaithfulnessConfig().ablation == "corrupt"
+
+
+def test_faithfulness_mean_ablation_requires_calibration() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    with pytest.raises(ValueError, match="mean_tokens"):
+        faithfulness(model, clean, corrupt, metric, [], FaithfulnessConfig(ablation="mean"))
+
+
+def _toy_mean_calibration() -> torch.Tensor:
+    return torch.tensor([[0, 4, 5], [2, 5, 0], [4, 0, 2]])
+
+
+def _functional_mean_writers(
+    model: _EdgeScoringToyBridge, calibration: torch.Tensor
+) -> dict[Node, torch.Tensor]:
+    examples = [_functional_toy_ablation(model, row[None], set(), {})[1] for row in calibration]
+    return {
+        writer: torch.stack([example[writer] for example in examples]).mean(dim=0)
+        for writer in examples[0]
+    }
+
+
+def test_mean_writer_contributions_preserve_positions_and_heads() -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    calibration = _toy_mean_calibration()
+    expected = _toy_replacement_tensors(_functional_mean_writers(model, calibration))
+    first = _toy_replacement_tensors(_functional_toy_ablation(model, calibration[:1], set(), {})[1])
+    with _edge_hook_flags(model):
+        actual = _mean_writer_contributions(model, calibration)
+    assert actual.keys() == expected.keys()
+    for name, value in actual.items():
+        assert value.shape == expected[name].shape
+        assert value.shape[0] == 1
+        assert value.shape[1] == calibration.shape[1]
+        assert value.dtype == torch.float64
+        assert value.device == calibration.device
+        assert not value.requires_grad
+        torch.testing.assert_close(value, expected[name], atol=1e-12, rtol=1e-12)
+        assert not torch.allclose(value, first[name])
+
+
+@pytest.mark.parametrize("budget", [0, 3, None])
+def test_faithfulness_mean_ablation_matches_functional_reference(budget: int | None) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    calibration = _toy_mean_calibration()
+    edges = _toy_ablation_edges()
+    readout = [edge for edge in edges if edge[1] == Node("logits", SEQ_LEN - 1, layer=1)]
+    circuit = edges if budget is None else readout[:budget]
+    replacements = _functional_mean_writers(model, calibration)
+    clean_logits, _, _ = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, _, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    expected_logits, _, _ = _functional_toy_ablation(
+        model, clean, set(edges) - set(circuit), replacements
+    )
+    metric = _metric_fn(1, 2)
+    expected = float(
+        (metric(expected_logits) - metric(corrupt_logits))
+        / (metric(clean_logits) - metric(corrupt_logits))
+    )
+    report = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        circuit,
+        FaithfulnessConfig(ablation="mean"),
+        mean_tokens=calibration,
+    )
+    assert report.recovered == pytest.approx(expected, abs=1e-12)
+    assert report.full_metric == pytest.approx(float(metric(clean_logits)), abs=1e-12)
+    assert report.corrupt_metric == pytest.approx(float(metric(corrupt_logits)), abs=1e-12)
+    if budget is None:
+        assert report.recovered == pytest.approx(1.0, abs=1e-12)
+    elif budget == 0:
+        mean_final = sum(
+            value for writer, value in replacements.items() if writer.position == clean.shape[1] - 1
+        )
+        mean_logits = model.unembed.weight.detach() @ mean_final
+        torch.testing.assert_close(expected_logits[0, -1], mean_logits, atol=1e-12, rtol=1e-12)
+    else:
+        empty_logits, _, _ = _functional_toy_ablation(model, clean, set(edges), replacements)
+        assert not torch.allclose(expected_logits[0, -1], empty_logits[0, -1])
+        assert not torch.allclose(expected_logits[0, -1], clean_logits[0, -1])
+
+
+def test_faithfulness_mean_ablation_differs_from_corrupt_ablation() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _toy_ablation_edges()
+    circuit = edges[::2]
+    calibration = _toy_mean_calibration()
+    corrupt_report = faithfulness(model, clean, corrupt, metric, circuit)
+    mean_report = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        circuit,
+        config=FaithfulnessConfig(ablation="mean"),
+        mean_tokens=calibration,
+    )
+    expected_logits, _, _ = _functional_toy_ablation(
+        model, clean, set(edges) - set(circuit), _functional_mean_writers(model, calibration)
+    )
+    expected = (float(metric(expected_logits)) - corrupt_report.corrupt_metric) / (
+        corrupt_report.full_metric - corrupt_report.corrupt_metric
+    )
+    assert mean_report.recovered == pytest.approx(expected, abs=1e-6)
+    assert corrupt_report.recovered != pytest.approx(mean_report.recovered)
+    assert corrupt_report.full_metric == pytest.approx(mean_report.full_metric)
+    assert corrupt_report.corrupt_metric == pytest.approx(mean_report.corrupt_metric)
+
+
+def test_mean_calibration_does_not_depend_on_evaluated_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    calibration = _toy_mean_calibration()
+    captured: list[tuple[torch.Tensor, dict[str, torch.Tensor]]] = []
+
+    def capture(model: Any, tokens: torch.Tensor) -> dict[str, torch.Tensor]:
+        values = capture_writer_outputs(model, tokens)
+        captured.append((tokens.clone(), {name: value.clone() for name, value in values.items()}))
+        return values
+
+    monkeypatch.setattr(
+        "transformer_lens.tools.analysis.attribution_patching.capture_writer_outputs", capture
+    )
+    for clean, corrupt in (
+        (clean, corrupt),
+        (torch.tensor([[0, 2, 5]]), torch.tensor([[5, 2, 0]])),
+    ):
+        faithfulness(
+            model,
+            clean,
+            corrupt,
+            metric,
+            _toy_ablation_edges()[::2],
+            FaithfulnessConfig(ablation="mean"),
+            mean_tokens=calibration,
+        )
+    assert len(captured) == 2 * len(calibration)
+    for index, row in enumerate(calibration):
+        first_tokens, first_values = captured[index]
+        second_tokens, second_values = captured[index + len(calibration)]
+        torch.testing.assert_close(first_tokens, row[None], atol=0, rtol=0)
+        torch.testing.assert_close(second_tokens, row[None], atol=0, rtol=0)
+        for name in first_values:
+            torch.testing.assert_close(first_values[name], second_values[name], atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "tokens,error",
+    [
+        (torch.empty(0, SEQ_LEN, dtype=torch.long), "at least one"),
+        (torch.tensor([0, 4, 5]), "2D"),
+        (torch.tensor([[[0, 4, 5]]]), "2D"),
+        (torch.tensor([[0, 4]]), "same sequence length"),
+        (torch.tensor([[0.0, 4.0, 5.0]]), "dtype"),
+        (torch.tensor([[0, 4, 5]], dtype=torch.int16), "dtype"),
+        (torch.tensor([[True, False, True]]), "dtype"),
+        (torch.empty(1, SEQ_LEN, device="meta", dtype=torch.long), "same device"),
+        (torch.tensor([[0, 4, 5], [1, 2, 3]]), "evaluated.*endpoint"),
+        (torch.tensor([[0, 4, 5], [3, 2, 1]]), "evaluated.*endpoint"),
+    ],
+)
+def test_mean_calibration_rejects_invalid_tokens_without_forward(
+    tokens: torch.Tensor,
+    error: str,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    model.set_use_attn_result(True)
+    before = _mean_toy_hook_state(model)
+
+    def forbidden_forward(*args: Any) -> None:
+        raise AssertionError("invalid calibration must be rejected before a forward")
+
+    handle = model.register_forward_pre_hook(forbidden_forward)
+    try:
+        with pytest.raises(ValueError, match=error):
+            faithfulness(
+                model,
+                clean,
+                corrupt,
+                metric,
+                [],
+                FaithfulnessConfig(ablation="mean"),
+                mean_tokens=tokens,
+            )
+        assert _mean_toy_hook_state(model) == before
+    finally:
+        handle.remove()
+
+
+def test_corrupt_ablation_rejects_mean_calibration() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    with pytest.raises(ValueError, match="only accepted with mean ablation"):
+        faithfulness(model, clean, corrupt, metric, [], mean_tokens=_toy_mean_calibration())
+
+
+def test_mean_calibration_accepts_int32_token_ids() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    config = FaithfulnessConfig(ablation="mean")
+    first = faithfulness(
+        model, clean, corrupt, metric, [], config, mean_tokens=_toy_mean_calibration()
+    )
+    second = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        [],
+        config,
+        mean_tokens=_toy_mean_calibration().to(torch.int32),
+    )
+    assert first == second
+
+
+def _mean_toy_hook_state(model: _EdgeScoringToyBridge) -> tuple:
+    return (
+        tuple(
+            getattr(model.cfg, name)
+            for name in ("use_attn_result", "use_split_qkv_input", "use_hook_mlp_in")
+        ),
+        {
+            name: (
+                tuple(id(handle) for handle in point.fwd_hooks),
+                tuple(id(handle) for handle in point.bwd_hooks),
+            )
+            for name, point in model.hook_dict.items()
+        },
+    )
+
+
+@pytest.mark.parametrize("failure", ["capture", "metric"])
+def test_mean_calibration_restores_hooks_after_error(failure: str) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    calibration = _toy_mean_calibration()
+    model.set_use_attn_result(True)
+    calls = 0
+
+    def capture_guard(tensor: torch.Tensor, *, hook: Any) -> None:
+        nonlocal calls
+        calls += 1
+        if failure == "capture" and calls == 3:
+            raise RuntimeError("calibration capture failed")
+
+    def checked_metric(logits: torch.Tensor) -> torch.Tensor:
+        if failure == "metric" and calls == 6:
+            raise RuntimeError("mean metric failed")
+        return metric(logits)
+
+    with model.hooks(fwd_hooks=[("hook_embed", capture_guard)]):
+        before = _mean_toy_hook_state(model)
+        with pytest.raises(RuntimeError, match="failed"):
+            faithfulness(
+                model,
+                clean,
+                corrupt,
+                checked_metric,
+                _toy_ablation_edges()[::2],
+                FaithfulnessConfig(ablation="mean"),
+                mean_tokens=calibration,
+            )
+        assert _mean_toy_hook_state(model) == before
+
+
+def test_faithfulness_accepts_top_edges_output() -> None:
+    """A ranked edge list feeds straight in, scores and all."""
+    model, clean, corrupt, metric = _faithfulness_toy()
+    ranked = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    ).top_edges(k=5)
+
+    report = faithfulness(model, clean, corrupt, metric, ranked)
+
+    assert report.circuit_size == len(ranked)
+    assert math.isfinite(report.recovered)
+
+
+def test_faithfulness_raises_on_an_edge_outside_the_graph() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    # The graph never mixes positions, so a cross-position pair is not an edge.
+    bogus = (Node(kind="embed", position=1), Node(kind="mlp_in", layer=0, position=0))
+
+    with pytest.raises(ValueError, match="not in the graph"):
+        faithfulness(model, clean, corrupt, metric, [bogus])
+
+
+def test_faithfulness_raises_when_the_metric_gap_is_zero() -> None:
+    model, clean, _, metric = _faithfulness_toy()
+
+    with pytest.raises(ValueError, match="same metric"):
+        faithfulness(model, clean, clean, metric, [])
+
+
+def test_faithfulness_raises_on_token_length_mismatch() -> None:
+    model, _, corrupt, metric = _faithfulness_toy()
+    shorter = torch.tensor([[1, 2]])
+
+    with pytest.raises(ValueError, match="same length"):
+        faithfulness(model, shorter, corrupt, metric, [])
+
+
+def test_faithfulness_raises_on_more_than_one_pair() -> None:
+    """Batched input is rejected rather than silently half-ablated.
+
+    The metric reads a single example, so a batch would need per-pair
+    aggregation the caller should own. Silently ablating only the first row
+    would return a plausible but wrong number.
+    """
+    model, clean, corrupt, metric = _faithfulness_toy()
+    batched_clean = torch.cat([clean, clean], dim=0)
+    batched_corrupt = torch.cat([corrupt, corrupt], dim=0)
+
+    with pytest.raises(ValueError, match="one clean/corrupt pair at a time"):
+        faithfulness(model, batched_clean, batched_corrupt, metric, [])
+
+
+def test_faithfulness_rejects_model_in_training_mode() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    model.train()
+
+    with pytest.raises(ValueError, match="evaluation mode"):
+        faithfulness(model, clean, corrupt, metric, [])
+
+
+def test_faithfulness_restores_caller_hook_flags() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+    faithfulness(model, clean, corrupt, metric, [])
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+
+def test_faithfulness_restores_hook_flags_when_it_raises() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    bogus = (Node(kind="embed", position=1), Node(kind="mlp_in", layer=0, position=0))
+
+    with pytest.raises(ValueError, match="not in the graph"):
+        faithfulness(model, clean, corrupt, metric, [bogus])
+
+    assert model.cfg.use_attn_result is False
+    assert model.cfg.use_split_qkv_input is False
+    assert model.cfg.use_hook_mlp_in is False
+
+
+def test_faithfulness_recovery_is_graded_not_binary() -> None:
+    """A partial circuit lands strictly between the corrupt and clean metrics.
+
+    Only edges into the readout position can move this toy's metric, since it is
+    position-wise and the metric reads the last position. Keeping half of those
+    must therefore recover part of the gap rather than all or none of it.
+    """
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+    readout = [edge for edge in edges if edge[1].position == SEQ_LEN - 1]
+    assert readout
+    partial = readout[: len(readout) // 2]
+
+    report = faithfulness(model, clean, corrupt, metric, partial)
+
+    assert 0.0 < report.recovered < 1.0
+    assert report.circuit_size == len(partial)
+
+
+# ---------------------------------------------------------------------------
+# Edge-class breakout
+# ---------------------------------------------------------------------------
+#
+# Class removal stays inside the evaluated circuit, with a shared baseline.
+
+
+def test_edge_class_partitions_edges_exhaustively_and_without_overlap() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    classes = [_edge_class(edge) for edge in edges]
+
+    # Every edge maps to exactly one class, and the classes partition the graph.
+    assert set(classes) == {"into_qk", "into_v", "into_mlp", "into_logits"}
+    assert len(classes) == len(edges)
+
+    report = faithfulness(model, clean, corrupt, metric, [])
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+    assert set(report.edge_class_counts) == set(classes)
+
+
+def test_edge_class_maps_each_reader_kind_to_its_class() -> None:
+    writer = Node(kind="embed", position=0)
+
+    assert _edge_class((writer, Node(kind="q_input", layer=0, head=0, position=0))) == "into_qk"
+    assert _edge_class((writer, Node(kind="k_input", layer=0, head=0, position=0))) == "into_qk"
+    assert _edge_class((writer, Node(kind="v_input", layer=0, head=0, position=0))) == "into_v"
+    assert _edge_class((writer, Node(kind="mlp_in", layer=0, position=0))) == "into_mlp"
+    assert _edge_class((writer, Node(kind="logits", layer=0, position=0))) == "into_logits"
+
+    # A writer kind is not a reader, so it has no class.
+    with pytest.raises(ValueError, match="no edge class"):
+        _edge_class((writer, Node(kind="mlp_out", layer=0, position=0)))
+
+
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_empty_circuit_is_aggregate(config: FaithfulnessConfig) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    report = faithfulness(model, clean, corrupt, metric, [], config, mean_tokens=calibration)
+    assert report.edge_class_recovered
+    assert all(value == report.recovered for value in report.edge_class_recovered.values())
+
+
+def test_edge_class_recovered_reconciles_with_the_aggregate() -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edges = _graph_edges(model, corrupt, metric)
+
+    report = faithfulness(model, clean, corrupt, metric, edges)
+
+    assert set(report.edge_class_recovered) == {
+        "into_qk",
+        "into_v",
+        "into_mlp",
+        "into_logits",
+    }
+    for edge_class, recovered in report.edge_class_recovered.items():
+        assert math.isfinite(recovered), f"non-finite recovery for {edge_class}"
+        assert report.edge_class_counts[edge_class] > 0
+    # Keeping every edge is the aggregate, so the full-circuit report recovers
+    # the whole gap.
+    assert report.recovered == pytest.approx(1.0, abs=1e-6)
+
+
+_CLASS_READER_KINDS: dict[EdgeClass, tuple[NodeKind, ...]] = {
+    "into_qk": ("q_input", "k_input"),
+    "into_v": ("v_input",),
+    "into_mlp": ("mlp_in",),
+    "into_logits": ("logits",),
+}
+
+
+def _functional_circuit_recovery(
+    model: _EdgeScoringToyBridge,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    circuit: list[tuple[Node, Node]],
+    replacements: dict[Node, torch.Tensor],
+) -> float:
+    clean_logits, _, _ = _functional_toy_ablation(model, clean, set(), {})
+    corrupt_logits, _, _ = _functional_toy_ablation(model, corrupt, set(), {})
+    logits, _, _ = _functional_toy_ablation(
+        model, clean, set(_toy_ablation_edges()) - set(circuit), replacements
+    )
+    metric = _metric_fn(1, 2)
+    return float(
+        (metric(logits) - metric(corrupt_logits)) / (metric(clean_logits) - metric(corrupt_logits))
+    )
+
+
+@pytest.mark.parametrize("edge_class", list(_CLASS_READER_KINDS))
+@pytest.mark.parametrize("partial", [False, True])
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_removal_matches_functional_candidate_reference(
+    edge_class: EdgeClass,
+    partial: bool,
+    config: FaithfulnessConfig,
+) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    edges = _toy_ablation_edges()
+    circuit = edges[::2] if partial else edges
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    replacements = (
+        _functional_mean_writers(model, calibration)
+        if calibration is not None
+        else _functional_toy_ablation(model, corrupt, set(), {})[1]
+    )
+    report = faithfulness(
+        model, clean, corrupt, _metric_fn(1, 2), circuit, config, mean_tokens=calibration
+    )
+    kinds = _CLASS_READER_KINDS[edge_class]
+    reduced = [edge for edge in circuit if edge[1].kind not in kinds]
+    expected = _functional_circuit_recovery(model, clean, corrupt, reduced, replacements)
+    assert report.edge_class_recovered[edge_class] == pytest.approx(expected, abs=1e-12)
+    assert report.recovered == pytest.approx(
+        _functional_circuit_recovery(model, clean, corrupt, circuit, replacements), abs=1e-12
+    )
+    assert report.edge_class_counts[edge_class] == sum(edge[1].kind in kinds for edge in edges)
+
+
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_absent_from_candidate_reuses_aggregate(
+    config: FaithfulnessConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    circuit = [edge for edge in _toy_ablation_edges() if edge[1].kind == "logits"][:3]
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    calls: list[list[tuple[Node, Node]]] = []
+
+    def ablate(model: Any, tokens: torch.Tensor, edges: list, kept: list, replacements: dict):
+        calls.append(list(kept))
+        return _ablate_edges(model, tokens, edges, kept, replacements)
+
+    monkeypatch.setattr(
+        "transformer_lens.tools.analysis.attribution_patching._ablate_edges", ablate
+    )
+    report = faithfulness(model, clean, corrupt, metric, circuit, config, mean_tokens=calibration)
+    assert calls == [circuit, []]
+    for edge_class in ("into_qk", "into_v", "into_mlp"):
+        assert report.edge_class_recovered[edge_class] == report.recovered
+    assert sum(report.edge_class_counts.values()) == report.total_edges
+
+
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_edge_class_breakout_changes_with_candidate(config: FaithfulnessConfig) -> None:
+    model = _EdgeScoringToyBridge(dtype=torch.float64)
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    replacements = (
+        _functional_mean_writers(model, calibration)
+        if calibration is not None
+        else _functional_toy_ablation(model, corrupt, set(), {})[1]
+    )
+    q_edge = (Node("embed", 2), Node("q_input", 2, layer=0, head=0))
+    logits = Node("logits", 2, layer=1)
+    circuits = [
+        [q_edge, (Node("embed", 2), logits)],
+        [q_edge, (Node("mlp_out", 2, layer=0), logits)],
+    ]
+    expected = [
+        _functional_circuit_recovery(model, clean, corrupt, circuit[1:], replacements)
+        for circuit in circuits
+    ]
+    assert expected[0] != pytest.approx(expected[1], abs=1e-12)
+    for circuit, value in zip(circuits, expected):
+        report = faithfulness(
+            model, clean, corrupt, _metric_fn(1, 2), circuit, config, mean_tokens=calibration
+        )
+        assert report.edge_class_recovered["into_qk"] == pytest.approx(value, abs=1e-12)
+
+
+@pytest.mark.parametrize("ranked", [False, True])
+@pytest.mark.parametrize("config", [FaithfulnessConfig(), FaithfulnessConfig(ablation="mean")])
+def test_faithfulness_duplicate_circuit_entries_are_equivalent(
+    ranked: bool,
+    config: FaithfulnessConfig,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    circuit = _toy_ablation_edges()[::2]
+    calibration = _toy_mean_calibration() if config.ablation == "mean" else None
+    duplicates = circuit[:2] + circuit + circuit[:1]
+    entries = [(writer, reader, float(index)) for index, (writer, reader) in enumerate(duplicates)]
+    assert _normalize_circuit(entries if ranked else duplicates) == circuit
+    reference = faithfulness(
+        model, clean, corrupt, metric, circuit, config, mean_tokens=calibration
+    )
+    actual = faithfulness(
+        model,
+        clean,
+        corrupt,
+        metric,
+        entries if ranked else duplicates,
+        config,
+        mean_tokens=calibration,
+    )
+    assert actual == reference
+    assert actual.circuit_size == len(circuit)
+
+
+# ---------------------------------------------------------------------------
+# Random-edge-set baseline
+# ---------------------------------------------------------------------------
+#
+# A ranked circuit is only meaningful if it beats an arbitrary edge set of the
+# same size. The toy is nonlinear here on purpose: on a linear model any circuit
+# holding every edge into the logits reader recovers the metric outright, so the
+# baseline could tie by accident.
+
+
+def _random_edge_sets(
+    edges: list[tuple[Node, Node]], size: int, draws: int, seed: int
+) -> list[list[tuple[Node, Node]]]:
+    """``draws`` distinct random edge sets of ``size`` edges, from a fixed seed."""
+    generator = torch.Generator().manual_seed(seed)
+    return [
+        [edges[index] for index in torch.randperm(len(edges), generator=generator)[:size].tolist()]
+        for _ in range(draws)
+    ]
+
+
+def test_random_edge_set_recovers_markedly_less_than_the_attribution_circuit() -> None:
+    """The ranked circuit beats random edge sets of the same size by a wide margin.
+
+    This is the honesty guard: a ranking that does no better than chance would
+    still produce a plausible-looking ``recovered`` number, so the comparison
+    against same-size random sets is what makes the number mean anything.
+    """
+    model = _NonlinearEdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    edges = list(result.edge_scores)
+    budget = 8
+    ranked = result.top_edges(k=budget)
+    ranked_report = faithfulness(model, clean, corrupt, metric, ranked)
+
+    random_reports = [
+        faithfulness(model, clean, corrupt, metric, circuit)
+        for circuit in _random_edge_sets(edges, budget, draws=3, seed=0)
+    ]
+    random_recovered = [report.recovered for report in random_reports]
+    best_random = max(random_recovered)
+
+    # The baseline is not degenerate: if every random set recovered the whole
+    # gap, the toy would be too easy to discriminate and the comparison would be
+    # vacuous.
+    assert all(value < 1.0 for value in random_recovered), random_recovered
+    assert ranked_report.recovered > best_random + 0.2, (
+        f"ranked recovered {ranked_report.recovered:.4f} vs random "
+        f"{[round(value, 4) for value in random_recovered]}"
+    )
+
+
+def test_random_edge_set_baseline_is_reproducible_under_a_fixed_seed() -> None:
+    model = _NonlinearEdgeScoringToyBridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[3, 2, 1]])
+    metric = _metric_fn(answer=1, wrong=2)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    edges = list(result.edge_scores)
+
+    first = _random_edge_sets(edges, 8, draws=3, seed=0)
+    second = _random_edge_sets(edges, 8, draws=3, seed=0)
+
+    assert first == second
+    # Different seeds give different draws, so the seed is actually used.
+    assert first != _random_edge_sets(edges, 8, draws=3, seed=1)
