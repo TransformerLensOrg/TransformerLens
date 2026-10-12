@@ -191,3 +191,14 @@ def test_compatibility_mode_preserves_residual_semantics() -> None:
             cache[f"blocks.{layer}.hook_resid_post"],
             cache[f"blocks.{layer}.hook_resid_mid"] + cache[f"blocks.{layer}.hook_mlp_out"],
         )
+
+
+def test_mid_layer_cached_ln_explains_missing_pre_norm(
+    olmo2_bridge: TransformerBridge, sample_tokens: torch.Tensor
+) -> None:
+    """Post-norm-only blocks have no ln1 scale to cache; the error must say so rather
+    than point the user at a hook that cannot exist."""
+    with torch.no_grad():
+        _, cache = olmo2_bridge.run_with_cache(sample_tokens)
+    with pytest.raises(KeyError, match=r"no ln1 \(pre-attention norm\)"):
+        cache.decompose_resid(layer=1, apply_ln=True)

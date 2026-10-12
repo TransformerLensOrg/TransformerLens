@@ -123,6 +123,21 @@ class TestOlmoHybridHookSemantics:
                 + cache[f"blocks.{layer}.hook_mlp_out"],
             )
 
+    def test_resid_mid_splits_the_stream_on_both_layer_types(self, bridge, sample_tokens):
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(sample_tokens)
+
+        for layer in range(bridge.cfg.n_layers):
+            resid_mid = cache[f"blocks.{layer}.hook_resid_mid"]
+            torch.testing.assert_close(
+                resid_mid,
+                cache[f"blocks.{layer}.hook_resid_pre"] + cache[f"blocks.{layer}.hook_attn_out"],
+            )
+            torch.testing.assert_close(
+                cache[f"blocks.{layer}.hook_resid_post"],
+                resid_mid + cache[f"blocks.{layer}.hook_mlp_out"],
+            )
+
     def test_full_attention_contributions_are_post_norm(self, bridge, sample_tokens):
         """Layers 1/3 are full attention: aliases must differ from raw module outputs."""
         with torch.no_grad():
