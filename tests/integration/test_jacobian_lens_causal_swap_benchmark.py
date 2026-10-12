@@ -1,10 +1,4 @@
-"""GPT-2 integration smoke test for the causal coordinate-swap benchmark.
-
-Structural assertions only -- no specific success-rate claim, matching the policy already
-established for ``coordinate_patch_hooks`` itself. A deliberately tiny corpus (one function,
-two concepts) keeps this fast enough for the regular cached-model integration suite; the full
-country corpus runs only in the frozen-artifact generation script.
-"""
+"""GPT-2 smoke test for the causal-swap benchmark: structural assertions on a tiny corpus."""
 
 import pytest
 import torch
@@ -46,9 +40,8 @@ def published_gpt2_lens(gpt2_bridge):
 
 
 def test_causal_swap_benchmark_gpt2_smoke(published_gpt2_lens, gpt2_bridge) -> None:
-    # The shipped corpus only executes the continent template with source Egypt, at layers 9
-    # and 10. A fixture outside that set runs zero trials: ok_trials stays empty, the
-    # control-displacement loop never runs, and selector breakages pass unnoticed.
+    # The shipped corpus only executes continent/Egypt at layers 9-10; any other fixture runs
+    # zero trials and the control-displacement check below never fires.
     corpus = BenchmarkCorpus(
         name="smoke",
         concepts=("Egypt", "France"),

@@ -37,14 +37,8 @@ def test_gpt2_head_affinity_contract_and_sample_parity(gpt2_bridge, role, attrib
 
 
 def test_bfloat16_weights_measure_full_rank_without_explicit_rtol(gpt2_bridge):
-    """Half-precision storage must not loosen the default rank tolerance.
-
-    Casting a real checkpoint head to bfloat16 exercises the storage-dtype path
-    without booting a second model. The default tolerance must track the float32
-    dtype the SVD actually runs in: a storage-dtype floor would land at the
-    bfloat16 epsilon instead of ``max(shape) * float32_eps`` and detach the rank
-    decision from the computed singular values.
-    """
+    """bf16 storage must not loosen the default rank tolerance: it tracks the float32 SVD eps,
+    not the bf16 storage eps."""
     weight = gpt2_bridge.blocks[0].attn.W_O[0].T
     reference = orthonormal_subspace(weight)
     result = orthonormal_subspace(weight.to(torch.bfloat16))

@@ -89,13 +89,18 @@ arbitrary directions. The sampled mean can vary with the seed and draw count, so
 near it can change. Pass an explicit `rng` for repeatability and increase `n_baseline` to
 sample the mean more thoroughly; neither makes a verdict scientifically conclusive.
 
+A mean-of-controls threshold passes many random in-span directions by design: roughly half
+in keep mode and about a third in ablate mode. On GPT-2 small L9H9 with the worked
+example's IOI prompt, no isolated direction separates from its controls, so `gated=True`
+means the delta beat the control mean, not that the direction is a subfunction.
+
 ## Compatibility mode
 
 The vocab readout projects through the final LayerNorm folded into $W_U$, which requires
 `enable_compatibility_mode()` on an adapter that supports folding. A decomposition
-records the folded-LayerNorm state it was taken under, and the readout and patch
-consumers refuse a decomposition whose state no longer matches the model. See
-[Compatibility Mode](compatibility_mode.md).
+records the folded-LayerNorm state and a fingerprint of the head weights it was taken
+under, and the readout and patch consumers refuse a decomposition that no longer matches
+the model. See [Compatibility Mode](compatibility_mode.md).
 
 ## Worked example
 

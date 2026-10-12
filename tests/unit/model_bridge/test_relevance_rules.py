@@ -27,10 +27,8 @@ class _FakeNormComponent(nn.Module):
 
     def __init__(self, eps: float = 1e-2):
         super().__init__()
-        # Composing this division with a plain second normalization and a linear
-        # readout makes the LN-rule's denom-as-constant correction shrink linearly
-        # with eps, so a realistic normalization epsilon (1e-6) would leave the
-        # correction too small for torch.allclose to detect reliably end to end.
+        # The LN-rule correction shrinks linearly with eps here, so a realistic 1e-6 would
+        # leave it too small for torch.allclose to detect end to end.
         self.eps = eps
         self._rule_active = False
 
@@ -55,11 +53,7 @@ class _PlainMount(nn.Module):
 
 
 class _TinyBlock(nn.Module):
-    """Mimics a block's ln1/ln2 mount points plus a same-class q_norm and an MLP.
-
-    ``q_norm`` uses the identical fake-normalization class as ``ln1``/``ln2`` so tests
-    can assert that targeting is positional (by mount name) rather than class-based.
-    """
+    """Block with ln1/ln2, an MLP, and a same-class q_norm that positional targeting must skip."""
 
     def __init__(self):
         super().__init__()
@@ -84,12 +78,7 @@ def _tiny_block() -> _TinyBlock:
 
 
 class _SandwichBlock(nn.Module):
-    """Mimics a sandwich-norm block: pre-norms ln1/ln2 plus post-norms ln1_post/ln2_post.
-
-    Sandwich-norm architectures mount a second normalization after attention and after
-    the MLP at ``ln1_post``/``ln2_post``, so the LN-rule must reach those mounts as well
-    as the pre-norms rather than leaving them silently out of coverage.
-    """
+    """Sandwich-norm block: pre-norms ln1/ln2 plus post-norms ln1_post/ln2_post."""
 
     def __init__(self):
         super().__init__()
@@ -108,13 +97,7 @@ class _SandwichBlock(nn.Module):
 
 
 class _FakeGatedMLPComponent(nn.Module):
-    """A minimal mlp-mount target that answers to two rule kinds independently.
-
-    A real gated-MLP node answers to both "activation" (Identity-rule on its
-    activation function) and "multiplicative_gate" (Half-rule on its gate*up
-    product) at the same mount, and either can be requested without the other,
-    so this fixture tracks the two kinds as separate booleans rather than one.
-    """
+    """mlp-mount target tracking the activation and multiplicative_gate kinds independently."""
 
     _relevance_rule_kinds = ("activation", "multiplicative_gate")
 
@@ -192,9 +175,6 @@ def test_normalization_rule_installs_on_sandwich_post_norm_mounts():
 
 def test_sandwich_post_norm_on_python_path_is_reported_skipped_never_absent():
     block = _SandwichBlock()
-    # A post-norm mount whose occupant takes the python-norm path (no rule protocol)
-    # must surface as skipped, never vanish from coverage as it did before the mount
-    # names were recognized.
     block.ln2_post = _PlainMount()
     with use_relevance_rules(block, RelevanceRules(normalization=True)) as coverage:
         assert coverage.installed == _normalization_entries("ln1", "ln1_post", "ln2")
@@ -203,8 +183,6 @@ def test_sandwich_post_norm_on_python_path_is_reported_skipped_never_absent():
 
 def test_requesting_a_kind_with_no_canonical_mount_raises():
     block = _tiny_block()
-    # "attention" is a valid RelevanceRules field but has no canonical mount, so the
-    # request must raise rather than install nothing and return empty coverage.
     with pytest.raises(ValueError, match="attention"):
         with use_relevance_rules(block, RelevanceRules(attention=True)):
             pass
@@ -222,10 +200,6 @@ def test_unsupported_component_at_targeted_mount_is_skipped():
 def test_requesting_unsupported_kind_on_capable_component_raises():
     block = _tiny_block()
     block.mlp = _FakeGatedMLPComponent()
-    # This mount implements the protocol and currently only supports "activation",
-    # but -- unlike a mount that never deals with "multiplicative_gate" at all --
-    # names it in _relevance_rule_unsupported_kinds as one it is expected to honor
-    # here and currently cannot, so requesting it raises instead of being skipped.
     block.mlp._relevance_rule_kinds = ("activation",)
     block.mlp._relevance_rule_unsupported_kinds = ("multiplicative_gate",)
     with pytest.raises(RelevanceRuleUnsupportedError, match="mlp"):
@@ -258,13 +232,8 @@ def test_ordinary_gradients_restored_after_exit():
     y_plain = block(x_plain)
     (grad_plain,) = torch.autograd.grad(y_plain.sum(), x_plain)
 
-    # The LN-rule treats the denominator as constant, so its VJP differs from
-    # ordinary autodiff through the same division wherever the denominator
-    # actually depends on the input -- true for every row of this fixture.
     assert not torch.allclose(grad_rule, grad_plain)
 
-    # A second plain pass confirms the exit left no residual rule state: it must
-    # reproduce grad_plain exactly rather than drifting toward grad_rule.
     x_plain_again = x.detach().clone().requires_grad_(True)
     y_plain_again = block(x_plain_again)
     (grad_plain_again,) = torch.autograd.grad(y_plain_again.sum(), x_plain_again)
@@ -281,7 +250,6 @@ def test_nested_contexts_restore_outer_state_on_inner_exit():
         with use_relevance_rules(block, RelevanceRules(normalization=True)) as inner_coverage:
             assert block.ln1._rule_active is True
             assert torch.equal(block(x), baseline)
-        # The inner exit must not disable the rule the outer context still needs.
         assert block.ln1._rule_active is True
         assert block.ln2._rule_active is True
         assert torch.equal(block(x), baseline)
@@ -316,7 +284,6 @@ def test_exception_during_nested_context_restores_outer_state():
         with pytest.raises(_Boom):
             with use_relevance_rules(block, RelevanceRules(normalization=True)):
                 raise _Boom("failure inside the nested scoped context")
-        # The outer context is still active after the inner one unwinds.
         assert block.ln1._rule_active is True
         assert torch.equal(block(x), baseline)
 
@@ -393,8 +360,6 @@ def test_nested_scopes_over_different_kinds_on_one_mount_refcount_independently(
         with use_relevance_rules(block, RelevanceRules(multiplicative_gate=True)):
             assert block.mlp._activation_rule_active is True
             assert block.mlp._gate_rule_active is True
-        # The inner (multiplicative_gate-only) scope's exit must not disable
-        # the outer scope's independently refcounted activation rule.
         assert block.mlp._activation_rule_active is True
         assert block.mlp._gate_rule_active is False
     assert block.mlp._activation_rule_active is False

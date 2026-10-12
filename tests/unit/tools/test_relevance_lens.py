@@ -1,12 +1,4 @@
-"""Unit tests for ``RelevanceLens.fit``: shape/finite parity and rule coverage.
-
-These tests build a tiny random Qwen2 fully offline (programmatic HF config,
-random weights, no network access) so the fit runs on a real assembled
-``TransformerBridge`` with the opaque gated-MLP native-forward path. Both
-estimators are fitted on the same model and prompts, so the only difference
-between the two sets of transport matrices is the backward semantics each
-estimator selects.
-"""
+"""Unit tests for ``RelevanceLens.fit`` on an offline tiny random Qwen2 ``TransformerBridge``."""
 
 from __future__ import annotations
 
@@ -77,13 +69,8 @@ TINY_DIMS = dict(
 
 
 def _offline_tokenizer(prompts: Sequence[str]) -> PreTrainedTokenizerFast:
-    """Word-level tokenizer over the prompts' own vocabulary, built offline.
-
-    A real ``PreTrainedTokenizerFast`` (rather than a duck-typed stub) satisfies
-    the jaxtyping contract on ``TransformerBridge.to_tokens``, and deriving the
-    vocabulary from the prompts keeps every word in-vocab so no prompt collapses
-    to a run of ``<unk>``.
-    """
+    """Offline word-level tokenizer; a real fast tokenizer satisfies ``to_tokens``'s jaxtyping
+    contract, and the prompt-derived vocabulary keeps every word out of ``<unk>``."""
     words = sorted({word for prompt in prompts for word in prompt.split()})
     vocabulary = {"<pad>": 0, "<eos>": 1, "<bos>": 2, "<unk>": 3}
     vocabulary.update({word: index + 4 for index, word in enumerate(words)})
@@ -923,13 +910,7 @@ class TestConstructorProvenance:
 
 
 class TestAnalysisSurfaceIsReusedNotDuplicated:
-    """The estimator changes only how matrices are estimated.
-
-    Readout, vocabulary vectors, sparse decomposition, and the interventions are
-    inherited from the Jacobian lens rather than reimplemented, so a fix to any
-    of them reaches both estimators. This pins that contract: a future
-    reimplementation on the subclass would silently fork the two surfaces.
-    """
+    """Only estimation differs; the analysis surface is inherited so fixes reach both lenses."""
 
     INHERITED_METHODS = (
         "transport",
@@ -958,9 +939,7 @@ class TestAnalysisSurfaceIsReusedNotDuplicated:
                 f"{name} is redefined on RelevanceLens; the estimator is meant to "
                 "change only how transport matrices are estimated"
             )
-            # Compare the underlying functions: a classmethod accessor returns a
-            # fresh bound method on every getattr, so identity on the accessor
-            # itself would never hold.
+            # A classmethod accessor returns a fresh bound method, so compare __func__.
             ours = getattr(RelevanceLens, name)
             theirs = getattr(JacobianLens, name)
             assert getattr(ours, "__func__", ours) is getattr(theirs, "__func__", theirs)
@@ -980,12 +959,7 @@ class TestAnalysisSurfaceIsReusedNotDuplicated:
 
 
 def _build_tiny_gpt2() -> TransformerBridge:
-    """A dense-MLP, plain-python-norm model that can honor none of the rules.
-
-    GPT-2 has no gated MLP and its norms do not dispatch through the
-    native-autograd branch the LN-rule wraps, so every canonical mount is
-    reported skipped.
-    """
+    """Dense-MLP, python-norm GPT-2 on which every canonical mount is skipped."""
     hf_config = AutoConfig.for_model(
         "gpt2",
         vocab_size=97,
@@ -1005,13 +979,7 @@ def _build_tiny_gpt2() -> TransformerBridge:
 
 
 class TestFitRefusesSilentFallback:
-    """A fit that installs no rule must not masquerade as a relevance lens.
-
-    Without this guard the estimator would return ordinary Jacobian matrices
-    labelled ``estimator="relevance_lens"``, which is indistinguishable from a
-    real relevance fit in the artifact and would silently mislead a downstream
-    comparison.
-    """
+    """A fit that installs no rule must not label ordinary Jacobian matrices a relevance lens."""
 
     def test_fit_raises_when_no_rule_can_be_installed(self) -> None:
         model = _build_tiny_gpt2()
@@ -1043,11 +1011,7 @@ class TestFitRefusesSilentFallback:
 
 
 def _build_tiny_opt() -> TransformerBridge:
-    """A model where the LN-rule installs but the MLP rules cannot.
-
-    OPT has residual-stream norms on the native-autograd path but a dense ReLU
-    MLP, so the normalization mounts install while every MLP mount is skipped.
-    """
+    """OPT: native-autograd residual norms install, but every dense ReLU MLP mount is skipped."""
     hf_config = AutoConfig.for_model(
         "opt",
         vocab_size=97,
@@ -1070,12 +1034,7 @@ def _build_tiny_opt() -> TransformerBridge:
 
 
 class TestPartialCoverageIsRecordedHonestly:
-    """``enabled_rules`` must name the rules that actually shaped the matrices.
-
-    A model can honor some rules and not others. Recording the requested set
-    rather than the installed set would claim the MLP rules contributed when
-    every MLP mount was skipped, which misdescribes the artifact.
-    """
+    """``enabled_rules`` must name the installed rules, not the requested set."""
 
     def test_partial_coverage_installs_only_the_normalization_rule(self) -> None:
         model = _build_tiny_opt()
@@ -1143,13 +1102,7 @@ class TestPartialCoverageIsRecordedHonestly:
 
 
 class TestUnsupportedActivationIsRefusedBeforeFitting:
-    """A relu-family gated MLP must be refused, not scored with a wrong rule.
-
-    The Identity-rule's backward multiplier ``f(x) / x`` reduces to ``relu(x)``
-    for relu-squared rather than the true derivative ``2 * relu(x)``, so applying
-    it there would produce plausible but wrong transport matrices. The refusal
-    must happen before any fitting work, and must leave the model untouched.
-    """
+    """A relu-family gated MLP is refused before any fit work, leaving the model untouched."""
 
     def test_fit_raises_for_a_relu_gated_mlp(self) -> None:
         model = _build_tiny_qwen2_relu()

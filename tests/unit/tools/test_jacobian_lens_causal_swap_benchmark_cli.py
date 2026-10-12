@@ -1,8 +1,4 @@
-"""Unit tests for the causal-swap benchmark's artifact-generation CLI.
-
-Model-free: these pin the double-execution fix and the argument parser, so no model is
-loaded.
-"""
+"""Model-free tests for the causal-swap benchmark's artifact-generation CLI."""
 
 import subprocess
 import sys
@@ -21,10 +17,8 @@ _CLI_MODULE = "transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchma
 
 
 def test_cli_module_is_not_imported_by_the_package_init() -> None:
-    # The analysis package's __init__ imports the library module, so pointing the documented
-    # `python -m` command at that module executes it twice and runpy warns. The CLI module
-    # must stay out of the package import graph for the documented command to run once.
-    # Checked in a fresh interpreter: importing the CLI here would mask the regression.
+    # `python -m` on a module the package __init__ imports runs it twice. Fresh interpreter,
+    # since importing the CLI here would mask the regression.
     probe = (
         "import sys; import transformer_lens.tools.analysis; "
         f"raise SystemExit(1 if {_CLI_MODULE!r} in sys.modules else 0)"

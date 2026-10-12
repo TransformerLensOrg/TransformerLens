@@ -1,17 +1,5 @@
-"""Identity-/Half-rule integration on GatedMLPBridge's opaque native-forward path.
-
-The raw (non-fused) gated-MLP path keeps the HF module's own forward intact and
-installs the rules on its live submodules for a ``use_relevance_rules`` scope: the
-Identity-rule by swapping the module's activation callable, and the Half-rule by a
-forward-pre-hook that halves the gradient entering the down projection (the gate*up
-product). Because the real forward runs unchanged, anything it does beyond the core
-``down(act(gate) * up)`` shape -- a post-product multiplier, activation sparsity, the
-module's own hooks -- survives into the backward graph, and the rule VJP is taken
-through that real forward rather than a reconstruction of the core shape. The rules
-attach regardless of the projection weight class, so an opaque backing that is neither
-``nn.Linear`` nor ``Conv1D`` is still covered. Only the relu-family Identity-rule
-exclusion and the missing-activation-callable case remain unsupported.
-"""
+"""Identity-/Half-rule integration on GatedMLPBridge's opaque native-forward path, where the
+rules attach to the live HF submodules so extra forward ops stay in the backward graph."""
 
 import pytest
 import torch
@@ -50,11 +38,7 @@ _ACTIVATIONS = {"silu": nn.SiLU, "relu2": _ReluSquared}
 
 
 class _OpaqueProj(nn.Module):
-    """Weight-backed projection that is neither nn.Linear nor Conv1D.
-
-    Stands in for a backing class the retired weight-orientation allowlist would
-    have refused; the rules now attach without reading its weights at all.
-    """
+    """Weight-backed projection that is neither nn.Linear nor Conv1D."""
 
     def __init__(self, d_in: int, d_out: int, bias: bool = True):
         super().__init__()
@@ -67,11 +51,7 @@ class _OpaqueProj(nn.Module):
 
 
 class _TinyGatedMLP(nn.Module):
-    """Mirrors the Qwen2/Llama/Gemma gated-MLP: one opaque call over its own submodules.
-
-    The activation is an ``nn.Module`` attribute the forward calls, matching the
-    ``ACT2FN`` shape the Identity-rule wrap targets.
-    """
+    """Qwen2/Llama/Gemma-style gated MLP with an ``ACT2FN``-shaped ``act_fn`` module."""
 
     def __init__(self, gate_proj, up_proj, down_proj, hidden_act: str = "silu"):
         super().__init__()
@@ -85,13 +65,7 @@ class _TinyGatedMLP(nn.Module):
 
 
 class _MultiplierGatedMLP(_TinyGatedMLP):
-    """A gated MLP whose forward does strictly more than ``down(act(gate) * up)``.
-
-    The constant post-product multiplier stands in for the Falcon-H1 / Gemma3n
-    families whose native forward applies extra scaling. A rule VJP taken through a
-    reconstruction of only the core gated shape would omit the multiplier and
-    disagree with the VJP through this real forward.
-    """
+    """Gated MLP with a post-product multiplier, standing in for Falcon-H1/Gemma3n scaling."""
 
     def __init__(self, gate_proj, up_proj, down_proj, multiplier: float = 1.7):
         super().__init__(gate_proj, up_proj, down_proj)
@@ -165,11 +139,8 @@ def _make_multiplier_bridge(multiplier: float = 1.7) -> tuple[_Block, _Multiplie
 
 
 def _oracle_grads(hf_mlp, x, activation_active, gate_active, multiplier: float = 1.0):
-    # hf_mlp's parameters are shared with the bridge under test, so a prior backward
-    # already left gradients on them; reset first or this second backward would
-    # accumulate on top instead of producing an independently comparable oracle. The
-    # oracle runs the module's real submodules -- including the multiplier -- so it is
-    # the VJP through the actual forward, not through the core gated shape alone.
+    # Parameters are shared with the bridge under test; reset grads so this backward does
+    # not accumulate on top of the bridge's.
     for p in hf_mlp.parameters():
         p.grad = None
     x_oracle = x.detach().clone().requires_grad_(True)
@@ -205,10 +176,7 @@ class TestGatedMLPRelevanceRuleCapability:
                 pass
 
     def test_activation_unsupported_when_no_activation_callable_is_exposed(self):
-        # A gated MLP whose forward uses a bare function has no callable activation
-        # attribute for the Identity-rule to wrap, so requesting it must raise rather
-        # than install a silent no-op. The Half-rule needs no activation access and
-        # stays available.
+        # A bare-function activation has nothing to wrap; the Half-rule stays available.
         class _FunctionalActMLP(nn.Module):
             def __init__(self):
                 super().__init__()
@@ -307,8 +275,7 @@ class TestGatedMLPRelevanceRuleVJP:
         expected_grad_x, expected_grads = self._expected(hf_mlp, x, True, True)
         torch.testing.assert_close(grad_x, expected_grad_x, atol=1e-5, rtol=1e-5)
         for name, grad in grads.items():
-            # The down projection's own weight gradient stays ordinary: the Half-rule
-            # only halves the gradient reaching the product, not the parameter grads.
+            # down's weight grad stays ordinary: the Half-rule halves only the product's grad.
             torch.testing.assert_close(grad, expected_grads[name], atol=1e-5, rtol=1e-5)
 
     def test_both_rules_match_vjp_through_extra_forward_ops(self):
@@ -394,9 +361,6 @@ class TestGatedMLPRelevanceRuleVJP:
 
 class TestGatedMLPRelevanceRulePreservesRealForward:
     def test_modules_own_backward_hook_fires_during_rule_active_backward(self):
-        # The rules attach to the live module and leave its native forward in the
-        # graph, so a backward hook registered on an HF submodule still fires during
-        # a rule-active backward rather than being bypassed by a separate graph.
         block, hf_mlp = _make_bridge("nn.Linear")
         fired = {"count": 0}
 
@@ -417,16 +381,14 @@ class TestGatedMLPRelevanceRulePreservesRealForward:
 
 
 class TestGatedMLPRelevanceRuleCompatibilityMode:
-    """The processed-weights (compatibility) path reconstructs the forward from folded
-    weights, so it applies the rules inline; before this it skipped them entirely."""
+    """The processed-weights path reconstructs the forward, so it applies the rules inline."""
 
     def _make_compat_bridge(self, bias: bool = True):
         block, hf_mlp = _make_bridge("nn.Linear", bias=bias)
         bridge = block.mlp
         bridge._use_processed_weights = True
-        # Plain (non-Parameter) tensors so the bridge's custom __getattr__ resolves
-        # them; nn.Linear stores weight as [out, in], the layout functional linear
-        # expects, so the folded-weight forward reproduces the native projections.
+        # Plain tensors so the bridge's custom __getattr__ resolves them; nn.Linear's
+        # [out, in] layout is what functional linear expects.
         bridge._processed_W_gate = hf_mlp.gate_proj.weight.detach()
         bridge._processed_b_gate = None if not bias else hf_mlp.gate_proj.bias.detach()
         bridge._processed_W_in = hf_mlp.up_proj.weight.detach()

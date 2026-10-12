@@ -19,96 +19,37 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     get_sparse_decomposition,
 )
 
-#: Above this condition number the column-normalized edit basis is treated as ill-conditioned and
-#: the patch warns. It sits at the inverse square-root of float32 epsilon so a benign, well-scaled
-#: basis (condition number of order one) never trips the warning.
+#: Warn above 1/sqrt(float32 eps): a well-scaled basis (condition number ~1) never trips it.
 _BASIS_CONDITION_WARNING = 1.0 / math.sqrt(torch.finfo(torch.float32).eps)
 
 
 @dataclass(frozen=True)
 class CoordinatePatch:
-    """Result of an anchored edit to sparse J-space coordinates.
+    """Detached result of an anchored J-space edit; vectors are float32 on the dictionary device."""
 
-    All tensors are detached. Vector outputs use float32 on the dictionary device; the two support
-    tensors are ``torch.long`` on CPU. This is a report only: it retains no model, lens, tokenizer,
-    hook, or full dictionary.
-
-    Attributes:
-        support_before: Active support from the sparse decomposition, in decomposition order.
-        support_after: The coordinate frame the edit acts on: ``support_before`` in the same order,
-            with an absent target appended. Both coordinate tensors align with this frame.
-        coordinates_before: Original coordinates in ``support_after``, including an appended zero
-            when the target was absent.
-        coordinates_after: Coordinates after applying ``mode`` and ``alpha``.
-        source_slot: Position of the source atom within ``support_after``.
-        target_slot: Position of the target atom within ``support_after``.
-        target_was_appended: Whether the target was absent from the active support and appended
-            to ``support_after``. ``target_was_selected`` disambiguates why: pursuit may never
-            have considered the target at all, or may have selected it and then assigned it a
-            zero coordinate.
-        target_was_selected: Whether the target atom was selected by pursuit
-            (``decomposition.selected_support``), whether or not it ended up numerically active.
-            ``target_was_appended and not target_was_selected`` means pursuit never considered the
-            target; ``target_was_appended and target_was_selected`` means pursuit selected it but
-            assigned it a zero coordinate. Always ``True`` when ``target_was_appended`` is
-            ``False``, since the active support is a subset of the selected support.
-        overwritten_target_coordinate: The old target coordinate that a ``substitute`` discards
-            when it overwrites an already-active target; ``None`` when the target was absent or
-            ``mode`` is ``"swap"`` (a swap relocates a coordinate and discards nothing).
-            Alpha-independent by design, like ``target_was_appended`` and the support fields: it
-            reports the coordinate the requested edit targets for replacement, not the blended
-            outcome, so it is non-``None`` even at ``alpha=0`` where nothing is actually discarded.
-        reconstruction_before: Sparse reconstruction from ``support_before``.
-        reconstruction_after: ``reconstruction_before + delta``, the anchored reconstruction after
-            the edit.
-        residual: Anchored residual ``x - reconstruction_before``. This is not necessarily the
-            decomposition's orthogonal ``non_j_space_component``.
-        delta: ``basis @ (coordinates_after - coordinates_before)``; equivalently
-            ``reconstruction_after - reconstruction_before``. Exactly zero and proportional to
-            ``alpha``, so it carries no recompute floor.
-        patched: ``x + delta``; equal to the float32 input when ``alpha`` is zero, where ``delta``
-            is then exactly zero.
-        nonedited_coordinate_max_delta: Maximum absolute change across every coordinate that is
-            neither source nor target. A postcondition witness: it must be numerically zero.
-        residual_max_delta: Maximum absolute difference between ``residual`` and
-            ``patched - dictionary[support_after].T @ coordinates_after``, the reconstruction
-            recomputed independently from the dictionary rows. A postcondition witness: the
-            anchored residual must be preserved.
-        source_target_cosine: Signed cosine between the source and target atoms.
-        basis_rank: Numerical rank of the column-normalized edit basis at float32 precision.
-        basis_condition_number: Condition number of that basis, or infinity when rank deficient.
-        coordinates_after_nonnegative: Whether every entry of ``coordinates_after`` is ``>= 0``.
-            ``alpha`` in ``[0, 1]`` interpolates within the nonnegative pursuit frame and always
-            leaves this ``True``; an ``alpha`` outside that range (e.g. ``2.0`` or ``-1.0``)
-            extrapolates and can drive a coordinate negative, in which case this is ``False`` and
-            a warning is raised.
-    """
-
-    support_before: torch.Tensor
-    support_after: torch.Tensor
+    support_before: torch.Tensor  # long on CPU, in decomposition order
+    support_after: torch.Tensor  # support_before + an appended absent target; coordinates' frame
     coordinates_before: torch.Tensor
     coordinates_after: torch.Tensor
     source_slot: int
     target_slot: int
     target_was_appended: bool
-    target_was_selected: bool
-    overwritten_target_coordinate: Optional[float]
+    target_was_selected: bool  # in selected_support, even if pursuit then zeroed it
+    overwritten_target_coordinate: Optional[float]  # None for swap/absent target; alpha-independent
     reconstruction_before: torch.Tensor
     reconstruction_after: torch.Tensor
-    residual: torch.Tensor
+    residual: torch.Tensor  # x - reconstruction_before, not non_j_space_component
     delta: torch.Tensor
     patched: torch.Tensor
     nonedited_coordinate_max_delta: float
     residual_max_delta: float
     source_target_cosine: float
-    basis_rank: int
-    basis_condition_number: float
+    basis_rank: int  # of the column-normalized edit basis
+    basis_condition_number: float  # inf when rank deficient
     coordinates_after_nonnegative: bool
 
 
-def _validate_inputs(
-    x: torch.Tensor, dictionary: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor]:
+def _validate_inputs(x: torch.Tensor, dictionary: torch.Tensor) -> torch.Tensor:
     if dictionary.ndim != 2:
         raise ValueError(
             f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
@@ -125,7 +66,7 @@ def _validate_inputs(
     target = x.float()
     if not bool(torch.isfinite(target).all()):
         raise ValueError("x contains non-finite entries")
-    return target, dictionary
+    return target
 
 
 def _validate_atom_rows(
@@ -149,11 +90,8 @@ def _validate_index(name: str, value: int, num_atoms: int) -> int:
 
 
 def _close(actual: torch.Tensor, expected: torch.Tensor, condition_number: float = 1.0) -> bool:
-    # The base tolerance certifies a well-conditioned comparison. When ``expected`` is recomputed
-    # through an ill-conditioned span (a pinv projection), the float32 recompute error grows with
-    # the span's condition number, so scale the tolerance by it: a fixed 32-eps floor otherwise
-    # rejects an exactly-valid hand-built decomposition whose activation lies near the span's
-    # null direction. ``condition_number`` clamps to one so well-conditioned checks stay strict.
+    """Float32 allclose with tolerance scaled by ``condition_number`` (clamped to >= 1), since a
+    pinv recompute through an ill-conditioned span amplifies float32 error by that factor."""
     if actual.shape != expected.shape:
         return False
     magnitude = torch.stack([actual.abs().max(), expected.abs().max()]).max()
@@ -179,25 +117,22 @@ def _validate_decomposition(
     target_idx: int,
 ) -> None:
     num_atoms, d_model = dictionary.shape
-    support = decomposition.support
-    selected = decomposition.selected_support
-    if support.ndim != 1 or selected.ndim != 1:
+    supports = (decomposition.support, decomposition.selected_support)
+    if any(indices.ndim != 1 for indices in supports):
         raise ValueError("precomputed decomposition supports must be 1-D")
-    if support.dtype != torch.long or selected.dtype != torch.long:
+    if any(indices.dtype != torch.long for indices in supports):
         raise ValueError("precomputed decomposition supports must have dtype torch.long")
-    support_cpu = support.detach().cpu()
-    selected_cpu = selected.detach().cpu()
-    if (
-        support_cpu.unique().numel() != support_cpu.numel()
-        or selected_cpu.unique().numel() != selected_cpu.numel()
-    ):
+    support_cpu, selected_cpu = (indices.detach().cpu() for indices in supports)
+    if any(indices.unique().numel() != indices.numel() for indices in (support_cpu, selected_cpu)):
         raise ValueError("precomputed decomposition supports must not contain duplicates")
-    if bool(((support_cpu < 0) | (support_cpu >= num_atoms)).any()) or bool(
-        ((selected_cpu < 0) | (selected_cpu >= num_atoms)).any()
+    if any(
+        bool(((indices < 0) | (indices >= num_atoms)).any())
+        for indices in (support_cpu, selected_cpu)
     ):
         raise ValueError("precomputed decomposition support is outside the dictionary")
     if not set(support_cpu.tolist()).issubset(set(selected_cpu.tolist())):
         raise ValueError("precomputed active support must be a subset of selected_support")
+    # Only referenced rows are checked, so a reused decomposition skips the full-dictionary scan.
     referenced = torch.unique(
         torch.cat([support_cpu, selected_cpu, torch.tensor([target_idx], dtype=torch.long)])
     )
@@ -218,10 +153,7 @@ def _validate_decomposition(
     if not all(bool(torch.isfinite(vector).all()) for vector in local_vectors):
         raise ValueError("precomputed decomposition contains non-finite vector outputs")
     support_atoms = dictionary[support_cpu].float()
-    # Measure the selected span's conditioning once and relax the compatibility checks by it: the
-    # pinv projection recompute below (and the dictionary reconstruction) inherit float32 error
-    # that grows with this condition number, so a fixed tolerance would reject a genuinely valid
-    # decomposition on an ill-conditioned span (see ``_close``).
+    # The recomputes below inherit float32 error growing with the selected span's conditioning.
     if selected_cpu.numel():
         selected_atoms = dictionary[selected_cpu].float().T
         span_condition = _condition_number(selected_atoms)
@@ -231,14 +163,8 @@ def _validate_decomposition(
     expected_reconstruction = support_atoms.T @ coordinates
     if not _close(local_vectors[0], expected_reconstruction, span_condition):
         raise ValueError("precomputed decomposition reconstruction is incompatible with dictionary")
-    # Couple the coordinates to ``target`` (the activation), not just to the dictionary: the
-    # reconstruction/dictionary check above passes for any self-consistently scaled pair, so a
-    # wrongly-scaled decomposition would slip through and silently anchor the edit to a bogus
-    # residual. Reuse the solver's NNLS KKT stationarity test -- the active coordinates are all
-    # strictly positive (validated above), so stationarity ``A^T (target - A c) == 0`` is the
-    # exact condition for ``c`` being the nonnegative fit of ``target`` over the active support.
-    # Tolerances mirror the solver's result-dtype certification (sqrt(eps) of the float32
-    # coordinates) so genuine float32-rounded decompositions are not falsely rejected.
+    # The reconstruction check passes any self-consistently rescaled pair, so certify the NNLS KKT
+    # conditions against ``target`` too, with the solver's result-dtype (float32) tolerances.
     active_atoms = support_atoms.T
     tiny = torch.finfo(target.dtype).tiny
     relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
@@ -268,17 +194,11 @@ def _validate_decomposition(
 
 def _basis_diagnostics(basis: torch.Tensor) -> tuple[int, float]:
     """Rank and condition number of the column-normalized edit basis, warning when ill-conditioned.
-
-    Both warnings are non-fatal: the anchored edit performs no inverse of ``basis``, so a
-    rank-deficient or poorly conditioned basis only means coordinate attribution is non-unique.
-    """
+    Non-fatal: the edit inverts nothing, so a bad basis only makes attribution non-unique."""
     normalized = basis / torch.linalg.vector_norm(basis, dim=0, keepdim=True)
     diagnostic_basis = normalized.detach().cpu().double()
-    # Scale the rank tolerance by the column count (the number of edit atoms), not ``max(shape)``.
-    # ``basis`` is ``[d_model, num_atoms]`` with ``d_model >> num_atoms``, so ``max(shape)`` is the
-    # d_model row count; for ``d_model >= ~2896`` its ``eps * d_model`` tolerance exceeds the
-    # smallest singular value of a genuinely full-rank basis, mislabelling it rank deficient
-    # (condition number=inf) at model scale. Column count is the dimension that bounds the rank.
+    # rtol scales by the column count, not max(shape) = d_model: eps * d_model exceeds the smallest
+    # singular value of a full-rank basis once d_model >= ~2896.
     rank_rtol = torch.finfo(torch.float32).eps * diagnostic_basis.shape[1]
     rank = int(torch.linalg.matrix_rank(diagnostic_basis, rtol=rank_rtol).item())
     if rank < diagnostic_basis.shape[1]:
@@ -290,8 +210,7 @@ def _basis_diagnostics(basis: torch.Tensor) -> tuple[int, float]:
             stacklevel=3,
         )
     else:
-        singular_values = torch.linalg.svdvals(diagnostic_basis)
-        condition = float((singular_values.max() / singular_values.min()).item())
+        condition = _condition_number(diagnostic_basis)
         if condition >= _BASIS_CONDITION_WARNING:
             warnings.warn(
                 f"coordinate-patch basis is poorly conditioned (condition number={condition:.6g}); "
@@ -303,12 +222,8 @@ def _basis_diagnostics(basis: torch.Tensor) -> tuple[int, float]:
 
 
 def _warn_if_near_parallel(pair_units: torch.Tensor) -> float:
-    """Warn (never raise) when the source and target atoms are near-parallel; return their cosine.
-
-    A swap or substitution between near-parallel atoms is approximately a no-op, so the user should
-    hear it. Unlike ``JacobianLens.swap_hooks`` (which inverts a two-atom basis and therefore raises
-    at the parallel extreme), the anchored patch performs no inverse and stays non-fatal.
-    """
+    """Warn on near-parallel source/target atoms and return their signed cosine.
+    Never raises: unlike ``swap_hooks``, the anchored patch inverts no two-atom basis."""
     cosine = float((pair_units[0] @ pair_units[1]).item())
     abs_cosine = abs(cosine)
     if abs_cosine >= _SWAP_WARN_COSINE:
@@ -322,14 +237,8 @@ def _warn_if_near_parallel(pair_units: torch.Tensor) -> float:
 
 
 def _warn_if_alpha_extrapolates(coordinates_after: torch.Tensor, alpha: float) -> bool:
-    """Warn (never raise) when ``alpha`` pushes ``coordinates_after`` outside ``c >= 0``.
-
-    ``alpha`` in ``[0, 1]`` interpolates within the nonnegative pursuit frame, but a caller passing
-    ``alpha`` outside that range (e.g. ``2.0`` or ``-1.0``) extrapolates past it and can leave a
-    coordinate negative -- meaningful only as an explicit extrapolation, not a fitted
-    decomposition. Non-fatal, matching ``_warn_if_near_parallel`` and ``_basis_diagnostics``: the
-    edit still completes and the caller can inspect the returned flag.
-    """
+    """Return whether ``coordinates_after >= 0``, warning (non-fatally) when an ``alpha`` outside
+    ``[0, 1]`` extrapolates past the nonnegative pursuit frame."""
     nonnegative = bool((coordinates_after >= 0).all().item())
     if not nonnegative:
         warnings.warn(
@@ -354,39 +263,9 @@ def solve_coordinate_patch(
     alpha: float = 1.0,
     algorithm: str = "nonnegative_orthogonal_matching_pursuit",
 ) -> CoordinatePatch:
-    """Edit one sparse J-space coordinate while preserving its recovered frame.
-
-    ``substitute`` zeros the source and replaces the target coordinate with the source value;
-    ``swap`` exchanges the two values. An absent target is appended at zero. The edit is blended
-    by ``alpha`` and reconstructed over the original residual ``x - reconstruction``.
-
-    Args:
-        x: Activation vector with shape ``[d_model]``.
-        dictionary: Atom matrix with shape ``[num_atoms, d_model]``; rows are atoms.
-        source_idx: Atom index that must occur in the decomposition's active support.
-        target_idx: Distinct atom index to receive or exchange the source coordinate.
-        decomposition: Optional decomposition of ``x`` under ``dictionary``. Reuse validates only
-            the selected and edited rows, avoiding another full-dictionary scan.
-        k: Sparse-solver upper bound when no decomposition is supplied.
-        mode: ``"substitute"`` to overwrite the target, or ``"swap"`` to exchange coordinates.
-        alpha: Finite interpolation strength. Zero returns an unchanged float32 clone.
-        algorithm: Sparse coefficient-update rule when no decomposition is supplied.
-
-    Returns:
-        A :class:`CoordinatePatch` with the anchored edit and numerical diagnostics.
-
-    Raises:
-        ValueError: If tensors, indices, edit arguments, atoms, or a supplied decomposition are
-            invalid or incompatible.
-        RuntimeError: If a fresh default NNLS decomposition fails its KKT certification, or an
-            edit postcondition is violated.
-
-    Warns:
-        UserWarning: If the source/target pair is near-parallel, the normalized edit basis is
-            rank deficient or poorly conditioned, or ``alpha`` extrapolates ``coordinates_after``
-            outside the nonnegative pursuit frame. All three are non-fatal.
-    """
-    target, dictionary = _validate_inputs(x, dictionary)
+    """Edit sparse J-space coordinates of ``x``, preserving the residual ``x - reconstruction``.
+    ``substitute`` moves the source value onto the target and zeros the source; ``swap`` swaps."""
+    target = _validate_inputs(x, dictionary)
     source_idx = _validate_index("source_idx", source_idx, dictionary.shape[0])
     target_idx = _validate_index("target_idx", target_idx, dictionary.shape[0])
     if source_idx == target_idx:
@@ -411,14 +290,11 @@ def solve_coordinate_patch(
     target_was_selected = target_was_active or (
         target_idx in decomposition.selected_support.detach().cpu().tolist()
     )
-    if target_was_active:
-        support_after = support_before.clone()
-        coordinates_before = decomposition.coordinates.float().to(dictionary.device).clone()
-    else:
-        support_after = torch.cat([support_before, torch.tensor([target_idx], dtype=torch.long)])
-        coordinates_before = torch.cat(
-            [decomposition.coordinates.float().to(dictionary.device).clone(), target.new_zeros(1)]
-        )
+    support_after = support_before.clone()
+    coordinates_before = decomposition.coordinates.float().to(dictionary.device).clone()
+    if not target_was_active:
+        support_after = torch.cat([support_after, torch.tensor([target_idx], dtype=torch.long)])
+        coordinates_before = torch.cat([coordinates_before, target.new_zeros(1)])
 
     frame = support_after.tolist()
     source_slot = frame.index(source_idx)
@@ -450,10 +326,8 @@ def solve_coordinate_patch(
 
     reconstruction_before = decomposition.reconstruction.float().to(dictionary.device).clone()
     residual = target - reconstruction_before
-    # Move the reconstruction by the coordinate change alone. This is exactly zero at alpha=0
-    # (no special case) and strictly proportional to alpha, so ``patched`` has no recompute floor
-    # and is continuous through the origin. ``reconstruction_after`` stays anchored to the stored
-    # ``reconstruction_before`` so the residual ``x - reconstruction_before`` is preserved exactly.
+    # Moving by the coordinate change alone keeps delta exactly zero at alpha=0 and proportional to
+    # alpha (no recompute floor), and leaves the residual ``x - reconstruction_before`` exact.
     delta = basis @ (coordinates_after - coordinates_before)
     reconstruction_after = reconstruction_before + delta
     patched = target + delta
@@ -505,46 +379,8 @@ def solve_coordinate_patch_positions(
     alpha: float = 1.0,
     algorithm: str = "nonnegative_orthogonal_matching_pursuit",
 ) -> Tuple[torch.Tensor, Dict[Tuple[int, int, int], CoordinatePatch]]:
-    """Apply :func:`solve_coordinate_patch` independently to every ``(batch, position)`` pair.
-
-    ``activations`` holds one already-sliced forward-pass chunk, shape ``[batch, num_positions,
-    d_model]``; ``position_labels`` names the real sequence position of each of its
-    ``num_positions`` columns (their order, not their value, need not match column index -- the
-    labels only key ``decomposition_cache`` and the returned patch dict). Each ``(batch_idx,
-    position)`` pair gets its own sparse decomposition and its own :class:`CoordinatePatch`: a
-    source active in one pair never affects another, matching the anchored, per-pair contract of
-    the underlying primitive.
-
-    Args:
-        activations: Chunk of activations, shape ``[batch, num_positions, d_model]``.
-        dictionary: Atom matrix for this layer, shape ``[num_atoms, d_model]``.
-        position_labels: Real sequence position for each column of ``activations``; must have
-            length ``activations.shape[1]``.
-        source_idx: Atom index that must occur in the active support of every pair.
-        target_idx: Distinct atom index to receive or exchange the source coordinate.
-        layer: Layer identifier folded into every ``decomposition_cache`` key.
-        decomposition_cache: Optional caller-owned mapping from ``(layer, batch_idx, position)``
-            to a previously computed :class:`JSpaceDecomposition`. A hit skips
-            :func:`get_sparse_decomposition` and reuses the strict-compatibility validation
-            already performed inside :func:`solve_coordinate_patch`; a miss solves once and
-            stores the result before use.
-        k: Sparse-solver upper bound on a cache miss.
-        mode: ``"substitute"`` or ``"swap"``, forwarded to :func:`solve_coordinate_patch`.
-        alpha: Finite interpolation strength, forwarded to :func:`solve_coordinate_patch`.
-        algorithm: Sparse coefficient-update rule on a cache miss.
-
-    Returns:
-        A tuple ``(patched, patches)``: ``patched`` has the same shape as ``activations``, with
-        every ``(batch_idx, position)`` entry replaced by that pair's
-        :attr:`CoordinatePatch.patched`; ``patches`` maps ``(layer, batch_idx, position)`` to the
-        full :class:`CoordinatePatch` for that pair.
-
-    Raises:
-        ValueError: If ``activations`` is not 3-D, if ``position_labels`` length does not match
-            ``activations.shape[1]``, or if ``source_idx`` is not in the active support for any
-            ``(batch_idx, position)`` pair -- the whole call fails rather than silently skipping
-            that pair.
-    """
+    """Apply :func:`solve_coordinate_patch` to every ``(batch, column)`` of ``activations``.
+    Patches and ``decomposition_cache`` key on ``(layer, batch_idx, position_labels[column])``."""
     if activations.ndim != 3:
         raise ValueError(
             "activations must be 3-D [batch, num_positions, d_model], got shape "
@@ -579,10 +415,8 @@ def solve_coordinate_patch_positions(
                 alpha=alpha,
                 algorithm=algorithm,
             )
-            # Straight-through edit: ``patch.patched`` is a detached ``x.float() + delta`` and would
-            # sever the gradient path at every patched position. ``patch.delta`` is a detached
-            # constant w.r.t. ``x``, so ``x + patch.delta`` is bitwise identical for the float32
-            # activations while keeping ``x``'s graph -- an identity gradient at the patch.
+            # Straight-through: ``patch.patched`` is detached, but ``x + patch.delta`` equals it for
+            # float32 ``x`` and keeps ``x``'s graph (an identity gradient at the patch).
             patched[batch_idx, column] = x + patch.delta
             patches[key] = patch
     return patched, patches
@@ -597,17 +431,8 @@ def _postcondition_witnesses(
     basis: torch.Tensor,
     residual: torch.Tensor,
 ) -> tuple[float, float]:
-    """Measure — and enforce — that the edit only moved the source/target coordinates.
-
-    Diagnostic reductions run in float64 on CPU (the decomposition module's convention). Returns
-    ``(nonedited_coordinate_max_delta, residual_max_delta)``; raises if either exceeds a float32
-    tolerance, since the anchored edit must leave every other coordinate and the residual intact.
-
-    The residual witness recomputes the reconstruction independently from the dictionary rows
-    (``basis @ coordinates_after``) rather than reusing the ``delta`` that built ``patched``, so a
-    basis/coordinate misalignment surfaces as ``patched - basis @ coordinates_after`` drifting from
-    ``residual`` instead of cancelling as an algebraic identity of the construction.
-    """
+    """Return and enforce ``(nonedited_coordinate_max_delta, residual_max_delta)`` in float64.
+    Recomputes the reconstruction from ``basis``, not ``delta``, so a misalignment cannot cancel."""
     before = coordinates_before.detach().cpu().double()
     after = coordinates_after.detach().cpu().double()
     keep = torch.ones(before.numel(), dtype=torch.bool)

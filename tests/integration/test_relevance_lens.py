@@ -1,20 +1,5 @@
-"""End-to-end relevance-rule backend on tiny, offline HF fixtures.
-
-Per-component unit tests wrap one bridge component directly in a hand-built
-single-block harness, which only ever registers a canonical mount name
-(``ln1``, ``mlp``) once. That harness cannot see what happens on a real,
-fully assembled ``TransformerBridge``, where the same component is *also*
-reachable through the raw HF module tree under its own HF attribute name
-(for example ``blocks.0._original_component.input_layernorm``). These tests
-build a tiny random Qwen2 (the opaque gated-MLP native-forward path) and a tiny
-random Phi-3 (``JointGateUpMLPBridge``'s already-reconstructed forward)
-fully offline -- random weights from a programmatic HF config, no network
-access, no checkpoint download -- and exercise all three rules together on
-the real block stack: forward stays bit-identical, canonical mounts are
-actually found and installed, and the gradient each rule-active node passes
-upstream matches its closed-form VJP given the gradient it actually
-received downstream in the real graph.
-"""
+"""End-to-end relevance rules on offline tiny Qwen2 and Phi-3 bridges, where each component is
+also reachable through its raw HF alias path (unlike the single-block unit harnesses)."""
 
 from typing import Any
 
@@ -62,8 +47,7 @@ TINY_DIMS = dict(
     eos_token_id=2,
 )
 
-# Fitting needs prompts long enough to contain a valid source position, so these
-# are word lists rather than short phrases.
+# Long enough to contain a valid source position after skipping the first positions.
 FIT_CORPUS = "integration-fit-corpus"
 FIT_SKIP_FIRST = 2
 FIT_PROMPTS = [
@@ -119,11 +103,8 @@ def _build_phi3_bridge() -> TransformerBridge:
     return TransformerBridge(model=hf_model, adapter=adapter, tokenizer=_MockTokenizer())
 
 
-# Qwen2 exercises GatedMLPBridge's opaque native-forward path (the primary path
-# per real usage), where the rules attach to the live HF activation and down
-# projection; Phi-3 exercises JointGateUpMLPBridge's already-reconstructed
-# forward, isolating rule bugs from Bridge-integration bugs on the
-# fused-projection family.
+# Qwen2 covers GatedMLPBridge's opaque native forward; Phi-3 covers JointGateUpMLPBridge's
+# reconstructed forward.
 FIXTURE_BUILDERS = {
     "qwen2": _build_qwen2_bridge,
     "phi3": _build_phi3_bridge,
@@ -175,18 +156,8 @@ class TestCoverage:
 
 
 class TestGradientMatchesClosedFormOracle:
-    """Each rule-active node's local VJP, checked against the gradient it
-    actually receives in the real graph -- not a hand-rederived whole-model
-    oracle. The rule Functions compute a purely local closed-form VJP (already
-    proven against analytic oracles in the primitive and single-component
-    tests), so the only thing a real multi-block graph can newly break is the
-    wiring: the wrong node's weights, a disconnected graph path, or a mount
-    that silently never resolves so its rule never activates. Tapping
-    hook_in/hook_out -- outside the LN-rule's fail-closed
-    hook_scale/hook_normalized guard -- exposes exactly the gradient each node
-    passes upstream and the gradient it receives from downstream, with no
-    need to reconstruct attention or the rest of the stack by hand.
-    """
+    """Each rule-active node's local VJP against the gradient it receives in the real graph,
+    tapped at hook_in/hook_out (outside the LN-rule's hook_scale/hook_normalized guard)."""
 
     def test_ln_rule_and_gated_mlp_rule_match_local_oracles(
         self, bridge: TransformerBridge
@@ -231,9 +202,7 @@ class TestGradientMatchesClosedFormOracle:
         torch.testing.assert_close(
             captured["ln_grad_in"], expected_ln_grad_in, atol=1e-5, rtol=1e-4
         )
-        # weight keeps its ordinary gradient: the rule only redefines the x-path
-        # VJP, not d(output)/d(weight), given the same grad_out the rule-active
-        # forward actually produced.
+        # weight keeps its ordinary gradient; the LN-rule redefines only the x-path VJP.
         expected_weight_grad = (captured["ln_grad_out"] * (captured["ln_x"] / denom)).sum(
             dim=(0, 1)
         )
@@ -364,9 +333,7 @@ class TestRelevanceLensFitOnRealBridge:
 class TestJointFitEqualsWeightedMerge:
     def test_joint_fit_matches_prompt_count_weighted_merge(self) -> None:
         bridge = _fit_bridge()
-        # Deliberately unequal shards: an unweighted mean of the two shard
-        # matrices would differ from the joint fit, so this only passes when the
-        # merge really weights by prompt count.
+        # Unequal shards, so an unweighted mean of shard matrices would not match the joint fit.
         split = 1
         first, second = FIT_PROMPTS[:split], FIT_PROMPTS[split:]
 

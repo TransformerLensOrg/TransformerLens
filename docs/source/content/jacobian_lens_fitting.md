@@ -402,8 +402,10 @@ Three things are easy to conflate:
 - **R-lens** is this estimator: a Jacobian lens fitted with relevance-rule
   backward. It produces transport matrices, not component scores.
 - **Published paired artifacts** (`camilablank/workspace-lenses` on the Hugging
-  Face Hub) are not accepted by the current loader; converting them is separate
-  work.
+  Face Hub) keep their provenance in a top-level `provenance` dict, which `load()`
+  reads. Their R-lens arms (estimator `relp`) are refused at load, and their J-lens
+  arms are refused by `validate_model()` because they target the penultimate layer;
+  TransformerLens readout supports only the final-layer target convention.
 
 ## Sparse decomposition (J-space coordinates)
 

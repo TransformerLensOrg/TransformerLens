@@ -49,14 +49,11 @@ def test_substitute_appends_absent_target_and_preserves_frame() -> None:
 
 
 def test_target_was_selected_true_when_pursuit_drops_it_to_zero() -> None:
-    """Q6: a target selected by pursuit but assigned a zero coordinate is distinguishable from a
-    target pursuit never considered -- both leave ``target_was_appended`` True, but only the
-    former leaves ``target_was_selected`` True."""
+    """A selected-but-zeroed target is appended like an unseen one, but reports as selected."""
     activation, dictionary = _problem()
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)
-    # Atom 2 is orthogonal to both selected atoms and to the activation, so folding it into
-    # ``selected_support`` (as if pursuit had picked it and the NNLS re-solve zeroed it) doesn't
-    # perturb ``j_space_component`` or any other validated quantity.
+    # Atom 2 is orthogonal to the selected atoms and the activation, so adding it to
+    # ``selected_support`` leaves every validated quantity unchanged.
     selected_with_dropped_target = replace(
         decomposition,
         selected_support=torch.cat([decomposition.selected_support, torch.tensor([2])]),
@@ -95,7 +92,7 @@ def test_active_target_substitute_overwrites_while_swap_exchanges() -> None:
 
 
 def test_overwritten_target_coordinate_reports_exact_discarded_value() -> None:
-    """Q2 value-level: substitute onto an active target reports the exact discarded coordinate."""
+    """Substitute onto an active target reports the exact discarded coordinate."""
     dictionary = torch.eye(3)
     activation = torch.tensor([2.0, 7.25, 0.0])
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)
@@ -116,10 +113,7 @@ def test_overwritten_target_coordinate_reports_exact_discarded_value() -> None:
 
 
 def test_overwritten_target_coordinate_is_alpha_independent_hypothetical_value() -> None:
-    """Q10: overwritten_target_coordinate reports the coordinate the requested substitute would
-    discard at full strength, independent of alpha -- so at alpha=0, where patched equals the
-    input and nothing is actually discarded, the field is still the hypothetical value rather
-    than None."""
+    """At alpha=0 nothing is discarded, yet the full-strength overwritten value is reported."""
     dictionary = torch.eye(3)
     activation = torch.tensor([2.0, 7.25, 0.0])
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)
@@ -158,13 +152,11 @@ def test_small_alpha_delta_is_proportional_not_floored() -> None:
         activation, dictionary, 0, 2, decomposition=decomposition, alpha=1e-4
     )
 
-    # delta scales strictly with alpha: no alpha-independent recompute floor survives at 1e-4.
     torch.testing.assert_close(tiny.delta, 1e-4 * full.delta, rtol=1e-3, atol=1e-7)
     assert float(tiny.delta.abs().max()) < 1e-3
 
 
 def test_alpha_within_unit_interval_stays_in_nonnegative_orthant() -> None:
-    """Q5: alpha in [0, 1] never leaves the nonnegative pursuit frame."""
     activation, dictionary = _problem()
 
     result = solve_coordinate_patch(activation, dictionary, 0, 2, k=2, alpha=0.5)
@@ -174,8 +166,6 @@ def test_alpha_within_unit_interval_stays_in_nonnegative_orthant() -> None:
 
 
 def test_alpha_extrapolation_beyond_orthant_warns_and_flags() -> None:
-    """Q5: alpha outside [0, 1] (e.g. 2.0) can drive coordinates_after negative; this must warn
-    and be visible on the result rather than pass silently."""
     activation, dictionary = _problem()
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)
 
@@ -214,7 +204,7 @@ def test_witnesses_certify_untouched_coordinates_and_residual() -> None:
 
     result = solve_coordinate_patch(activation, dictionary, 0, 3, decomposition=decomposition)
 
-    # Atom 1 and atom 2 are neither source nor target, so their coordinates must be untouched.
+    # Atoms 1 and 2 are neither source nor target.
     assert result.nonedited_coordinate_max_delta == pytest.approx(0.0, abs=1e-6)
     assert result.residual_max_delta == pytest.approx(0.0, abs=1e-6)
 
@@ -288,11 +278,8 @@ def test_rejects_scaled_but_self_consistent_decomposition() -> None:
     activation, dictionary = _problem()
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)
 
-    # Scale the (reconstruction, coordinates) pair together. The pair stays internally
-    # consistent with the dictionary and still agrees with the untouched j-space
-    # components, so every self-referential check passes -- but the coordinates are no
-    # longer the NNLS fit of the activation, which the x-coupled stationarity check must
-    # catch instead of silently anchoring the edit to a wrong residual.
+    # A jointly rescaled pair passes every self-referential check; only the activation-coupled
+    # KKT check sees the coordinates are no longer the NNLS fit.
     scaled = replace(
         decomposition,
         coordinates=decomposition.coordinates * 2.0,
@@ -353,7 +340,6 @@ def test_tiny_nonzero_atoms_are_valid() -> None:
 
 
 def test_rejects_zero_norm_target_atom() -> None:
-    # The target atom is edited, so a zero-norm target is rejected once the edit frame is built.
     dictionary = torch.tensor([[1.0, 0.0], [0.0, 0.0]])
     activation = torch.tensor([2.0, 0.0])
 
@@ -408,7 +394,7 @@ def test_rejects_device_mismatch_between_activation_and_dictionary() -> None:
 
 
 def test_near_parallel_atoms_warn_but_return_patch() -> None:
-    """Q3-ext: near-parallel source/target warns (naming the cosine) and never raises."""
+    """Near-parallel source/target warns (naming the cosine) and never raises."""
     activation = torch.tensor([2.0, 0.0, 0.0])
     dictionary = torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.05, 0.0], [0.0, 0.0, 1.0]])
 
@@ -491,13 +477,8 @@ def test_well_conditioned_control_emits_no_warning() -> None:
 
 
 def test_large_d_model_full_rank_basis_reports_finite_condition() -> None:
-    """C2: the rank tolerance must scale by the column count, not the d_model row count.
-
-    A full-rank but poorly conditioned edit basis stays finite at model scale. Scaling the
-    rank tolerance by ``max(shape)`` (the d_model row count) instead crosses the smallest
-    singular value once ``d_model >= ~2896``, reporting the basis as rank deficient with an
-    infinite condition number on Llama/Mistral/Gemma-scale dictionaries.
-    """
+    """Rank rtol scales by column count: ``max(shape)`` = d_model >= ~2896 would wrongly report a
+    full-rank, poorly conditioned basis as rank deficient."""
     d_model = 3000
 
     def _atom(*entries: tuple[int, float]) -> torch.Tensor:
@@ -529,30 +510,24 @@ def test_large_d_model_full_rank_basis_reports_finite_condition() -> None:
 
 
 def test_high_condition_decomposition_is_accepted() -> None:
-    """C8: the compatibility tolerance must scale with the selected span's condition number.
-
-    An exactly valid, hand-built decomposition is rejected by a fixed 32-eps tolerance when the
-    activation lies along the near-null direction of an ill-conditioned selected span: the
-    float32 pinv recompute of the projection then diverges by ~cond*eps. Scaling the tolerance
-    with the measured condition number keeps the genuine decomposition valid.
-    """
+    """An exactly valid decomposition on an ill-conditioned span passes: its float32 pinv
+    recompute drifts by ~cond * eps, beyond a fixed 32-eps tolerance."""
     separation = 1e-3  # atom1/atom2 near-parallel; their difference direction is e2
-    atom0 = torch.tensor([1.0, 0.0, 0.0, 0.0])  # active support and edit source
+    atom0 = torch.tensor([1.0, 0.0, 0.0, 0.0])
     atom1 = torch.tensor([0.0, 1.0, 0.0, 0.0])
     atom2 = torch.tensor([0.0, 1.0, separation, 0.0])
     atom2 = atom2 / atom2.norm()
-    target_atom = torch.tensor([0.0, 0.0, 0.0, 1.0])  # appended by the edit
+    target_atom = torch.tensor([0.0, 0.0, 0.0, 1.0])
     dictionary = torch.stack([atom0, atom1, atom2, target_atom])
 
-    # The activation sits in the selected span but concentrates on e2, the ill-conditioned
-    # (near-null) direction of the atom1/atom2 pair, so recovering it needs the amplifying inverse.
+    # Concentrated on e2, the near-null direction of the atom1/atom2 pair.
     activation = atom0 + torch.tensor([0.0, 0.0, 1.0, 0.0])
     decomposition = JSpaceDecomposition(
         support=torch.tensor([0]),
-        coordinates=torch.tensor([1.0]),  # NNLS fit of the activation over the active atom e0
+        coordinates=torch.tensor([1.0]),  # NNLS fit over the active atom e0
         selected_support=torch.tensor([0, 1, 2]),
         reconstruction=atom0.clone(),
-        j_space_component=activation.clone(),  # activation lies entirely in the selected span
+        j_space_component=activation.clone(),  # activation lies in the selected span
         non_j_space_component=torch.zeros(4),
     )
 
@@ -650,7 +625,7 @@ def test_solve_coordinate_patch_positions_cache_hit_skips_resolve(
     solve_coordinate_patch_positions(
         activations, dictionary, [0], 0, 1, layer=0, decomposition_cache=cache, k=2
     )
-    assert len(calls) == 1  # second call is a pure cache hit
+    assert len(calls) == 1
 
 
 def test_solve_coordinate_patch_positions_cache_hit_and_miss_produce_identical_patch() -> None:
@@ -673,17 +648,12 @@ def test_solve_coordinate_patch_positions_cache_hit_and_miss_produce_identical_p
 
 
 def test_solve_coordinate_patch_positions_populates_batch_component_of_cache_key() -> None:
-    """The batch component of the ``(layer, batch_idx, position)`` cache key is load-bearing.
-
-    Every other cache test uses a ``[1, 1, d_model]`` activation, so collapsing the key to
-    ``(layer, 0, position)`` would pass the whole tier. Here two distinct batch rows share one
-    caller-owned cache at the same ``(layer, position)``: each must occupy its own slot and get its
-    own solve, so a collapsed key -- which would collide row 1 onto row 0's entry -- is caught.
-    """
+    """Two batch rows at one ``(layer, position)`` get separate slots; the other cache tests use
+    batch 1, so a key that dropped ``batch_idx`` would pass them."""
     dictionary = torch.eye(3)
     row0 = torch.tensor([2.0, 5.0, 0.0])  # active support {0, 1}
-    row1 = torch.tensor([3.0, 0.0, 4.0])  # active support {0, 2} -- differs from row0
-    activations = torch.stack([row0, row1]).unsqueeze(1)  # [2, 1, 3]
+    row1 = torch.tensor([3.0, 0.0, 4.0])  # active support {0, 2}
+    activations = torch.stack([row0, row1]).unsqueeze(1)
     cache: dict = {}
 
     solve_coordinate_patch_positions(
@@ -697,11 +667,8 @@ def test_solve_coordinate_patch_positions_populates_batch_component_of_cache_key
         k=2,
     )
 
-    # Both batch rows are keyed separately at the shared (layer, position); neither collided.
     assert (0, 0, 7) in cache
     assert (0, 1, 7) in cache
-    # Each row solved independently: the two decompositions have different active supports, so
-    # row 1 did not reuse row 0's cache entry.
     row0_support = cache[(0, 0, 7)].support.sort().values
     row1_support = cache[(0, 1, 7)].support.sort().values
     assert not torch.equal(row0_support, row1_support)
@@ -716,15 +683,13 @@ def test_solve_coordinate_patch_positions_preserves_gradient_to_patched_position
         activations, dictionary, position_labels=[4], source_idx=0, target_idx=1, layer=3, k=2
     )
 
-    # Forward output is unchanged: the straight-through edit is bitwise identical to ``patch.patched``.
     expected = solve_coordinate_patch(activation, dictionary, 0, 1, k=2)
     assert torch.equal(patched[0, 0].detach(), expected.patched)
 
     patched.sum().backward()
     assert activations.grad is not None
     grad_at_patch = activations.grad[0, 0]
-    # Straight-through gives an identity gradient at the patched position; the severed
-    # ``patch.patched`` path left this exactly zero.
+    # Writing the detached ``patch.patched`` instead would make this exactly zero.
     assert torch.isfinite(grad_at_patch).all()
     assert float(grad_at_patch.abs().sum()) > 0.0
 

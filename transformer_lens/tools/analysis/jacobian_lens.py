@@ -60,6 +60,7 @@ Example::
     print(result.top_tokens(model.tokenizer, k=5)[8][-1])  # layer 8, final position
 """
 
+import json
 import warnings
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -103,13 +104,8 @@ from transformer_lens.utilities.hf_utils import call_hf_with_retry
 TokenInput = Union[str, int]
 _LensT = TypeVar("_LensT", bound="JacobianLens")
 
-# Backward-provider seam for the fit drive loop. A provider takes the target
-# residual, the source residuals it differentiates against, one batched one-hot
-# cotangent, and the ``retain_graph`` flag, and returns one gradient per source
-# (the same tuple ``torch.autograd.grad`` returns). Keeping the backward step
-# behind this narrow callable lets the estimator-independent driver run an
-# alternate estimator without touching its capture / cotangent-batching /
-# averaging machinery; the ordinary J-lens path passes :func:`_ordinary_vjp`.
+# (target, sources, cotangent, retain_graph) -> one grad per source, like torch.autograd.grad;
+# another estimator reuses the fit loop by swapping only this backward step.
 BackwardProvider = Callable[
     [torch.Tensor, List[torch.Tensor], torch.Tensor, bool],
     Tuple[torch.Tensor, ...],
@@ -160,10 +156,11 @@ def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
 DEFAULT_SKIP_FIRST_POSITIONS = 16
 DEFAULT_TOP_K = 10
 
-# Estimator identity recorded on every fitted lens. The transport matrices of two
-# lenses are only comparable when their estimators agree, so merge() compares this
-# value alongside the rest of the provenance.
+# Recorded on every fitted lens; merge() refuses shards whose estimators differ.
 ESTIMATOR_JACOBIAN = "jacobian_lens"
+
+# Ordinary-Jacobian estimator labels; workspace-lenses J-lens arms record "standard".
+_JACOBIAN_ESTIMATOR_NAMES: frozenset = frozenset({ESTIMATOR_JACOBIAN, "standard"})
 
 # Keys written by fit() that must not appear in converted-lens metadata so that
 # merge() can refuse to mix TL-fitted lenses with externally converted ones.
@@ -266,9 +263,7 @@ class JacobianLens:
             from the reference implementation load with empty metadata.
     """
 
-    # Whether from_pretrained() resolves short model names through the bundled
-    # artifact registry. An estimator whose artifacts live in a different
-    # registry sets this False and accepts only explicit paths or Hub repo ids.
+    # The bundled registry holds only Jacobian lens artifacts; other estimators opt out.
     _uses_artifact_registry: bool = True
 
     def __init__(
@@ -363,7 +358,8 @@ class JacobianLens:
         **Artifact** (the reference format, written by :meth:`save` or the
         Anthropic reference package): must contain a ``J`` key mapping layer
         indices to transport matrices, plus ``n_prompts``, ``d_model``, and an
-        optional ``metadata`` dict.
+        optional ``metadata`` dict. A top-level workspace-lenses ``provenance`` dict
+        supplies ``target_layer`` and must record a Jacobian estimator.
 
         **Fit checkpoint** (running-sum format, written by the reference
         implementation's ``write_checkpoint()`` during fitting): must contain
@@ -410,12 +406,13 @@ class JacobianLens:
         """
         payload = torch.load(path, map_location="cpu", weights_only=True)
         if "J" in payload:
-            cls._validate_artifact_metadata(path, payload.get("metadata"))
+            metadata = _harvest_artifact_provenance(path, payload)
+            cls._validate_artifact_metadata(path, metadata)
             return cls(
                 {int(layer): matrix for layer, matrix in payload["J"].items()},
                 n_prompts=int(payload.get("n_prompts", 0)),
                 d_model=int(payload["d_model"]),
-                metadata=payload.get("metadata"),
+                metadata=metadata,
             )
         if "jacobian_sum" in payload:
             cls._validate_checkpoint_payload(path, payload)
@@ -510,9 +507,8 @@ class JacobianLens:
            ``"gemma-2-2b"`` or ``"google/gemma-2-2b"``), the corresponding
            artifact in ``neuronpedia/jacobian-lens`` is fetched automatically.
            The *filename* argument is ignored in this case because the registry
-           already encodes the correct subpath. Subclasses that set
-           ``_uses_artifact_registry = False`` skip this step and refuse a bare
-           short name, since the registry holds only Jacobian lens artifacts.
+           already encodes the correct subpath. With ``_uses_artifact_registry``
+           False this step is skipped and bare short names are refused.
         4. **Explicit Hub repo** — otherwise *name_or_path* is treated as a Hub
            repo id and *filename* is used as-is, preserving full backward
            compatibility (e.g. ``from_pretrained("neuronpedia/jacobian-lens",
@@ -594,17 +590,15 @@ class JacobianLens:
         parallelized across processes or machines and merged afterwards.
         Provenance must match across shards (apart from ``n_prompts``), so a
         merge cannot silently relabel matrices fitted with different models,
-        corpora, dtypes, or recorded estimator settings. Estimator-specific
-        subclasses also validate that the inputs belong to their estimator.
-        The merged count replaces the per-shard count.
+        corpora, dtypes, or estimator settings. The merged count replaces the
+        per-shard count.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
                 ``d_model``.
 
         Raises:
-            ValueError: On an empty sequence, mismatched lenses, or shards from
-                different estimators.
+            ValueError: On an empty sequence or mismatched lenses or estimators.
         """
         if not lenses:
             raise ValueError("cannot merge an empty sequence of lenses")
@@ -912,13 +906,6 @@ class JacobianLens:
         (``d_vocab * d_model`` fp32 values, on the order of gigabytes for a large
         vocabulary), one entry per requested layer. One detached copy of ``W_U`` is
         retained per device to detect changes without transferring weights to the host.
-
-        Args:
-            model: The model supplying ``W_U``.
-            layer: Source layer for the dictionary (must be a fitted source layer).
-
-        Returns:
-            The dictionary, fp32, on the model's device.
         """
         self.validate_model(model)
         layer = _normalize_layer(layer, model.cfg.n_layers)
@@ -950,49 +937,12 @@ class JacobianLens:
         k: int = DEFAULT_K,
         algorithm: str = "nonnegative_orthogonal_matching_pursuit",
     ) -> JSpaceDecomposition:
-        """Decompose an activation into its J-space content at ``layer``.
-
-        ``activation_or_prompt`` is either:
-
-        - a raw activation vector of shape ``[d_model]`` (leave ``position`` as ``None``), or
-        - a prompt -- a string or a ``[1, seq]`` token tensor -- in which case ``position``
-          selects the token whose ``blocks.{layer}.hook_out`` activation is decomposed.
-
-        The full-vocabulary dictionary at ``layer`` is built (and cached) via
-        :meth:`lens_vector_dictionary`, then :func:`get_sparse_decomposition` solves for a
-        ``k``-sparse nonnegative combination of J-lens vectors.
-
-        Args:
-            model: A raw ``TransformerBridge``.
-            activation_or_prompt: An activation vector, or a prompt (string / token tensor).
-            layer: Source layer (must be a fitted source layer).
-            position: Token position when a prompt is given; must be ``None`` for a raw
-                activation vector.
-            k: Upper bound on the number of J-lens vectors to select; selection stops early
-                once no unselected vector is materially positively correlated, so fewer may be
-                returned.
-            algorithm: Coefficient-update rule; see :func:`get_sparse_decomposition`.
-
-        Returns:
-            A :class:`JSpaceDecomposition`. Its ``support`` (token ids here) holds only the
-            numerically active J-lens vectors and ``selected_support`` every selected vector,
-            with ``support.numel() <= selected_support.numel() <= k``. ``support`` and its
-            token-decoding tensors are on CPU; the vector-valued outputs stay on the model's
-            device.
-
-        Raises:
-            ValueError: On an invalid model, a mismatched activation shape, a batched prompt,
-                an unfitted layer, or an invalid ``k`` / ``algorithm``.
-            RuntimeError: If the default nonnegative least-squares solver cannot validate its
-                result against the KKT conditions.
-        """
-        activation, resolved_layer = self._resolve_activation(
+        """Sparse J-space decomposition of a ``[d_model]`` activation or a prompt's at ``position``.
+        ``support`` is on CPU; vector-valued outputs stay on the model's device."""
+        activation, dictionary = self._resolve_activation(
             model, activation_or_prompt, layer, position
         )
-        dictionary = self.lens_vector_dictionary(model, resolved_layer)
-        return get_sparse_decomposition(
-            activation.float().to(dictionary.device), dictionary, k, algorithm=algorithm
-        )
+        return get_sparse_decomposition(activation, dictionary, k, algorithm=algorithm)
 
     @torch.no_grad()
     def coordinate_patch(
@@ -1010,39 +960,14 @@ class JacobianLens:
         alpha: float = 1.0,
         algorithm: str = "nonnegative_orthogonal_matching_pursuit",
     ) -> CoordinatePatch:
-        """Patch sparse J-space coordinates for an activation at ``layer``.
-
-        The activation may be a raw ``[d_model]`` vector or a prompt paired with ``position``,
-        exactly as in :meth:`decompose`. ``source_token`` must occur in the active sparse support.
-        ``substitute`` replaces the target coordinate with the source coordinate and zeros the
-        source; ``swap`` exchanges them. Other coordinates and ``x - reconstruction`` are fixed.
-
-        A supplied ``decomposition`` avoids repeating the vocabulary-scale sparse solve after its
-        activation and dictionary compatibility have been validated.
-
-        Args:
-            model: A raw ``TransformerBridge``.
-            activation_or_prompt: An activation vector, or a prompt (string / token tensor).
-            layer: Source layer (must be a fitted source layer).
-            source_token: Active source concept, as a single-token string or token id.
-            target_token: Distinct target concept, as a single-token string or token id.
-            position: Token position when a prompt is given; ``None`` for a raw activation.
-            decomposition: Optional compatible decomposition of this activation and dictionary.
-            k: Sparse-solver upper bound when ``decomposition`` is not supplied.
-            mode: ``"substitute"`` or ``"swap"``.
-            alpha: Finite interpolation strength; zero is an exact no-op.
-            algorithm: Sparse coefficient-update rule when solving a fresh decomposition.
-
-        Returns:
-            A :class:`CoordinatePatch` containing the edited frame, diagnostics, and activation.
-        """
-        activation, resolved_layer = self._resolve_activation(
+        """Patch an activation's J-space frame: ``substitute`` moves ``source_token``'s coordinate
+        onto ``target_token``, ``swap`` exchanges them; the rest and the residual stay fixed."""
+        activation, dictionary = self._resolve_activation(
             model, activation_or_prompt, layer, position
         )
-        dictionary = self.lens_vector_dictionary(model, resolved_layer)
         source_id, target_id = _to_token_ids(model, [source_token, target_token])
         return solve_coordinate_patch(
-            activation.float().to(dictionary.device),
+            activation,
             dictionary,
             source_id,
             target_id,
@@ -1059,14 +984,9 @@ class JacobianLens:
         activation_or_prompt: Union[torch.Tensor, str],
         layer: int,
         position: Optional[int],
-    ) -> Tuple[torch.Tensor, int]:
-        """Validate the model and layer, then resolve either a raw ``[d_model]`` activation or a
-        prompt plus ``position`` to the activation vector to analyse.
-
-        Returns ``(activation, resolved_layer)``. Shared by :meth:`decompose`,
-        :meth:`coordinate_patch`, and :meth:`occupancy` so all accept the same input forms with
-        identical validation.
-        """
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Resolve a raw ``[d_model]`` activation or a prompt at ``position`` to
+        ``(fp32 activation, dictionary)`` on the dictionary's device."""
         self.validate_model(model)
         resolved_layer = _normalize_layer(layer, model.cfg.n_layers)
         if resolved_layer not in self.jacobians:
@@ -1106,7 +1026,8 @@ class JacobianLens:
             _, cache = model.run_with_cache(tokens, names_filter=lambda name: name == hook_name)
             norm_position = _normalize_positions([position], tokens.shape[1])[0]
             activation = cache[hook_name][0, norm_position, :]
-        return activation, resolved_layer
+        dictionary = self.lens_vector_dictionary(model, resolved_layer)
+        return activation.float().to(dictionary.device), dictionary
 
     @torch.no_grad()
     def occupancy(
@@ -1120,30 +1041,12 @@ class JacobianLens:
         num_control_dictionaries: int = 32,
         seed: int = 0,
     ) -> JSpaceOccupancy:
-        """Estimate how many J-lens vectors are meaningfully active in an activation at ``layer``.
-
-        Resolves ``activation_or_prompt`` (a raw ``[d_model]`` vector, or a prompt plus
-        ``position``) exactly as :meth:`decompose`, builds the cached full-vocabulary dictionary
-        via :meth:`lens_vector_dictionary`, and calls :func:`estimate_occupancy`.
-
-        Args:
-            model: A raw ``TransformerBridge``.
-            activation_or_prompt: An activation vector, or a prompt (string / token tensor).
-            layer: Source layer (must be a fitted source layer).
-            position: Token position when a prompt is given; ``None`` for a raw activation.
-            max_atoms: Maximum number of J-lens vectors to consider.
-            num_control_dictionaries: Number of random control dictionaries to average over.
-            seed: Seed for the random control dictionaries (reproducibility).
-
-        Returns:
-            A :class:`JSpaceOccupancy`.
-        """
-        activation, resolved_layer = self._resolve_activation(
+        """Estimate how many J-lens vectors are meaningfully active in an activation."""
+        activation, dictionary = self._resolve_activation(
             model, activation_or_prompt, layer, position
         )
-        dictionary = self.lens_vector_dictionary(model, resolved_layer)
         return estimate_occupancy(
-            activation.float().to(dictionary.device),
+            activation,
             dictionary,
             max_atoms=max_atoms,
             num_control_dictionaries=num_control_dictionaries,
@@ -1162,40 +1065,8 @@ class JacobianLens:
         positions: Optional[Sequence[int]] = None,
         show_progress: bool = False,
     ) -> JSpaceVarianceProfile:
-        """Profile the J-space share of activation variance over a prompt corpus.
-
-        Each prompt is run once (caching ``blocks.{layer}.hook_out`` for every requested layer).
-        At each sampled position the activation is decomposed and its J-space variance fraction
-        ``||j_space_component||^2 / ||activation||^2`` is recorded. The numerator is the
-        ``j_space_component`` -- the orthogonal projection of the activation onto the span of the
-        selected support (the paper's appendix "J-space component"), *not* the nonnegative
-        ``reconstruction``; the two coincide only when every selected atom stays active. Per layer
-        the profile reports the median of those fractions and the pooled ratio
-        ``sum(||j_space_component||^2) / sum(||activation||^2)`` (the paper's "fraction of total
-        variance").
-
-        A layer that samples no positions -- every prompt shorter than ``skip_first``, or only
-        zero-norm activations -- contributes no fractions: its ``median`` and ``pooled`` are
-        ``float("nan")`` and its ``per_position`` tensor is empty.
-
-        Args:
-            model: A raw ``TransformerBridge``.
-            prompts: A prompt, or a sequence of prompts. Each token tensor must represent exactly
-                one prompt and have shape ``[1, seq]``.
-            layers: Source layers to profile; defaults to all fitted ``source_layers``.
-            k: Number of J-lens vectors per decomposition.
-            skip_first: Non-negative index before which positions are skipped (mirrors the fit's
-                early-position skip); not used for sampling when ``positions`` is given.
-            positions: Explicit positions to sample instead of ``skip_first`` onward.
-            show_progress: Show a tqdm progress bar over prompts.
-
-        Returns:
-            A :class:`JSpaceVarianceProfile`.
-
-        Raises:
-            ValueError: On an invalid model, an unfitted layer, an empty corpus, a negative
-                ``skip_first``, or a token tensor that does not have shape ``[1, seq]``.
-        """
+        """Per-layer median and pooled ``||j_space_component||^2 / ||activation||^2`` over prompts.
+        A layer that samples no position reports NaN and an empty ``per_position``."""
         self.validate_model(model)
         if skip_first < 0:
             raise ValueError(f"skip_first must be non-negative, got {skip_first}")
@@ -1240,13 +1111,14 @@ class JacobianLens:
             )
             for layer in resolved_layers:
                 dictionary = dictionaries[layer]
-                activations = cache[hook_names[layer]][0]  # [seq, d_model]
+                activations = cache[hook_names[layer]][0]
                 for position in sampled:
                     activation = activations[position].float().to(dictionary.device)
                     total = float(activation @ activation)
                     if total <= 0.0:
                         continue
                     decomposition = get_sparse_decomposition(activation, dictionary, k)
+                    # The paper's J-space component is the span projection, not the reconstruction.
                     j_space = float(
                         decomposition.j_space_component @ decomposition.j_space_component
                     )
@@ -1576,52 +1448,10 @@ class JacobianLens:
         alpha: float = 1.0,
         algorithm: str = "nonnegative_orthogonal_matching_pursuit",
     ) -> List[Tuple[str, Any]]:
-        """Hooks that anchor-patch one J-space coordinate live, per forward-pass position.
-
-        Unlike :meth:`coordinate_patch`, which edits one already-captured activation offline,
-        this installs a forward hook that solves :func:`solve_coordinate_patch` independently for
-        every ``(batch_idx, position)`` pair at each requested layer -- a vocabulary-scale sparse
-        decomposition per pair, per hook firing, unless ``decomposition_cache`` supplies one
-        already validated for that ``(layer, batch_idx, position)`` key.
-
-        Args:
-            model: The model the hooks will run on.
-            source_token: Active source concept, as a single-token string or token id.
-            target_token: Distinct target concept, as a single-token string or token id.
-            layers: Layers to intervene at.
-            positions: Chunk-local positions to patch (negative indices allowed and normalized on
-                every hook invocation). Required -- there is no full-sequence default, because a
-                silent default would trigger a vocabulary-scale solve at every position.
-            decomposition_cache: Optional caller-owned mapping from ``(layer, batch_idx,
-                position)`` to a previously validated
-                :class:`~transformer_lens.tools.analysis.jacobian_lens_decomposition.JSpaceDecomposition`.
-                A hit skips the vocabulary-scale scan; a miss solves and populates the cache.
-                Purely a performance path -- correctness does not depend on it.
-            k: Sparse-solver upper bound on a cache miss.
-            mode: ``"substitute"`` or ``"swap"``.
-            alpha: Finite interpolation strength; zero is an exact no-op.
-            algorithm: Sparse coefficient-update rule on a cache miss.
-
-        Returns:
-            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
-
-        Raises:
-            ValueError: If ``positions`` is empty, if ``source_token`` and ``target_token``
-                resolve to the same id, or if ``source_token`` is not in the top-``k`` active
-                support of every patched ``(batch_idx, position)`` pair *at the moment its hook
-                fires* -- the whole forward pass fails rather than silently patching a subset.
-                This precondition is stronger and more order-dependent than "active on a clean
-                forward pass": in a band of layers an earlier hook's patch edits the residual
-                that a later layer re-decomposes, and ``substitute``/``swap`` zero or move the
-                source coordinate, so the source can be removed from a later layer's active
-                support even though it was active on an unhooked pass. Stacking layers or
-                positions therefore makes this progressively harder to satisfy.
-
-        Warns:
-            UserWarning: Once per call, naming the number of layers and positions that will
-                perform a live vocabulary-scale solve on every cache miss.
-        """
+        """Live coordinate-patch hooks; ``decomposition_cache`` keys are ``(layer, batch, pos)``.
+        Fails if ``source_token`` is inactive at hook time, e.g. after an earlier layer's patch."""
         self.validate_model(model)
+        # No full-sequence default: every patched position costs a vocabulary-scale solve.
         if not positions:
             raise ValueError("positions must contain at least one index")
         resolved_layers = [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]
@@ -1655,6 +1485,7 @@ class JacobianLens:
                 _validate_residual_activation(
                     activation, d_model=model.cfg.d_model, hook_name=hook_name
                 )
+                # Chunk-local positions: a KV-cached decode step has one, so normalize per firing.
                 normalized = _normalize_positions(requested, activation.shape[1])
                 selected = activation[:, normalized, :].float().to(dictionary.device)
                 patched, _ = solve_coordinate_patch_positions(
@@ -1777,11 +1608,6 @@ class JacobianLens:
         )
 
 
-# ---------------------------------------------------------------------- #
-# helpers                                                                #
-# ---------------------------------------------------------------------- #
-
-
 @dataclass(frozen=True)
 class _FitOptions:
     """Resolved options shared by transport-matrix estimators."""
@@ -1840,7 +1666,7 @@ def _prepare_fit(
         max_seq_len=max_seq_len,
         skip_first_positions=skip_first_positions,
     )
-    # Preflight metadata before fitting supplies counts and estimator-specific values.
+    # Fail on bad provenance before the expensive fit; real counts are filled in afterwards.
     _build_fit_metadata(
         model,
         options,
@@ -1914,11 +1740,7 @@ def _get_model_revision(model: Any) -> Optional[str]:
 
 
 def _require_raw_bridge(model: Any, *, estimator: str) -> None:
-    """Require the causal raw-Bridge contract used by fit and readout.
-
-    ``estimator`` names the calling estimator in diagnostics, since this guard
-    is shared by every matrix-lens estimator.
-    """
+    """Require the causal raw-Bridge contract used by fit and readout."""
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):
@@ -1990,6 +1812,32 @@ def _require_raw_bridge(model: Any, *, estimator: str) -> None:
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
         )
+
+
+def _harvest_artifact_provenance(path: str, payload: Dict[str, Any]) -> Any:
+    """Copy a workspace-lenses provenance ``target_layer``; refuse non-Jacobian estimators."""
+    metadata = payload.get("metadata")
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, dict):
+        return metadata
+    estimator = None
+    config_json = provenance.get("config_json")
+    if isinstance(config_json, str):
+        try:
+            estimator = json.loads(config_json).get("estimator")
+        except (ValueError, AttributeError):
+            pass
+    if estimator is not None and not (
+        isinstance(estimator, str) and estimator in _JACOBIAN_ESTIMATOR_NAMES
+    ):
+        raise ValueError(
+            f"{path} records estimator {estimator!r} in its provenance; only ordinary "
+            "Jacobian lenses load from this format."
+        )
+    harvested: Dict[str, Any] = dict(metadata) if isinstance(metadata, dict) else {}
+    if "target_layer" in provenance:
+        harvested.setdefault("target_layer", provenance["target_layer"])
+    return harvested
 
 
 def _validate_metadata(metadata: Dict[str, Any]) -> None:
@@ -2174,13 +2022,7 @@ def _ordinary_vjp(
     cotangent: torch.Tensor,
     retain_graph: bool,
 ) -> Tuple[torch.Tensor, ...]:
-    """Ordinary vector-Jacobian product backing the J-lens estimator.
-
-    Thin wrapper over ``torch.autograd.grad`` so the drive loop takes its
-    backward step through the :data:`BackwardProvider` seam. This is the
-    identity-preserving provider: routing the ordinary fit through it changes no
-    numerics.
-    """
+    """Ordinary vector-Jacobian product: the J-lens :data:`BackwardProvider`."""
     return torch.autograd.grad(
         outputs=target,
         inputs=sources,
@@ -2203,11 +2045,6 @@ def _jacobian_for_prompt(
     Assumes parameters are already frozen (see :class:`_frozen_parameters`) so
     that marking the earliest source activation ``requires_grad`` roots the
     graph there.
-
-    The backward pass is taken through ``backward_provider`` rather than calling
-    ``torch.autograd.grad`` directly, so the capture / cotangent-batching /
-    averaging mechanics are shared by any estimator. The ordinary J-lens path
-    passes :func:`_ordinary_vjp`, which reproduces the original numerics exactly.
     """
     d_model = model.cfg.d_model
     target_layer = model.cfg.n_layers - 1
@@ -2277,40 +2114,8 @@ def _fit_transport_matrices(
     show_progress: bool,
     backward_provider: BackwardProvider,
 ) -> Tuple[Dict[int, Float[torch.Tensor, "d_model d_model"]], int]:
-    """Estimator-independent J-lens drive loop.
-
-    Owns the mechanics shared by every estimator: the frozen-parameter
-    lifecycle, the per-prompt forward/backward accumulation (source/target
-    residual capture, one-hot cotangent batching, ``dim_batch`` chunking,
-    valid-position selection, and source-position averaging all live in
-    :func:`_jacobian_for_prompt`), the prompt-accumulation running sum, and the
-    final division into per-prompt means. Only the backward step varies: it is
-    taken through ``backward_provider``, so an alternate estimator reuses this
-    loop unchanged. Callers own input validation, provenance, and lens
-    construction.
-
-    Args:
-        model: A raw ``TransformerBridge`` whose parameters are frozen for the
-            duration of the loop.
-        prompts: Prompt strings; prompts too short to contain a valid position
-            (``seq_len <= skip_first_positions + 1``) are skipped with a warning
-            and do not count toward the returned prompt total.
-        source_layers: Resolved, in-range source layers to fit.
-        dim_batch: Output dimensions per backward pass.
-        max_seq_len: Prompts are truncated to this many tokens.
-        skip_first_positions: Leading positions excluded from the source average.
-        show_progress: Show a tqdm progress bar over prompts.
-        backward_provider: Backward-step seam; pass :func:`_ordinary_vjp` for the
-            ordinary J-lens numerics.
-
-    Returns:
-        ``(transport_matrices, n_prompts)`` where ``transport_matrices`` maps each
-        source layer to its prompt-averaged ``[d_model, d_model]`` matrix and
-        ``n_prompts`` is the number of prompts that contributed.
-
-    Raises:
-        ValueError: If no prompt was long enough to contribute valid positions.
-    """
+    """Shared fit loop returning ``(per-layer prompt-mean matrices, n_prompts)``; estimators vary
+    only ``backward_provider``. Prompts without a valid position are skipped with a warning."""
     d_model = model.cfg.d_model
     jacobian_sum = {
         layer: torch.zeros(d_model, d_model, dtype=torch.float32) for layer in source_layers

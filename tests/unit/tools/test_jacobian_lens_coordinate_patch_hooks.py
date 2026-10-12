@@ -9,17 +9,14 @@ import torch
 from tests.unit.tools.conftest import D_MODEL, D_VOCAB, SEQ_LEN, _lens, _ToyBridge
 from transformer_lens.tools.analysis import JacobianLens
 
-# The toy vocab dictionary has only D_VOCAB atoms, fewer than the library DEFAULT_K, so every
-# real solve in this file passes an explicit k within [1, D_VOCAB].
+# The toy dictionary has D_VOCAB atoms, fewer than DEFAULT_K, so real solves pass an explicit k.
 SOLVE_K = 8
 
 
 def _active_source_and_distinct_target(
     lens: JacobianLens, model: _ToyBridge, prompt: str, layer: int, position: int
 ) -> tuple[int, int]:
-    """Discover a real active source at (layer, position) instead of guessing a token id --
-    coordinate_patch_hooks requires the source to be active, and a toy model's real activations
-    are not hand-computable in advance."""
+    """Find an active source (toy activations are not hand-computable) and a distinct target."""
     decomposition = lens.decompose(model, prompt, layer=layer, position=position, k=SOLVE_K)
     source_id = int(decomposition.support[0])
     target_id = (source_id + 1) % D_VOCAB
@@ -140,14 +137,13 @@ def test_decomposition_cache_hit_skips_resolve_across_hook_firings(
 
     with toy_model.hooks(fwd_hooks=hooks):
         toy_model(tokens)
-    assert len(calls) == first_call_count  # second forward pass is entirely cache hits
+    assert len(calls) == first_call_count
 
 
 def test_coordinate_patch_hooks_propagates_core_errors_uncaught(
     toy_model: _ToyBridge, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The fail-fast design decision: an inactive-source error from the core loop must abort the
-    whole forward pass, not be caught and turned into a partial/silent patch."""
+    """A core-loop error aborts the forward pass instead of degrading to a partial patch."""
     import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
 
     def raise_inactive_source(*args: Any, **kwargs: Any) -> Any:
@@ -166,8 +162,7 @@ def test_coordinate_patch_hooks_propagates_core_errors_uncaught(
 def test_coordinate_patch_hooks_warnings_propagate_uncaught(
     toy_model: _ToyBridge, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Warnings raised by the core loop (conditioning, near-parallel) must reach the caller through
-    the hook -- not be swallowed or re-wrapped."""
+    """Core-loop warnings reach the caller through the hook, neither swallowed nor re-wrapped."""
     import transformer_lens.tools.analysis.jacobian_lens as jacobian_lens_module
 
     def fake_solve(
@@ -189,21 +184,8 @@ def test_coordinate_patch_hooks_warnings_propagate_uncaught(
 def test_coordinate_patch_hooks_plural_install_binds_each_layer_to_its_own_dictionary(
     toy_model: _ToyBridge,
 ) -> None:
-    """First end-to-end test of a *plural* install: two fitted layers, one real forward pass.
-
-    It pins two things no single-layer test above reaches:
-
-    * The per-closure default-argument binding ``layer=layer, dictionary=dictionary`` in
-      ``coordinate_patch_hooks``. Without it, Python's late-binding closures make every hook
-      capture the *last* loop iteration's ``layer``/``dictionary`` -- so layer 0's hook would
-      solve against layer 1's dictionary and key its cache under layer 1. The two layers are
-      given deliberately different (non-scalar) dictionaries so a mis-bound hook produces a
-      numerically wrong edit; coordinate patching is scale-covariant, so a uniform rescale would
-      leave the edit unchanged and hide the mis-binding.
-    * The band precondition documented in the ``Raises`` note: the source must stay in the active
-      support at *both* layers after the earlier hook has already edited the residual. The
-      fixture searches for a source that satisfies it rather than assuming one does.
-    """
+    """Each hook binds its own layer's dictionary and cache key, not the last loop iteration's;
+    the dictionaries differ non-uniformly because the patch is scale-covariant."""
     lens = JacobianLens(
         {0: torch.eye(D_MODEL), 1: torch.diag(torch.linspace(0.5, 2.0, D_MODEL))},
         n_prompts=1,
@@ -217,8 +199,7 @@ def test_coordinate_patch_hooks_plural_install_binds_each_layer_to_its_own_dicti
     _, baseline = toy_model.run_with_cache(tokens)
     clean_layer0 = baseline["blocks.0.hook_out"][0, position].float()
 
-    # Find one source that is active at layer 0 *and* still active at layer 1 after layer 0's edit
-    # -- exactly the band precondition. Candidates come from layer 0's clean active support.
+    # The source must stay active at layer 1 after layer 0's edit (the band precondition).
     layer0_support = [
         int(token)
         for token in lens.decompose(
@@ -251,7 +232,6 @@ def test_coordinate_patch_hooks_plural_install_binds_each_layer_to_its_own_dicti
         layer1_input is not None
     ), "no source stays active at both layers; fixture needs a new prompt"
 
-    # Install on BOTH fitted layers and run one real forward pass through model.hooks(...).
     cache: dict = {}
     with pytest.warns(UserWarning, match=r"2 layer\(s\) x 1 position\(s\)"):
         hooks = lens.coordinate_patch_hooks(
@@ -266,8 +246,6 @@ def test_coordinate_patch_hooks_plural_install_binds_each_layer_to_its_own_dicti
     with toy_model.hooks(fwd_hooks=hooks):
         _, patched = toy_model.run_with_cache(tokens)
 
-    # Layer 0's hook must solve against layer 0's OWN dictionary. A mis-bound closure would use
-    # layer 1's dictionary here and produce a different edit of the clean layer-0 activation.
     expected_layer0 = lens.coordinate_patch(
         toy_model, clean_layer0, layer=0, source_token=source_id, target_token=target_id, k=SOLVE_K
     )
@@ -275,8 +253,7 @@ def test_coordinate_patch_hooks_plural_install_binds_each_layer_to_its_own_dicti
         patched["blocks.0.hook_out"][0, position].float(), expected_layer0.patched
     )
 
-    # Layer 1's hook must solve against layer 1's own dictionary, on the residual as edited by
-    # layer 0 upstream (``layer1_input`` was captured with only layer 0's hook installed).
+    # ``layer1_input`` was captured with only layer 0's hook installed (the edited residual).
     expected_layer1 = lens.coordinate_patch(
         toy_model, layer1_input, layer=1, source_token=source_id, target_token=target_id, k=SOLVE_K
     )
@@ -284,6 +261,6 @@ def test_coordinate_patch_hooks_plural_install_binds_each_layer_to_its_own_dicti
         patched["blocks.1.hook_out"][0, position].float(), expected_layer1.patched
     )
 
-    # Each layer keyed its own cache slot; a late-bound ``layer`` would collapse both onto layer 1.
+    # A late-bound ``layer`` would collapse both cache slots onto layer 1.
     assert (0, 0, normalized_position) in cache
     assert (1, 0, normalized_position) in cache

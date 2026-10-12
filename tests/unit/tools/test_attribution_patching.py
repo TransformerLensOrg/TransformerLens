@@ -1,8 +1,4 @@
-"""Model-free unit tests for the attribution-patching substrate.
-
-These tests target the ``TransformerBridge`` API using tiny linear subclasses
-with closed-form gradients and exact first-order attribution identities.
-"""
+"""Model-free attribution-patching tests on tiny Bridge toys with closed-form gradients."""
 
 from __future__ import annotations
 
@@ -33,12 +29,10 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _edge_effects,
     _edge_hook_flags,
     _edge_hook_names,
-    _ensure_edge_hook_flags,
     _excluded_writers_by_reader,
     _mean_writer_contributions,
     _node_effects,
     _normalize_circuit,
-    _reader_hook_names,
     _required_hook_names,
     _writer_hook_name,
     _writer_hook_names,
@@ -71,19 +65,11 @@ class _LinearBlock(nn.Module):
 
 
 class _LinearToyBridge(TransformerBridge):
-    """Tiny fully-linear ``TransformerBridge`` with Bridge-native hook points.
-
-    The production constructor needs a Hugging Face model and an architecture
-    adapter; unit tests only need the hook graph, a forward pass, and the
-    ``hooks()`` context, so this subclass initializes ``nn.Module`` directly while
-    keeping the concrete ``TransformerBridge`` isinstance contract. Every layer is
-    linear and ``ln_final`` is the identity, so the residual->metric map is linear.
-    """
+    """Fully linear Bridge toy; skips the HF-model constructor but keeps the isinstance contract."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         nn.Module.__init__(self)
-        # TransformerBridge.__setattr__ registers HookPoints here; create it before
-        # any HookPoint attribute is assigned.
+        # TransformerBridge.__setattr__ registers HookPoints here, so it must exist first.
         self._hook_registry: dict[str, HookPoint] = {}
         self.context_level = 0
         torch.manual_seed(0)
@@ -122,8 +108,7 @@ class _LinearToyBridge(TransformerBridge):
         del name
 
     def parameters(self, recurse: bool = True):  # type: ignore[override]
-        # A production bridge delegates this to its wrapped HF model; this toy owns
-        # its small modules directly, so enumerate the nn.Module tree.
+        # The real bridge delegates to its HF model; this toy owns its modules directly.
         return nn.Module.parameters(self, recurse=recurse)
 
     def named_parameters(  # type: ignore[override]
@@ -212,7 +197,7 @@ def test_gradient_cache_matches_closed_form_linear_gradient() -> None:
 
     # Closed form: metric = (u_a - u_b) . (I + W1) h0[-1]; blocks are position-wise
     # so the gradient is zero except at the final position.
-    direction = model.unembed.weight[answer] - model.unembed.weight[wrong]  # [d_model]
+    direction = model.unembed.weight[answer] - model.unembed.weight[wrong]
     jac = torch.eye(D_MODEL) + model.blocks[1].linear.weight  # d h1 / d h0
     expected_last = jac.T @ direction
     expected = torch.zeros(1, SEQ_LEN, D_MODEL)
@@ -230,16 +215,11 @@ def test_gradient_cache_activation_only_skips_gradients() -> None:
         model, tokens, metric, names_filter=["blocks.0.hook_out"], compute_gradient=False
     )
 
-    # Activation-only pass: activations populated, every gradient left None.
     assert set(result.activations) == {"blocks.0.hook_out"}
     assert torch.isfinite(result.activations["blocks.0.hook_out"]).all()
     assert set(result.gradients) == {"blocks.0.hook_out"}
     assert result.gradients["blocks.0.hook_out"] is None
 
-
-# ---------------------------------------------------------------------------
-# Typed computational-graph node model
-# ---------------------------------------------------------------------------
 
 N_HEADS = 2
 D_HEAD = 2
@@ -252,12 +232,7 @@ def _synthetic_node_cache(
     d_head: int = D_HEAD,
     d_model: int = D_MODEL,
 ) -> GradientCache:
-    """A cache whose keys/shapes carry the standard node-granularity hook points.
-
-    Node enumeration only reads hook names and tensor shapes, so the contents can
-    be zeros; this keeps the graph test model-free and independent of any forward
-    pass.
-    """
+    """Zero-filled node-hook cache; enumeration reads only names and shapes."""
     activations: dict[str, torch.Tensor] = {"hook_embed": torch.zeros(1, seq_len, d_model)}
     for layer in range(n_layers):
         activations[f"blocks.{layer}.attn.hook_z"] = torch.zeros(1, seq_len, n_heads, d_head)
@@ -280,7 +255,6 @@ def test_node_hook_name_and_key_validation() -> None:
     )
     assert Node(kind="mlp_out", layer=0, position=1).hook_name == "blocks.0.hook_mlp_out"
 
-    # The typed key rejects malformed nodes rather than building a wrong graph.
     with pytest.raises(ValueError):
         Node(kind="embed", position=0, layer=0)
     with pytest.raises(ValueError):
@@ -295,7 +269,7 @@ def test_enumerate_nodes_returns_expected_keys() -> None:
     # embed(pos) + per layer [head*pos attn-head-out + pos mlp-out]
     expected = SEQ_LEN + N_LAYERS * (N_HEADS * SEQ_LEN + SEQ_LEN)
     assert len(nodes) == expected
-    assert len(set(nodes)) == expected  # nodes are unique + hashable
+    assert len(set(nodes)) == expected
 
     embed_nodes = [n for n in nodes if n.kind == "embed"]
     assert {n.position for n in embed_nodes} == set(range(SEQ_LEN))
@@ -319,11 +293,6 @@ def test_enumerate_nodes_raises_on_missing_hook() -> None:
 
     with pytest.raises(ValueError, match="blocks.1.hook_mlp_out"):
         enumerate_nodes(_cfg_stub(), cache)
-
-
-# ---------------------------------------------------------------------------
-# Configuration and result API
-# ---------------------------------------------------------------------------
 
 
 def test_config_defaults_are_the_supported_node_sweep() -> None:
@@ -359,7 +328,6 @@ def test_top_nodes_ranks_by_effect_magnitude() -> None:
     ranked = result.top_nodes(k=2)
     assert [node for node, _ in ranked] == [big_negative, medium]
 
-    # k beyond the node count returns every node, still magnitude-ordered.
     assert [node for node, _ in result.top_nodes(k=10)] == [big_negative, medium, small]
 
 
@@ -381,7 +349,6 @@ def test_top_edges_ranks_by_effect_magnitude() -> None:
     ranked = result.top_edges(k=2)
     assert [(writer, reader) for writer, reader, _ in ranked] == [big_negative, medium]
 
-    # k beyond the edge count returns every edge, still magnitude-ordered.
     full = result.top_edges(k=10)
     assert [(writer, reader) for writer, reader, _ in full] == [big_negative, medium, small]
     assert [score for _, _, score in full] == [-5.0, 2.0, 0.1]
@@ -393,19 +360,8 @@ def test_top_edges_empty_when_no_edge_sweep_has_run() -> None:
     assert result.top_edges() == []
 
 
-# ---------------------------------------------------------------------------
-# Node attribution entry point
-# ---------------------------------------------------------------------------
-
-
 class _AttnMlpBlock(nn.Module):
-    """A block exposing the standard node-granularity hook points.
-
-    ``hook_z`` carries the per-head output ``[batch, seq, n_heads, d_head]`` and
-    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` -- the two per-layer
-    hook families ``enumerate_nodes`` reads. The block is linear; the test only
-    needs a real hook graph with gradients flowing to those points, not attention.
-    """
+    """Linear block exposing the node hooks ``attn.hook_z`` and ``hook_mlp_out``."""
 
     def __init__(self, d_model: int, n_heads: int, d_head: int, layer: int, dtype: torch.dtype):
         super().__init__()
@@ -432,12 +388,7 @@ class _AttnMlpBlock(nn.Module):
 
 
 class _NodeGraphToyBridge(_LinearToyBridge):
-    """A tiny ``TransformerBridge`` carrying the full node-granularity hook graph.
-
-    Inherits ``_LinearToyBridge``'s ``hooks()`` / parameter plumbing but swaps in
-    blocks with ``attn.hook_z`` + ``hook_mlp_out`` so ``attribution_patch`` can
-    enumerate and score every node.
-    """
+    """Fully linear node-graph toy, so first-order scores are exact and identities hold tightly."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         nn.Module.__init__(self)
@@ -493,13 +444,7 @@ def _expected_node_count() -> int:
 
 
 def test_gradient_cache_defaults_to_the_node_hook_set() -> None:
-    """``names_filter=None`` caches the node hook set, not every hook point.
-
-    On a real Bridge, "every hook point" raises: ``hook_dict`` exposes gated points
-    (``hook_mlp_in``, ``attn.hook_result``, split-QKV inputs) that ``add_hook``
-    rejects unless the matching ``set_use_*`` flag is on. The default filter falls
-    back to the node graph's hook set so it works out of the box.
-    """
+    """``names_filter=None`` caches the node hook set, not every (possibly gated) hook."""
     model = _NodeGraphToyBridge()
     tokens = torch.tensor([[1, 2, 3]])
     metric = _metric_fn(answer=1, wrong=2)
@@ -529,7 +474,6 @@ def test_attribution_patch_scores_every_node_with_finite_values() -> None:
     assert all(isinstance(score, float) for score in result.node_scores.values())
     assert all(math.isfinite(score) for score in result.node_scores.values())
     assert result.edge_scores == {}
-    # top_nodes ranks the scored graph by magnitude.
     assert len(result.top_nodes(k=3)) == 3
 
 
@@ -619,20 +563,6 @@ def test_attribution_patch_identical_inputs_are_exactly_zero_in_eval_mode() -> N
     assert all(score == 0.0 for score in result.node_scores.values())
 
 
-# ---------------------------------------------------------------------------
-# Linear-model reconstruction identity
-# ---------------------------------------------------------------------------
-#
-# ``_NodeGraphToyBridge`` is fully linear by construction -- the remaining
-# nonlinearities on the residual->metric path are neutralized without extra
-# freezing: ``ln_final`` is ``nn.Identity``, the
-# attention projection is a plain linear map with no softmax pattern, the MLP has
-# no activation, and ``_metric_fn`` is linear in the logits. The first-order
-# Taylor estimate each node score uses is therefore *exact*, so the reconstruction
-# and single-node identities below hold under equality (tight ``atol``) rather than
-# the ``atol``-slack approximation a stock nonlinear model would require.
-
-
 def _metric_delta(
     model: _NodeGraphToyBridge,
     clean: torch.Tensor,
@@ -666,17 +596,8 @@ def _patch_node_toward_clean(
 
 
 def test_linear_reconstruction_identity_holds_on_a_complete_cut() -> None:
-    """Node attribution reconstructs ``m(clean) - m(corrupt)`` exactly on a complete cut.
-
-    The identity holds over a **complete cut** of the graph, not the full node set.
-    Each residual write flows through the writes downstream of it (the MLP reads the
-    post-attention residual, which already contains the embed and attention writes),
-    so a node's full-model gradient re-counts the paths of every node upstream of
-    it: summing embed + attention + MLP scores overcounts. The embed layer is the
-    input-side complete cut -- every path to the metric passes through exactly one
-    embed position -- so its scores alone reconstruct the exact metric delta for a
-    linear model.
-    """
+    """Embed scores alone reconstruct ``m(clean) - m(corrupt)``: embed is a complete cut, while
+    summing every node overcounts paths that later writes re-read."""
     model = _NodeGraphToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -693,14 +614,7 @@ def test_linear_reconstruction_identity_holds_on_a_complete_cut() -> None:
 
 
 def test_linear_single_node_patch_matches_score_and_sign() -> None:
-    """Patching one node corrupt->clean moves the metric by exactly its score.
-
-    For a linear model the first-order attribution of a single node equals the exact
-    effect of patching only that node from its corrupt value to its clean value
-    (everything upstream held at corrupt). This pins the sign/direction convention
-    end to end across all three node families: a positive score corresponds to the
-    metric moving in the positive direction under the denoising patch.
-    """
+    """Patching one node corrupt->clean moves the metric by exactly its score, in every family."""
     model = _NodeGraphToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -724,26 +638,8 @@ def test_linear_single_node_patch_matches_score_and_sign() -> None:
     assert covered == {"embed", "attn_head_out", "mlp_out"}
 
 
-# ---------------------------------------------------------------------------
-# The denoising convention on a nonlinear model
-# ---------------------------------------------------------------------------
-#
-# Every toy bridge above is linear, so its Jacobian is input-independent and the
-# clean and corrupt runs share a gradient. That hides the "gradient is taken from
-# the corrupt run" half of the denoising convention: repointing ``_node_effects``
-# at ``clean_cache.gradients`` would leave every linear test green.
-# ``_NonlinearNodeGraphToyBridge`` adds a GELU MLP so the two runs' gradients
-# diverge, which makes the corrupt-vs-clean choice observable.
-
-
 class _NonlinearAttnMlpBlock(_AttnMlpBlock):
-    """``_AttnMlpBlock`` with a GELU MLP so the residual->metric map is nonlinear.
-
-    The extra ``w_mlp_in`` + GELU make ``d(metric)/d(activation)`` input-dependent,
-    so the clean and corrupt runs no longer share a Jacobian. Without a
-    nonlinearity the two caches hold identical gradients and which run the score
-    reads from cannot be told apart.
-    """
+    """GELU MLP so clean and corrupt gradients differ; on a linear toy they coincide."""
 
     def __init__(self, d_model: int, n_heads: int, d_head: int, layer: int, dtype: torch.dtype):
         super().__init__(d_model, n_heads, d_head, layer, dtype)
@@ -760,12 +656,7 @@ class _NonlinearAttnMlpBlock(_AttnMlpBlock):
 
 
 class _NonlinearNodeGraphToyBridge(_NodeGraphToyBridge):
-    """``_NodeGraphToyBridge`` whose MLPs carry a GELU, so gradients are input-dependent.
-
-    Reuses the parent's hook graph and ``hooks()`` plumbing but swaps the linear
-    blocks for :class:`_NonlinearAttnMlpBlock`, giving the clean and corrupt runs
-    genuinely different gradients.
-    """
+    """``_NodeGraphToyBridge`` with :class:`_NonlinearAttnMlpBlock` blocks."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         super().__init__(dtype=dtype)
@@ -780,14 +671,7 @@ class _NonlinearNodeGraphToyBridge(_NodeGraphToyBridge):
 
 
 def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
-    """On a nonlinear model the score reads the corrupt run's gradient, not the clean one.
-
-    With an input-dependent Jacobian the clean and corrupt caches hold *different*
-    gradients, so pairing the clean-activation delta with the clean gradient (the
-    reversed convention) yields different scores from the corrupt-gradient one the
-    docstring promises. This pins ``attribution_patch`` to the corrupt gradient -- a
-    guard the linear tests structurally cannot provide.
-    """
+    """Scores read the corrupt run's gradient, which only a nonlinear toy can distinguish."""
     model = _NonlinearNodeGraphToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -798,8 +682,7 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
     corrupt_cache = cache_activation_and_gradient(model, corrupt, metric)
     nodes = enumerate_nodes(model, corrupt_cache)
 
-    # Fixture guard: the nonlinearity must actually make the runs' gradients differ,
-    # otherwise this test would silently pass on a still-linear model.
+    # Fixture guard: with equal gradients this test would pass on a linear model.
     assert any(
         not torch.allclose(clean_cache.gradients[name], corrupt_cache.gradients[name])
         for name in corrupt_cache.gradients
@@ -807,14 +690,11 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
 
     result = attribution_patch(model, clean, corrupt, metric)
 
-    # attribution_patch scores the corrupt-gradient convention...
     corrupt_grad_scores = _node_effects(clean_cache, corrupt_cache, nodes)
     for node in nodes:
         assert result.node_scores[node] == pytest.approx(corrupt_grad_scores[node])
 
-    # ...which genuinely diverges from the clean-gradient convention (same delta,
-    # clean run's gradient). If _node_effects read the clean gradient instead, the
-    # two would coincide and this assertion would fail.
+    # The clean-gradient convention must differ, or the check above proves nothing.
     clean_grad_scores = _node_effects(
         clean_cache,
         GradientCache(
@@ -828,10 +708,7 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
         corrupt_grad_scores[node] != pytest.approx(clean_grad_scores[node]) for node in nodes
     )
 
-    # Behavioural pin, independent of _node_effects: a single-node corrupt->clean
-    # patch moves the metric in the score's direction. The estimate is first-order
-    # on a nonlinear model, so assert the sign (not the exact value) across every
-    # non-negligible node and confirm at least one was actually checked.
+    # First-order on a nonlinear model, so real single-node patches pin only the sign.
     with torch.no_grad():
         m_corrupt = float(metric(model(corrupt)))
     checked = 0
@@ -845,26 +722,8 @@ def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
     assert checked > 0
 
 
-# ---------------------------------------------------------------------------
-# Edge-granularity hook requirements
-# ---------------------------------------------------------------------------
-#
-# Edges into and out of an attention head read hook points a node sweep never
-# needs: the per-head ``attn.hook_result`` (writer) and the split
-# ``attn.hook_q_input``/``hook_k_input``/``hook_v_input`` (reader). Both
-# families exist on the Bridge unconditionally but only fire once their owning
-# config flag is on.
-
-
 class _GatedEdgeHookBlock(nn.Module):
-    """A block exposing the per-head hook points edge granularity reads.
-
-    ``hook_result`` and the split ``hook_q_input``/``hook_k_input``/
-    ``hook_v_input`` mirror the real Bridge's fire-time gating: the HookPoints
-    exist unconditionally, but the block only calls them when the matching
-    ``cfg`` flag is on, so their activation is absent from a cache built while
-    the flag is off rather than present with a placeholder value.
-    """
+    """Per-head edge hooks that, like the real Bridge, fire only while their ``cfg`` flag is on."""
 
     def __init__(
         self,
@@ -907,8 +766,7 @@ class _GatedEdgeHookBlock(nn.Module):
 
         z = self.hook_z(self.w_z(residual).reshape(batch, seq, self.n_heads, self.d_head))
         if self.cfg.use_attn_result:
-            # Distributive over per-head weight slicing: summing this per-head
-            # decomposition equals self.w_o(z_flat) exactly (no bias term to split).
+            # No bias, so summing the per-head split equals w_o(z) exactly.
             w_o_per_head = self.w_o.weight.reshape(d_model, self.n_heads, self.d_head).permute(
                 1, 2, 0
             )
@@ -923,12 +781,7 @@ class _GatedEdgeHookBlock(nn.Module):
 
 
 class _EdgeHookToyBridge(_LinearToyBridge):
-    """A tiny ``TransformerBridge`` whose blocks carry the edge-granularity hook points.
-
-    ``cfg.use_attn_result``/``cfg.use_split_qkv_input`` default to ``False``,
-    matching a real Bridge; ``set_use_attn_result``/``set_use_split_qkv_input``
-    toggle them.
-    """
+    """Toy with the gated edge hooks; flags default off, as on a real Bridge."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         nn.Module.__init__(self)
@@ -1016,19 +869,6 @@ def test_required_hook_names_edge_granularity_adds_per_head_families() -> None:
         assert f"blocks.{layer}.attn.hook_v_input" in edge_names
 
 
-def test_ensure_edge_hook_flags_enables_required_bridge_flags() -> None:
-    model = _EdgeHookToyBridge()
-    assert model.cfg.use_attn_result is False
-    assert model.cfg.use_split_qkv_input is False
-    assert model.cfg.use_hook_mlp_in is False
-
-    _ensure_edge_hook_flags(model)
-
-    assert model.cfg.use_attn_result is True
-    assert model.cfg.use_split_qkv_input is True
-    assert model.cfg.use_hook_mlp_in is True
-
-
 def test_edge_hook_flags_enables_required_flags_inside_the_scope() -> None:
     model = _EdgeHookToyBridge()
     assert model.cfg.use_attn_result is False
@@ -1085,8 +925,7 @@ def test_edge_hook_flags_tolerate_a_caller_with_use_attn_in_set() -> None:
     assert model.cfg.use_attn_in is True
 
     with _edge_hook_flags(model):
-        # use_attn_in is mutually exclusive with use_split_qkv_input, so the
-        # scope must clear it before enabling the split input.
+        # Mutually exclusive with use_split_qkv_input, so the scope clears it.
         assert model.cfg.use_attn_in is False
         assert model.cfg.use_split_qkv_input is True
 
@@ -1096,31 +935,32 @@ def test_edge_hook_flags_tolerate_a_caller_with_use_attn_in_set() -> None:
 
 def test_edge_hook_flags_populate_the_per_head_cache() -> None:
     model = _EdgeHookToyBridge()
-    _ensure_edge_hook_flags(model)
-    tokens = model.to_tokens("prompt")
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_names = _required_hook_names(N_LAYERS, granularity="edge")
+    with _edge_hook_flags(model):
+        tokens = model.to_tokens("prompt")
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_names = _required_hook_names(N_LAYERS, granularity="edge")
 
-    cache = cache_activation_and_gradient(model, tokens, metric, names_filter=edge_names)
+        cache = cache_activation_and_gradient(model, tokens, metric, names_filter=edge_names)
 
-    assert set(cache.activations) == set(edge_names)
-    for layer in range(N_LAYERS):
-        assert cache.activations[f"blocks.{layer}.attn.hook_result"].shape == (
-            1,
-            SEQ_LEN,
-            N_HEADS,
-            D_MODEL,
-        )
-        for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
-            assert cache.activations[f"blocks.{layer}.attn.{input_hook}"].shape == (
+        assert set(cache.activations) == set(edge_names)
+        for layer in range(N_LAYERS):
+            assert cache.activations[f"blocks.{layer}.attn.hook_result"].shape == (
                 1,
                 SEQ_LEN,
                 N_HEADS,
                 D_MODEL,
             )
+            for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
+                assert cache.activations[f"blocks.{layer}.attn.{input_hook}"].shape == (
+                    1,
+                    SEQ_LEN,
+                    N_HEADS,
+                    D_MODEL,
+                )
 
-    # No missing hook points: the shared check is a no-op.
-    _check_required_hooks(cache, edge_names, "edge graph", "hint unused when nothing is missing")
+        _check_required_hooks(
+            cache, edge_names, "edge graph", "hint unused when nothing is missing"
+        )
 
 
 def test_missing_edge_hook_raises_instead_of_silently_shrinking_the_graph() -> None:
@@ -1137,18 +977,6 @@ def test_missing_edge_hook_raises_instead_of_silently_shrinking_the_graph() -> N
         _check_required_hooks(cache, edge_names, "edge graph", "enable use_attn_result.")
 
 
-# ---------------------------------------------------------------------------
-# Edge enumeration in the typed graph
-# ---------------------------------------------------------------------------
-#
-# An edge u -> v carries writer u's residual-stream contribution into reader
-# v's input. Readers are the per-head split-QKV inputs (q_input/k_input/
-# v_input) and the MLP entry (mlp_in); writers are the existing node kinds
-# (embed, attn_head_out, mlp_out). At a fixed sequence position, a reader
-# connects to every writer that precedes it in the residual stream so far --
-# the graph never mixes across positions, matching the per-position Node key.
-
-
 def _synthetic_edge_cache(
     n_layers: int = N_LAYERS,
     seq_len: int = SEQ_LEN,
@@ -1156,12 +984,7 @@ def _synthetic_edge_cache(
     d_head: int = D_HEAD,
     d_model: int = D_MODEL,
 ) -> GradientCache:
-    """A cache whose keys/shapes carry the edge-granularity hook points.
-
-    Edge enumeration only reads hook names and tensor shapes, so the contents
-    can be zeros; this keeps the graph test model-free and independent of any
-    forward pass.
-    """
+    """Zero-filled edge-hook cache; enumeration reads only names and shapes."""
     cache = _synthetic_node_cache(
         n_layers=n_layers, seq_len=seq_len, n_heads=n_heads, d_head=d_head, d_model=d_model
     )
@@ -1191,7 +1014,6 @@ def test_reader_node_hook_name_and_key_validation() -> None:
     )
     assert Node(kind="mlp_in", layer=1, position=0).hook_name == "blocks.1.hook_mlp_in"
 
-    # The typed key rejects malformed reader nodes rather than building a wrong graph.
     with pytest.raises(ValueError):
         Node(kind="q_input", layer=0, position=0)  # head missing
     with pytest.raises(ValueError):
@@ -1199,14 +1021,7 @@ def test_reader_node_hook_name_and_key_validation() -> None:
 
 
 def _expected_edge_count(n_layers: int, n_heads: int, seq_len: int) -> int:
-    """Independent count of writer -> reader pairs for the dense per-position graph.
-
-    At each position, a reader connects to every writer enumerated so far: the
-    three per-head QKV readers at a layer see everything upstream of that
-    layer's attention, and the MLP reader additionally sees that layer's own
-    attention writes. After the layers, the terminal logits reader connects to
-    every writer available at that position.
-    """
+    """Independent count of the dense per-position writer -> reader graph."""
     total_per_position = 0
     available = 1  # embed
     for _ in range(n_layers):
@@ -1223,17 +1038,15 @@ def test_enumerate_edges_returns_expected_writer_reader_pairs() -> None:
     edges = enumerate_edges(_cfg_stub(), cache)
 
     assert len(edges) == _expected_edge_count(N_LAYERS, N_HEADS, SEQ_LEN)
-    assert len(set(edges)) == len(edges)  # no duplicate (u, v) pairs
+    assert len(set(edges)) == len(edges)
     assert all(writer.position == reader.position for writer, reader in edges)
 
-    # embed is the first writer at its position, so every reader at that
-    # position has a direct edge from it.
+    # embed precedes every reader at its position.
     readers_at_0 = {reader for writer, reader in edges if writer.position == 0}
     for reader in readers_at_0:
         assert (Node(kind="embed", position=0), reader) in edges
 
-    # the final layer's MLP output reaches the terminal logits reader, so it is
-    # a writer in this graph even though no per-layer reader sees it.
+    # The last MLP's only reader is the logits terminal.
     terminal_writer = Node(kind="mlp_out", layer=N_LAYERS - 1, position=0)
     logits_reader = Node(kind="logits", layer=N_LAYERS - 1, position=0)
     assert (terminal_writer, logits_reader) in edges
@@ -1254,7 +1067,6 @@ def test_enumerate_edges_connects_every_final_writer_to_the_logits_reader() -> N
             expected.add(Node(kind="mlp_out", layer=layer, position=position))
 
         assert writers_to_logits == expected
-        # the logits reader is a reader only; it never appears as a writer.
         assert all(writer != logits_reader for writer, _ in edges)
 
 
@@ -1282,8 +1094,7 @@ def test_enumerate_edges_drops_same_layer_heads_from_mlp_reader_on_parallel_attn
     _assert_edges_unique(edges)
 
     for position in range(SEQ_LEN):
-        # A layer's own heads do not feed that layer's MLP: it reads the layer
-        # input, not the post-attention residual.
+        # A parallel MLP reads the layer input, so its own layer's heads do not feed it.
         for layer in range(N_LAYERS):
             mlp_reader = Node(kind="mlp_in", layer=layer, position=position)
             for head in range(N_HEADS):
@@ -1292,43 +1103,21 @@ def test_enumerate_edges_drops_same_layer_heads_from_mlp_reader_on_parallel_attn
                 )
                 assert (same_layer_head, mlp_reader) not in edges
 
-        # Cross-layer head -> mlp_in and terminal ->logits edges are unaffected.
         upstream_head = Node(kind="attn_head_out", layer=0, head=0, position=position)
         assert (upstream_head, Node(kind="mlp_in", layer=1, position=position)) in edges
         logits_reader = Node(kind="logits", layer=N_LAYERS - 1, position=position)
         assert (upstream_head, logits_reader) in edges
 
-    # The sequential graph does keep the same-layer head -> mlp_in edge dropped here.
+    # Control: the sequential graph keeps that edge.
     sequential_edges = enumerate_edges(_cfg_stub(), cache)
     head0 = Node(kind="attn_head_out", layer=0, head=0, position=0)
     assert (head0, Node(kind="mlp_in", layer=0, position=0)) in sequential_edges
     assert (head0, Node(kind="mlp_in", layer=0, position=0)) not in edges
 
 
-# ---------------------------------------------------------------------------
-# Edge attribution scoring
-# ---------------------------------------------------------------------------
-#
-# Edge scoring needs every reader hook to actually participate in the forward
-# computation, unlike _GatedEdgeHookBlock's probes above, which fire but are
-# discarded: a reader with no forward-graph path to the metric would receive
-# no gradient, leaving nothing genuine for _edge_effects to score.
-# _EdgeScoringBlock wires every per-head QKV input and the MLP entry into the
-# actual computation, so a cache built from it carries real, distinguishable
-# per-edge gradients.
-
-
 class _EdgeScoringBlock(nn.Module):
-    """A block whose split-QKV inputs and MLP entry are read, not just probed.
-
-    Each head's z is a linear combination of that head's own hook_q_input /
-    hook_k_input / hook_v_input, through independent per-head weights, so an
-    edge into one input family is distinguishable from an edge into another.
-    Whether a cfg flag is on only changes whether the corresponding HookPoint
-    fires (and so whether it is visible in a cache); the per-head
-    decomposition of the residual is distributive, so the computed value is
-    identical either way, mirroring _GatedEdgeHookBlock's hook_result split.
-    """
+    """Block whose QKV and MLP-entry readers sit on the data path, so they get real gradients;
+    flags decide only whether hooks fire, never the computed value."""
 
     def __init__(
         self,
@@ -1399,37 +1188,19 @@ class _EdgeScoringBlock(nn.Module):
         return self.hook_resid_post(residual + mlp_out)
 
     def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
-        """Transform the per-head attention output before it joins the residual.
-
-        Identity here. A subclass can make the block nonlinear, which is what
-        stops a circuit from reproducing the metric merely by containing every
-        edge into the logits reader.
-        """
+        """Identity here; subclasses make it nonlinear."""
         return per_head_out
 
 
 class _NonlinearEdgeScoringBlock(_EdgeScoringBlock):
-    """``_EdgeScoringBlock`` with a GELU on the attention output path.
-
-    The nonlinearity breaks the linear relation between a writer's contribution
-    and the metric, so a circuit cannot recover the metric just by containing
-    every edge into the logits reader. That is what makes a random edge set of
-    the same size a meaningful baseline rather than a coin flip.
-    """
+    """GELU attention output: holding every logits edge no longer recovers the metric outright."""
 
     def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
         return torch.nn.functional.gelu(per_head_out)
 
 
 class _EdgeScoringToyBridge(_LinearToyBridge):
-    """A tiny ``TransformerBridge`` whose edge-granularity hooks all sit on the data path.
-
-    Every reader hook point (``hook_q_input``/``hook_k_input``/``hook_v_input``,
-    ``hook_mlp_in``) and writer hook point (``hook_result``) that
-    :func:`enumerate_edges` connects is read by the forward computation itself,
-    so ``cache_activation_and_gradient``'s backward hooks capture real,
-    per-edge gradients.
-    """
+    """Linear toy whose edge reader and writer hooks all sit on the data path."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         nn.Module.__init__(self)
@@ -1500,14 +1271,7 @@ class _EdgeScoringToyBridge(_LinearToyBridge):
 
 
 class _NonlinearEdgeScoringToyBridge(_EdgeScoringToyBridge):
-    """``_EdgeScoringToyBridge`` whose attention output passes through a GELU.
-
-    Reuses the parent's hook graph and ``hooks()`` plumbing but swaps in
-    :class:`_NonlinearEdgeScoringBlock`, so a writer's contribution reaches the
-    metric nonlinearly. On a linear toy any circuit holding every edge into the
-    logits reader recovers the metric outright, which makes a random baseline
-    meaningless; the nonlinearity is what gives the comparison teeth.
-    """
+    """``_EdgeScoringToyBridge`` with :class:`_NonlinearEdgeScoringBlock` blocks."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         super().__init__(dtype=dtype)
@@ -1518,8 +1282,7 @@ class _NonlinearEdgeScoringToyBridge(_EdgeScoringToyBridge):
                 for layer in range(N_LAYERS)
             ]
         )
-        # The parent's eval() ran before these blocks existed, so they would
-        # otherwise start in training mode and trip require_eval_mode.
+        # The parent's eval() predates these blocks, which would trip require_eval_mode.
         self.eval()
 
 
@@ -1548,16 +1311,7 @@ def test_attribution_patch_edge_granularity_scores_every_edge_with_finite_values
 
 
 def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() -> None:
-    """A writer's edge-score aggregate equals its direct node score, exactly.
-
-    A writer reaches the metric through every edge enumerate_edges gives it,
-    including the edge to the terminal logits reader. That final edge carries the
-    writer's direct skip-connection contribution -- the part of its residual write
-    that no per-layer reader consumes, only the final readout does -- so the
-    aggregate over a writer's outgoing edges is its whole first-order effect and
-    equals the direct node score. This holds for every writer, including the final
-    layer's MLP output, whose only outgoing edge is the one to the logits reader.
-    """
+    """A writer's edge-score sum equals its node score; its logits edge carries the direct path."""
     model = _EdgeScoringToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -1570,8 +1324,7 @@ def test_attribution_patch_edge_aggregation_reconstructs_direct_node_scores() ->
         model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="node")
     )
 
-    # The final layer's MLP output now has an outgoing edge (to the logits
-    # reader), so it appears in the edge aggregate rather than being absent.
+    # The last MLP's only outgoing edge is the logits one.
     terminal_writer = Node(kind="mlp_out", layer=N_LAYERS - 1, position=0)
     assert terminal_writer in edge_result.node_scores
 
@@ -1585,12 +1338,7 @@ def _naive_edge_effects(
     corrupt_cache: GradientCache,
     edges: list[tuple[Node, Node]],
 ) -> dict[tuple[Node, Node], float]:
-    """Per-edge reference score, recomputed the unbatched way for every edge.
-
-    One clean-minus-corrupt subtraction and one ``float((delta_vec *
-    grad_vec).sum())`` per edge, so any drift in the batched
-    :func:`_edge_effects` shows up as a mismatch against this.
-    """
+    """Unbatched per-edge reference for :func:`_edge_effects`."""
     scores: dict[tuple[Node, Node], float] = {}
     for writer, reader in edges:
         writer_name = _writer_hook_name(writer)
@@ -1610,81 +1358,62 @@ def _naive_edge_effects(
 
 
 def test_edge_effects_scores_logits_reader_edges_with_finite_signed_values() -> None:
-    """Every writer -> logits edge is scored, finite, and at least one is nonzero.
-
-    The logits reader takes its gradient at the final ``hook_resid_post`` and
-    contracts over ``d_model`` at the readout position, so a writer's direct
-    path to the output is a real edge with a genuine signed score rather than a
-    structural zero.
-    """
+    """Writer -> logits edges are scored like any other and carry real signal at the readout."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        clean = torch.tensor([[1, 2, 3]])
+        corrupt = torch.tensor([[3, 2, 1]])
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    scores = _edge_effects(clean_cache, corrupt_cache, edges)
-    reference = _naive_edge_effects(clean_cache, corrupt_cache, edges)
+        clean_cache = cache_activation_and_gradient(
+            model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+        )
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        scores = _edge_effects(clean_cache, corrupt_cache, edges)
+        reference = _naive_edge_effects(clean_cache, corrupt_cache, edges)
 
-    logits_edges = [(writer, reader) for writer, reader in edges if reader.kind == "logits"]
-    assert logits_edges  # the terminal reader closes the graph
-    for edge in logits_edges:
-        assert math.isfinite(scores[edge])
-        assert scores[edge] == pytest.approx(reference[edge], abs=1e-6)
+        logits_edges = [(writer, reader) for writer, reader in edges if reader.kind == "logits"]
+        assert logits_edges
+        for edge in logits_edges:
+            assert math.isfinite(scores[edge])
+            assert scores[edge] == pytest.approx(reference[edge], abs=1e-6)
 
-    # The readout position is the one _metric_fn reads, so the direct paths there
-    # carry a genuine, signed effect, not a structural zero.
-    readout = SEQ_LEN - 1
-    assert any(abs(scores[edge]) > 1e-6 for edge in logits_edges if edge[1].position == readout)
+        # _metric_fn reads the last position, so only there can these edges be nonzero.
+        readout = SEQ_LEN - 1
+        assert any(abs(scores[edge]) > 1e-6 for edge in logits_edges if edge[1].position == readout)
 
 
 def test_edge_effects_batched_scores_match_the_naive_per_edge_reference() -> None:
-    """The batched scorer reproduces the unbatched per-edge scores exactly.
-
-    _edge_effects caches each writer's delta once and scores each reader's
-    incoming edges with one batched product. Pinning it to the plain per-edge
-    reference guards against a future change to that batching silently shifting
-    any edge's score.
-    """
+    """The batched scorer matches the naive per-edge reference."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        clean = torch.tensor([[1, 2, 3]])
+        corrupt = torch.tensor([[3, 2, 1]])
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
+        clean_cache = cache_activation_and_gradient(
+            model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+        )
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
 
-    batched = _edge_effects(clean_cache, corrupt_cache, edges)
-    reference = _naive_edge_effects(clean_cache, corrupt_cache, edges)
+        batched = _edge_effects(clean_cache, corrupt_cache, edges)
+        reference = _naive_edge_effects(clean_cache, corrupt_cache, edges)
 
-    assert set(batched) == set(reference)
-    for edge in reference:
-        assert batched[edge] == pytest.approx(reference[edge], abs=1e-6)
+        assert set(batched) == set(reference)
+        for edge in reference:
+            assert batched[edge] == pytest.approx(reference[edge], abs=1e-6)
 
 
 def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
-    """An edge sweep leaves the caller's per-head hook flags as it found them.
-
-    attribution_patch enables use_attn_result / use_split_qkv_input /
-    use_hook_mlp_in only for the duration of its caching loop, so a caller whose
-    later forwards should not materialize the per-head tensors gets its flags
-    back once the sweep returns.
-    """
+    """An edge sweep restores the caller's per-head hook flags."""
     model = _EdgeScoringToyBridge()
     assert model.cfg.use_attn_result is False
     assert model.cfg.use_split_qkv_input is False
@@ -1703,17 +1432,6 @@ def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
     assert model.cfg.use_hook_mlp_in is False
 
 
-# ---------------------------------------------------------------------------
-# Exact-patch parity and mutation-checked reconstruction
-# ---------------------------------------------------------------------------
-#
-# Two guards on the edge-scoring identity: a genuine
-# activation patch of a single edge must match _edge_effects' estimate (sign
-# always; magnitude too on this linear toy model), and mutating one writer's
-# captured contribution must change only the edges that writer feeds, never a
-# different edge's score.
-
-
 def _edge_writer_delta_vector(
     clean_cache: GradientCache, corrupt_cache: GradientCache, writer: Node
 ) -> torch.Tensor:
@@ -1726,54 +1444,49 @@ def _edge_writer_delta_vector(
 
 
 def test_edge_scores_sum_to_the_readers_direct_input_change() -> None:
-    """Summed incoming-edge scores equal a reader's own first-order input-change score.
-
-    A reader's cached input is the running sum of every writer enumerate_edges
-    connects to it, so its clean-minus-corrupt delta is exactly the sum of
-    those writers' individual deltas -- an algebraic identity of the residual
-    stream's additive construction, independent of anything downstream of the
-    reader (linear or not). Dotting each side with the reader's gradient and
-    comparing must therefore match to floating-point precision.
-    """
+    """Incoming edge scores sum to the reader's own input-change score, since its input is the
+    sum of its writers whatever lies downstream."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        clean = torch.tensor([[1, 2, 3]])
+        corrupt = torch.tensor([[3, 2, 1]])
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    _assert_edges_unique(edges)
-    edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
-
-    readers = {reader for _writer, reader in edges}
-    checked = 0
-    for reader in readers:
-        name = reader.hook_name
-        delta = clean_cache.activations[name] - corrupt_cache.activations[name]
-        grad = corrupt_cache.gradients[name]
-        assert grad is not None
-        if reader.kind in ("q_input", "k_input", "v_input"):
-            delta_vec = delta[0, reader.position, reader.head]
-            grad_vec = grad[0, reader.position, reader.head]
-        else:
-            delta_vec = delta[0, reader.position]
-            grad_vec = grad[0, reader.position]
-        direct_score = float((delta_vec * grad_vec).sum())
-
-        edge_sum = sum(
-            score for (_writer, edge_reader), score in edge_scores.items() if edge_reader == reader
+        clean_cache = cache_activation_and_gradient(
+            model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
         )
-        assert edge_sum == pytest.approx(direct_score, abs=1e-6)
-        checked += 1
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        _assert_edges_unique(edges)
+        edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
 
-    assert checked > 0
+        readers = {reader for _writer, reader in edges}
+        checked = 0
+        for reader in readers:
+            name = reader.hook_name
+            delta = clean_cache.activations[name] - corrupt_cache.activations[name]
+            grad = corrupt_cache.gradients[name]
+            assert grad is not None
+            if reader.kind in ("q_input", "k_input", "v_input"):
+                delta_vec = delta[0, reader.position, reader.head]
+                grad_vec = grad[0, reader.position, reader.head]
+            else:
+                delta_vec = delta[0, reader.position]
+                grad_vec = grad[0, reader.position]
+            direct_score = float((delta_vec * grad_vec).sum())
+
+            edge_sum = sum(
+                score
+                for (_writer, edge_reader), score in edge_scores.items()
+                if edge_reader == reader
+            )
+            assert edge_sum == pytest.approx(direct_score, abs=1e-6)
+            checked += 1
+
+        assert checked > 0
 
 
 def _assert_mutation_only_changes_the_perturbed_writers_edges(
@@ -1784,11 +1497,7 @@ def _assert_mutation_only_changes_the_perturbed_writers_edges(
     mutated_scores: dict[tuple[Node, Node], float],
     corrupt_cache: GradientCache,
 ) -> None:
-    """Assert a single-writer perturbation moved exactly that writer's edges.
-
-    The scorer indexes writer deltas and reader gradients independently.
-    Perturbing one head at one position must not change sibling writers' scores.
-    """
+    """Only the perturbed writer's edges move, each by ``perturbation . grad``."""
     changed = 0
     moved = 0
     for edge in edges:
@@ -1816,67 +1525,47 @@ def _assert_mutation_only_changes_the_perturbed_writers_edges(
 
 
 def test_edge_effects_mutation_only_changes_the_perturbed_writers_edges() -> None:
-    """Perturbing one writer's captured contribution changes only that writer's edges.
-
-    ``_edge_effects`` reads each edge's writer delta and reader gradient from
-    two independently indexed tensors (writer position/head, reader
-    position/head). A slicing bug that mixed up either index could leak a
-    perturbation into an edge whose writer was never touched, or fail to move
-    an edge whose writer was. Perturbing a single head's slice of a shared
-    per-head tensor also exercises the narrower case: sibling heads and
-    positions inside the *same* cached tensor must stay untouched.
-    """
+    """Perturbing one head's slice moves only that writer's edges, not its siblings'."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        clean = torch.tensor([[1, 2, 3]])
+        corrupt = torch.tensor([[3, 2, 1]])
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    _assert_edges_unique(edges)
-    baseline_scores = _edge_effects(clean_cache, corrupt_cache, edges)
+        clean_cache = cache_activation_and_gradient(
+            model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+        )
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        _assert_edges_unique(edges)
+        baseline_scores = _edge_effects(clean_cache, corrupt_cache, edges)
 
-    # The perturbed writer sits at the readout position (the one _metric_fn reads).
-    # This toy is position-wise, so a writer at any other position feeds only
-    # zero reader gradients and its edge scores stay zero under any perturbation;
-    # placing the writer at the readout position makes the mutation actually move
-    # the scores, so the test cannot pass on an all-zeros _edge_effects.
-    writer = Node(kind="attn_head_out", layer=0, head=0, position=SEQ_LEN - 1)
-    assert any(edge_writer == writer for edge_writer, _reader in edges)
+        # Readout position: elsewhere this position-wise toy has zero reader gradients, so an
+        # all-zeros _edge_effects would pass.
+        writer = Node(kind="attn_head_out", layer=0, head=0, position=SEQ_LEN - 1)
+        assert any(edge_writer == writer for edge_writer, _reader in edges)
 
-    perturbation = torch.full((D_MODEL,), 0.37, dtype=clean_cache.activations["hook_embed"].dtype)
-    writer_name = _writer_hook_name(writer)
-    perturbed_activations = dict(clean_cache.activations)
-    perturbed_activations[writer_name] = perturbed_activations[writer_name].clone()
-    perturbed_activations[writer_name][0, writer.position, writer.head] += perturbation
-    perturbed_clean_cache = GradientCache(
-        activations=perturbed_activations,
-        gradients=clean_cache.gradients,
-        metric=clean_cache.metric,
-    )
+        perturbation = torch.full(
+            (D_MODEL,), 0.37, dtype=clean_cache.activations["hook_embed"].dtype
+        )
+        writer_name = _writer_hook_name(writer)
+        perturbed_activations = dict(clean_cache.activations)
+        perturbed_activations[writer_name] = perturbed_activations[writer_name].clone()
+        perturbed_activations[writer_name][0, writer.position, writer.head] += perturbation
+        perturbed_clean_cache = GradientCache(
+            activations=perturbed_activations,
+            gradients=clean_cache.gradients,
+            metric=clean_cache.metric,
+        )
 
-    mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
+        mutated_scores = _edge_effects(perturbed_clean_cache, corrupt_cache, edges)
 
-    _assert_mutation_only_changes_the_perturbed_writers_edges(
-        edges, writer, perturbation, baseline_scores, mutated_scores, corrupt_cache
-    )
-
-
-# ---------------------------------------------------------------------------
-# Exact-patch parity
-# ---------------------------------------------------------------------------
-#
-# generic_activation_patch (transformer_lens/patching.py) replaces indexed
-# activation slices with clean-cache values; a single-edge patch instead adds
-# one writer's delta to a reader's input, so it is driven directly through the
-# same hooks() mechanism generic_activation_patch uses internally.
+        _assert_mutation_only_changes_the_perturbed_writers_edges(
+            edges, writer, perturbation, baseline_scores, mutated_scores, corrupt_cache
+        )
 
 
 def _patch_edge_toward_clean(
@@ -1886,13 +1575,7 @@ def _patch_edge_toward_clean(
     writer_delta: torch.Tensor,
     metric_fn: Callable[[torch.Tensor], torch.Tensor],
 ) -> float:
-    """Run the corrupt forward with only one writer's contribution to `reader` patched toward clean.
-
-    Adds `writer_delta` into the reader's cached input at its position, leaving
-    every other writer's contribution to that same reader -- and the rest of
-    the corrupt run -- untouched. This is the exact single-edge intervention
-    _edge_effects estimates to first order.
-    """
+    """Corrupt metric after adding one writer's delta to ``reader``'s input (exact edge patch)."""
 
     def hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
         del hook
@@ -1905,75 +1588,48 @@ def _patch_edge_toward_clean(
 
 
 def test_exact_edge_patch_matches_edge_effects_sign_and_magnitude() -> None:
-    """A genuine single-edge activation patch matches _edge_effects' estimate.
-
-    On this fully linear toy Bridge the first-order estimate is exact, so both
-    sign and magnitude match; a nonlinear model would only be expected to
-    match in sign.
-
-    The scored reader sits at the readout position (the one _metric_fn reads).
-    This toy is position-wise and the clean/corrupt tokens agree at the interior
-    positions, so an edge scored anywhere else would compare zero against zero
-    and pass even on an all-zeros _edge_effects; at the readout position the
-    tokens differ and the reader gradient is nonzero, so the scores are genuine.
-    """
+    """An exact single-edge patch matches the score in sign and, on this linear toy, magnitude;
+    the reader sits at the readout, the only position where scores are nonzero."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        clean = torch.tensor([[1, 2, 3]])
+        corrupt = torch.tensor([[3, 2, 1]])
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
+        clean_cache = cache_activation_and_gradient(
+            model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+        )
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        edge_scores = _edge_effects(clean_cache, corrupt_cache, edges)
 
-    reader = Node(kind="mlp_in", layer=1, position=SEQ_LEN - 1)
-    writers = [writer for writer, edge_reader in edges if edge_reader == reader]
-    assert {writer.kind for writer in writers} == {"embed", "attn_head_out", "mlp_out"}
+        reader = Node(kind="mlp_in", layer=1, position=SEQ_LEN - 1)
+        writers = [writer for writer, edge_reader in edges if edge_reader == reader]
+        assert {writer.kind for writer in writers} == {"embed", "attn_head_out", "mlp_out"}
 
-    with torch.no_grad():
-        m_corrupt = float(metric(model(corrupt)))
+        with torch.no_grad():
+            m_corrupt = float(metric(model(corrupt)))
 
-    nonzero = 0
-    for writer in writers:
-        writer_delta = _edge_writer_delta_vector(clean_cache, corrupt_cache, writer)
-        patched_metric = _patch_edge_toward_clean(model, corrupt, reader, writer_delta, metric)
+        nonzero = 0
+        for writer in writers:
+            writer_delta = _edge_writer_delta_vector(clean_cache, corrupt_cache, writer)
+            patched_metric = _patch_edge_toward_clean(model, corrupt, reader, writer_delta, metric)
 
-        exact_delta_m = patched_metric - m_corrupt
-        score = edge_scores[(writer, reader)]
-        assert exact_delta_m == pytest.approx(score, abs=1e-5)
-        if abs(score) > 1e-6:
-            assert (exact_delta_m > 0) == (score > 0)
-            nonzero += 1
+            exact_delta_m = patched_metric - m_corrupt
+            score = edge_scores[(writer, reader)]
+            assert exact_delta_m == pytest.approx(score, abs=1e-5)
+            if abs(score) > 1e-6:
+                assert (exact_delta_m > 0) == (score > 0)
+                nonzero += 1
 
-    assert nonzero > 0  # the readout position mixes tokens, so the edges are not zeros
-
-
-# ---------------------------------------------------------------------------
-# Multi-pair edge averaging and the head -> logits ranking
-# ---------------------------------------------------------------------------
-#
-# The edge branch slices, accumulates, and divides per-pair edge scores by the
-# batch exactly as the node branch does. A two-pair sweep whose pairs score
-# differently guards that arithmetic: scoring only the first pair, or dropping
-# the / batch divide, no longer averages to the right value. The terminal logits
-# reader also makes a head's direct-to-output path a rankable edge, which
-# top_edges could never return before the reader existed.
+        assert nonzero > 0  # the readout position mixes tokens, so the edges are not zeros
 
 
 def test_attribution_patch_edge_granularity_averages_scores_across_the_batch() -> None:
-    """Edge scores are the per-pair mean, mirroring the node-granularity averaging.
-
-    The two pairs score differently, so the batched result equals neither pair
-    alone; a loop that scored only the first pair, or skipped the / batch divide,
-    would fail both the mean check and the not-equal-to-either check.
-    """
+    """Edge scores are the per-pair mean; the pairs differ, so a dropped pair or divide fails."""
     model = _EdgeScoringToyBridge()
     clean = torch.tensor([[1, 2, 3], [0, 4, 5]])
     corrupt = torch.tensor([[3, 2, 1], [5, 4, 0]])
@@ -1995,23 +1651,14 @@ def test_attribution_patch_edge_granularity_averages_scores_across_the_batch() -
         assert batched.edge_scores[edge] == pytest.approx((first + second) / 2)
         if first != pytest.approx(second):
             differs += 1
-    assert differs > 0  # the pairs genuinely differ, so the / batch divide is exercised
+    assert differs > 0
 
-    # The batched result matches neither single pair: exact float equality would
-    # hold only if the loop scored one pair or skipped the divide.
     assert batched.edge_scores != per_example[0].edge_scores
     assert batched.edge_scores != per_example[1].edge_scores
 
 
 def test_top_edges_can_surface_a_head_to_logits_edge() -> None:
-    """top_edges can now return a head -> logits edge, previously impossible.
-
-    Before the terminal logits reader existed, no writer had an edge to the
-    output, so a head's direct-to-output path was never an edge and top_edges
-    could never rank it. With the reader in the graph every head gains a
-    ->logits edge that competes for the ranking like any other, with a genuine
-    signed score at the readout position rather than a structural zero.
-    """
+    """top_edges can rank a head's direct head -> logits edge, with a nonzero score."""
     model = _EdgeScoringToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -2027,20 +1674,8 @@ def test_top_edges_can_surface_a_head_to_logits_edge() -> None:
         for writer, reader, score in ranked
         if writer.kind == "attn_head_out" and reader.kind == "logits"
     ]
-    assert head_to_logits  # the terminal reader gives every head a ->logits edge
-
-    # At least one carries a real signed effect, so the ranking is not over zeros.
+    assert head_to_logits
     assert any(abs(score) > 1e-6 for _writer, _reader, score in head_to_logits)
-
-
-# ---------------------------------------------------------------------------
-# Writer-output capture (forward-only)
-# ---------------------------------------------------------------------------
-#
-# Rewriting a reader's input during a live forward pass needs the writers'
-# current contributions rather than a gradient estimate. The capture is
-# therefore forward-only and names-filtered to the writer families, the
-# opposite contract from cache_activation_and_gradient.
 
 
 def test_writer_hook_names_cover_the_three_writer_families() -> None:
@@ -2050,22 +1685,9 @@ def test_writer_hook_names_cover_the_three_writer_families() -> None:
     for layer in range(N_LAYERS):
         assert f"blocks.{layer}.attn.hook_result" in names
         assert f"blocks.{layer}.hook_mlp_out" in names
-    # Writer families only: no reader inputs, and no pre-hook_result attn-z.
     assert not any("hook_q_input" in name for name in names)
     assert not any("hook_mlp_in" in name for name in names)
     assert not any(name.endswith("attn.hook_z") for name in names)
-
-
-def test_reader_hook_names_cover_the_reader_input_families() -> None:
-    names = _reader_hook_names(N_LAYERS)
-
-    for layer in range(N_LAYERS):
-        for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
-            assert f"blocks.{layer}.attn.{input_hook}" in names
-        assert f"blocks.{layer}.hook_mlp_in" in names
-    # Reader inputs only: no writer outputs.
-    assert not any("hook_result" in name for name in names)
-    assert not any("hook_mlp_out" in name for name in names)
 
 
 def test_capture_writer_outputs_populates_only_the_writer_family() -> None:
@@ -2076,7 +1698,6 @@ def test_capture_writer_outputs_populates_only_the_writer_family() -> None:
         captured = capture_writer_outputs(model, tokens)
 
     assert set(captured) == set(_writer_hook_names(N_LAYERS))
-    # The reader-input family and the pre-hook_result attn-z are not captured.
     assert "blocks.0.attn.hook_q_input" not in captured
     assert "blocks.0.hook_mlp_in" not in captured
     assert "blocks.0.attn.hook_z" not in captured
@@ -2117,12 +1738,7 @@ def test_capture_writer_outputs_raises_when_the_filter_matches_nothing() -> None
 
 
 def test_capture_writer_outputs_needs_no_grad() -> None:
-    """The capture runs with autograd off, where the gradient helper refuses.
-
-    The two helpers have opposite contracts: this one is forward-only and must
-    work under ``torch.no_grad()``, while ``cache_activation_and_gradient``
-    exists to retain gradients and raises without autograd.
-    """
+    """Capture works under ``torch.no_grad()``, where the gradient helper refuses."""
     model = _EdgeScoringToyBridge()
     tokens = model.to_tokens("prompt")
     metric = _metric_fn(answer=1, wrong=2)
@@ -2135,18 +1751,6 @@ def test_capture_writer_outputs_needs_no_grad() -> None:
             cache_activation_and_gradient(model, tokens, metric)
 
 
-# ---------------------------------------------------------------------------
-# Reader-input rewrite (edge ablation core)
-# ---------------------------------------------------------------------------
-#
-# The residual stream is a running sum, so a reader's input is exactly the sum
-# of its writers' contributions. Ablating an edge means subtracting that
-# writer's live contribution and adding its replacement at the reader's fork
-# hook, which fires before the layer norm -- an exact correction, not an
-# approximation. Partial circuits need independent reader and logit references;
-# boundary circuits alone cannot expose incorrect upstream corrections.
-
-
 def _ablation_replacement(
     model: _EdgeScoringToyBridge, tokens: torch.Tensor
 ) -> dict[str, torch.Tensor]:
@@ -2157,123 +1761,107 @@ def _ablation_replacement(
 
 def test_excluded_writers_by_reader_groups_only_out_of_circuit_edges() -> None:
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    tokens = model.to_tokens("prompt")
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        tokens = model.to_tokens("prompt")
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    corrupt_cache = cache_activation_and_gradient(
-        model, tokens, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
+        corrupt_cache = cache_activation_and_gradient(
+            model, tokens, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
 
-    # Keeping the whole graph excludes nothing.
-    assert _excluded_writers_by_reader(edges, edges) == {}
+        assert _excluded_writers_by_reader(edges, edges) == {}
 
-    # Keeping nothing excludes every writer, grouped once per reader.
-    excluded = _excluded_writers_by_reader(edges, [])
-    readers = {reader for _writer, reader in edges}
-    assert set(excluded) == readers
-    for reader, writers in excluded.items():
-        expected = [writer for writer, edge_reader in edges if edge_reader == reader]
-        assert writers == expected
+        excluded = _excluded_writers_by_reader(edges, [])
+        readers = {reader for _writer, reader in edges}
+        assert set(excluded) == readers
+        for reader, writers in excluded.items():
+            expected = [writer for writer, edge_reader in edges if edge_reader == reader]
+            assert writers == expected
 
-    # A single kept edge excludes exactly that edge's writer from its reader.
-    # Pick a reader with more than one incoming edge, so the exclusion is
-    # observable rather than emptying the reader's writer list.
-    kept_edge = next(
-        edge for edge in edges if len([writer for writer, reader in edges if reader == edge[1]]) > 1
-    )
-    excluded = _excluded_writers_by_reader(edges, [kept_edge])
-    kept_writer, kept_reader = kept_edge
-    incoming = [writer for writer, reader in edges if reader == kept_reader]
-    assert kept_writer not in excluded[kept_reader]
-    assert len(excluded[kept_reader]) == len(incoming) - 1
+        # A reader with several writers, so keeping one edge leaves an observable remainder.
+        kept_edge = next(
+            edge
+            for edge in edges
+            if len([writer for writer, reader in edges if reader == edge[1]]) > 1
+        )
+        excluded = _excluded_writers_by_reader(edges, [kept_edge])
+        kept_writer, kept_reader = kept_edge
+        incoming = [writer for writer, reader in edges if reader == kept_reader]
+        assert kept_writer not in excluded[kept_reader]
+        assert len(excluded[kept_reader]) == len(incoming) - 1
 
 
 def test_ablating_the_full_circuit_reproduces_the_clean_metric() -> None:
     """Keeping every edge leaves each reader's input untouched."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    clean = torch.tensor([[1, 2, 3]])
-    corrupt = torch.tensor([[3, 2, 1]])
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
-
-    corrupt_cache = cache_activation_and_gradient(
-        model, corrupt, metric, names_filter=edge_hook_names
-    )
-    clean_cache = cache_activation_and_gradient(
-        model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    replacements = _ablation_replacement(model, corrupt)
-
     with _edge_hook_flags(model):
+        clean = torch.tensor([[1, 2, 3]])
+        corrupt = torch.tensor([[3, 2, 1]])
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
+
+        corrupt_cache = cache_activation_and_gradient(
+            model, corrupt, metric, names_filter=edge_hook_names
+        )
+        clean_cache = cache_activation_and_gradient(
+            model, clean, metric, names_filter=edge_hook_names, compute_gradient=False
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        replacements = _ablation_replacement(model, corrupt)
+
         ablated_logits = _ablate_edges(model, clean, edges, edges, replacements)
 
-    ablated = float(metric(ablated_logits))
-    assert ablated == pytest.approx(float(clean_cache.metric), abs=1e-6)
-    # Discriminating: the clean and corrupt runs genuinely differ, so this
-    # cannot pass on a degenerate pair.
-    assert ablated != pytest.approx(float(corrupt_cache.metric), abs=1e-6)
+        ablated = float(metric(ablated_logits))
+        assert ablated == pytest.approx(float(clean_cache.metric), abs=1e-6)
+        # Non-degenerate pair, so the check above has teeth.
+        assert ablated != pytest.approx(float(corrupt_cache.metric), abs=1e-6)
 
 
 def test_ablation_installs_one_hook_per_reader_node() -> None:
-    """Each reader node is corrected once, not once per incoming edge.
-
-    Several reader nodes share one hook point (one per head, one per position),
-    and each rewrites a disjoint slice of it. Installing one hook per excluded
-    edge would apply the correction repeatedly and overshoot, so the count of
-    hooks on each fork point must equal the number of reader nodes reading it --
-    not the number of edges into those nodes.
-    """
+    """Each reader node gets one correction hook, not one per incoming edge, so none overshoots."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    tokens = model.to_tokens("prompt")
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        tokens = model.to_tokens("prompt")
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    corrupt_cache = cache_activation_and_gradient(
-        model, tokens, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
-    replacements = _ablation_replacement(model, tokens)
+        corrupt_cache = cache_activation_and_gradient(
+            model, tokens, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
+        replacements = _ablation_replacement(model, tokens)
 
-    readers = {reader for _writer, reader in edges}
-    assert len(readers) > 0
-    # Some readers have several incoming edges, so a per-edge hook would
-    # register several hooks on the same point.
-    crowded = {
-        reader
-        for reader in readers
-        if len([writer for writer, edge_reader in edges if edge_reader == reader]) > 1
-    }
-    assert crowded
+        readers = {reader for _writer, reader in edges}
+        assert len(readers) > 0
+        # Readers with several edges are where a per-edge hook would over-register.
+        crowded = {
+            reader
+            for reader in readers
+            if len([writer for writer, edge_reader in edges if edge_reader == reader]) > 1
+        }
+        assert crowded
 
-    # The ablation's hooks live only for the duration of its forward, so count
-    # them from a pre-hook on the model root, which fires while they are
-    # registered.
-    counts: dict[str, int] = {}
+        # The ablation's hooks exist only during its forward, so count them from a root pre-hook.
+        counts: dict[str, int] = {}
 
-    def snapshot(_module: nn.Module, _args: tuple) -> None:
-        for reader in readers:
-            counts[reader.hook_name] = len(model.hook_dict[reader.hook_name].fwd_hooks)
+        def snapshot(_module: nn.Module, _args: tuple) -> None:
+            for reader in readers:
+                counts[reader.hook_name] = len(model.hook_dict[reader.hook_name].fwd_hooks)
 
-    handle = model.register_forward_pre_hook(snapshot)
-    try:
-        with _edge_hook_flags(model):
+        handle = model.register_forward_pre_hook(snapshot)
+        try:
             _ablate_edges(model, tokens, edges, [], replacements)
-    finally:
-        handle.remove()
+        finally:
+            handle.remove()
 
-    expected = {
-        name: len([reader for reader in readers if reader.hook_name == name])
-        for name in {reader.hook_name for reader in readers}
-    }
-    assert counts == expected
-    # Fewer hooks than edges: the grouping collapsed the per-edge corrections.
-    assert sum(counts.values()) < len(edges)
+        expected = {
+            name: len([reader for reader in readers if reader.hook_name == name])
+            for name in {reader.hook_name for reader in readers}
+        }
+        assert counts == expected
+        assert sum(counts.values()) < len(edges)
 
 
 def _toy_ablation_edges() -> list[tuple[Node, Node]]:
@@ -2309,7 +1897,8 @@ def _functional_toy_ablation(
     excluded: set[tuple[Node, Node]],
     replacements: dict[Node, torch.Tensor],
 ) -> tuple[torch.Tensor, dict[Node, torch.Tensor], dict[Node, torch.Tensor]]:
-    """Evaluate the linear toy by summing edge values, without invoking hooks."""
+    """Evaluate the linear toy by summing edge values without hooks, an independent reference
+    (boundary circuits alone cannot expose wrong upstream corrections)."""
     writers: dict[Node, torch.Tensor] = {}
     readers: dict[Node, torch.Tensor] = {}
 
@@ -2525,28 +2114,18 @@ def test_ablation_replacement_mutation_isolates_direct_reader_slices(
 def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
     """An uncaptured writer raises rather than silently skipping the correction."""
     model = _EdgeScoringToyBridge()
-    _ensure_edge_hook_flags(model)
-    tokens = model.to_tokens("prompt")
-    metric = _metric_fn(answer=1, wrong=2)
-    edge_hook_names = _edge_hook_names(N_LAYERS)
+    with _edge_hook_flags(model):
+        tokens = model.to_tokens("prompt")
+        metric = _metric_fn(answer=1, wrong=2)
+        edge_hook_names = _edge_hook_names(N_LAYERS)
 
-    corrupt_cache = cache_activation_and_gradient(
-        model, tokens, metric, names_filter=edge_hook_names
-    )
-    edges = enumerate_edges(model, corrupt_cache)
+        corrupt_cache = cache_activation_and_gradient(
+            model, tokens, metric, names_filter=edge_hook_names
+        )
+        edges = enumerate_edges(model, corrupt_cache)
 
-    with _edge_hook_flags(model), pytest.raises(ValueError, match="no contribution captured"):
-        _ablate_edges(model, tokens, edges, [], {})
-
-
-# ---------------------------------------------------------------------------
-# Faithfulness (public API)
-# ---------------------------------------------------------------------------
-#
-# faithfulness() ablates every edge outside a candidate circuit and reports how
-# much of the clean-to-corrupt metric gap the circuit recovers. The two boundary
-# circuits pin it: keeping nothing must reproduce the corrupt run, keeping
-# everything must reproduce the clean run.
+        with pytest.raises(ValueError, match="no contribution captured"):
+            _ablate_edges(model, tokens, edges, [], {})
 
 
 def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tensor, Callable]:
@@ -2557,7 +2136,6 @@ def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tens
 
 
 def _graph_edges(model: _EdgeScoringToyBridge, corrupt: torch.Tensor, metric: Callable) -> list:
-    _ensure_edge_hook_flags(model)
     with _edge_hook_flags(model):
         corrupt_cache = cache_activation_and_gradient(
             model, corrupt, metric, names_filter=_edge_hook_names(N_LAYERS)
@@ -2942,18 +2520,35 @@ def test_faithfulness_raises_on_token_length_mismatch() -> None:
 
 
 def test_faithfulness_raises_on_more_than_one_pair() -> None:
-    """Batched input is rejected rather than silently half-ablated.
-
-    The metric reads a single example, so a batch would need per-pair
-    aggregation the caller should own. Silently ablating only the first row
-    would return a plausible but wrong number.
-    """
+    """Batched input is rejected rather than silently ablating only the first pair."""
     model, clean, corrupt, metric = _faithfulness_toy()
     batched_clean = torch.cat([clean, clean], dim=0)
     batched_corrupt = torch.cat([corrupt, corrupt], dim=0)
 
     with pytest.raises(ValueError, match="one clean/corrupt pair at a time"):
         faithfulness(model, batched_clean, batched_corrupt, metric, [])
+
+
+def test_edge_paths_reject_gqa_while_node_granularity_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    edge_config = EdgeAttributionConfig(granularity="edge")
+    monkeypatch.setattr(model.cfg, "n_heads", N_HEADS, raising=False)
+    monkeypatch.setattr(model.cfg, "n_key_value_heads", N_HEADS, raising=False)
+    # Equal head counts are plain multi-head attention and must stay supported.
+    attribution_patch(model, clean, corrupt, metric, config=edge_config)
+
+    monkeypatch.setattr(model.cfg, "n_key_value_heads", 1)
+    message = r"Edge granularity requires n_key_value_heads == n_heads.*node granularity"
+    with pytest.raises(ValueError, match=message):
+        attribution_patch(model, clean, corrupt, metric, config=edge_config)
+    with pytest.raises(ValueError, match=message):
+        faithfulness(model, clean, corrupt, metric, [])
+
+    node_result = attribution_patch(model, clean, corrupt, metric)
+    assert len(node_result.node_scores) == _expected_node_count()
+    assert all(math.isfinite(score) for score in node_result.node_scores.values())
 
 
 def test_faithfulness_rejects_model_in_training_mode() -> None:
@@ -2990,12 +2585,7 @@ def test_faithfulness_restores_hook_flags_when_it_raises() -> None:
 
 
 def test_faithfulness_recovery_is_graded_not_binary() -> None:
-    """A partial circuit lands strictly between the corrupt and clean metrics.
-
-    Only edges into the readout position can move this toy's metric, since it is
-    position-wise and the metric reads the last position. Keeping half of those
-    must therefore recover part of the gap rather than all or none of it.
-    """
+    """Half the readout edges, the only ones that move this metric, recover part of the gap."""
     model, clean, corrupt, metric = _faithfulness_toy()
     edges = _graph_edges(model, corrupt, metric)
     readout = [edge for edge in edges if edge[1].position == SEQ_LEN - 1]
@@ -3008,20 +2598,12 @@ def test_faithfulness_recovery_is_graded_not_binary() -> None:
     assert report.circuit_size == len(partial)
 
 
-# ---------------------------------------------------------------------------
-# Edge-class breakout
-# ---------------------------------------------------------------------------
-#
-# Class removal stays inside the evaluated circuit, with a shared baseline.
-
-
 def test_edge_class_partitions_edges_exhaustively_and_without_overlap() -> None:
     model, clean, corrupt, metric = _faithfulness_toy()
     edges = _graph_edges(model, corrupt, metric)
 
     classes = [_edge_class(edge) for edge in edges]
 
-    # Every edge maps to exactly one class, and the classes partition the graph.
     assert set(classes) == {"into_qk", "into_v", "into_mlp", "into_logits"}
     assert len(classes) == len(edges)
 
@@ -3039,7 +2621,6 @@ def test_edge_class_maps_each_reader_kind_to_its_class() -> None:
     assert _edge_class((writer, Node(kind="mlp_in", layer=0, position=0))) == "into_mlp"
     assert _edge_class((writer, Node(kind="logits", layer=0, position=0))) == "into_logits"
 
-    # A writer kind is not a reader, so it has no class.
     with pytest.raises(ValueError, match="no edge class"):
         _edge_class((writer, Node(kind="mlp_out", layer=0, position=0)))
 
@@ -3068,8 +2649,6 @@ def test_edge_class_recovered_reconciles_with_the_aggregate() -> None:
     for edge_class, recovered in report.edge_class_recovered.items():
         assert math.isfinite(recovered), f"non-finite recovery for {edge_class}"
         assert report.edge_class_counts[edge_class] > 0
-    # Keeping every edge is the aggregate, so the full-circuit report recovers
-    # the whole gap.
     assert report.recovered == pytest.approx(1.0, abs=1e-6)
 
 
@@ -3212,16 +2791,6 @@ def test_faithfulness_duplicate_circuit_entries_are_equivalent(
     assert actual.circuit_size == len(circuit)
 
 
-# ---------------------------------------------------------------------------
-# Random-edge-set baseline
-# ---------------------------------------------------------------------------
-#
-# A ranked circuit is only meaningful if it beats an arbitrary edge set of the
-# same size. The toy is nonlinear here on purpose: on a linear model any circuit
-# holding every edge into the logits reader recovers the metric outright, so the
-# baseline could tie by accident.
-
-
 def _random_edge_sets(
     edges: list[tuple[Node, Node]], size: int, draws: int, seed: int
 ) -> list[list[tuple[Node, Node]]]:
@@ -3234,12 +2803,7 @@ def _random_edge_sets(
 
 
 def test_random_edge_set_recovers_markedly_less_than_the_attribution_circuit() -> None:
-    """The ranked circuit beats random edge sets of the same size by a wide margin.
-
-    This is the honesty guard: a ranking that does no better than chance would
-    still produce a plausible-looking ``recovered`` number, so the comparison
-    against same-size random sets is what makes the number mean anything.
-    """
+    """The ranked circuit beats same-size random edge sets by a wide margin."""
     model = _NonlinearEdgeScoringToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -3260,9 +2824,7 @@ def test_random_edge_set_recovers_markedly_less_than_the_attribution_circuit() -
     random_recovered = [report.recovered for report in random_reports]
     best_random = max(random_recovered)
 
-    # The baseline is not degenerate: if every random set recovered the whole
-    # gap, the toy would be too easy to discriminate and the comparison would be
-    # vacuous.
+    # Non-degenerate baseline: no random set may recover the whole gap.
     assert all(value < 1.0 for value in random_recovered), random_recovered
     assert ranked_report.recovered > best_random + 0.2, (
         f"ranked recovered {ranked_report.recovered:.4f} vs random "

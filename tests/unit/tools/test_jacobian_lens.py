@@ -38,6 +38,7 @@ from transformer_lens.tools.analysis import (
     JSpaceDecomposition,
     JSpaceOccupancy,
     JSpaceVarianceProfile,
+    RelevanceLens,
     get_sparse_decomposition,
     solve_coordinate_patch,
 )
@@ -358,6 +359,56 @@ def test_load_official_format_without_metadata(tmp_path: Any) -> None:
     assert lens.n_prompts == 7
     assert lens.metadata == {}
     assert lens.jacobians[0].dtype == torch.float32
+
+
+def _save_provenance_artifact(path: str, provenance: dict[str, Any]) -> None:
+    """Write the workspace-lenses layout: J rows through an identity target-layer anchor."""
+    target = provenance["target_layer"]
+    torch.save(
+        {
+            "J": {layer: torch.eye(D_MODEL) for layer in range(target + 1)},
+            "n_prompts": 25,
+            "source_layers": list(range(target)),
+            "d_model": D_MODEL,
+            "provenance": provenance,
+        },
+        path,
+    )
+
+
+@pytest.mark.parametrize("config_json", [None, '{"estimator": "standard"}'])
+def test_load_harvests_top_level_provenance_target_layer(
+    tmp_path: Any, toy_model: _ToyBridge, config_json: Optional[str]
+) -> None:
+    provenance: dict[str, Any] = {"target_layer": N_LAYERS - 2}
+    if config_json is not None:
+        provenance["config_json"] = config_json
+    path = str(tmp_path / "penultimate.pt")
+    _save_provenance_artifact(path, provenance)
+
+    lens = JacobianLens.load(path)
+    assert lens.estimator == "jacobian_lens"
+    with pytest.raises(ValueError, match="targets layer"):
+        lens.validate_model(toy_model)
+
+    resaved = str(tmp_path / "resaved.pt")
+    lens.save(resaved)
+    reloaded = JacobianLens.load(resaved)
+    assert reloaded.metadata == lens.metadata
+    with pytest.raises(ValueError, match="targets layer"):
+        reloaded.validate_model(toy_model)
+
+
+@pytest.mark.parametrize("lens_cls", [JacobianLens, RelevanceLens])
+def test_load_refuses_non_jacobian_provenance_estimator(
+    tmp_path: Any, lens_cls: type[JacobianLens]
+) -> None:
+    path = str(tmp_path / "relp.pt")
+    _save_provenance_artifact(
+        path, {"target_layer": N_LAYERS - 2, "config_json": '{"estimator": "relp"}'}
+    )
+    with pytest.raises(ValueError, match="estimator 'relp' in its provenance"):
+        lens_cls.load(path)
 
 
 def test_load_checkpoint_with_zero_n_done_raises(tmp_path: Any) -> None:
@@ -1363,7 +1414,6 @@ def test_lens_vector_dictionary_matches_lens_vectors_and_caches(toy_model: _ToyB
     all_vectors = lens.lens_vectors(toy_model, list(range(d_vocab)), layer)
     assert torch.allclose(dictionary, all_vectors, atol=1e-5)
 
-    # cached: the same object is returned on a repeat call, and clearing releases it
     assert lens.lens_vector_dictionary(toy_model, layer) is dictionary
     lens.clear_device_cache()
     assert lens._unembedding_snapshots == {}
@@ -1535,8 +1585,7 @@ def test_decompose_raw_activation_returns_jspace_decomposition(
 def test_decompose_prompt_matches_manual_activation(
     toy_model: _ToyBridge, fitted_lens: JacobianLens
 ) -> None:
-    """decompose(prompt, position) decomposes the blocks.{layer}.hook_out activation at that
-    position -- identical to fetching it manually and decomposing directly."""
+    """decompose(prompt, position) matches decomposing the fetched blocks.{layer}.hook_out row."""
     layer, position, k = 0, -1, 3
     result = fitted_lens.decompose(toy_model, "a toy prompt", layer=layer, position=position, k=k)
 
@@ -1557,10 +1606,8 @@ def test_decompose_rejects_bad_inputs(toy_model: _ToyBridge, fitted_lens: Jacobi
     # a string with no position is neither a raw activation nor a positioned prompt
     with pytest.raises(ValueError):
         fitted_lens.decompose(toy_model, "a toy prompt", layer=0, k=3)
-    # raw activation of the wrong width
     with pytest.raises(ValueError):
         fitted_lens.decompose(toy_model, torch.randn(d_model + 1), layer=0, k=3)
-    # a batched prompt
     with pytest.raises(ValueError):
         fitted_lens.decompose(
             toy_model, torch.zeros(2, 3, dtype=torch.long), layer=0, position=1, k=3
@@ -1686,9 +1733,8 @@ def test_coordinate_patch_rejects_unfitted_layer(
 
 
 def test_coordinate_patch_swap_matches_pseudoinverse_oracle() -> None:
-    """Restricted oracle: a planted two-atom positive swap matches the pseudoinverse intervention
-    swap_hooks performs, ``x + V(sigma(c) - c)`` with ``c = V^+ x``. The pseudoinverse appears only
-    in this test; the core never inverts a basis."""
+    """A planted positive two-atom swap matches swap_hooks' pseudoinverse edit
+    ``x + V(sigma(c) - c)``, ``c = V^+ x``; the core itself never inverts a basis."""
     dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.6, 0.8, 0.0]])
     activation = 2.0 * dictionary[0] + 3.0 * dictionary[1] + torch.tensor([0.0, 0.0, 4.0])
 

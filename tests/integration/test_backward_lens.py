@@ -1,4 +1,4 @@
-"""Integration tests for Backward Lens capture on a raw GPT-2 Bridge."""
+"""Integration tests for Backward Lens on raw dense-MLP Bridges (GPT-2, Pythia)."""
 
 import warnings
 from collections.abc import Sequence

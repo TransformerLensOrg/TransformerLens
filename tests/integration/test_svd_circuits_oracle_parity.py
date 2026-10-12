@@ -1,15 +1,8 @@
 """Slow qualitative OV sweep on GPT-2-small layer 9 head 9.
 
-Reports prompt-specific gate counts without requiring a minimum or claiming a causal
-subfunction split. There is no pinned external numerical oracle: the Beyond Components
-paper publishes no numeric table for this head. The repository's ``SVDInterpreter``
-cross-check is covered separately in ``test_svd_circuits.py``.
-
-Keep-mode gates compare the metric change with a sampled mean random in-span control
-magnitude, not a statistical significance threshold. Counts may vary with seed and draw
-count, including zero. The checks cover eligibility, finite results, gate polarity, and
-fixed-seed reproducibility. Each sweep costs ``k * (n_baseline + 2)`` forward passes,
-so the model tests are marked ``slow`` and excluded from the default tiers.
+Gate counts are descriptive (a sampled control mean, not a significance test; zero is allowed):
+no external numerical oracle exists for this head. Checks cover eligibility, finiteness, gate
+polarity and fixed-seed reproducibility; each sweep costs ``k * (n_baseline + 2)`` forwards.
 """
 
 from __future__ import annotations
@@ -69,11 +62,7 @@ class _GateRow:
 
 
 def _eligible_directions(head_svd: HeadSVD, k: int) -> List[int]:
-    """The first ``k`` directions that are attributable on their own.
-
-    Fewer than ``k`` may qualify: the degeneracy guard is a feature, so a short sweep
-    is used as-is rather than treated as an error.
-    """
+    """The first ``k`` directions attributable on their own; a shorter list is used as-is."""
     eligible = [
         row.idx for row in head_svd.rank_report if not row.is_degenerate and not row.is_null
     ]

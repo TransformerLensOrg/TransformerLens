@@ -1,8 +1,4 @@
-"""Attribution patching and faithfulness on a raw GPT-2 Bridge.
-
-Covers converted gradient caches, gated reader forks, independent partial
-intervention references, and circuit-relative class removal.
-"""
+"""Attribution patching and faithfulness on a raw GPT-2 Bridge."""
 
 from __future__ import annotations
 
@@ -363,8 +359,6 @@ def test_attribution_patch_scores_every_node_finite_on_real_bridge(gpt2_bridge) 
     # Default config, no explicit names_filter: exercises the node-hook-set fallback.
     result = attribution_patch(gpt2_bridge, clean, corrupt, metric_fn)
 
-    # Scores exactly the node graph: embed at every position, plus per-layer
-    # per-head attention outputs and per-layer MLP outputs.
     seq_len = int(clean.shape[1])
     n_layers = int(gpt2_bridge.cfg.n_layers)
     n_heads = int(gpt2_bridge.cfg.n_heads)
@@ -375,28 +369,14 @@ def test_attribution_patch_scores_every_node_finite_on_real_bridge(gpt2_bridge) 
     for node, score in result.node_scores.items():
         assert math.isfinite(score), f"non-finite score for {node}"
 
-    # All three node families are present -- attn_head_out is the family the hook
-    # conversion bug broke, mlp_out and embed round out the node graph.
+    # attn_head_out reads the converted hook_z, whose gradient only backward hooks see.
     families = {node.kind for node in result.node_scores}
     assert families == {"embed", "attn_head_out", "mlp_out"}
 
 
 def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> None:
-    """A ranked edge circuit recovers far more of the gap than a random one.
-
-    The ablation rewrites each reader's input at its pre-LN fork hook, so this
-    only works if the real Bridge's split-QKV and MLP-entry hooks sit where the
-    rewrite assumes. A circuit built from the top-ranked edges should recover a
-    large share of the clean-to-corrupt gap; a random edge set of the same size
-    should recover essentially none, which is what makes the number meaningful
-    rather than an artifact of ablating almost nothing.
-
-    Thresholds are set from measured values on this exact model and prompt pair
-    (gpt2-small, fp32, CPU): the top 200 edges recover about 0.62 of the gap,
-    while a random 200 of the 194,946 edges recover about 0.00. Recovery grows
-    with the budget -- roughly 0.29 at 50 edges and 0.997 at 1000 -- so the
-    budget is fixed here rather than left to drift.
-    """
+    """Top-200 edges recover far more of the gap than 200 random ones. Thresholds measured on
+    gpt2-small fp32 CPU: ranked ~0.62, random ~0.00 (ranked ~0.29 at 50, ~0.997 at 1000)."""
     clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
     corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
     assert clean.shape == corrupt.shape, "prompts must tokenize to the same length"
@@ -424,9 +404,6 @@ def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> 
     assert report.full_metric != pytest.approx(report.corrupt_metric)
     assert report.recovered > 0.5
 
-    # A random edge set of the same size recovers essentially nothing, so the
-    # ranking is doing real work rather than the number being an artifact of the
-    # circuit's size.
     all_edges = list(result.edge_scores)
     generator = torch.Generator().manual_seed(0)
     sampled = torch.randperm(len(all_edges), generator=generator)[:budget].tolist()

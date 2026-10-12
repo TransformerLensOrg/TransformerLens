@@ -1,21 +1,19 @@
-"""Leakage-safe k-sparse binary probes over activation tensors.
+"""Leakage-safe k-sparse binary probes over ``[example, feature]`` activation tensors.
 
-This module is model-free: callers supply an ``[example, feature]`` activation
-matrix and binary labels. Feature selection and optional preprocessing use the
-training split only. Probe decodability does not establish causal model use,
-monosemanticity, or superposition.
+Model-free; feature selection and optional standardization see only the training split.
 """
 
 from __future__ import annotations
 
-import hashlib
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
 import torch
 from jaxtyping import Bool, Float, Int, Integer
+
+from transformer_lens.utilities.statistics import derive_generator
 
 PreprocessMode = Literal["none", "standardize"]
 ClassWeightMode = Literal["balanced"] | None
@@ -29,23 +27,13 @@ _SUPPORTED_FEATURE_DTYPES = (
 
 
 class SparseProbeConvergenceError(RuntimeError):
-    """A probe fit failed to converge or produced non-finite output.
-
-    Distinct from other ``RuntimeError``s so the sweep's control-rejection path
-    swallows only convergence failures, never unrelated runtime faults.
-    """
+    """A fit failed to converge or went non-finite; sweeps catch only this for control fits."""
 
 
 @dataclass(frozen=True)
 class SparseProbeMetrics:
-    """Held-out binary-classification metrics and confusion counts.
-
-    Confusion counts, accuracy, precision, recall, and F1 are read at the logit-zero
-    threshold. ``roc_auc`` and ``average_precision`` are threshold-free and tie-aware:
-    held-out examples with equal logits share one rank and one threshold. The stratified
-    split always holds out both classes; if a class is absent, ``roc_auc`` is NaN, and
-    ``average_precision`` is NaN without positives and 1.0 without negatives.
-    """
+    """Held-out metrics; confusion counts and ratios use the logit-zero threshold, while
+    ``roc_auc`` and ``average_precision`` are threshold-free and tie-aware."""
 
     true_positives: int
     true_negatives: int
@@ -61,13 +49,9 @@ class SparseProbeMetrics:
 
 @dataclass(frozen=True)
 class SparseProbeResult:
-    """Result of one train/test k-sparse binary probe fit.
+    """One k-sparse probe fit; tensors are detached CPU and floating ones are float64."""
 
-    All tensors are detached CPU tensors. Floating-point tensors use float64;
-    ``coefficients`` align with ``selected_features``.
-    """
-
-    feature_scores: Float[torch.Tensor, "feature"]
+    feature_scores: Float[torch.Tensor, "feature"]  # positive minus negative class train mean
     selected_features: Int[torch.Tensor, "selected_feature"]
     coefficients: Float[torch.Tensor, "selected_feature"]
     intercept: Float[torch.Tensor, ""]
@@ -104,11 +88,7 @@ class SparseProbeResult:
 
 @dataclass(frozen=True)
 class SparseProbeControl:
-    """Raw held-out metric distributions for one control at one sparsity.
-
-    Rows cover only converged repeats, so the row count can be below the request;
-    rejected repeats live in ``SparseProbeSweep.rejections``.
-    """
+    """Raw held-out metrics of one control at one k; rows cover only converged repeats."""
 
     supports: Int[torch.Tensor, "repeat selected_feature"]
     accuracy: Float[torch.Tensor, "repeat"]
@@ -121,10 +101,7 @@ class SparseProbeControl:
 
 @dataclass(frozen=True)
 class SparseProbeRejection:
-    """A control fit excluded from the sweep because it did not converge.
-
-    Recorded instead of aborting so completed main probes and other controls survive.
-    """
+    """A control fit excluded from the sweep because it did not converge."""
 
     arm: ArmMode
     k: int
@@ -176,18 +153,26 @@ class _FitOutcome:
     stop_reason: str
 
 
-def _finite_positive_real(value: int | float, name: str) -> float:
+def _finite_real(
+    value: int | float, name: str, requirement: str, valid: Callable[[float], bool]
+) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be a finite positive real number, got {value!r}")
+        raise ValueError(f"{name} must be a finite {requirement}, got {value!r}")
     result = float(value)
-    if not math.isfinite(result) or result <= 0:
-        raise ValueError(f"{name} must be a finite positive real number, got {value!r}")
+    if not math.isfinite(result) or not valid(result):
+        raise ValueError(f"{name} must be a finite {requirement}, got {value!r}")
     return result
 
 
 def _positive_integer(value: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f"{name} must be a positive integer, got {value!r}")
+    return value
+
+
+def _nonnegative_integer(value: int, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative integer, got {value!r}")
     return value
 
 
@@ -253,32 +238,31 @@ def _validate_inputs(
     validated_k = _positive_integer(k, "k")
     if validated_k > features.shape[1]:
         raise ValueError(f"k must be at most the feature count {features.shape[1]}, got {k}")
-    if isinstance(test_fraction, bool) or not isinstance(test_fraction, (int, float)):
-        raise ValueError(f"test_fraction must be a finite real in (0, 1), got {test_fraction!r}")
-    validated_fraction = float(test_fraction)
-    if not math.isfinite(validated_fraction) or not 0 < validated_fraction < 1:
-        raise ValueError(f"test_fraction must be a finite real in (0, 1), got {test_fraction!r}")
+    validated_fraction = _finite_real(
+        test_fraction, "test_fraction", "real in (0, 1)", lambda value: 0 < value < 1
+    )
     if preprocess not in ("none", "standardize"):
         raise ValueError(f"preprocess must be 'none' or 'standardize', got {preprocess!r}")
-    if isinstance(std_floor, bool) or not isinstance(std_floor, (int, float)):
-        raise ValueError(f"std_floor must be a finite nonnegative real, got {std_floor!r}")
-    validated_std_floor = float(std_floor)
-    if not math.isfinite(validated_std_floor) or validated_std_floor < 0:
-        raise ValueError(f"std_floor must be a finite nonnegative real, got {std_floor!r}")
-
+    validated_std_floor = _finite_real(
+        std_floor, "std_floor", "nonnegative real", lambda value: value >= 0
+    )
     validated_preprocess = cast(PreprocessMode, preprocess)
     if class_weight not in ("balanced", None):
         raise ValueError(f"class_weight must be 'balanced' or None, got {class_weight!r}")
     validated_class_weight = cast(ClassWeightMode, class_weight)
-    validated_l2 = _finite_positive_real(l2_strength, "l2_strength")
+    validated_l2 = _finite_real(
+        l2_strength, "l2_strength", "positive real number", lambda value: value > 0
+    )
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed < 2**63:
         raise ValueError(f"seed must be an integer in [0, 2**63), got {seed!r}")
     validated_max_iter = _positive_integer(max_iter, "max_iter")
     validated_refinement_steps = _nonnegative_integer(max_refinement_steps, "max_refinement_steps")
-    validated_tolerance = _finite_positive_real(decrement_tolerance, "decrement_tolerance")
+    validated_tolerance = _finite_real(
+        decrement_tolerance, "decrement_tolerance", "positive real number", lambda value: value > 0
+    )
     if validated_tolerance >= 1:
         raise ValueError(
-            "decrement_tolerance must be a finite real in (0, 1), " f"got {decrement_tolerance!r}"
+            f"decrement_tolerance must be a finite real in (0, 1), got {decrement_tolerance!r}"
         )
     return _ValidatedInputs(
         features=features.detach(),
@@ -337,20 +321,12 @@ def _selected_data(
     std_floor: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     selected_device = selected_features.to(device=features.device)
-    train_device = train_indices.to(device=features.device)
-    test_device = test_indices.to(device=features.device)
-    train = (
-        features.index_select(0, train_device)
-        .index_select(1, selected_device)
-        .to(device="cpu")
-        .to(dtype=torch.float64)
-    )
-    test = (
-        features.index_select(0, test_device)
-        .index_select(1, selected_device)
-        .to(device="cpu")
-        .to(dtype=torch.float64)
-    )
+
+    def gather(indices: torch.Tensor) -> torch.Tensor:
+        rows = features.index_select(0, indices.to(device=features.device))
+        return rows.index_select(1, selected_device).to(device="cpu").to(dtype=torch.float64)
+
+    train, test = gather(train_indices), gather(test_indices)
     raw_scale = train.std(dim=0, correction=0)
     constant = raw_scale == 0
     if preprocess == "standardize":
@@ -416,7 +392,7 @@ def _newton_direction(
     sample_weights: torch.Tensor,
     l2_strength: float,
 ) -> tuple[torch.Tensor, torch.Tensor, float]:
-    """Return the gradient, the Newton direction ``H^-1 g``, and the decrement ``g^T H^-1 g / 2``."""
+    """Return the gradient, Newton direction ``H^-1 g`` and decrement ``g^T H^-1 g / 2``."""
     count = labels.numel()
     design = torch.cat((features, torch.ones(count, 1, dtype=torch.float64)), dim=1)
     probabilities = torch.sigmoid(design @ parameters)
@@ -636,14 +612,13 @@ def _binary_metrics(logits: torch.Tensor, labels: torch.Tensor) -> SparseProbeMe
     )
 
 
-def _fit_result(
+def _fit_selected(
     validated: _ValidatedInputs,
     train_indices: torch.Tensor,
     test_indices: torch.Tensor,
-    feature_scores: torch.Tensor,
     selected_features: torch.Tensor,
-    k: int,
-) -> SparseProbeResult:
+    train_labels: torch.Tensor,
+) -> tuple[_FitOutcome, SparseProbeMetrics, torch.Tensor, torch.Tensor, torch.Tensor]:
     train_features, test_features, mean, scale, constant = _selected_data(
         validated.features,
         selected_features,
@@ -652,7 +627,6 @@ def _fit_result(
         validated.preprocess,
         validated.std_floor,
     )
-    train_labels = validated.canonical_labels[train_indices]
     fit = _fit_logistic(
         train_features,
         train_labels,
@@ -664,6 +638,22 @@ def _fit_result(
     )
     test_labels = validated.canonical_labels[test_indices]
     metrics = _binary_metrics(test_features @ fit.coefficients + fit.intercept, test_labels)
+    return fit, metrics, mean, scale, constant
+
+
+def _fit_result(
+    validated: _ValidatedInputs,
+    train_indices: torch.Tensor,
+    test_indices: torch.Tensor,
+    feature_scores: torch.Tensor,
+    selected_features: torch.Tensor,
+    k: int,
+) -> SparseProbeResult:
+    train_labels = validated.canonical_labels[train_indices]
+    test_labels = validated.canonical_labels[test_indices]
+    fit, metrics, mean, scale, constant = _fit_selected(
+        validated, train_indices, test_indices, selected_features, train_labels
+    )
     return SparseProbeResult(
         feature_scores=feature_scores,
         selected_features=selected_features,
@@ -708,25 +698,7 @@ def _fit_control(
     selected_features: torch.Tensor,
     train_labels: torch.Tensor,
 ) -> SparseProbeMetrics:
-    train_features, test_features, _, _, _ = _selected_data(
-        validated.features,
-        selected_features,
-        train_indices,
-        test_indices,
-        validated.preprocess,
-        validated.std_floor,
-    )
-    fit = _fit_logistic(
-        train_features,
-        train_labels,
-        class_weight=validated.class_weight,
-        l2_strength=validated.l2_strength,
-        max_iter=validated.max_iter,
-        max_refinement_steps=validated.max_refinement_steps,
-        decrement_tolerance=validated.decrement_tolerance,
-    )
-    test_labels = validated.canonical_labels[test_indices]
-    return _binary_metrics(test_features @ fit.coefficients + fit.intercept, test_labels)
+    return _fit_selected(validated, train_indices, test_indices, selected_features, train_labels)[1]
 
 
 def _control_result(
@@ -752,12 +724,6 @@ def _control_result(
     )
 
 
-def _nonnegative_integer(value: int, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{name} must be a nonnegative integer, got {value!r}")
-    return value
-
-
 def fit_sparse_probe(
     features: Float[torch.Tensor, "example feature"],
     labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
@@ -774,40 +740,9 @@ def fit_sparse_probe(
     max_refinement_steps: int = 25,
     decrement_tolerance: int | float = 1e-12,
 ) -> SparseProbeResult:
-    """Fit a train-only-selected k-sparse binary logistic probe.
+    """Fit a logistic probe on the k features with the largest absolute train class-mean gap.
 
-    The stratified split is created before feature scoring or optional
-    standardization. Floating result tensors are detached CPU float64 tensors.
-
-    Args:
-        features: Finite float16/bfloat16/float32/float64 tensor shaped
-            ``[example, feature]``.
-        labels: Boolean or integer binary labels shaped ``[example]``.
-        k: Number of coordinates selected by absolute train class-mean difference.
-        test_fraction: Requested held-out fraction within each class.
-        positive_label: Label defining the positive class and score sign.
-        preprocess: ``"none"`` or train-only ``"standardize"``.
-        std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, so a
-            near-constant column is not amplified to unit scale; ``0`` disables it.
-        class_weight: ``"balanced"`` or ``None`` for unweighted BCE.
-        l2_strength: Positive coefficient penalty in the logistic objective.
-        seed: Local CPU-generator seed used only for the stratified split.
-        max_iter: Maximum LBFGS iterations before Newton refinement. LBFGS also stops once its
-            function evaluations reach ``max_iter * 5 // 4`` (``stop_reason="max_eval"``; the
-            line search can finish one past it), a budget equal to ``max_iter`` when
-            ``max_iter <= 3``.
-        max_refinement_steps: Maximum damped Newton steps after LBFGS; zero only checks.
-        decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2``, an
-            estimate of the objective gap to the optimum in nats; a larger gap raises.
-
-    Returns:
-        Selected support, fitted parameters, split/preprocessing metadata, metrics,
-        and optimizer diagnostics.
-
-    Raises:
-        ValueError: If inputs or options violate the binary-probe contract.
-        SparseProbeConvergenceError: If the optimizer fails or misses its
-            convergence threshold.
+    Accepted only once the Newton decrement ``g^T H^-1 g / 2`` (nats) is ``<= decrement_tolerance``.
     """
     validated = _validate_inputs(
         features,
@@ -835,23 +770,15 @@ def fit_sparse_probe(
         : validated.k
     ]
     return _fit_result(
-        validated,
-        train_indices,
-        test_indices,
-        feature_scores,
-        selected_features,
-        validated.k,
+        validated, train_indices, test_indices, feature_scores, selected_features, validated.k
     )
 
 
 def _control_generator(seed: int, k: int, arm: ArmMode, repeat: int) -> torch.Generator:
-    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``; SHA-256 rather than
-    Python ``hash`` keeps each draw's seed stable across processes."""
-    # The key keeps the pre-ArmMode short arm names so released control draws reproduce.
+    """Per-draw CPU generator keyed on ``(seed, k, arm, repeat)``."""
+    # Short arm names in the key keep previously released control draws reproducible.
     key_arm = "random" if arm == "random_coordinate" else "shuffle"
-    key = f"{seed}:{k}:{key_arm}:{repeat}".encode()
-    derived = int.from_bytes(hashlib.sha256(key).digest()[:8], "little") & 0x7FFFFFFFFFFFFFFF
-    return torch.Generator(device="cpu").manual_seed(derived)
+    return derive_generator(seed, k, key_arm, repeat)
 
 
 def sweep_sparse_probe(
@@ -872,54 +799,13 @@ def sweep_sparse_probe(
     max_refinement_steps: int = 25,
     decrement_tolerance: int | float = 1e-12,
 ) -> SparseProbeSweep:
-    """Fit sparse probes and optional controls over one fixed train/test split.
+    """Fit probes for each k of a strictly increasing grid on one split, plus raw null controls.
 
-    ``ks`` must contain strictly increasing positive integers. Random-coordinate
-    controls sample supports without replacement. Label-shuffle controls permute
-    training labels, repeat selection and fitting, then evaluate against the
-    untouched held-out labels. Control arrays contain raw metrics and do not
-    represent automatic significance tests.
-
-    Args:
-        features: Finite float16/bfloat16/float32/float64 tensor shaped
-            ``[example, feature]``.
-        labels: Boolean or integer binary labels shaped ``[example]``.
-        ks: Strictly increasing unique sparsity levels.
-        test_fraction: Requested held-out fraction within each class.
-        positive_label: Label defining the positive class and score sign.
-        preprocess: ``"none"`` or train-only ``"standardize"``.
-        std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, shared by
-            every fit; ``0`` disables it.
-        class_weight: ``"balanced"`` or ``None``, shared by every fit.
-        l2_strength: Positive coefficient penalty shared by every fit.
-        n_random_subsets: Random-coordinate control fits per sparsity level.
-        n_label_shuffles: Shuffled-training-label control fits per sparsity level.
-        seed: Local CPU-generator seed for splitting and controls.
-        max_iter: Maximum LBFGS iterations per fit before Newton refinement. LBFGS also stops
-            once its function evaluations reach ``max_iter * 5 // 4``
-            (``stop_reason="max_eval"``; the line search can finish one past it), a budget
-            equal to ``max_iter`` when ``max_iter <= 3``.
-        max_refinement_steps: Maximum damped Newton steps per fit; zero only checks.
-        decrement_tolerance: Largest accepted Newton decrement ``g^T H^-1 g / 2`` per fit,
-            an estimate of the objective gap to the optimum in nats; a larger gap raises.
-
-    Returns:
-        Main probe results plus aligned raw control distributions. A control fit
-        that fails to converge is excluded and recorded in ``rejections`` rather
-        than aborting the sweep, so completed fits survive; each control's rows
-        cover only its converged repeats.
-
-    Raises:
-        ValueError: If the grid, controls, inputs, or options are invalid.
-        SparseProbeConvergenceError: If a main-probe fit fails to converge.
-            Control-fit convergence failures do not raise here — they are collected
-            in ``SparseProbeSweep.rejections``; any other error still propagates.
+    Shuffle controls score on true held-out labels; non-converged controls go to ``rejections``.
     """
-    if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence):
+    if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence) or not ks:
         raise ValueError("ks must be a non-empty sequence of positive integers")
     k_values = tuple(ks)
-    if not k_values:
-        raise ValueError("ks must be a non-empty sequence of positive integers")
     if any(isinstance(k, bool) or not isinstance(k, int) or k < 1 for k in k_values):
         raise ValueError("ks must contain positive integers")
     if any(right <= left for left, right in zip(k_values, k_values[1:])):
@@ -949,61 +835,42 @@ def sweep_sparse_probe(
     feature_scores = _feature_scores(validated.features, train_labels, train_indices)
     ranked_features = torch.argsort(feature_scores.abs(), descending=True, stable=True)
     results = tuple(
-        _fit_result(
-            validated,
-            train_indices,
-            test_indices,
-            feature_scores,
-            ranked_features[:k],
-            k,
-        )
+        _fit_result(validated, train_indices, test_indices, feature_scores, ranked_features[:k], k)
         for k in k_values
     )
 
-    random_controls = []
-    shuffle_controls = []
+    random_controls: list[SparseProbeControl] = []
+    shuffle_controls: list[SparseProbeControl] = []
     rejections: list[SparseProbeRejection] = []
     feature_count = validated.features.shape[1]
+    arms: tuple[tuple[ArmMode, int, list[SparseProbeControl]], ...] = (
+        ("random_coordinate", random_count, random_controls),
+        ("label_shuffle", shuffle_count, shuffle_controls),
+    )
     for k in k_values:
-        random_supports = []
-        random_metrics = []
-        for repeat in range(random_count):
-            draw_generator = _control_generator(validated.seed, k, "random_coordinate", repeat)
-            support = torch.randperm(feature_count, generator=draw_generator)[:k].sort().values
-            # A failed control draw is recorded, not fatal: main probes and other controls survive.
-            try:
-                metrics = _fit_control(
-                    validated, train_indices, test_indices, support, train_labels
-                )
-            except SparseProbeConvergenceError as error:
-                rejections.append(
-                    SparseProbeRejection("random_coordinate", k, repeat, support, str(error))
-                )
-                continue
-            random_supports.append(support)
-            random_metrics.append(metrics)
-        random_controls.append(_control_result(random_supports, random_metrics, k))
-
-        shuffle_supports = []
-        shuffle_metrics = []
-        for repeat in range(shuffle_count):
-            draw_generator = _control_generator(validated.seed, k, "label_shuffle", repeat)
-            permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
-            shuffled_labels = train_labels[permutation]
-            shuffled_scores = _feature_scores(validated.features, shuffled_labels, train_indices)
-            support = torch.argsort(shuffled_scores.abs(), descending=True, stable=True)[:k]
-            try:
-                metrics = _fit_control(
-                    validated, train_indices, test_indices, support, shuffled_labels
-                )
-            except SparseProbeConvergenceError as error:
-                rejections.append(
-                    SparseProbeRejection("label_shuffle", k, repeat, support, str(error))
-                )
-                continue
-            shuffle_supports.append(support)
-            shuffle_metrics.append(metrics)
-        shuffle_controls.append(_control_result(shuffle_supports, shuffle_metrics, k))
+        for arm, count, controls in arms:
+            supports = []
+            metrics = []
+            for repeat in range(count):
+                draw_generator = _control_generator(validated.seed, k, arm, repeat)
+                if arm == "random_coordinate":
+                    fit_labels = train_labels
+                    support = torch.randperm(feature_count, generator=draw_generator)[:k]
+                    support = support.sort().values
+                else:
+                    permutation = torch.randperm(train_labels.numel(), generator=draw_generator)
+                    fit_labels = train_labels[permutation]
+                    scores = _feature_scores(validated.features, fit_labels, train_indices)
+                    support = torch.argsort(scores.abs(), descending=True, stable=True)[:k]
+                try:
+                    metrics.append(
+                        _fit_control(validated, train_indices, test_indices, support, fit_labels)
+                    )
+                except SparseProbeConvergenceError as error:
+                    rejections.append(SparseProbeRejection(arm, k, repeat, support, str(error)))
+                    continue
+                supports.append(support)
+            controls.append(_control_result(supports, metrics, k))
 
     return SparseProbeSweep(
         ks=k_values,

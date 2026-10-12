@@ -138,12 +138,8 @@ def test_positive_label_controls_score_sign_and_class_metadata():
 
 
 def test_class_weight_changes_the_fit_against_a_weighted_newton_reference():
-    # On an imbalanced fixture the balanced and unweighted objectives diverge: the two
-    # class weights are no longer both 1.0, so class_weight="balanced" and
-    # class_weight=None fit measurably different coefficients. A balanced fixture would
-    # make the modes numerically identical and hide a bug that ignores class_weight=None
-    # or always balances. Same seed keeps the split and selected support identical across
-    # modes, so the coefficients are directly comparable.
+    # Imbalanced, so the two modes' objectives differ (a balanced fixture makes them identical);
+    # one seed keeps split and support shared so coefficients are comparable.
     generator = torch.Generator().manual_seed(19)
     n_examples, n_features = 250, 6
     labels = (torch.arange(n_examples) % 5 == 0).to(torch.int64)
@@ -312,20 +308,14 @@ def test_metrics_match_an_independent_heldout_recompute_at_the_logit_zero_thresh
     n_examples, n_features = 300, 8
     labels = torch.arange(n_examples) % 2
     features = torch.randn(n_examples, n_features, generator=generator)
-    # Moderate separation so the held-out confusion matrix contains both false positives and
-    # false negatives in unequal counts. That makes precision and recall differ, so an
-    # independent recompute can catch a precision/recall swap.
+    # Moderate separation gives unequal FP and FN counts, so a precision/recall swap shows.
     features[:, 2] += 1.1 * (2 * labels - 1)
     permutation = torch.randperm(n_examples, generator=generator)
     features, labels = features[permutation], labels[permutation]
 
     result = fit_sparse_probe(features, labels, k=3, preprocess=preprocess, seed=7)
 
-    # Standardize the raw held-out rows with the module's returned train-only statistics,
-    # matching what the module does internally. Under preprocess="none" the statistics are
-    # identity (mean 0, scale 1) so this is a no-op; under preprocess="standardize" it pins
-    # the recompute to train-only statistics, so a leakage bug that standardized held-out
-    # rows with their own mean and std would diverge from result.metrics and fail below.
+    # Train-only stats: a leak standardizing held-out rows by their own stats would diverge.
     test_features = features[result.test_indices][:, result.selected_features].double()
     test_features = (test_features - result.preprocess_mean) / result.preprocess_scale
     logits = test_features @ result.coefficients + result.intercept
@@ -434,8 +424,8 @@ def test_forced_nonconvergence_raises():
 def _large_scale_data(
     *, n_examples: int = 1000, n_features: int = 768, seed: int = 0, scale: float = 8000.0
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    # Raw (unstandardized) activations with a per-coordinate std in the thousands stall LBFGS
-    # short of the optimum within its budget, so acceptance hinges on the Newton refinement.
+    # A per-coordinate std in the thousands stalls LBFGS short of the optimum, so acceptance
+    # hinges on the Newton refinement.
     generator = torch.Generator().manual_seed(seed)
     labels = torch.arange(n_examples) % 2
     features = scale * torch.randn(n_examples, n_features, generator=generator)
@@ -451,10 +441,8 @@ def test_default_tolerance_accepts_large_scale_activations():
 
     assert isinstance(result, SparseProbeResult)
     assert result.selected_features.numel() == 4
-    # LBFGS stalls here, so the decision is made by the refinement: accepted at the default
-    # tolerance only after Newton steps, and rejected when the budget cannot close the gap.
-    # Bracketing the accept-or-raise decision this way fails if the criterion loosens by
-    # orders of magnitude, which no assertion on the reported gradient can detect.
+    # Bracketing accept-after-refinement against raise-without-budget catches a criterion that
+    # loosens by orders of magnitude, which no assertion on the reported gradient can detect.
     assert result.refinement_steps >= 1
     assert result.newton_decrement <= result.decrement_tolerance
     for budget in (0, 1):
@@ -463,10 +451,8 @@ def test_default_tolerance_accepts_large_scale_activations():
 
 
 def test_sweep_controls_accept_activation_scale_fits():
-    # Random-coordinate and label-shuffle controls have near-zero label correlation by
-    # construction. Keying acceptance to feature magnitude rather than the initial
-    # correlation lets these controls complete at the same large activation scale that
-    # pinned the old initial-gradient bound to its absolute floor.
+    # Controls have near-zero label correlation, so acceptance must not hinge on the initial
+    # gradient at large activation scale.
     features, labels = _large_scale_data()
 
     sweep = sweep_sparse_probe(
@@ -483,8 +469,7 @@ def test_sweep_controls_accept_activation_scale_fits():
 
 
 def test_stop_reason_distinguishes_converged_from_capped_fits():
-    # stop_reason reports why LBFGS stopped, before refinement, so a caller can tell a fit
-    # that reached the solver's own gradient stop from one a cap truncated and Newton finished.
+    # stop_reason is LBFGS's exit before refinement, separating a converged fit from a capped one.
     features, labels = _planted_data()
 
     converged = fit_sparse_probe(features, labels, k=4, seed=3)
@@ -497,8 +482,7 @@ def test_stop_reason_distinguishes_converged_from_capped_fits():
     assert capped_by_iter.iterations == capped_by_iter.max_iter
     assert capped_by_iter.refinement_steps >= 1
 
-    # Large-scale activations make the strong-Wolfe line search exhaust the evaluation
-    # budget before the iteration cap, so the same truncation surfaces as max_eval.
+    # At large scale the strong-Wolfe search exhausts the evaluation budget before max_iter.
     large_features, large_labels = _large_scale_data()
     capped_by_eval = fit_sparse_probe(large_features, large_labels, k=4, seed=1)
     assert capped_by_eval.stop_reason == "max_eval"
@@ -506,11 +490,8 @@ def test_stop_reason_distinguishes_converged_from_capped_fits():
 
 
 def test_stop_reason_reports_a_stalled_line_search():
-    # With tolerance_change at 0.0 the only LBFGS exit besides the caps and its gradient stop
-    # is a strong-Wolfe search that returns a zero step; that exit is common on raw
-    # activations and must keep its own label, or callers cannot tell it from convergence.
-    # At a std of 8000 the stall lands within ~1.2x of tolerance_grad, so one-ulp input changes
-    # (or another platform's BLAS) flip the label; at 1e7 the stalled gradient sits ~1e6x above.
+    # At std 8000 the stall lands within ~1.2x of tolerance_grad, so one-ulp input changes or
+    # another BLAS flip the label; at 1e7 the stalled gradient sits ~1e6x above it.
     features, labels = _large_scale_data(scale=1e7)
 
     result = fit_sparse_probe(features, labels, k=4, seed=1)
@@ -523,9 +504,8 @@ def test_stop_reason_reports_a_stalled_line_search():
 
 
 def test_loose_tolerance_does_not_stop_the_solver_early():
-    # The acceptance tolerance must not reach LBFGS: if it did, a tolerance above the initial
-    # gradient would return the untrained all-zero probe as a converged fit. Noise features
-    # start with a small gradient, so a loose tolerance is exactly the case that exposes it.
+    # Were the tolerance passed to LBFGS, noise features' small initial gradient would return
+    # the untrained all-zero probe as converged.
     generator = torch.Generator().manual_seed(3)
     features = torch.randn(400, 64, generator=generator)
     labels = torch.arange(400) % 2
@@ -538,8 +518,6 @@ def test_loose_tolerance_does_not_stop_the_solver_early():
 
 
 def test_zero_refinement_budget_only_checks_a_converged_fit():
-    # The decrement is evaluated before the first Newton step, so a budget of zero accepts a
-    # fit LBFGS already converged and rejects nothing on its own.
     features, labels = _planted_data()
 
     result = fit_sparse_probe(features, labels, k=4, seed=3, max_refinement_steps=0)
@@ -551,8 +529,7 @@ def test_zero_refinement_budget_only_checks_a_converged_fit():
 
 @pytest.mark.parametrize("scale", [1e6, 1e9])
 def test_saturated_design_refines_without_factorization_failure(scale):
-    # Huge feature scales saturate the sigmoid, zeroing the unregularised intercept curvature;
-    # the equilibrated, ridged solve must still factorise and accept the converged fit.
+    # Saturated sigmoids zero the intercept curvature; the ridged solve must still factorise.
     generator = torch.Generator().manual_seed(0)
     labels = torch.arange(300) % 2
     features = scale * torch.randn(300, 16, generator=generator)
@@ -585,8 +562,6 @@ def test_binary_metrics_all_negative_labels_leave_both_threshold_free_scores_und
 
 
 def test_binary_metrics_all_positive_labels_give_nan_roc_auc_and_unit_average_precision():
-    # ROC-AUC needs a negative to rank against; average precision is still defined, since
-    # every threshold has precision one.
     metrics = _binary_metrics(torch.tensor([-1.0, 0.5, 2.0]), torch.ones(3, dtype=torch.int64))
 
     assert math.isnan(metrics.roc_auc)
@@ -594,8 +569,7 @@ def test_binary_metrics_all_positive_labels_give_nan_roc_auc_and_unit_average_pr
 
 
 def test_dead_coordinate_probe_scores_chance_on_threshold_free_metrics():
-    # Fixture from issue #1814: a constant selected coordinate fits to all-zero logits,
-    # which predicts every held-out example positive.
+    # A constant coordinate fits all-zero logits, predicting every held-out example positive.
     features = torch.randn(300, 16, generator=torch.Generator().manual_seed(0))
     features[:, 0] = 0.0
     labels = (torch.rand(300, generator=torch.Generator().manual_seed(0)) < 0.5).long()
@@ -876,12 +850,7 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
         features, labels, ks=[2], n_random_subsets=0, n_label_shuffles=1, seed=seed
     )
 
-    # Replay the sweep's RNG stream to recover the exact shuffled training labels and the
-    # support the single control fit used. The split still draws from a seed-only generator;
-    # the shuffle draw now comes from the per-(seed, k, arm, repeat) control generator.
-    # Shuffling permutes only the training labels, so the fit must still be scored against
-    # the untouched held-out labels; rescoring the same fit against labels[test_indices]
-    # must reproduce the reported control metrics.
+    # Replay the split and shuffle draw, then rescore the control fit on the true held-out labels.
     validated = _validate_inputs(
         features,
         labels,
@@ -938,8 +907,7 @@ def test_label_shuffle_control_is_scored_against_the_true_heldout_labels():
     assert float(control.f1[0]) == rescored.f1
     assert float(control.roc_auc[0]) == rescored.roc_auc
     assert float(control.average_precision[0]) == rescored.average_precision
-    # Scoring the same fit against a different held-out label alignment would move the
-    # metrics, so the exact match above pins the scoring labels to the true held-out labels.
+    # Flipped labels move the metrics, so the exact match above pins the scoring labels.
     assert _binary_metrics(logits, ~true_test_labels).accuracy != rescored.accuracy
 
 
@@ -963,9 +931,7 @@ def test_sweep_rejects_invalid_grid_and_control_counts(ks, kwargs, message):
 
 
 def test_sweep_records_rejected_controls_and_keeps_completed_fits():
-    # max_refinement_steps=0 with a strict tolerance makes some control fits miss the
-    # acceptance threshold. Before the partial-result path a rejection raised and discarded
-    # the whole sweep — including the completed main probes, which are the expensive part.
+    # No refinement plus a strict tolerance makes some control fits miss acceptance.
     features = torch.randn(200, 32, generator=torch.Generator().manual_seed(0))
     labels = (torch.rand(200, generator=torch.Generator().manual_seed(1)) < 0.5).long()
     features[:, 3] += labels.float() * 1.5
@@ -975,10 +941,8 @@ def test_sweep_records_rejected_controls_and_keeps_completed_fits():
         features, labels, ks=[1, 2, 4], n_random_subsets=10, n_label_shuffles=10, **strict
     )
 
-    # Main probes for every k survive.
     assert tuple(result.k for result in sweep.results) == (1, 2, 4)
 
-    # At least one control was rejected and recorded with an actionable reason.
     assert len(sweep.rejections) > 0
     for rejection in sweep.rejections:
         assert rejection.arm in ("random_coordinate", "label_shuffle")
@@ -986,8 +950,6 @@ def test_sweep_records_rejected_controls_and_keeps_completed_fits():
         assert "did not converge" in rejection.reason
         assert rejection.support.numel() == rejection.k
 
-    # Each control distribution keeps exactly the repeats that converged: the requested
-    # count minus the rejections recorded for that arm and k.
     for arm, controls in (
         ("random_coordinate", sweep.random_coordinate_controls),
         ("label_shuffle", sweep.label_shuffle_controls),
@@ -1011,10 +973,7 @@ def test_sweep_has_no_rejections_when_every_control_converges():
 
 
 def test_control_draws_depend_only_on_seed_k_and_arm():
-    # A k=2 control must be a property of k=2 at a fixed seed: independent of which
-    # other k values were requested and of the other arm's repeat count. With one
-    # generator threaded through the whole loop, all three sweeps below returned
-    # different k=2 controls; per-draw seeding on (seed, k, arm, repeat) fixes it.
+    # A shared generator would make k=2 controls depend on the other ks and the other arm's count.
     features, labels = _planted_data(n_examples=200, n_features=32, seed=0)
 
     only_k2 = sweep_sparse_probe(
@@ -1027,7 +986,6 @@ def test_control_draws_depend_only_on_seed_k_and_arm():
         features, labels, ks=[1, 2], n_random_subsets=8, n_label_shuffles=3, seed=0
     )
 
-    # The k=2 control is identical whether or not k=1 was also swept — both arms.
     for left, right in (
         (only_k2.random_coordinate_controls[0], with_k1.random_coordinate_controls[1]),
         (only_k2.label_shuffle_controls[0], with_k1.label_shuffle_controls[1]),
@@ -1035,20 +993,16 @@ def test_control_draws_depend_only_on_seed_k_and_arm():
         assert torch.equal(left.supports, right.supports)
         assert torch.equal(left.f1, right.f1)
 
-    # The random arm's draws are unchanged by the label-shuffle repeat count.
     full_random = with_k1.random_coordinate_controls[1]
     fewer_random = fewer_shuffles.random_coordinate_controls[1]
     assert torch.equal(full_random.supports, fewer_random.supports)
     assert torch.equal(full_random.f1, fewer_random.f1)
 
-    # Main-fit results never depend on the control configuration.
     assert only_k2.results[0].metrics.f1 == with_k1.results[1].metrics.f1
     assert with_k1.results[1].metrics.f1 == fewer_shuffles.results[1].metrics.f1
 
 
 def test_control_draws_differ_across_repeats_and_seeds():
-    # Complements the invariance test above: per-draw keying must still separate
-    # draws, so distinct repeats and distinct seeds may not replay one another.
     features, labels = _planted_data(n_examples=200, n_features=32, seed=0)
 
     first = sweep_sparse_probe(
@@ -1067,8 +1021,7 @@ def test_control_draws_differ_across_repeats_and_seeds():
 
 
 def test_label_shuffle_controls_are_independent_of_a_nonzero_random_subset_count():
-    # The invariance test above only varies the shuffle count; this pins the
-    # converse arm at a nonzero count, where a shared stream would still couple them.
+    # A nonzero random-subset count must not shift shuffle draws, as a shared stream would.
     features, labels = _planted_data(n_examples=160, n_features=12)
 
     without_random = sweep_sparse_probe(
@@ -1088,8 +1041,6 @@ def test_label_shuffle_controls_are_independent_of_a_nonzero_random_subset_count
 
 
 def test_rejection_coordinates_identify_the_failing_draw():
-    # A rejection's (k, arm, repeat) must name the exact draw that failed:
-    # recomputing that draw from the per-draw generator reproduces its support.
     features = torch.randn(200, 32, generator=torch.Generator().manual_seed(0))
     labels = (torch.rand(200, generator=torch.Generator().manual_seed(1)) < 0.5).long()
     features[:, 3] += labels.float() * 1.5
@@ -1149,8 +1100,6 @@ def test_rejection_coordinates_identify_the_failing_draw():
 
 
 def test_sweep_raises_when_a_main_probe_fit_fails():
-    # Only control fits are made partial; a main fit missing the acceptance
-    # threshold must abort the sweep exactly as fit_sparse_probe would.
     features, labels = _large_scale_data()
 
     with pytest.raises(SparseProbeConvergenceError, match="did not converge"):
@@ -1167,8 +1116,6 @@ def test_forced_nonconvergence_raises_the_dedicated_exception():
 
 
 def test_generic_runtime_error_in_a_control_fit_propagates(monkeypatch):
-    # The rejection path may swallow only convergence failures; an unrelated
-    # RuntimeError from a control fit must surface instead of becoming a rejection.
     features, labels = _planted_data(n_examples=120, n_features=8)
 
     def broken_fit_control(*args, **kwargs):
@@ -1185,8 +1132,7 @@ def test_generic_runtime_error_in_a_control_fit_propagates(monkeypatch):
 
 
 def test_control_generator_rejects_arm_names_outside_the_literal():
-    # The pre-ArmMode short names only survive inside the hash key; as arguments
-    # they must fail the runtime type check rather than silently fork the stream.
+    # The short arm names live only in the hash key; as arguments they must fail the type check.
     for bad_arm in ("random", "shuffle"):
         with pytest.raises(TYPECHECK_ERRORS):
             _control_generator(0, 1, bad_arm, 0)

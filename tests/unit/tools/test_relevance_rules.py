@@ -1,11 +1,5 @@
-"""Analytic closed-form tests for the LN-, Identity-, and Half-relevance-rule primitives.
-
-Model-free: every primitive is a plain ``torch.autograd.Function`` exercised on
-synthetic tensors, so no model, backward hook, or ``.data`` access is involved. Each
-test asserts two properties independently: the forward value is exactly the native
-(ordinary-autograd) value, and the backward value matches the rule's closed-form VJP
-rather than what ordinary autodiff would produce.
-"""
+"""Model-free closed-form tests for the LN-, Identity- and Half-rule primitives: native forward
+values, and backward VJPs that match the rule rather than ordinary autodiff."""
 
 import math
 from functools import partial
@@ -70,14 +64,10 @@ class TestLNRule:
         y_rule = ln_rule(x_rule, denom_rule)
         (grad_rule,) = torch.autograd.grad(y_rule, x_rule, grad_outputs=grad_out)
 
-        # The closed-form VJP of this rule: grad_x = grad_out / denom, with no
-        # contribution from d(denom)/dx.
         expected = grad_out / denom_rule.detach()
         torch.testing.assert_close(grad_rule, expected)
 
-        # Plain autodiff through the same expression differentiates the denom too,
-        # so it disagrees with the rule everywhere the denom actually depends on x
-        # (every row here, since eps alone would zero out that dependency).
+        # Plain autodiff also differentiates denom, which depends on x in every row here.
         x_plain = _leaf(base, dtype)
         denom_plain = x_plain.abs().mean(dim=-1, keepdim=True) + eps
         y_plain = x_plain / denom_plain
@@ -121,13 +111,8 @@ class TestLNRule:
 
 
 class TestIdentityRule:
-    """Forward equals the native activation; the VJP is ``grad_out * phi(x)``.
-
-    ``phi`` has a closed form for each activation tested here: ``sigmoid`` for SiLU
-    and the Gaussian CDF for exact GELU. Both are, by construction, the removable-
-    singularity limit of ``f(x) / x`` at ``x == 0``, which is the direct oracle used
-    for the tanh-approximate GELU, where no simpler closed form applies.
-    """
+    """Native activation forward; VJP ``grad_out * phi(x)`` with ``phi`` = sigmoid (SiLU), the
+    Gaussian CDF (exact GELU), or ``f(x) / x`` directly (tanh GELU, no simpler form)."""
 
     @pytest.mark.parametrize("dtype", DTYPES)
     def test_forward_matches_native_silu(self, dtype):
@@ -221,8 +206,6 @@ class TestHalfRule:
         torch.testing.assert_close(grad_u, 0.5 * grad_out * v.detach())
         torch.testing.assert_close(grad_v, 0.5 * grad_out * u.detach())
 
-        # Ordinary autodiff of u * v would give the full (unhalved) product-rule
-        # terms, so the rule must disagree with it.
         u_plain = _leaf(_sample_rows(dtype), dtype)
         v_plain = _leaf(_sample_rows(dtype).flip(0), dtype)
         y_plain = u_plain * v_plain
@@ -262,21 +245,15 @@ class TestHalfRule:
 
 
 class _Proj:
-    """Minimal stand-in for a projection bridge: carries only what
-    ``weight_layout_in_out``/``normalize_mlp_weight`` read (``original_component``)."""
+    """Projection-bridge stand-in carrying only ``original_component``."""
 
     def __init__(self, original_component):
         self.original_component = original_component
 
 
 class TestGatedMLPWeightOrientation:
-    """``MLPBridge``'s ``W_gate``/``W_in``/``W_out`` read the underlying projection
-    through ``weight_layout_in_out``/``normalize_mlp_weight``, so an orientation bug in
-    those helpers would silently transpose a gate/up/down weight for one backing class.
-    Covers both HF module classes: ``nn.Linear`` (weight stored ``[out, in]``,
-    transposed to TL orientation) and ``Conv1D`` (weight stored ``[in, out]``, already
-    TL-oriented).
-    """
+    """TL-oriented gate/up/down weights for ``nn.Linear`` (stored ``[out, in]``) and ``Conv1D``
+    (stored ``[in, out]``) backings, so an orientation bug cannot silently transpose one."""
 
     @pytest.fixture(params=["nn.Linear", "Conv1D"])
     def backing_class(self, request):
@@ -314,27 +291,8 @@ class TestGatedMLPWeightOrientation:
 
 
 class TestPinnedReferenceParity:
-    """Tolerant parity against ``FarnoushRJ/RelP`` pinned at
-    ``8219d6dc417c3fd7f318342cf61cd2a0c20b7250``.
-
-    That repository vendors an unrelated pre-Bridge TransformerLens fork, so its
-    rule formulas are reimplemented here directly from the pinned commit's
-    component diffs rather than imported:
-
-    - LN-rule (``transformer_lens/components/rms_norm.py``): ``x / scale.detach()``.
-    - Identity-rule (``transformer_lens/utilities/activation_functions.py``,
-      class ``ModifiedAct``): ``zp = stabilize(x); zp * (act_fn(x) / zp).detach()``,
-      where ``stabilize(z) = z + ((z == 0) + sign(z)) * 1e-6``
-      (``transformer_lens/lrp_utils.py``).
-    - Half-rule (``transformer_lens/components/mlps/gated_mlp.py``):
-      ``z = u * v; z / 2 + (z / 2).detach()``.
-
-    The LN- and Half-rule reference formulas produce the same VJP as this module's
-    primitives to floating-point precision. The Identity-rule reference formula
-    does not: its epsilon stabilizer only approximates the paper-defined factor
-    away from ``x == 0``, and collapses to exactly zero at ``x == 0`` where the
-    paper-defined factor's removable-singularity limit is ``0.5``.
-    """
+    """Parity with ``FarnoushRJ/RelP`` @ ``8219d6dc417c3fd7f318342cf61cd2a0c20b7250``, whose rule
+    formulas are reimplemented here because it vendors an unrelated pre-Bridge TL fork."""
 
     @staticmethod
     def _reference_stabilize(z: torch.Tensor) -> torch.Tensor:
@@ -397,6 +355,7 @@ class TestPinnedReferenceParity:
 
         grad_reference = self._reference_identity_rule_grad(x, act_fn)
 
+        # Loose tolerance: the reference's 1e-6 stabilizer only approximates f(x) / x.
         torch.testing.assert_close(
             grad_rule[nonzero_mask],
             grad_reference[nonzero_mask],
@@ -411,12 +370,8 @@ class TestPinnedReferenceParity:
         ids=["silu", "gelu_exact", "gelu_tanh"],
     )
     def test_identity_rule_exact_zero_discrepancy_is_documented(self, dtype, act_fn):
-        """At ``x == 0`` this module's Identity-rule uses the paper-defined
-        removable-singularity limit ``0.5``, while the pinned reference's epsilon
-        stabilizer yields exactly ``0``. Assert both values explicitly, rather than
-        letting a tolerance absorb the gap, so a change to either side's zero
-        handling is caught instead of silently passing.
-        """
+        """At ``x == 0`` ours gives the limit ``0.5`` and the reference's stabilizer gives ``0``;
+        both are asserted exactly so a tolerance cannot absorb a change on either side."""
         x = torch.zeros(3, dtype=dtype)
 
         x_rule = _leaf(x, dtype)

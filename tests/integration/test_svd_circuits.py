@@ -1,9 +1,6 @@
-"""Integration test: OV vocab readout and the causal patch gate on a real GPT-2 head.
+"""Integration test: OV vocab readout and the patch comparison on a real GPT-2 head.
 
-The only file in the ``svd_circuits`` suite that downloads a pretrained model. Drives the
-whole read-then-patch path against layer 9 head 9 (the paper's canonical name-mover head) on
-a minimal IOI-style prompt, to check that the readout and the causal gate agree on a real
-Bridge rather than only on the unit suite's synthetic and tiny-model fixtures.
+The suite's only pretrained download: name-mover head L9H9 on a minimal IOI prompt.
 """
 
 from __future__ import annotations
@@ -54,8 +51,8 @@ def test_svd_circuits_readout_and_patch_gate_on_name_mover_head(gpt2_bridge) -> 
     # Pick the first non-degenerate direction rather than assuming index 0 is isolated.
     top_direction = next(row.idx for row in ov.rank_report if not row.is_degenerate)
 
-    # readout reproduces the shipped SVDInterpreter reference up to sign, so a U-for-V swap
-    # or an all-zeros return in vocab_readout fails here rather than passing a finiteness check.
+    # Match SVDInterpreter up to sign: catches a U-for-V swap or all-zeros readout that a
+    # finiteness check would pass.
     reference = SVDInterpreter(gpt2_bridge).get_singular_vectors(
         "OV", LAYER, head_index=HEAD, num_vectors=top_direction + 1
     )[:, 0, top_direction]
@@ -77,18 +74,15 @@ def test_svd_circuits_readout_and_patch_gate_on_name_mover_head(gpt2_bridge) -> 
 
     rank = ov.V.shape[1]
 
-    # Keeping every direction reconstructs the head onto its own full OV span: a no-op, so the
-    # metric barely moves. A width-rank in-span control also spans span(V), so it ties this
-    # kept projector by construction and the gate needs an explicit threshold. A hook never
-    # installed, or one projecting the wrong basis, breaks the delta assertion.
+    # Keeping every direction is a no-op unless the hook projects the wrong basis; full-rank
+    # controls tie it by construction, hence the explicit threshold.
     full_keep = patch_along_directions(
         gpt2_bridge, ov, prompt, metric, keep=list(range(rank)), threshold=1e-4
     )
     assert abs(full_keep.delta_metric) < 1e-4
 
-    # Ablating every direction zeroes the head's whole output, which must move the logit diff.
-    # An empty retained set ties the baseline by construction, so gate it with an explicit
-    # threshold; only delta_metric's magnitude is asserted here.
+    # Ablating every direction zeroes the head, which must move the logit diff; an empty
+    # retained set also ties the controls, hence the explicit threshold.
     full_ablate = patch_along_directions(
         gpt2_bridge, ov, prompt, metric, ablate=list(range(rank)), threshold=0.0
     )

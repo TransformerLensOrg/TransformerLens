@@ -1,10 +1,7 @@
-"""Forward-equivalent relevance-rule primitives, plus the scoped context that installs them.
+"""Forward-equivalent relevance-rule autograd primitives and the scoped ``use_relevance_rules``.
 
-Each primitive is a ``torch.autograd.Function`` that reproduces its native forward
-value exactly while replacing the backward pass with the rule's closed-form VJP.
-``use_relevance_rules`` installs these rules on a model's canonical mount points only
-for the duration of a ``with`` block, targeting components positionally (by mount
-name, never by class) and reporting which mounts were installed versus skipped.
+Each primitive keeps its native forward value and replaces the backward with the rule's VJP;
+the scope installs rules at canonical mount names and reports installed versus skipped mounts.
 """
 
 import dataclasses
@@ -26,12 +23,8 @@ import torch.nn as nn
 
 
 def ln_rule_grad(grad_output: torch.Tensor, denom: torch.Tensor) -> torch.Tensor:
-    """Core LN-rule VJP: divide by ``denom`` without differentiating through it.
-
-    Shared by the ``ln_rule`` primitive below and by any integration (such as
-    ``NormalizationBridge``) that wraps a component's own native forward call
-    instead of reproducing the division itself.
-    """
+    """LN-rule VJP: divide by ``denom`` without differentiating through it; also used by
+    ``NormalizationBridge``, which wraps the norm's own forward instead of ``_LNRule``."""
     return grad_output / denom
 
 
@@ -56,12 +49,8 @@ def ln_rule(numerator: torch.Tensor, denom: torch.Tensor) -> torch.Tensor:
 
 
 class _IdentityRule(torch.autograd.Function):
-    """Identity-rule: forward is the native activation; the VJP is ``grad_out * phi(x)``.
-
-    ``phi`` is ``f(x) / x``, the removable singularity at ``x == 0`` filled in with its
-    limit ``0.5``. This holds for any elementwise activation with ``f(0) == 0`` and a
-    well-defined derivative at zero, which covers SiLU and both GELU variants.
-    """
+    """Identity-rule: forward is the native activation; the VJP is ``grad_out * f(x) / x``,
+    using the ``x == 0`` limit ``0.5`` (exact for SiLU and both GELU variants)."""
 
     @staticmethod
     def forward(
@@ -119,51 +108,24 @@ class _ScaleGradient(torch.autograd.Function):
 
 
 def scale_gradient(x: torch.Tensor, factor: float) -> torch.Tensor:
-    """Pass ``x`` through unchanged while scaling its gradient by ``factor``.
-
-    The Half-rule on a product ``u * v`` halves each ordinary product-rule term,
-    which is the same as halving the single gradient that enters the product before
-    it splits. When the product is computed inside an opaque module the bridge cannot
-    reach term by term (its native forward is called as one unit), scaling the
-    gradient entering the product by ``0.5`` reproduces the Half-rule at that point
-    without altering the native forward value.
-    """
+    """Identity forward whose VJP scales by ``factor``; 0.5 on an opaque ``u * v`` output
+    reproduces the Half-rule, since halving the product's gradient halves both terms."""
     result: torch.Tensor = _ScaleGradient.apply(x, factor)
     return result
 
 
 class RelevanceRuleConflictError(RuntimeError):
-    """A hook would silently break a rule-active forward/backward invariant.
-
-    Raised instead of the ordinary warn-and-fall-back a component would use when
-    no rule is active, since falling back while a rule is active would compose the
-    rule with the hook edit and break the bit-identical-forward guarantee.
-    """
+    """A hook would silently break a rule-active forward/backward invariant."""
 
 
 class RelevanceRuleUnsupportedError(RuntimeError):
-    """A requested relevance rule cannot be installed on an otherwise-capable component.
-
-    Raised at ``use_relevance_rules`` entry, before any forward or backward pass, when
-    a component reports the requested kind in its own ``_relevance_rule_unsupported_kinds``
-    -- for example a gated-MLP recompute path backed by an unrecognized weight-orientation
-    class, or an activation form the Identity-rule does not support. Distinct from a
-    kind that is simply absent from ``_relevance_rule_kinds`` without being named there
-    (reported ``skipped``, not raised): that covers a component not implementing the
-    protocol at all, or one whose mount genuinely never deals with the kind (for example
-    normalization on a dispatch path the LN-rule does not wrap), both benign
-    non-applicability rather than a rule request the component was expected to honor.
-    """
+    """A component lists a requested kind in ``_relevance_rule_unsupported_kinds``; raised at
+    scope entry, unlike kinds merely absent from ``_relevance_rule_kinds`` (reported skipped)."""
 
 
 @dataclasses.dataclass(frozen=True)
 class RelevanceRules:
-    """Which relevance rules to request for the duration of a ``use_relevance_rules`` scope.
-
-    Each field names a rule kind. Setting it ``True`` requests that rule wherever a
-    component at that kind's canonical mount point implements ``_RelevanceRuleCapable``.
-    Unset fields (the default) leave the corresponding components untouched.
-    """
+    """Rule kinds to request for a ``use_relevance_rules`` scope; unset kinds stay untouched."""
 
     normalization: bool = False
     activation: bool = False
@@ -189,24 +151,8 @@ class RelevanceRuleCoverage:
 
 @runtime_checkable
 class _RelevanceRuleCapable(Protocol):
-    """Structural contract a component must satisfy to accept a relevance rule.
-
-    ``_relevance_rule_kinds`` names every ``RelevanceRules`` field the component
-    answers to at its current mount -- a gated-MLP node answers to both
-    "activation" (Identity-rule on its activation function) and
-    "multiplicative_gate" (Half-rule on its gate*up product) independently, since
-    either can be requested without the other. ``_enable_relevance_rule``/
-    ``_disable_relevance_rule`` take the specific kind being toggled and touch
-    only that kind's state, without touching model configuration, so the
-    component's own state is the only thing that changes and only for the
-    scope's duration.
-
-    A component may optionally also define ``_relevance_rule_unsupported_kinds``
-    (a ``Tuple[str, ...]``, not part of this structural protocol so components that
-    omit it stay isinstance-compatible) naming kinds it is expected to honor at its
-    mount but currently cannot -- ``use_relevance_rules`` raises
-    ``RelevanceRuleUnsupportedError`` for those instead of reporting them skipped.
-    """
+    """Rule-capable component; enable/disable toggle only the given kind's state. Optional
+    ``_relevance_rule_unsupported_kinds`` stays off the protocol so isinstance still holds."""
 
     _relevance_rule_kinds: Tuple[str, ...]
 
@@ -217,13 +163,8 @@ class _RelevanceRuleCapable(Protocol):
         ...
 
 
-# Canonical mount name per rule kind. Targeting is positional: a component is only
-# considered for a kind when it sits at that kind's mount name, never by isinstance,
-# so a same-class component mounted elsewhere (for example a q_norm sharing
-# NormalizationBridge's class) is left untouched. The normalization kind lists both
-# the pre-norm mounts (ln1, ln2) and the sandwich post-norm mounts (ln1_post,
-# ln2_post) so the LN-rule reaches the post-attention/post-MLP norms that
-# sandwich-norm architectures mount there, matching the pinned RelP reference.
+# Positional targeting (never isinstance) leaves a same-class q_norm untouched. Sandwich
+# post-norms (ln1_post/ln2_post) are included to match the pinned RelP reference.
 _CANONICAL_MOUNTS: Mapping[str, Tuple[str, ...]] = {
     "normalization": ("ln1", "ln2", "ln1_post", "ln2_post"),
     "activation": ("mlp",),
@@ -234,23 +175,10 @@ _CANONICAL_MOUNTS: Mapping[str, Tuple[str, ...]] = {
 def _iter_canonical_mount_candidates(
     model: nn.Module, mount_names: Tuple[str, ...]
 ) -> Iterator[Tuple[str, _RelevanceRuleCapable]]:
-    """Yield each distinct module reachable at one of ``mount_names``, once.
-
-    A bridge component reachable at a canonical mount name (for example
-    ``blocks.0.ln1``) is also reachable, under the same parent, through the
-    raw HF module tree the bridge wraps in place (for example
-    ``blocks.0._original_component.input_layernorm``) -- both names resolve to
-    the identical object. ``nn.Module.named_modules()`` deduplicates by object
-    identity and keeps only whichever path it visits first, which is the raw
-    HF-attribute path (registered before the canonical alias), so on a real
-    assembled model the canonical name is silently never seen. Walking with
-    ``remove_duplicate=False`` restores every path so the canonical name is
-    visible, and picking the fewest-dot-separated-segments path per object
-    (breaking a tie between two paths that both happen to end in a mount name,
-    such as ``mlp``, which HF's own attribute name also frequently matches)
-    reports the shallower, canonical-looking path rather than an internal one.
-    """
+    """Yield each distinct module at one of ``mount_names`` once, under its shallowest path."""
     best_by_id: Dict[int, Tuple[str, _RelevanceRuleCapable]] = {}
+    # Default dedup keeps the raw HF alias (_original_component.input_layernorm) visited
+    # first, hiding the canonical name; the shallowest path also beats HF's own "mlp".
     for name, module in model.named_modules(remove_duplicate=False):
         if name.rsplit(".", 1)[-1] not in mount_names:
             continue
@@ -261,12 +189,8 @@ def _iter_canonical_mount_candidates(
 
 
 def _acquire_rule(module: _RelevanceRuleCapable, kind: str) -> None:
-    """Enable ``module``'s ``kind`` rule only on the outermost scope that requests it.
-
-    Refcounted per kind, not per module: a gated-MLP node can have its
-    "activation" rule and "multiplicative_gate" rule independently nested to
-    different depths, so one kind's inner exit must never disable the other.
-    """
+    """Enable ``kind`` on the outermost scope; refcounted per kind, not per module, so one
+    kind's inner exit never disables another kind nested on the same gated-MLP node."""
     counts: Dict[str, int] = getattr(module, "_relevance_rule_refcounts", None) or {}
     count = counts.get(kind, 0)
     if count == 0:
@@ -287,28 +211,8 @@ def _release_rule(module: _RelevanceRuleCapable, kind: str) -> None:
 
 @contextmanager
 def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[RelevanceRuleCoverage]:
-    """Install the requested relevance rules on ``model`` only for this scope.
-
-    Targeting is positional: a component is considered for a rule kind only when it
-    sits at that kind's canonical mount name (never by class). A canonical mount
-    occupied by a component that does not implement ``_RelevanceRuleCapable``, or
-    whose ``_relevance_rule_kinds`` simply omits the requested kind, is reported as
-    skipped -- both are benign non-applicability, covering a structurally different
-    architecture or a mount whose current dispatch path the rule does not wrap. A
-    component that additionally names the requested kind in its own
-    ``_relevance_rule_unsupported_kinds`` raises ``RelevanceRuleUnsupportedError``
-    instead: that names a kind the component is expected to honor at this mount but
-    cannot given its current configuration, so silently skipping it would let
-    analysis proceed as if the caller had never asked. Requesting a kind that has no
-    canonical mount at all (for example "attention", a valid ``RelevanceRules`` field
-    with no mount defined) raises ``ValueError`` before the install loop, since there
-    is no mount to target and the scope would otherwise return empty coverage as
-    though the request had succeeded. Scopes over the same model
-    are reference-counted, so an inner scope's exit never disables a rule an outer
-    scope still needs. No model configuration is mutated; the only state that
-    changes lives on the participating components, and only for the scope's
-    duration.
-    """
+    """Install the requested rules for this scope only and yield installed/skipped coverage;
+    nested scopes are refcounted and only component state (never model config) changes."""
     requested_kinds = [
         field.name for field in dataclasses.fields(rules) if getattr(rules, field.name)
     ]
@@ -324,14 +228,8 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
 
     installed: List[Tuple[str, _RelevanceRuleCapable, str]] = []
     skipped: List[_RelevanceRuleCoverageEntry] = []
-    seen = set()
     for kind in requested_kinds:
-        mount_names = _CANONICAL_MOUNTS.get(kind, ())
-        for name, module in _iter_canonical_mount_candidates(model, mount_names):
-            entry = _RelevanceRuleCoverageEntry(kind=kind, path=name)
-            if entry in seen:
-                continue
-            seen.add(entry)
+        for name, module in _iter_canonical_mount_candidates(model, _CANONICAL_MOUNTS[kind]):
             if isinstance(module, _RelevanceRuleCapable) and kind in module._relevance_rule_kinds:
                 installed.append((name, module, kind))
                 continue
@@ -341,7 +239,7 @@ def use_relevance_rules(model: nn.Module, rules: RelevanceRules) -> Iterator[Rel
                     f"{name!r} ({type(module).__name__}) cannot install the {kind!r} "
                     "relevance rule: unsupported configuration for this component."
                 )
-            skipped.append(entry)
+            skipped.append(_RelevanceRuleCoverageEntry(kind=kind, path=name))
 
     for _, module, kind in installed:
         _acquire_rule(module, kind)

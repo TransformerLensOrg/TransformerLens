@@ -27,9 +27,8 @@ NATIVE_PATH_EDIT_FALLBACK_WARNING = (
     "output is reconstructed from the hooked values instead of HF's native forward. "
     "Output numerics may differ from the unhooked forward at float-rounding scale."
 )
-# While the LN-rule is active, the fallbacks above would silently compose the rule
-# with the hook edit and break the bit-identical-forward guarantee, so they raise
-# instead of warning.
+# Under an active LN-rule the fallbacks above would compose the rule with the hook edit and
+# break the bit-identical forward, so they raise instead of warning.
 RULE_ACTIVE_BWD_HOOK_CONFLICT = (
     "Backward hooks on hook_scale/hook_normalized are incompatible with an active "
     "LN-rule on '{name}': the rule-wrapped native forward keeps these hook points "
@@ -43,16 +42,8 @@ RULE_ACTIVE_EDIT_HOOK_CONFLICT = (
 
 
 class _NativeLNRuleForward(torch.autograd.Function):
-    """Wrap a normalization module's own forward call in the LN-rule's VJP.
-
-    Forward returns ``component(x)`` unchanged, so the result is bit-identical to
-    the native forward by construction. Backward routes the x-path gradient
-    through the centering op ordinarily but treats ``denom`` as a constant (the
-    LN-rule), while ``weight`` and ``bias`` receive their ordinary gradient since
-    the rule only redefines how relevance reaches the input, not parameter
-    training gradients. A parameter-free norm (``weight`` is ``None``, e.g.
-    OLMo's ``OlmoLayerNorm``) is treated as a unit scale in both directions.
-    """
+    """LN-rule around a norm's own forward: output is ``component(x)`` bit for bit, the x-path
+    VJP treats ``denom`` as constant, and weight/bias keep ordinary gradients."""
 
     @staticmethod
     def forward(
@@ -145,14 +136,8 @@ class NormalizationBridge(GeneralizedComponent):
 
     @property
     def _relevance_rule_kinds(self) -> Tuple[str, ...]:
-        """``("normalization",)`` only when this instance actually dispatches through
-        the native-autograd branch the LN-rule wraps (``_hf_autograd_forward_with_hooks``);
-        empty otherwise, so ``use_relevance_rules`` reports an ln1/ln2 mount that
-        uses the plain python-norm path (for example ``LayerNormPreBridge`` /
-        ``RMSNormPreBridge``, or a config without ``layer_norm_folding``) as
-        skipped rather than silently leaving ordinary gradients in place under a
-        claimed "installed" rule.
-        """
+        """``("normalization",)`` only when forward dispatches through the native-autograd branch
+        the LN-rule wraps; python-norm mounts (e.g. LNPre/RMSPre) report skipped."""
         if self.use_native_layernorm_autograd:
             return ("normalization",)
         if bool(getattr(self.config, "layer_norm_folding", False)):
@@ -164,7 +149,7 @@ class NormalizationBridge(GeneralizedComponent):
         self._relevance_rule_active = True
 
     def _disable_relevance_rule(self, kind: str) -> None:
-        """Deactivate the LN-rule, restoring today's native-forward behavior."""
+        """Deactivate the LN-rule."""
         self._relevance_rule_active = False
 
     @property
@@ -340,17 +325,8 @@ class NormalizationBridge(GeneralizedComponent):
     def _native_forward_with_ln_rule(
         self, x: torch.Tensor, input_dtype: torch.dtype
     ) -> torch.Tensor:
-        """Call the native forward unchanged while routing its backward through the LN-rule.
-
-        Recomputes the centered numerator and denominator independently of the
-        hook-observation pass above (which may run under ``torch.no_grad()``), so
-        the recompute here stays grad-connected to ``x`` regardless of whether
-        forward hooks are attached. Autograd then flows from the returned tensor
-        back through the centering op ordinarily and, at the LN-rule Function
-        boundary, treats the denominator as a constant -- the same contract as
-        the shared ``ln_rule`` primitive, without reproducing the native kernel's
-        own forward numerics.
-        """
+        """Native forward with LN-rule backward; recomputes numerator and denominator because the
+        hook-observation pass may have run under ``torch.no_grad()``."""
         component = self.original_component
         assert component is not None
         x_float = x.float() if x.dtype not in (torch.float32, torch.float64) else x
@@ -371,8 +347,7 @@ class NormalizationBridge(GeneralizedComponent):
             if isinstance(eps_value, torch.Tensor)
             else (variance + float(eps_value)).sqrt()
         )
-        # A parameter-free norm (OLMo's OlmoLayerNorm) exposes no usable weight;
-        # pass None so the rule treats the scale as 1 in both forward and backward.
+        # Parameter-free norms (OLMo's OlmoLayerNorm) have no weight; None means unit scale.
         try:
             weight: Optional[torch.Tensor] = cast(torch.Tensor, self.weight)
         except AttributeError:

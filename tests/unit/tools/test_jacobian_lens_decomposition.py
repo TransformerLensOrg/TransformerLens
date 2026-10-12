@@ -1,8 +1,4 @@
-"""Unit tests for Jacobian-lens J-space sparse decomposition.
-
-Model-free: they exercise the nonnegative sparse-decomposition solver directly on raw
-dictionary tensors, so no model is loaded.
-"""
+"""Model-free unit tests for J-space sparse decomposition and occupancy."""
 
 import itertools
 import warnings
@@ -24,14 +20,9 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
 ALGORITHMS = ["nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"]
 
 
-# --------------------------------------------------------------------------- #
-# Invariants that hold for both coefficient-update rules
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_recovers_planted_combination_on_orthonormal_dictionary(algorithm):
-    """On an orthonormal dictionary both algorithms recover the exact planted support and
-    its nonnegative coefficients (a single gradient step is exact when atoms are
-    orthonormal, so gradient_pursuit and nonnegative OMP agree)."""
+    """Both algorithms recover the planted support and coefficients on orthonormal atoms."""
     d_model = 8
     dictionary = torch.eye(d_model)
     x = 3.0 * dictionary[2] + 1.5 * dictionary[5]
@@ -48,9 +39,7 @@ def test_recovers_planted_combination_on_orthonormal_dictionary(algorithm):
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_j_space_component_is_orthogonal_projection_onto_selected_span(algorithm):
-    """The J-space component is the orthogonal projection of the target onto the span of the
-    selected atoms (paper appendix) -- independent of the coefficient-update rule -- so the
-    non-J-space component is orthogonal to every selected atom and the two sum to target."""
+    """``j_space_component`` projects onto the selected span for either update rule."""
     atoms = torch.tensor(
         [
             [1.0, 0.0, 0.0],
@@ -82,7 +71,6 @@ def test_coordinates_are_nonnegative(algorithm):
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_is_deterministic(algorithm):
-    """Identical inputs give identical outputs (the solver has no stochastic component)."""
     torch.manual_seed(0)
     dictionary = torch.randn(20, 6)
     x = torch.randn(6)
@@ -92,14 +80,9 @@ def test_is_deterministic(algorithm):
     assert torch.allclose(first.coordinates, second.coordinates)
 
 
-# --------------------------------------------------------------------------- #
-# Active vs selected support contract (k is an upper bound)
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_support_is_the_active_subset_of_selected_support(algorithm):
-    """``support`` holds only numerically active atoms; it is a subset of ``selected_support``,
-    its ``coordinates`` are aligned and strictly positive, and
-    ``len(support) <= len(selected_support) <= k``."""
+    """``support`` is the strictly-positive subset of ``selected_support``, within ``k``."""
     torch.manual_seed(2)
     dictionary = torch.randn(40, 6)
     x = torch.randn(6)
@@ -114,10 +97,7 @@ def test_support_is_the_active_subset_of_selected_support(algorithm):
 
 
 def test_overcomplete_correlated_dictionary_has_no_dead_support_slots():
-    """The old failure mode -- ``support`` padded to ``k`` with mostly-zero coordinates -- is
-    gone. On an overcomplete correlated dictionary selection stops early and every returned
-    support atom is active, so ``len(support)`` equals the nonzero-coordinate count and is well
-    below ``k`` (the reviewer's "9 active tokens printed as 25")."""
+    """Selection stops early and ``support`` is never padded to ``k`` with zero coordinates."""
     torch.manual_seed(0)
     bases = torch.randn(10, 32)
     dictionary = torch.randn(400, 10).abs() @ bases + 0.05 * torch.randn(400, 32)
@@ -125,14 +105,13 @@ def test_overcomplete_correlated_dictionary_has_no_dead_support_slots():
 
     result = get_sparse_decomposition(x, dictionary, k=25)
 
-    assert result.selected_support.numel() < 25  # selection stopped early
+    assert result.selected_support.numel() < 25
     assert result.support.numel() == int((result.coordinates > 0).sum())
     assert bool((result.coordinates > 0).all())
 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_zero_target_returns_empty_decomposition(algorithm):
-    """A zero target has no J-space content: empty supports and zero vector outputs."""
     dictionary = torch.randn(6, 4)
 
     result = get_sparse_decomposition(torch.zeros(4), dictionary, k=3, algorithm=algorithm)
@@ -146,10 +125,8 @@ def test_zero_target_returns_empty_decomposition(algorithm):
 
 
 def test_target_orthogonal_to_all_atoms_gives_empty_active_support():
-    """No atom is positively correlated with a target orthogonal to the dictionary, so nothing
-    is selected: zero reconstruction and the whole target is the non-J-space component."""
     atoms = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
-    x = torch.tensor([0.0, 0.0, 5.0])  # orthogonal to both atoms
+    x = torch.tensor([0.0, 0.0, 5.0])
 
     result = get_sparse_decomposition(x, atoms, k=2)
 
@@ -161,9 +138,7 @@ def test_target_orthogonal_to_all_atoms_gives_empty_active_support():
 @pytest.mark.parametrize("scale", [0.25, 3.0, 50.0])
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_support_is_invariant_under_positive_rescaling_of_target(scale, algorithm):
-    """``argmin`` over ``c >= 0`` is scale-equivariant, and both the early-stop and activity
-    thresholds scale with ``||x||``, so the selected and active supports do not depend on
-    ``||x||`` and the coordinates scale linearly."""
+    """Both thresholds scale with ``||x||``, so supports are fixed and coordinates scale."""
     torch.manual_seed(5)
     dictionary = torch.randn(30, 6)
     x = torch.randn(6)
@@ -177,18 +152,15 @@ def test_support_is_invariant_under_positive_rescaling_of_target(scale, algorith
 
 
 def test_active_reconstruction_is_a_projection_while_selected_projection_can_differ():
-    """For the exact NNLS re-solve the reconstruction equals the orthogonal projection onto the
-    *active* support (KKT stationarity), while ``j_space_component`` projects onto the larger
-    *selected* span. When a selected atom is driven to a zero coordinate the two projections --
-    and hence ``reconstruction`` and ``j_space_component`` -- differ. This is a seeded system
-    whose first selected atom ends inactive."""
+    """NNLS reconstruction projects onto the active span; ``j_space_component`` onto the larger
+    selected span (seed 7 leaves its first selected atom inactive)."""
     torch.manual_seed(7)
     dictionary = torch.randn(6, 3)
     x = torch.randn(3)
 
     result = get_sparse_decomposition(x, dictionary, k=6)
 
-    assert result.selected_support.numel() > result.support.numel()  # a selected atom is inactive
+    assert result.selected_support.numel() > result.support.numel()
     active_atoms = dictionary[result.support].T
     selected_atoms = dictionary[result.selected_support].T
     projection_onto_active = active_atoms @ torch.linalg.pinv(active_atoms) @ x
@@ -198,13 +170,8 @@ def test_active_reconstruction_is_a_projection_while_selected_projection_can_dif
     assert not torch.allclose(result.reconstruction, result.j_space_component, atol=1e-3)
 
 
-# --------------------------------------------------------------------------- #
-# nonnegative OMP exactness on the active set
-# --------------------------------------------------------------------------- #
 def test_exact_resolve_coordinates_match_joint_least_squares_on_correlated_dictionary():
-    """With correlated selected atoms the nonnegative OMP coefficients are the joint least-squares
-    solution over the active set, not sequential residual subtraction. x lies exactly in
-    span{atom0, atom1}, so the correct coefficients are the planted (2, 3)."""
+    """Correlated atoms get the joint least-squares coefficients, not sequential subtraction."""
     dictionary = torch.tensor(
         [
             [1.0, 0.0, 0.0, 0.0],
@@ -227,11 +194,8 @@ def test_exact_resolve_coordinates_match_joint_least_squares_on_correlated_dicti
 
 
 def test_selection_stops_when_no_unselected_atom_is_positively_correlated():
-    """``k`` is an upper bound: under nonnegativity a negatively-correlated atom cannot reduce
-    the residual, so it is not selected even when ``k`` allows it. atoms span R^2 and the
-    unconstrained fit of x is (3, -1); after selecting atom 0 the only other atom correlates
-    negatively with the residual, so selection stops at a single atom -- and the coefficient is
-    the true nonnegative least squares 2.0, never the clamped unconstrained 3.0."""
+    """A negatively correlated atom is not selected even when ``k`` allows it; the unconstrained
+    fit of x is (3, -1), so the nonnegative coefficient must be 2.0."""
     atoms = torch.tensor([[1.0, 0.0], [1.0, 1.0]])
     x = torch.tensor([2.0, -1.0])
 
@@ -246,14 +210,7 @@ def test_selection_stops_when_no_unselected_atom_is_positively_correlated():
 
 
 def _reference_nnls(active_atoms: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """Independent brute-force exact nonnegative least squares, by support enumeration.
-
-    At the optimum the strictly-positive coordinates equal the *unconstrained* least-squares
-    fit on their support (KKT stationarity) and are feasible, so the optimum is the
-    minimum-residual feasible unconstrained fit over all support subsets. Deliberately shares
-    no code with ``_nonnegative_least_squares`` so it can independently check it (the suite's
-    other oracle, ``_brute_force_best_support``, *reuses* that function and so cannot).
-    """
+    """Brute-force NNLS by support enumeration; shares no code with the solver under test."""
     active_atoms = active_atoms.double()
     target = target.double()
     num_atoms = active_atoms.shape[1]
@@ -278,16 +235,7 @@ def _reference_nnls(active_atoms: torch.Tensor, target: torch.Tensor) -> torch.T
 def _assert_nnls_kkt(
     active_atoms: torch.Tensor, target: torch.Tensor, coefficients: torch.Tensor
 ) -> None:
-    """Independent KKT certificate for a nonnegative-least-squares solution.
-
-    Reimplements the optimality conditions -- primal feasibility, dual feasibility on zeroed
-    coordinates, stationarity on positive coordinates (which together give complementarity) --
-    without calling the solver's own validator. The tolerance is scale-aware but deliberately
-    looser than the production threshold, so this certifies correctness rather than restating
-    the solver's internal check. Robust for rank-deficient and ill-conditioned systems because
-    the least-squares residual is orthogonal to the passive column span regardless of
-    conditioning.
-    """
+    """Independent NNLS KKT certificate, looser than the solver's own validator."""
     input_epsilon = torch.finfo(active_atoms.dtype).eps
     active_atoms = active_atoms.double()
     target = target.double()
@@ -296,8 +244,7 @@ def _assert_nnls_kkt(
     atom_norms = active_atoms.norm(dim=0).clamp_min(torch.finfo(torch.float64).tiny)
     dual = active_atoms.T @ residual
     scale = target.norm() + (active_atoms.abs() @ coefficients.abs()).norm()
-    # Combine a strict residual-cosine criterion with an independent forward-error floor for
-    # coefficients cast back to the caller's dtype. This does not reuse production tolerances.
+    # Residual-cosine criterion plus a forward-error floor for the cast back to the input dtype.
     residual_tol = 2e-6 * atom_norms * residual.norm()
     cast_tol = 8.0 * input_epsilon * atom_norms * scale
     dual_tol = torch.maximum(residual_tol, cast_tol)
@@ -312,11 +259,7 @@ def _assert_nnls_kkt(
 
 
 def test_exact_resolve_recovers_true_optimum_when_an_atom_must_re_enter():
-    """The active-set NNLS re-solve must return the true nonnegative-least-squares optimum,
-    which requires letting a released atom re-enter the active set. On this tall, full-rank
-    system (atoms as columns, no zero atom) a one-pass "drop the most negative coefficient,
-    never re-add" rule strands atoms and returns a badly suboptimal fit; the exact optimum
-    uses atoms 1 and 2."""
+    """The optimum here needs a released atom to re-enter; a drop-only rule strands atoms."""
     active_atoms = torch.tensor(
         [[2.0, -1.0, -1.0], [1.0, -1.0, 1.0], [1.0, -2.0, 2.0], [-2.0, 1.0, 1.0]]
     )
@@ -334,9 +277,7 @@ def test_exact_resolve_recovers_true_optimum_when_an_atom_must_re_enter():
 
 @pytest.mark.parametrize("seed", range(60))
 def test_exact_resolve_matches_independent_brute_force_nnls(seed):
-    """``_nonnegative_least_squares`` equals an independent brute-force NNLS oracle across many
-    shapes (tall, square and underdetermined). This is the exactness check the existing suite
-    lacked, since its support oracle reuses the function under test."""
+    """The solver matches the brute-force NNLS oracle on tall, square and wide systems."""
     torch.manual_seed(seed)
     num_active = int(torch.randint(2, 7, (1,)))
     d_model = int(torch.randint(2, 9, (1,)))
@@ -352,16 +293,11 @@ def test_exact_resolve_matches_independent_brute_force_nnls(seed):
         .norm()
         .item()
     )
-    # Two-sided: the solver must match the exhaustive optimum, not merely not exceed it. A
-    # residual materially below the "exhaustive" optimum is evidence the oracle is wrong, not
-    # that the solver is better.
+    # Two-sided: a residual below the exhaustive optimum would mean the oracle is wrong.
     assert abs(got - reference) <= 1e-4
     _assert_nnls_kkt(active_atoms, target, coefficients)
 
 
-# --------------------------------------------------------------------------- #
-# NNLS optimality certificates on degenerate and rescaled systems
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("shape", [(6, 3), (4, 4), (3, 5)])  # tall, square, underdetermined
 def test_nnls_satisfies_kkt_on_varied_shapes(shape):
     d_model, num_active = shape
@@ -374,9 +310,7 @@ def test_nnls_satisfies_kkt_on_varied_shapes(shape):
 
 @pytest.mark.parametrize("seed", range(10))
 def test_nnls_kkt_and_objective_on_duplicate_columns(seed):
-    """Rank-deficient (duplicate columns): the enumeration oracle can pick a negative
-    minimum-norm representative for a non-unique support, so certify via KKT plus a one-sided
-    objective bound (the solver is no worse than the oracle's feasible optimum)."""
+    """Duplicate columns make the oracle's support non-unique, so only a one-sided bound holds."""
     torch.manual_seed(3000 + seed)
     shared = torch.randn(4)
     active_atoms = torch.stack([shared, shared, torch.randn(4), torch.randn(4)], dim=1)
@@ -394,9 +328,7 @@ def test_nnls_kkt_and_objective_on_duplicate_columns(seed):
 
 @pytest.mark.parametrize("seed", range(10))
 def test_nnls_kkt_on_nearly_collinear_columns(seed):
-    """Ill-conditioned near-collinear columns force large coefficients and catastrophic
-    cancellation in ``target - A c``; the scale-aware tolerance must still certify KKT rather
-    than raise on the resulting (correct) large-coefficient fit."""
+    """Near-collinear columns cancel in ``target - A c``; the scaled tolerance must still pass."""
     torch.manual_seed(4000 + seed)
     base = torch.randn(5)
     active_atoms = torch.stack([base, base + 1e-4 * torch.randn(5), torch.randn(5)], dim=1)
@@ -437,8 +369,6 @@ def test_nnls_preserves_result_dtype_and_device():
 
 @pytest.mark.parametrize("scale", [1e-3, 1e-2, 1.0, 1e2, 1e3])
 def test_nnls_coefficients_are_invariant_under_joint_rescaling(scale):
-    """Jointly rescaling ``A`` and ``x`` leaves ``argmin over c >= 0`` unchanged; the
-    scale-aware tolerance keeps the solver numerically consistent across magnitudes."""
     torch.manual_seed(7)
     active_atoms = torch.randn(6, 4)
     target = torch.randn(6)
@@ -448,7 +378,6 @@ def test_nnls_coefficients_are_invariant_under_joint_rescaling(scale):
 
 
 def test_nnls_is_invariant_to_appending_zero_rows():
-    """Zero equations do not change an NNLS problem or its numerical rank policy."""
     torch.manual_seed(17)
     active_atoms = torch.randn(16, 8)
     target = torch.randn(16)
@@ -487,10 +416,7 @@ def test_nnls_returns_exact_zeros_outside_numerical_passive_set():
 
 
 def test_nnls_fails_closed_when_it_cannot_converge(monkeypatch):
-    """A safeguard exhaustion must raise, never return an unverified vector. Forcing every
-    admitted atom to be judged numerically zero (huge coefficient tolerance) stops the passive
-    set from ever stabilising, and an unreachable dual threshold stops the KKT break from ever
-    firing, so the bounded outer loop must fail closed for any input."""
+    """Unsatisfiable tolerances must exhaust the safeguards and raise, never return."""
     import transformer_lens.tools.analysis.jacobian_lens_decomposition as module
 
     def unsatisfiable(active_atoms, target, coefficients):
@@ -506,31 +432,25 @@ def test_nnls_fails_closed_when_it_cannot_converge(monkeypatch):
 
 
 def test_validate_nnls_kkt_rejects_each_violation():
-    """Accept the optimum and reject primal, dual, stationarity and complementarity errors."""
     active_atoms = torch.eye(2)
     target = torch.tensor([1.0, 1.0])
     dual_tol, coefficient_tol = _nnls_tolerances(active_atoms, target, torch.zeros(2))
 
-    # The true optimum passes.
     _validate_nnls_kkt(active_atoms, target, torch.tensor([1.0, 1.0]), dual_tol, coefficient_tol)
 
-    # Primal: a negative coordinate.
     with pytest.raises(RuntimeError, match="primal"):
         _validate_nnls_kkt(
             active_atoms, target, torch.tensor([-1.0, 1.0]), dual_tol, coefficient_tol
         )
-    # Dual feasibility: an all-zero fit leaves both zeroed atoms with large positive correlation.
     with pytest.raises(RuntimeError, match="dual feasibility"):
         _validate_nnls_kkt(
             active_atoms, target, torch.tensor([0.0, 0.0]), dual_tol, coefficient_tol
         )
-    # Stationarity: positive coordinates whose residual correlation is far from zero.
     with pytest.raises(RuntimeError, match="stationarity"):
         _validate_nnls_kkt(
             active_atoms, target, torch.tensor([0.5, 0.5]), dual_tol, coefficient_tol
         )
-    # Complementarity: classify a small positive coefficient as zero and give it a large
-    # negative dual. Primal and one-sided dual feasibility pass, but c_i * w_i does not.
+    # Positive coefficients judged zero with a large negative dual pass every check but c_i w_i.
     with pytest.raises(RuntimeError, match="complementarity"):
         _validate_nnls_kkt(
             active_atoms,
@@ -541,13 +461,9 @@ def test_validate_nnls_kkt_rejects_each_violation():
         )
 
 
-# --------------------------------------------------------------------------- #
-# gradient_pursuit behaviour
-# --------------------------------------------------------------------------- #
 def test_gradient_pursuit_agrees_with_exact_resolve_on_orthonormal_dictionary():
-    """A single optimal-step gradient update is exact for orthonormal atoms, so
-    gradient_pursuit reproduces the nonnegative OMP solution there."""
-    orthonormal = torch.linalg.qr(torch.randn(6, 6)).Q  # square -> orthonormal atoms
+    """One optimal-step gradient update is exact for orthonormal atoms."""
+    orthonormal = torch.linalg.qr(torch.randn(6, 6)).Q
     x = 2.0 * orthonormal[0] + 1.5 * orthonormal[3]
 
     gradient_result = get_sparse_decomposition(x, orthonormal, k=2, algorithm="gradient_pursuit")
@@ -561,9 +477,6 @@ def test_gradient_pursuit_agrees_with_exact_resolve_on_orthonormal_dictionary():
 
 
 def test_gradient_pursuit_does_not_increase_residual_on_correlated_dictionary():
-    """gradient_pursuit is approximate on correlated atoms, but its fit is still a valid
-    descent: the reconstruction is no worse than using no atoms, and coefficients stay
-    nonnegative."""
     torch.manual_seed(2)
     dictionary = torch.randn(12, 5)
     x = torch.randn(5)
@@ -575,7 +488,6 @@ def test_gradient_pursuit_does_not_increase_residual_on_correlated_dictionary():
 
 
 def test_model_free_decomposition_preserves_autograd_contract():
-    """The model-free primitive must not silently detach caller-owned tensors."""
     dictionary = torch.eye(3, requires_grad=True)
     x = torch.tensor([3.0, 2.0, 1.0], requires_grad=True)
     with warnings.catch_warnings():
@@ -590,9 +502,6 @@ def test_model_free_decomposition_preserves_autograd_contract():
 
 
 def test_gradient_pursuit_support_is_only_final_active_atoms():
-    """gradient_pursuit obeys the same public contract: ``support`` contains only atoms active
-    in the final coordinates (a transient zero is not pruned mid-iteration but the final
-    ``support`` excludes any still at zero), and is a subset of ``selected_support``."""
     torch.manual_seed(3)
     dictionary = torch.randn(20, 6)
     x = torch.randn(6)
@@ -605,9 +514,6 @@ def test_gradient_pursuit_support_is_only_final_active_atoms():
 
 
 def test_gradient_pursuit_step_never_increases_the_residual():
-    """The exact line search happens before the nonnegative projection, so a projected step can
-    increase the residual; the update is accepted only when it does not. Adding atoms one at a
-    time must therefore never increase the reconstruction residual."""
     torch.manual_seed(1)
     dictionary = torch.randn(12, 5)
     x = torch.randn(5)
@@ -621,7 +527,6 @@ def test_gradient_pursuit_step_never_increases_the_residual():
 
 
 def test_gradient_pursuit_backtracks_when_projection_makes_the_full_step_ascend():
-    """Projection can make the unconstrained exact step ascend; a shorter step still descends."""
     active_atoms = torch.tensor([[-2.0, -2.0], [-1.0, 1.0]])
     target = torch.tensor([-2.0, -2.0])
     coefficients = torch.tensor([1.0, 0.0])
@@ -634,9 +539,6 @@ def test_gradient_pursuit_backtracks_when_projection_makes_the_full_step_ascend(
     assert not torch.equal(updated, coefficients)
 
 
-# --------------------------------------------------------------------------- #
-# Brute-force oracle (no external reference implementation exists)
-# --------------------------------------------------------------------------- #
 def _brute_force_best_support(x, dictionary, k):
     """Exhaustive best-``k``-subset nonnegative fit. O(C(num_atoms, k)); tiny sizes only."""
     best_support = None
@@ -652,8 +554,6 @@ def _brute_force_best_support(x, dictionary, k):
 
 
 def test_exact_resolve_never_beats_the_brute_force_optimum():
-    """Greedy nonnegative OMP cannot achieve a smaller residual than the exhaustive best-k-subset
-    nonnegative fit (greedy is at best optimal, never better)."""
     torch.manual_seed(3)
     dictionary = torch.randn(9, 4)
     x = torch.randn(4)
@@ -669,9 +569,8 @@ def test_exact_resolve_never_beats_the_brute_force_optimum():
 
 
 def test_exact_resolve_matches_brute_force_optimum_on_low_coherence_dictionary():
-    """On a low-coherence (orthonormal) dictionary greedy selection is optimal, so nonnegative OMP
-    finds the same support as the exhaustive search -- here the planted one."""
-    orthonormal = torch.linalg.qr(torch.randn(8, 8)).Q  # 8 orthonormal atoms in R^8
+    """On orthonormal atoms greedy selection is optimal and finds the planted support."""
+    orthonormal = torch.linalg.qr(torch.randn(8, 8)).Q
     x = 2.0 * orthonormal[1] + 3.0 * orthonormal[4] + 1.0 * orthonormal[6]
     k = 3
 
@@ -683,9 +582,6 @@ def test_exact_resolve_matches_brute_force_optimum_on_low_coherence_dictionary()
     assert set(result.support.tolist()) == set(best_support) == {1, 4, 6}
 
 
-# --------------------------------------------------------------------------- #
-# Input validation
-# --------------------------------------------------------------------------- #
 def test_rejects_unknown_algorithm():
     with pytest.raises(ValueError):
         get_sparse_decomposition(torch.ones(4), torch.eye(4), k=1, algorithm="omp")
@@ -757,17 +653,12 @@ def test_rejects_non_1d_target():
         get_sparse_decomposition(torch.ones(2, 4), torch.eye(4), k=1)
 
 
-# --------------------------------------------------------------------------- #
-# Occupancy estimator (estimate_occupancy)
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("planted_atom_count", [1, 4, 7])
 def test_occupancy_recovers_planted_sparsity_on_orthonormal_dictionary(planted_atom_count):
-    """On an orthonormal dictionary a k-sparse planted target has occupancy exactly k: the real
-    greedy captures the planted atoms then saturates, so the point of maximum separation from the
-    random control lands at k."""
+    """A k-sparse planted target on orthonormal atoms has occupancy exactly k."""
     torch.manual_seed(0)
     d_model = 24
-    dictionary = torch.linalg.qr(torch.randn(d_model, d_model)).Q  # orthonormal atoms (rows)
+    dictionary = torch.linalg.qr(torch.randn(d_model, d_model)).Q
     target = torch.zeros(d_model)
     for index in range(planted_atom_count):
         target = target + (3.0 - 0.3 * index) * dictionary[2 * index + 1]
@@ -781,8 +672,6 @@ def test_occupancy_recovers_planted_sparsity_on_orthonormal_dictionary(planted_a
 
 
 def test_occupancy_increases_with_planted_sparsity():
-    """Occupancy tracks the planted sparsity: a 2-sparse target occupies fewer atoms than a
-    9-sparse one on the same orthonormal dictionary (both recovered exactly)."""
     torch.manual_seed(1)
     d_model = 24
     dictionary = torch.linalg.qr(torch.randn(d_model, d_model)).Q
@@ -800,7 +689,6 @@ def test_occupancy_increases_with_planted_sparsity():
 
 
 def test_occupancy_is_deterministic():
-    """Identical inputs and seed give identical results (the random control is seeded)."""
     torch.manual_seed(2)
     dictionary = torch.randn(40, 8)
     target = torch.randn(8)
@@ -820,9 +708,9 @@ def test_occupancy_rejects_invalid_inputs():
     with pytest.raises(ValueError, match="num_control_dictionaries must be at least 1"):
         estimate_occupancy(torch.ones(6), dictionary, max_atoms=6, num_control_dictionaries=0)
     with pytest.raises(ValueError, match="x must be 1-D of length"):
-        estimate_occupancy(torch.ones(5), dictionary)  # target length != d_model
+        estimate_occupancy(torch.ones(5), dictionary)
     with pytest.raises(ValueError, match="x must be 1-D of length"):
-        estimate_occupancy(torch.ones(2, 6), dictionary)  # non-1-D target
+        estimate_occupancy(torch.ones(2, 6), dictionary)
     zero_norm_dictionary = torch.eye(6)
     zero_norm_dictionary[2] = 0.0
     with pytest.raises(ValueError, match="dictionary contains a non-finite or zero-norm atom"):

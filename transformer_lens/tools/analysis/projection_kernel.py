@@ -28,24 +28,14 @@ _PAIRWISE_TEMP_BYTES = 64 * 1024 * 1024
 
 @dataclass(frozen=True)
 class SubspaceBasis:
-    """An explicitly ranked orthonormal basis extracted from a matrix.
-
-    Attributes:
-        basis: Orthonormal column-space basis, ``[ambient_dim, rank]``.
-        singular_values: All reduced-SVD singular values, in descending order.
-        rank: Number of retained basis directions.
-        measured_rank: Numerical rank before optional caller truncation.
-        rtol: Effective relative rank tolerance.
-        threshold: Absolute singular-value threshold used for rank measurement.
-        input_shape: Shape of the matrix from which the basis was extracted.
-    """
+    """An explicitly ranked orthonormal column-space basis extracted from a matrix."""
 
     basis: Float[torch.Tensor, "ambient rank"]
-    singular_values: Float[torch.Tensor, "spectrum"]
+    singular_values: Float[torch.Tensor, "spectrum"]  # full descending spectrum, not truncated
     rank: int
-    measured_rank: int
+    measured_rank: int  # numerical rank before any caller truncation
     rtol: float
-    threshold: float
+    threshold: float  # absolute cutoff: rtol * largest singular value
     input_shape: Tuple[int, int]
 
     @property
@@ -104,29 +94,20 @@ class HeadAffinityPair:
 
 @dataclass(frozen=True)
 class HeadAffinityResult:
-    """Projection Kernel affinities between two attention-head roles.
-
-    Score tensors have shape
-    ``[source_layer, source_head, target_layer, target_head]``. Layer index
-    tuples map tensor positions to original model block numbers.
-
-    ``source_ranks`` and ``target_ranks`` are measured numerical ranks for each
-    head before optional truncation. Scalar ``source_rank`` and ``target_rank``
-    are the retained basis widths used for their respective roles.
-    """
+    """Projection Kernel affinities between two attention-head roles."""
 
     scores: Float[torch.Tensor, "source_layer source_head target_layer target_head"]
     normalized: Float[torch.Tensor, "source_layer source_head target_layer target_head"]
     valid_mask: Bool[torch.Tensor, "source_layer source_head target_layer target_head"]
     source_role: AttentionRole
     target_role: AttentionRole
-    source_layer_indices: Tuple[int, ...]
+    source_layer_indices: Tuple[int, ...]  # original block numbers, attention blocks only
     target_layer_indices: Tuple[int, ...]
     source_head_kind: HeadKind
     target_head_kind: HeadKind
-    source_ranks: Int[torch.Tensor, "source_layer source_head"]
+    source_ranks: Int[torch.Tensor, "source_layer source_head"]  # measured, before truncation
     target_ranks: Int[torch.Tensor, "target_layer target_head"]
-    source_rank: int
+    source_rank: int  # retained basis width
     target_rank: int
     rank: Optional[int]
     rtol: float
@@ -185,6 +166,8 @@ def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
 
 def _validate_rtol(rtol: Optional[float], shape: Tuple[int, int], dtype: torch.dtype) -> float:
     if rtol is None:
+        # Compute-dtype eps, not storage eps: the SVD runs in float32 for half inputs, and a
+        # bf16/fp16-eps floor would truncate well-conditioned heads that float32 resolves.
         return max(shape) * torch.finfo(_compute_dtype(dtype)).eps
     if isinstance(rtol, bool) or not isinstance(rtol, Real):
         raise ValueError(f"rtol must be a finite non-negative real number, got {rtol!r}")
@@ -210,27 +193,8 @@ def orthonormal_subspace(
     rank: Optional[int] = None,
     rtol: Optional[float] = None,
 ) -> SubspaceBasis:
-    """Extract an explicitly ranked orthonormal column-space basis.
-
-    Low-precision inputs are promoted to float32 before the reduced SVD. With no
-    explicit ``rtol``, numerical rank uses the compute-SVD error scale relative
-    to the largest singular value, so the default does not depend on the storage
-    dtype — e.g. a 4096-row half-precision input gets ``4096 * float32_eps``
-    (about ``4.9e-4``), tight enough to flag an exactly repeated column as
-    rank-deficient. An explicit ``rank`` truncates the measured subspace but may
-    not exceed its measured rank.
-
-    Args:
-        matrix: Finite floating-point matrix with shape ``[ambient_dim, width]``.
-        rank: Optional number of leading singular directions to retain.
-        rtol: Optional non-negative relative singular-value threshold.
-
-    Returns:
-        Basis, complete singular spectrum, and rank metadata.
-
-    Raises:
-        ValueError: If the matrix or rank policy is invalid.
-    """
+    """Extract an orthonormal column-space basis; half-precision inputs are SVD'd in float32, and
+    ``rank`` truncates the measured numerical rank but may not exceed it."""
     if not isinstance(matrix, torch.Tensor):
         raise ValueError(f"matrix must be a torch.Tensor, got {type(matrix).__name__}")
     if matrix.ndim != 2:
@@ -318,53 +282,31 @@ def _validate_subspace(value: SubspaceBasis, name: str) -> None:
         raise ValueError(f"{name}.measured_rank must be at least its selected rank")
     if value.input_shape[0] != basis.shape[0]:
         raise ValueError(f"{name}.input_shape must share its basis ambient dimension")
-    if (
-        isinstance(value.rtol, bool)
-        or not isinstance(value.rtol, Real)
-        or not math.isfinite(value.rtol)
-        or value.rtol < 0
-    ):
-        raise ValueError(f"{name}.rtol must be finite and non-negative")
-    if (
-        isinstance(value.threshold, bool)
-        or not isinstance(value.threshold, Real)
-        or not math.isfinite(value.threshold)
-        or value.threshold < 0
-    ):
-        raise ValueError(f"{name}.threshold must be finite and non-negative")
+    for field in ("rtol", "threshold"):
+        field_value = getattr(value, field)
+        if (
+            isinstance(field_value, bool)
+            or not isinstance(field_value, Real)
+            or not math.isfinite(field_value)
+            or field_value < 0
+        ):
+            raise ValueError(f"{name}.{field} must be finite and non-negative")
 
 
-def _clamp_projection_scores(scores: torch.Tensor, upper_bound: int) -> torch.Tensor:
-    """Clamp roundoff-scale PK bound violations and reject larger violations."""
-    tolerance = 100 * torch.finfo(scores.dtype).eps * max(1, upper_bound)
-    minimum = float(scores.detach().min().item())
-    maximum = float(scores.detach().max().item())
+def _clamp_to_bounds(
+    values: torch.Tensor, upper_bound: int, label: str, tolerance_scale: int
+) -> torch.Tensor:
+    """Clamp roundoff-scale violations of ``[0, upper_bound]`` and reject larger ones."""
+    tolerance = 100 * torch.finfo(values.dtype).eps * max(1, tolerance_scale)
+    minimum = float(values.detach().min().item())
+    maximum = float(values.detach().max().item())
     if minimum < -tolerance or maximum > upper_bound + tolerance:
         raise ValueError(
-            "Projection Kernel score lies outside its theoretical bounds: "
+            f"{label} lies outside its theoretical bounds: "
             f"observed [{minimum:.6g}, {maximum:.6g}], expected [0, {upper_bound}] "
             f"within tolerance {tolerance:.6g}"
         )
-    return scores.clamp(min=0.0, max=float(upper_bound))
-
-
-def _clamp_principal_cosines(cosines: torch.Tensor) -> torch.Tensor:
-    """Clamp roundoff-scale cosine violations and reject larger violations."""
-    tolerance = 100 * torch.finfo(cosines.dtype).eps * max(1, cosines.numel())
-    minimum = float(cosines.detach().min().item())
-    maximum = float(cosines.detach().max().item())
-    if minimum < -tolerance or maximum > 1 + tolerance:
-        raise ValueError(
-            "Principal-angle cosine lies outside its theoretical bounds: "
-            f"observed [{minimum:.6g}, {maximum:.6g}], expected [0, 1] "
-            f"within tolerance {tolerance:.6g}"
-        )
-    return cosines.clamp(min=0.0, max=1.0)
-
-
-def _singular_values(matrix: torch.Tensor) -> torch.Tensor:
-    """Compute singular values with an explicit MPS CPU fallback."""
-    return _linalg_on_cpu_if_mps(torch.linalg.svdvals, matrix)
+    return values.clamp(min=0.0, max=float(upper_bound))
 
 
 def projection_kernel(
@@ -373,12 +315,8 @@ def projection_kernel(
     *,
     check_orthonormal: bool = True,
 ) -> ProjectionKernelResult:
-    """Measure overlap between two explicitly extracted subspaces.
-
-    Raw PK lies in ``[0, min(rank_a, rank_b)]``. The normalized value is
-    ``PK / sqrt(rank_a * rank_b)``, the cosine between the two projection
-    matrices. Principal angles are returned in radians.
-    """
+    """Projection Kernel of two subspaces, in ``[0, min(rank_a, rank_b)]``; ``normalized`` divides
+    by ``sqrt(rank_a * rank_b)`` and principal angles are in radians."""
     if not isinstance(check_orthonormal, bool):
         raise ValueError(f"check_orthonormal must be a Boolean, got {check_orthonormal!r}")
     _validate_subspace(subspace_a, "subspace_a")
@@ -401,16 +339,20 @@ def projection_kernel(
     if check_orthonormal:
         eps = torch.finfo(dtype).eps
         tolerance = 10 * max(first.shape[0], first.shape[1], second.shape[1]) * eps
-        first_identity = torch.eye(first.shape[1], dtype=dtype, device=first.device)
-        second_identity = torch.eye(second.shape[1], dtype=dtype, device=second.device)
-        if not torch.allclose(first.T @ first, first_identity, rtol=tolerance, atol=tolerance):
-            raise ValueError("subspace_a basis columns must be orthonormal")
-        if not torch.allclose(second.T @ second, second_identity, rtol=tolerance, atol=tolerance):
-            raise ValueError("subspace_b basis columns must be orthonormal")
+        for name, basis in (("subspace_a", first), ("subspace_b", second)):
+            identity = torch.eye(basis.shape[1], dtype=dtype, device=basis.device)
+            if not torch.allclose(basis.T @ basis, identity, rtol=tolerance, atol=tolerance):
+                raise ValueError(f"{name} basis columns must be orthonormal")
 
     overlap = first.T @ second
-    score = _clamp_projection_scores(overlap.square().sum(), min(subspace_a.rank, subspace_b.rank))
-    cosines = _clamp_principal_cosines(_singular_values(overlap))
+    score_bound = min(subspace_a.rank, subspace_b.rank)
+    score = _clamp_to_bounds(
+        overlap.square().sum(), score_bound, "Projection Kernel score", score_bound
+    )
+    singular_values = _linalg_on_cpu_if_mps(torch.linalg.svdvals, overlap)
+    cosines = _clamp_to_bounds(
+        singular_values, 1, "Principal-angle cosine", singular_values.numel()
+    )
     angles = torch.acos(cosines)
     denominator = math.sqrt(subspace_a.rank * subspace_b.rank)
     return ProjectionKernelResult(
@@ -425,11 +367,8 @@ def projection_kernel(
 
 
 def random_projection_kernel_moments(ambient_dim: int, rank: int) -> RandomSubspaceReference:
-    """Return PK moments for independent Haar-distributed rank-``rank`` planes.
-
-    These idealized descriptive moments are not calibrated p-values for trained
-    model weights, whose head subspaces are dependent and anisotropic.
-    """
+    """PK moments for independent Haar-random rank-``rank`` planes: a descriptive baseline, not a
+    calibrated null for trained heads, whose subspaces are dependent and anisotropic."""
     if isinstance(ambient_dim, bool) or not isinstance(ambient_dim, int) or ambient_dim < 2:
         raise ValueError(f"ambient_dim must be an integer at least 2, got {ambient_dim!r}")
     if isinstance(rank, bool) or not isinstance(rank, int) or not 1 <= rank <= ambient_dim:
@@ -592,25 +531,8 @@ def attention_head_subspace_affinity(
     rank: Optional[int] = None,
     rtol: Optional[float] = None,
 ) -> HeadAffinityResult:
-    """Compute OQ, OK, or OV Projection Kernel affinities for a TransformerBridge.
-
-    K/V axes preserve native key-value heads on grouped-query attention models;
-    they are never expanded to query-head count. Hybrid models include only
-    attention blocks and report their original block indices.
-
-    Args:
-        model: A TransformerBridge exposing readable per-head attention weights.
-        source_role: Source role; v1 supports only ``"O"``.
-        target_role: One of ``"Q"``, ``"K"``, or ``"V"``.
-        layer_order: ``"forward"`` keeps strict earlier-to-later pairs; ``"all"``
-            keeps every pair.
-        rank: Optional common truncation rank. By default every head must be full
-            column rank.
-        rtol: Optional relative numerical-rank tolerance.
-
-    Returns:
-        Affinity tensors, validity mask, original layer indices, and rank metadata.
-    """
+    """OQ/OK/OV Projection Kernel head affinities; K/V axes keep native GQA kv heads, heads must
+    be full rank unless ``rank`` truncates, and ``"forward"`` keeps strictly later target layers."""
     if source_role != "O":
         raise ValueError(f"source_role must be 'O' in v1, got {source_role!r}")
     if target_role not in ("Q", "K", "V"):
@@ -690,7 +612,8 @@ def attention_head_subspace_affinity(
     scores = _pairwise_projection_kernel(flat_source, flat_target).reshape(
         layer_count, source_heads, layer_count, target_heads
     )
-    scores = _clamp_projection_scores(scores, min(source_rank, target_rank))
+    score_bound = min(source_rank, target_rank)
+    scores = _clamp_to_bounds(scores, score_bound, "Projection Kernel score", score_bound)
     normalized = scores / math.sqrt(source_rank * target_rank)
     if validated_layer_order == "forward":
         layer_tensor = torch.tensor(layer_indices, device=result_device)

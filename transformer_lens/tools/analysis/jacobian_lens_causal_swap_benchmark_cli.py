@@ -1,12 +1,7 @@
 """Artifact-generation entry point for the causal coordinate-swap benchmark.
 
-Kept separate from
-``transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark`` because the analysis
-package's ``__init__`` imports that module: running it as a script would execute it twice and
-``runpy`` would warn. This module is not imported by the package, so ``python -m`` runs it
-once.
-
-Reproduce the frozen artifact with (no ``HF_TOKEN`` needed -- GPT-2 is not gated)::
+Separate from the library module, which the package ``__init__`` imports, so ``python -m`` runs
+it once instead of twice. Reproduce the frozen artifact (GPT-2 is ungated) with::
 
     uv run python -m transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli
 """
@@ -64,8 +59,7 @@ _COUNTRY_CORPUS = BenchmarkCorpus(
 _GPT2_LENS_REPO = "neuronpedia/jacobian-lens"
 _GPT2_LENS_FILE = "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"
 _GPT2_LENS_REVISION = "a4114d7752d11eb546e6cf372213d7e75526d3a1"
-# The corpus mirrors the country config ``Jacobian_Lens_Demo.ipynb`` pins, so it reuses that
-# notebook's repo/path/revision triple rather than inventing a second provenance scheme.
+# Provenance of the country config ``Jacobian_Lens_Demo.ipynb`` pins, which the corpus mirrors.
 _CORPUS_REPO = "anthropics/jacobian-lens"
 _CORPUS_PATH = "data/experiments/flexible-generalization.json"
 _CORPUS_REVISION = "581d398613e5602a5af361e1c34d3a92ea82ba8e"
@@ -87,7 +81,6 @@ def _parse_seed_list(value: str) -> Tuple[int, ...]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Builds the CLI argument parser."""
     parser = argparse.ArgumentParser(
         description="Generates the frozen GPT-2 causal-swap benchmark artifact."
     )
@@ -105,13 +98,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
-    """Generates the frozen GPT-2 causal-swap benchmark artifact.
-
-    Loads the published GPT-2-small lens (the same artifact
-    ``tests/integration/test_jacobian_lens.py`` uses), runs the reused country corpus over
-    every one of the lens's fitted source layers, and writes the versioned, fingerprinted JSON
-    artifact consumed by ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb``.
-    """
+    """Sweeps the country corpus over every fitted layer of the published GPT-2-small lens and
+    writes the artifact ``Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb`` loads."""
     import torch
 
     from transformer_lens.model_bridge import TransformerBridge
@@ -169,6 +157,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         k=args.k,
         control_tolerance=args.control_tolerance,
         control_seeds=list(args.control_seeds),
+        # Verbatim from Jacobian_Lens_Demo.ipynb's protocol_manifest so the definitions agree.
         success_definition="target token id equals deterministic argmax token id",
         baseline_definition="source answer token id equals deterministic argmax token id",
         rank_definition="1 + count(logits strictly greater than target logit)",

@@ -1,10 +1,6 @@
-"""Backward Lens gradient-factor capture and vocabulary projection.
+"""Backward Lens: MLP weight gradients as token-position outer products, read in vocabulary space.
 
-The Backward Lens represents a linear weight gradient as a sum of token-position
-outer products and projects residual-width factors into the model vocabulary.
-The public API supports raw dense-MLP decoder-only ``TransformerBridge`` models
-(for example GPT-2 and Pythia/GPT-NeoX), reading each MLP projection's weight
-layout from the Bridge component rather than the model class.
+Supports raw dense-MLP decoder-only ``TransformerBridge`` models such as GPT-2 and Pythia.
 """
 
 from __future__ import annotations
@@ -18,25 +14,18 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int
 
-WeightLayout = Literal["in_out", "out_in"]
+WeightLayout = Literal["in_out", "out_in"]  # Conv1D stores [in, out]; nn.Linear stores [out, in]
 ProjectedFactor = Literal["forward_inputs", "output_gradients"]
 DEFAULT_TOP_K = 10
 
 
 @dataclass(frozen=True)
 class LinearGradientFactors:
-    """Detached factors and reconstruction for one linear weight gradient.
-
-    ``forward_inputs`` and ``output_gradients`` have shapes ``[position, in]``
-    and ``[position, out]``. ``output_gradients`` and ``weight_gradient`` preserve
-    the raw ``d(loss)/d(tensor)`` sign; they are not negated into update directions.
-    Gradient tensors use the requested storage layout. All tensors are cloned to
-    CPU in float32 so the result owns no autograd graph.
-    """
+    """Detached CPU float32 factors of one weight gradient, in raw d(loss) sign (not updates)."""
 
     forward_inputs: Float[torch.Tensor, "position in_features"]
     output_gradients: Float[torch.Tensor, "position out_features"]
-    weight_gradient: Float[torch.Tensor, "weight_dim_0 weight_dim_1"]
+    weight_gradient: Float[torch.Tensor, "weight_dim_0 weight_dim_1"]  # weight_layout storage order
     reconstructed_gradient: Float[torch.Tensor, "weight_dim_0 weight_dim_1"]
     absolute_reconstruction_error: float
     relative_reconstruction_error: float
@@ -45,11 +34,7 @@ class LinearGradientFactors:
 
 @dataclass(frozen=True)
 class VocabularyRanking:
-    """Owned CPU copies of signed vocabulary rankings with shape ``[..., k]``.
-
-    ``values`` preserves the floating dtype and sign of ``logits``; ``indices``
-    has dtype ``torch.int64``. Both tensors are detached.
-    """
+    """Detached CPU copies of sorted signed vocabulary logits and their token ids."""
 
     values: Float[torch.Tensor, "*leading k"]
     indices: Int[torch.Tensor, "*leading k"]
@@ -57,17 +42,7 @@ class VocabularyRanking:
 
 @dataclass(frozen=True)
 class BackwardLensMatrixResult:
-    """Factors and vocabulary readouts for one dense MLP weight matrix.
-
-    ``factors`` contains the full linear factorization. ``projected_factor`` says
-    whether its residual-width ``forward_inputs`` or raw-gradient
-    ``output_gradients`` were decoded. ``factor_norms`` and ``zero_norm_mask``
-    have shape ``[position]`` with float32 and bool dtypes. Largest and smallest
-    signed rankings are always retained. Full ``vocabulary_logits`` are present
-    only when explicitly requested. Normalized rankings and optional full logits
-    are present when the Normalized Logit Lens is requested. Every retained tensor
-    is a detached CPU-owned value; gradient descent subtracts raw gradients.
-    """
+    """Detached CPU factors and vocabulary readouts for one dense MLP weight matrix."""
 
     factors: LinearGradientFactors
     projected_factor: ProjectedFactor
@@ -138,13 +113,9 @@ class BackwardLensMatrixResult:
         largest: bool,
         normalized: bool = False,
     ) -> Int[torch.Tensor, "position"]:
-        """Return zero-based target ranks per position in the requested ordering.
+        """Return zero-based competition ranks per position, from the largest if ``largest``.
 
-        ``largest=True`` gives rank zero to the largest logit. ``largest=False``
-        gives rank zero to the smallest, which is the useful raw-gradient
-        convention for the second MLP matrix because gradient descent subtracts it.
-        Ties receive the same competition rank. The analyzed target's ranks are
-        always retained; other token ids require opted-in full logits.
+        Only the analyzed target's ranks are retained; other ids need ``return_full_logits=True``.
         """
         if isinstance(target_token_id, bool) or not isinstance(target_token_id, int):
             raise TypeError("target_token_id must be an integer")
@@ -178,7 +149,7 @@ class BackwardLensMatrixResult:
     def gradient_descent_target_ranks(
         self, target_token_id: int, *, normalized: bool = False
     ) -> Int[torch.Tensor, "position"]:
-        """Return ascending raw-gradient target ranks (rank zero is smallest)."""
+        """Return ascending ranks (rank zero is smallest), since descent subtracts the gradient."""
         return self.target_ranks(target_token_id, largest=False, normalized=normalized)
 
 
@@ -193,29 +164,14 @@ class BackwardLensLayerResult:
 
 @dataclass(frozen=True)
 class BackwardLensResult:
-    """Detached result of one :meth:`BackwardLens.analyze` call.
-
-    ``prompt`` and ``target_token`` echo the analyzed inputs; ``target_token_id``
-    is the single vocabulary id the target text encodes to. ``loss`` is the raw
-    scalar cross-entropy of the final-position next-token prediction against the
-    target; it preserves the ``d(loss)/d(...)`` sign convention and is not negated.
-    ``prompt_token_ids`` is an owned CPU int64 tensor with shape ``[position]``;
-    every residual-width factor in ``layers`` is aligned to these same positions.
-    Position zero is a prepended BOS only when the model and tokenizer configuration
-    requests one. ``layers`` preserves requested order. Maximum errors summarize
-    both matrices over every requested layer.
-    ``includes_normalized_logits`` records whether the Normalized Logit Lens was
-    computed. ``includes_full_logits`` records whether full vocabulary tensors
-    were retained in addition to bounded rankings. No model or tokenizer reference
-    is retained.
-    """
+    """Detached ``BackwardLens.analyze`` result; factor positions follow ``prompt_token_ids``."""
 
     prompt: str
     prompt_token_ids: Int[torch.Tensor, "position"]
     target_token: str
     target_token_id: int
     loss: float
-    layers: tuple[BackwardLensLayerResult, ...]
+    layers: tuple[BackwardLensLayerResult, ...]  # in requested order
     max_absolute_reconstruction_error: float
     max_relative_reconstruction_error: float
     includes_normalized_logits: bool
@@ -240,10 +196,7 @@ class _MLPLayerGradientFactors:
 
 @dataclass(frozen=True)
 class _DenseMLPGradientCapture:
-    """Private capture result for one dense-MLP next-token loss.
-
-    Tensor fields are detached, owned CPU copies.
-    """
+    """Detached CPU gradient factors for one dense-MLP next-token loss."""
 
     prompt_token_ids: Int[torch.Tensor, "1 position"]
     target_token_id: int
@@ -269,12 +222,7 @@ def _reconstruction_errors(
     reference: Float[torch.Tensor, "rows columns"],
     reconstruction: Float[torch.Tensor, "rows columns"],
 ) -> tuple[float, float]:
-    """Return max absolute and symmetric scale-aware relative errors.
-
-    The relative error is ``||reference - reconstruction||_F`` divided by the
-    maximum of the two input Frobenius norms and float32 epsilon. This remains
-    finite when one or both gradients are zero.
-    """
+    """Return max-abs error and Frobenius error over the larger norm, eps-floored for zero grads."""
     difference = reference - reconstruction
     absolute = float(difference.abs().max())
     scale = torch.maximum(reference.norm(), reconstruction.norm()).clamp_min(
@@ -301,20 +249,7 @@ def _build_linear_gradient_factors(
     *,
     weight_layout: Any,
 ) -> LinearGradientFactors:
-    """Reconstruct a weight gradient from aligned token-position factors.
-
-    Args:
-        forward_inputs: Linear inputs with shape ``[position, in_features]``.
-        output_gradients: Loss gradients with respect to linear outputs, shape
-            ``[position, out_features]``.
-        weight_gradient: Independently computed gradient in ``weight_layout``.
-        weight_layout: ``"in_out"`` for GPT-2 ``Conv1D`` storage or
-            ``"out_in"`` for ``torch.nn.Linear`` storage.
-
-    Returns:
-        Detached factors, the independent gradient, its reconstruction, and
-        reconstruction errors, all on CPU with float32 tensor values.
-    """
+    """Reconstruct ``weight_gradient`` from aligned token-position factors and measure the error."""
     validated_inputs = _validate_floating_matrix("forward_inputs", forward_inputs)
     validated_gradients = _validate_floating_matrix("output_gradients", output_gradients)
     validated_weight = _validate_floating_matrix("weight_gradient", weight_gradient)
@@ -357,11 +292,7 @@ def _build_linear_gradient_factors(
 
 
 def _rank_vocabulary_logits(logits: Any, *, k: Any, largest: Any) -> VocabularyRanking:
-    """Return largest or smallest vocabulary logits and token ids per row.
-
-    Ordering among exactly tied logits is intentionally unspecified and follows
-    :func:`torch.topk`.
-    """
+    """Return sorted largest or smallest logits and token ids per row; tie order follows topk."""
     if not isinstance(logits, torch.Tensor):
         raise TypeError("logits must be a torch.Tensor")
     if logits.ndim not in (1, 2) or logits.shape[-1] == 0:
@@ -430,7 +361,7 @@ def _project_residual_factors(
         factors.detach().to(device=unembed_weight.device, dtype=unembed_weight.dtype).unsqueeze(0)
     )
     logits = model.unembed(model.ln_final(batched)).squeeze(0)
-    if logits.ndim != 2 or logits.shape != (factors.shape[0], unembed_weight.shape[1]):
+    if logits.shape != (factors.shape[0], unembed_weight.shape[1]):
         raise RuntimeError(
             "final normalization and unembedding must return [position, d_vocab]; "
             f"got {tuple(logits.shape)}"
@@ -468,12 +399,6 @@ def _build_matrix_result(
     top_k: int,
     return_full_logits: bool,
 ) -> BackwardLensMatrixResult:
-    if projected_factor not in ("forward_inputs", "output_gradients"):
-        raise ValueError("projected_factor must be 'forward_inputs' or 'output_gradients'")
-    if not isinstance(include_normalized_logits, bool):
-        raise TypeError("include_normalized_logits must be a bool")
-    if not isinstance(return_full_logits, bool):
-        raise TypeError("return_full_logits must be a bool")
     rows = (
         factors.forward_inputs if projected_factor == "forward_inputs" else factors.output_gradients
     )
@@ -548,11 +473,7 @@ def _validate_requested_layers(model: Any, layers: Sequence[int]) -> tuple[int, 
 
 
 def _require_raw_dense_mlp_bridge(model: Any) -> None:
-    """Require the raw dense-MLP Bridge capabilities used by gradient capture.
-
-    The architecture is not constrained by class; support is decided per
-    projection from the Bridge weight-layout oracle in projection discovery.
-    """
+    """Require a raw dense-MLP Bridge; per-layer projection layouts are checked separately."""
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):
@@ -594,13 +515,7 @@ class _MLPLinear:
 def _get_dense_mlp_projections(
     model: Any, layers: tuple[int, ...]
 ) -> dict[int, tuple[_MLPLinear, _MLPLinear]]:
-    """Return validated live dense-MLP input/output projection bridges.
-
-    Each projection's storage orientation is resolved from the Bridge weight-layout
-    oracle, so Conv1D ``[in, out]`` and ``torch.nn.Linear`` ``[out, in]`` weights are
-    both accepted without inspecting the model class. Projections whose wrapped
-    module the oracle cannot orient are rejected.
-    """
+    """Return validated dense-MLP in/out projections with layouts from the Bridge layout oracle."""
     from transformer_lens.hook_points import HookPoint
     from transformer_lens.model_bridge.generalized_components import (
         LinearBridge,
@@ -612,8 +527,6 @@ def _get_dense_mlp_projections(
 
     d_model = int(model.cfg.d_model)
     d_mlp = int(model.cfg.d_mlp)
-    # Feature counts are fixed by the MLP role; storage order follows the layout.
-    # Input maps d_model -> d_mlp, output maps d_mlp -> d_model.
     feature_pairs = ((d_model, d_mlp), (d_mlp, d_model))
     projections: dict[int, tuple[_MLPLinear, _MLPLinear]] = {}
     for layer in layers:
@@ -749,9 +662,7 @@ def _capture_dense_mlp_gradient_factors(
 ) -> _DenseMLPGradientCapture:
     """Capture exact dense-MLP weight-gradient factors for one next-token loss.
 
-    The analysis performs one grad-enabled forward and exactly one
-    :func:`torch.autograd.grad` call. It does not call ``backward``, touch
-    parameter ``.grad`` buffers, change training state, or remove caller hooks.
+    Makes one ``torch.autograd.grad`` call; never touches ``.grad``, training state or caller hooks.
     """
     if torch.is_inference_mode_enabled():
         raise ValueError(
@@ -779,10 +690,10 @@ def _capture_dense_mlp_gradient_factors(
             f"n_ctx={context_size}"
         )
     target_tokens = model.to_tokens(target_token, prepend_bos=False)
-    if target_tokens.ndim != 2 or tuple(target_tokens.shape) != (1, 1):
+    if tuple(target_tokens.shape) != (1, 1):
         count = int(target_tokens.numel())
         raise ValueError(
-            "target_token must encode to exactly one token without BOS; " f"got {count} tokens"
+            f"target_token must encode to exactly one token without BOS; got {count} tokens"
         )
     target_token_id = int(target_tokens.item())
     input_device = next(model.original_model.parameters()).device
@@ -812,36 +723,26 @@ def _capture_dense_mlp_gradient_factors(
     weight_gradients = gradients[len(outputs) :]
     layer_results = []
     for index, layer in enumerate(requested_layers):
-        input_offset = 2 * index
-        input_record, output_record = projections[layer]
-        input_factors = _build_linear_gradient_factors(
-            _single_batch_matrix(
-                f"layer {layer} input projection input",
-                captured[(layer, "input", "forward_input")],
-            ),
-            _single_batch_matrix(
-                f"layer {layer} input projection gradient", output_gradients[input_offset]
-            ),
-            weight_gradients[input_offset],
-            weight_layout=input_record.weight_layout,
-        )
-        output_factors = _build_linear_gradient_factors(
-            _single_batch_matrix(
-                f"layer {layer} output projection input",
-                captured[(layer, "output", "forward_input")],
-            ),
-            _single_batch_matrix(
-                f"layer {layer} output projection gradient",
-                output_gradients[input_offset + 1],
-            ),
-            weight_gradients[input_offset + 1],
-            weight_layout=output_record.weight_layout,
-        )
+        factors = [
+            _build_linear_gradient_factors(
+                _single_batch_matrix(
+                    f"layer {layer} {name} projection input",
+                    captured[(layer, name, "forward_input")],
+                ),
+                _single_batch_matrix(
+                    f"layer {layer} {name} projection gradient",
+                    output_gradients[2 * index + offset],
+                ),
+                weight_gradients[2 * index + offset],
+                weight_layout=record.weight_layout,
+            )
+            for offset, (name, record) in enumerate(
+                zip(("input", "output"), projections[layer], strict=True)
+            )
+        ]
         layer_results.append(
             _MLPLayerGradientFactors(
-                layer=layer,
-                input_projection=input_factors,
-                output_projection=output_factors,
+                layer=layer, input_projection=factors[0], output_projection=factors[1]
             )
         )
     return _DenseMLPGradientCapture(
@@ -853,13 +754,7 @@ def _capture_dense_mlp_gradient_factors(
 
 
 class BackwardLens:
-    """Analyze dense MLP weight gradients in the output vocabulary basis.
-
-    The analyzer accepts a fresh, raw dense-MLP :class:`TransformerBridge` such as
-    GPT-2 or Pythia/GPT-NeoX. Results retain no model or tokenizer reference and
-    contain detached CPU-owned tensors. Raw backward signals are loss gradients;
-    gradient descent subtracts them.
-    """
+    """Read a raw dense-MLP Bridge's MLP weight gradients in vocabulary space."""
 
     def __init__(self, model: Any):
         """Validate and retain the raw dense-MLP Bridge used for analyses."""
@@ -876,22 +771,9 @@ class BackwardLens:
         top_k: int = DEFAULT_TOP_K,
         return_full_logits: bool = False,
     ) -> BackwardLensResult:
-        """Analyze one final-position, one-token target loss.
+        """Analyze the final-position loss for ``target_token``, which must encode to one token.
 
-        Args:
-            prompt: Non-empty unbatched prompt text.
-            target_token: Text encoding to exactly one token without BOS.
-            layers: Unique layer indices in desired result order.
-            normalized: Also project unit-normalized nonzero factors using the
-                Normalized Logit Lens. Raw projections are always returned.
-            top_k: Number of largest and smallest values and token ids retained
-                per matrix and position. Defaults to 10.
-            return_full_logits: Also retain full vocabulary tensors on CPU.
-                Defaults to ``False`` to keep result size bounded.
-
-        Returns:
-            Detached gradient factors, bounded vocabulary rankings, norms,
-            reconstruction errors, target metadata, and optional full logits.
+        ``normalized`` adds unit-norm factor readouts; ``top_k`` bounds the retained rankings.
         """
         if not isinstance(normalized, bool):
             raise TypeError("normalized must be a bool")
@@ -904,8 +786,6 @@ class BackwardLens:
             raise TypeError("return_full_logits must be a bool")
         capture = _capture_dense_mlp_gradient_factors(self._model, prompt, target_token, layers)
         layer_results: list[BackwardLensLayerResult] = []
-        absolute_errors: list[float] = []
-        relative_errors: list[float] = []
         for layer in capture.layers:
             input_result = _build_matrix_result(
                 self._model,
@@ -932,18 +812,11 @@ class BackwardLens:
                     output_projection=output_result,
                 )
             )
-            absolute_errors.extend(
-                (
-                    layer.input_projection.absolute_reconstruction_error,
-                    layer.output_projection.absolute_reconstruction_error,
-                )
-            )
-            relative_errors.extend(
-                (
-                    layer.input_projection.relative_reconstruction_error,
-                    layer.output_projection.relative_reconstruction_error,
-                )
-            )
+        all_factors = [
+            factors
+            for layer in capture.layers
+            for factors in (layer.input_projection, layer.output_projection)
+        ]
         return BackwardLensResult(
             prompt=prompt,
             prompt_token_ids=capture.prompt_token_ids[0].clone(),
@@ -951,8 +824,12 @@ class BackwardLens:
             target_token_id=capture.target_token_id,
             loss=capture.loss,
             layers=tuple(layer_results),
-            max_absolute_reconstruction_error=max(absolute_errors),
-            max_relative_reconstruction_error=max(relative_errors),
+            max_absolute_reconstruction_error=max(
+                factors.absolute_reconstruction_error for factors in all_factors
+            ),
+            max_relative_reconstruction_error=max(
+                factors.relative_reconstruction_error for factors in all_factors
+            ),
             includes_normalized_logits=normalized,
             includes_full_logits=return_full_logits,
         )

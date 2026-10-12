@@ -1,8 +1,4 @@
-"""Unit tests for the causal coordinate-swap benchmark's corpus schema and answer metrics.
-
-Model-free: these exercise the prompt-corpus cross product and the rank/margin metric
-directly on plain tensors, so no model is loaded.
-"""
+"""Model-free tests for the causal-swap benchmark's corpus, metrics, controls, CIs and artifact."""
 
 import dataclasses
 import hashlib
@@ -84,8 +80,7 @@ def test_compute_answer_metrics_rejects_non_finite_or_out_of_range_target() -> N
 
 
 def test_compute_answer_metrics_pins_deterministic_argmax_tie_semantics() -> None:
-    # A target tied for the global maximum: target_is_top1 follows argmax's own tie-break
-    # (first index), target_tied_for_top is true, and margin against itself is zero.
+    # Tied for the max: target_is_top1 follows argmax's first-index tie-break.
     metrics = compute_answer_metrics(torch.tensor([3.0, 1.0, 3.0]), target_token_id=2)
     assert metrics.target_rank == 1
     assert metrics.target_is_top1 is False
@@ -121,8 +116,6 @@ def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> 
 
 
 def test_filter_baseline_capable_treats_tied_for_top_as_incapable() -> None:
-    # argmax returns the lowest index on an exact tie, so admitting a tied-for-top baseline
-    # would let token-id order decide whether a prompt enters the trial set.
     tied = BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, True, 0.0))
     capable, excluded = filter_baseline_capable([tied])
     assert capable == []
@@ -184,9 +177,7 @@ def test_select_displacement_matched_control_token_respects_tolerance_and_exclus
 
 
 def test_select_displacement_matched_control_token_matches_displacement_not_atom_norm() -> None:
-    # Atom 2 shares the target's atom norm but sits at a different distance from the source;
-    # atom 3 has a different norm but the target's exact displacement. A norm-matching
-    # selector would accept atom 2 and reject atom 3, so this pins the criterion change.
+    # A norm-matching selector would accept atom 2 and reject atom 3.
     dictionary = torch.zeros(4, 2)
     dictionary[0] = torch.tensor([1.0, 0.0])  # source
     dictionary[1] = torch.tensor([3.0, 0.0])  # target: norm 3, displacement 2.0
@@ -237,9 +228,8 @@ def test_select_displacement_matched_control_token_returns_none_on_empty_pool() 
 
 
 def test_select_displacement_matched_control_token_always_excludes_the_target_itself() -> None:
-    dictionary = torch.ones(
-        3, 2
-    )  # every atom has an identical displacement -- target would trivially "match" itself
+    # Every atom has the same displacement, so the target would trivially match itself.
+    dictionary = torch.ones(3, 2)
     chosen = select_displacement_matched_control_token(
         dictionary,
         source_token_id=0,
@@ -263,9 +253,6 @@ def test_select_displacement_matched_control_token_rejects_non_2d_dictionary() -
 
 
 def test_control_generator_is_always_cpu() -> None:
-    # The generator must not follow the dictionary's device: torch.randint infers its output
-    # device from the generator, so a device-local generator would select a different control
-    # token per device and break artifact reproducibility.
     assert _control_generator(0).device == torch.device("cpu")
 
 
@@ -279,9 +266,7 @@ def _accelerator_device() -> str:
 
 @pytest.mark.skipif(not _accelerator_device(), reason="no CUDA or MPS device available")
 def test_select_displacement_matched_control_token_is_device_independent() -> None:
-    # A device-local generator raises on accelerators (torch.randint allocates on CPU while
-    # the generator expects its own device), and drawing on the dictionary's device would
-    # make the same seed pick a different token per device. Selection must agree with CPU.
+    # A device-local generator raises on accelerators or picks a different token per device.
     torch.manual_seed(0)
     dictionary = torch.randn(20, 4)
     cpu_choice = select_displacement_matched_control_token(
@@ -314,8 +299,7 @@ def test_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval(
 
 
 def test_success_rate_ci_pins_zero_of_six_upper_bound() -> None:
-    # The exact interval must widen for an all-failure sample. A percentile bootstrap returns
-    # [0, 0] here by construction, asserting a certainty the data does not support.
+    # A percentile bootstrap would collapse to [0, 0] here.
     result = success_rate_ci([False] * 6)
     assert result.ci_low == 0.0
     assert result.ci_high == pytest.approx(0.4592581, abs=1e-6)
@@ -328,16 +312,13 @@ def test_success_rate_ci_pins_all_success_lower_bound() -> None:
 
 
 def test_success_rate_ci_matches_closed_form_at_the_boundaries() -> None:
-    # At k=0 and k=n the Clopper-Pearson bounds reduce to closed forms, which pins the
-    # bisection direction independently of the interior values. Reversing it collapses every
-    # interval to [0, 1].
+    # Closed forms at k=0 and k=n pin the bisection direction; reversing it yields [0, 1].
     assert success_rate_ci([False] * 6).ci_high == pytest.approx(1 - 0.025 ** (1 / 6))
     assert success_rate_ci([True] * 6).ci_low == pytest.approx(0.025 ** (1 / 6))
 
 
 def test_success_rate_ci_narrows_as_the_trial_count_grows() -> None:
-    # The whole point of the change: the same observed rate carries less uncertainty with
-    # more trials. A degenerate interval would not move.
+    # A degenerate interval would not move.
     small = success_rate_ci([False] * 6)
     large = success_rate_ci([False] * 600)
     assert large.ci_high < small.ci_high
@@ -601,8 +582,6 @@ def test_load_artifact_rejects_missing_required_key(tmp_path) -> None:
 
 
 def test_serialize_artifact_counts_independent_prompts(tmp_path) -> None:
-    # Several trials can share one prompt, so the pooled rate rests on fewer independent
-    # prompts than trials. The count must travel with the rate.
     manifest = build_protocol_manifest(**_full_manifest_fields())
     trials = [
         _ok_trial(target=target, layer=layer)

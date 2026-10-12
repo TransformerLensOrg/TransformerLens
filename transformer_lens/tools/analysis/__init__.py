@@ -5,45 +5,17 @@ sit on top of the hook/cache system. Model support is documented per tool;
 new analyses may target the ``TransformerBridge`` API exclusively.
 
 Tools:
-    - attribution_patching: Attribution patching (gradient-linearized activation
-      patching) over residual-stream nodes and edges: typed computational graph,
-      a names-filtered manual-backward gradient cache, and signed node and edge
-      scores (EAP), plus forward-only ablate-outside faithfulness with corrupt
-      or held-out mean replacements and circuit-relative class diagnostics.
-      Integrated gradients (EAP-IG) are not implemented.
-    - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
-      space with explicit raw-gradient sign semantics.
-    - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
-      layers, or attention heads.
-    - direct_path_patching: Direct path patching for head-to-head circuit
-      analysis.
-    - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
-      the output vocabulary basis, with loading of published lens artifacts,
-      native fitting, readouts, interventions, J-space sparse decomposition, and
-      anchored coordinate patching (offline and dynamic/hooked).
-    - jacobian_lens_causal_swap_benchmark: A causal coordinate-swap benchmark for
-      ``coordinate_patch_hooks``, with baseline-capability filtering,
-      displacement-matched random-atom controls, exact Clopper-Pearson confidence
-      intervals, and a versioned, fingerprinted JSON artifact schema. Its
-      ``_cli`` sibling is the artifact-generation entry point and is deliberately
-      not imported here, so ``python -m`` runs it once.
-    - logit_lens: One-call logit lens over the accumulated residual stream and
-      the ``logit_readout`` kernel that reads any ``d_model`` vector through the
-      real final norm, unembedding and adapter output transform, chunked over
-      the vocabulary with target ranks, top-k and vocabulary subsets.
-    - projection_kernel: Basis-invariant subspace overlap and TransformerBridge
-      attention-head OQ/OK/OV affinity.
-    - relevance_lens: The Relevance lens (R-lens) -- a Jacobian lens whose
-      per-layer transport matrices are estimated with scoped Layer-wise
-      Relevance Propagation rules on residual-stream norms and gated MLPs,
-      reusing the Jacobian lens readout, vocabulary vectors, sparse
-      decomposition, and interventions unchanged.
-    - sparse_probing: Leakage-safe k-sparse binary probes over supplied
-      activation tensors, with train-only selection and raw null controls.
-    - svd_circuits: Per-head QK/OV singular-vector decomposition with a
-      degeneracy guard, OV vocab and logit readout, per-position activation
-      projection onto singular directions, and a mandatory causal patch gate
-      that reconstructs a head's output onto a chosen singular subspace.
+    - attribution_patching: Node and edge attribution patching (EAP) and faithfulness.
+    - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary space.
+    - direct_logit_attribution: Direct Logit Attribution over components, layers, or heads.
+    - direct_path_patching: Direct path patching for head-to-head circuit analysis.
+    - jacobian_lens: Jacobian lens loading, fitting, readout, decomposition, and interventions.
+    - jacobian_lens_causal_swap_benchmark: Causal coordinate-swap benchmark for J-lens patches.
+    - logit_lens: Logit lens and the ``logit_readout`` kernel for any ``d_model`` vector.
+    - projection_kernel: Subspace overlap and attention-head OQ/OK/OV affinity.
+    - relevance_lens: A Jacobian lens whose transport is fitted with scoped LRP rules.
+    - sparse_probing: Leakage-safe k-sparse binary probes with null controls.
+    - svd_circuits: Per-head QK/OV SVD, vocabulary readout, and singular-subspace patching.
 """
 
 from transformer_lens.tools.analysis.attribution_patching import (
@@ -77,6 +49,8 @@ from transformer_lens.tools.analysis.jacobian_lens import (
     JacobianLens,
     JacobianLensReadout,
 )
+
+# The benchmark's _cli module stays unimported here so ``python -m`` runs it once.
 from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
     BenchmarkCorpus,
     FunctionSpec,
@@ -189,6 +163,7 @@ __all__ = [
     "WeightLayout",
     "attention_head_subspace_affinity",
     "attribution_patch",
+    "corpus_definition",
     "decompose_head",
     "direct_logit_attribution",
     "estimate_occupancy",

@@ -176,16 +176,11 @@ class JointGateUpMLPBridge(GatedMLPBridge):
         return resolve_activation_fn(self.config)
 
     def _activation_rule_installable(self) -> bool:
-        """The reconstructed forward calls the activation itself, so only the config
-        activation form gates the Identity-rule; the opaque-path requirement of a
-        wrappable activation callable does not apply here."""
+        """The reconstructed forward calls the activation directly, so only its form matters."""
         return identity_rule_supports_activation(self.config)
 
-    # The reconstructed forward applies both rules inline off the boolean flags set
-    # by the base ``_enable_relevance_rule``/``_disable_relevance_rule``. The
-    # opaque-path installers must stay disabled: the gate hook lives on the shared
-    # down projection this forward also calls, so leaving it active would halve the
-    # gate*up gradient a second time on top of the inline ``half_rule``.
+    # Rules apply inline off the base flags; the opaque-path installers stay no-ops because the
+    # gate hook would sit on the shared down projection and halve the gate*up gradient twice.
     def _install_activation_rule(self) -> None:
         return None
 

@@ -1,14 +1,5 @@
-"""LN-rule integration on NormalizationBridge's native-autograd path.
-
-The rule-wrapped native forward is bit-identical to
-today's native forward by construction (the wrapping calls ``original_component(x)``
-itself rather than reproducing its numerics), the backward follows the LN-rule
-(denominator treated as constant) while weight/bias keep their ordinary gradient,
-targeting is positional so an ln1/ln2 mount that never reaches the native-autograd
-branch reports as skipped rather than silently leaving ordinary gradients in place,
-and a hook that would otherwise silently fall back instead raises while the rule is
-active.
-"""
+"""LN-rule integration on NormalizationBridge's native-autograd path: bit-identical forward,
+LN-rule backward, skipped python-norm mounts, and fail-closed hook edits."""
 
 
 import pytest
@@ -235,8 +226,7 @@ class TestParameterGradientsPreserved:
         assert weight_grad is not None and torch.isfinite(weight_grad).all()
         assert bias_grad is not None and torch.isfinite(bias_grad).all()
 
-        # Ordinary gradient: d(output)/d(weight) = normalized value (pre-weight),
-        # independent of the rule's treatment of the x-path; d(output)/d(bias) = 1.
+        # d(output)/d(weight) is the pre-weight normalized value regardless of the rule.
         x_oracle = x.detach().clone()
         normalized = _denom_detached_oracle(
             x_oracle,
@@ -259,7 +249,6 @@ class TestRuleInactiveRegression:
         bridge = _make_bridge(native=native)
         x = torch.randn(2, 5, 16)
         expected = bridge(x)
-        # No use_relevance_rules context at all: today's behavior, unconditionally.
         actual = bridge(x)
         assert torch.equal(actual, expected)
 
@@ -276,9 +265,7 @@ class TestRuleInactiveRegression:
         assert torch.equal(active, baseline)
 
     def test_layer_norm_folding_config_flag_makes_the_rule_installable(self):
-        """layer_norm_folding also dispatches through the native-autograd branch,
-        so the rule must be installable there even with use_native_layernorm_autograd
-        left False."""
+        """layer_norm_folding dispatches through the native-autograd branch too."""
         bridge = _make_bridge(native=False, layer_norm_folding=True)
         block = _Block(bridge)
         x = torch.randn(2, 5, 16)
@@ -292,8 +279,7 @@ class TestRuleInactiveRegression:
         "bridge_cls", [LayerNormPreBridge, RMSNormPreBridge], ids=["ln_pre", "rms_pre"]
     )
     def test_param_free_pre_norm_is_skipped_and_forward_unaffected(self, bridge_cls):
-        """LNPre/RMSPre always take the python-norm path regardless of the native
-        flag, so they must never be reported installed."""
+        """LNPre/RMSPre always take the python-norm path, so they are never installed."""
         bridge = bridge_cls(name="ln1", config=_Cfg())
         bridge.set_original_component(nn.LayerNorm(16, eps=1e-5, elementwise_affine=False))
         block = _Block(bridge)
@@ -307,10 +293,7 @@ class TestRuleInactiveRegression:
 
 
 class TestMissingWeightTreatedAsIdentity:
-    """A native-autograd bridge over a parameter-free norm (OLMo's OlmoLayerNorm has
-    no ``weight``) reports the LN-rule installed, so its rule-active forward and
-    backward must treat the missing weight as a unit scale instead of dereferencing
-    ``self.weight`` and raising AttributeError."""
+    """A weightless native-autograd norm (OLMo's OlmoLayerNorm) treats weight as unit scale."""
 
     def _make_param_free_bridge(self, d: int = 16) -> NormalizationBridge:
         bridge = NormalizationBridge(
@@ -376,8 +359,7 @@ class TestFailClosedHookPrecedence:
         bridge.hook_scale.remove_hooks()
 
     def test_observation_only_forward_hook_does_not_raise_while_rule_active(self):
-        """A hook that only observes (returns None) is not an edit and must not
-        trip the fail-closed check."""
+        """An observing hook (returns None) is not an edit and must not trip the check."""
         bridge = _make_bridge(native=True)
         block = _Block(bridge)
         x = torch.randn(2, 5, 16)

@@ -1,64 +1,8 @@
-"""Relevance Lens (R-lens): a RelP/LRP-rule estimator for the Jacobian lens.
+"""Relevance Lens: a Jacobian lens whose transport matrices use RelP relevance-rule backward.
 
-The relevance lens keeps the Jacobian lens's fitting loop, transport matrices,
-readout, vocabulary vectors, sparse decomposition, and interventions unchanged.
-Only the backward pass differs: each per-layer transport matrix is estimated
-with a scoped set of Layer-wise Relevance Propagation rules installed on the
-model's residual-stream norms and gated MLPs, instead of the ordinary
-vector-Jacobian product. The forward pass is bit-identical to the model's native
-forward, so the two estimators differ solely in the backward semantics they
-select.
-
-Three rules are applied, matching the RelP reference:
-
-1. **LN-rule** (residual-stream norms): preserve the normalization forward value
-   while treating its denominator as a constant in the backward pass.
-2. **Identity-rule** (GELU/SiLU activations): express ``f(x) = x * phi(x)`` and
-   detach ``phi(x)``, so the local VJP is ``grad_out * phi(x)``.
-3. **Half-rule** (multiplicative MLP gates): preserve the forward product
-   ``u * v`` while halving each branch's ordinary product-rule gradient.
-
-Linear layers and attention retain ordinary autograd. The attention-specific
-AH-rule is out of scope.
-
-Warning:
-    Like the Jacobian lens, the relevance lens requires a freshly booted raw
-    ``TransformerBridge.boot_transformers`` model. Compatibility mode and direct
-    ``process_weights`` calls change the residual basis and are refused rather
-    than returning silently wrong readouts.
-
-This example bounds the fit to one layer and a short prompt; it does not produce
-research-quality corpus estimates. Fitting still requires multiple backward
-passes. ``boot_transformers`` uses eager attention; do not process the weights
-or enable compatibility mode.
-
-Example::
-
-    import torch
-
-    from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.tools.analysis import RelevanceLens
-
-    model = TransformerBridge.boot_transformers(
-        "Qwen/Qwen2-0.5B", device="cpu", dtype=torch.float32
-    )
-    model.eval()
-    prompts = [
-        "The capital of France is Paris, and the capital of Germany is Berlin."
-    ]
-    lens = RelevanceLens.fit(
-        model,
-        prompts,
-        corpus="example:capital-cities",
-        source_layers=[0],
-        dim_batch=8,
-        max_seq_len=32,
-        skip_first_positions=2,
-        show_progress=False,
-    )
-    assert lens.rule_coverage is not None
-    assert not lens.rule_coverage.skipped
-    readout = lens.readout(model, "The capital of France is", layers=[0], top_k=10)
+``RelevanceLens.fit`` installs the LN-rule (residual-stream norms), Identity-rule (GELU/SiLU)
+and Half-rule (MLP gate products) for the fit; the forward pass is unchanged, attention keeps
+ordinary autograd, and every analysis method is inherited from ``JacobianLens``.
 """
 
 from __future__ import annotations
@@ -83,28 +27,23 @@ from transformer_lens.tools.analysis.jacobian_lens import (
     _prepare_fit,
 )
 
-# Estimator identity recorded on every relevance lens. Distinct from the
-# ordinary Jacobian estimator so merge() refuses to combine the two.
+# Distinct from the Jacobian estimator so merge() refuses to combine the two.
 ESTIMATOR_RELEVANCE = "relevance_lens"
 
-# Version of the rule semantics above. Bump when a rule's backward VJP changes,
-# so artifacts fitted under different semantics cannot be merged silently.
+# Bump when a rule's backward VJP changes so artifacts of different semantics never merge.
 RELEVANCE_RULE_VERSION = 1
 
 # Coverage schema changes do not change backward-rule semantics.
 _RULE_COVERAGE_SCHEMA_VERSION = 1
 
-# The rule set the relevance estimator installs: residual-stream norms, gated
-# MLP activations, and multiplicative MLP gates. Attention is deliberately
-# excluded (the AH-rule is out of scope).
+# Attention is excluded: the AH-rule is out of scope.
 RELEVANCE_RULES = RelevanceRules(
     normalization=True,
     activation=True,
     multiplicative_gate=True,
 )
 
-# Names of the rule kinds the estimator requests, derived from the rule set so
-# the request cannot drift from what the fit attempts to install.
+# Derived from RELEVANCE_RULES so the request cannot drift from what the fit installs.
 _REQUESTED_RULE_NAMES: Tuple[str, ...] = tuple(
     name
     for name in ("normalization", "activation", "multiplicative_gate")
@@ -184,26 +123,9 @@ def _coverage_labels(entries: Sequence[_RelevanceRuleCoverageEntry]) -> List[str
 
 
 class RelevanceLens(JacobianLens):
-    """A Jacobian lens whose transport matrices use relevance-rule backward.
+    """Jacobian lens fitted with relevance-rule backward; loading requires relevance provenance."""
 
-    Inherits the full Jacobian lens surface -- transport, readout, vocabulary
-    vectors and dictionary, sparse decomposition, and the steering, ablation,
-    and swap interventions -- unchanged. Only :meth:`fit` differs, and it
-    records the estimator identity and the rule configuration that produced the
-    matrices. Loading requires explicit ``estimator="relevance_lens"`` metadata;
-    unlabelled artifacts and Jacobian running-sum checkpoints are refused. Present
-    coverage records require schema version 1 with explicit rule kinds and paths;
-    ambiguous path-only coverage requires refitting.
-
-    Attributes:
-        rule_coverage: Rule-kind and canonical-path pairs installed versus
-            skipped during the fit.
-        relevance_rule_version: Version of the rule semantics used.
-        enabled_rules: Names of the ``RelevanceRules`` fields that were enabled.
-    """
-
-    # Relevance artifacts are not published in the Jacobian lens registry, so
-    # short model names are refused rather than resolving to a Jacobian lens.
+    # Not in the Jacobian lens registry, so short model names must not resolve to a Jacobian lens.
     _uses_artifact_registry = False
 
     def __init__(
@@ -293,54 +215,8 @@ class RelevanceLens(JacobianLens):
         show_progress: bool = True,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> "RelevanceLens":
-        """Fit a relevance lens on a raw ``TransformerBridge``.
-
-        Shares the Jacobian lens's estimator-independent drive loop and differs
-        only in the backward step: the three relevance rules are installed on
-        the model for the duration of the fit, so each transport matrix is
-        estimated with rule-modified backward semantics. The forward pass is
-        unchanged, and the rule scope is released before this method returns.
-
-        Coverage is checked before any fitting work. A model that can honor no
-        rule is refused, since the fit would otherwise return ordinary Jacobian
-        matrices labelled as a relevance lens. A model that honors some rules
-        but skips others is fitted with a warning, and the artifact records only
-        the rules that actually shaped the matrices.
-
-        Args:
-            model: A raw ``TransformerBridge``. Model parameters are temporarily
-                frozen during fitting and restored after. The model and all of
-                its submodules must be in evaluation mode.
-            prompts: Prompt strings. Prompts too short to contain a valid
-                position (``seq_len <= skip_first_positions + 1``) are skipped
-                with a warning and do not count toward ``n_prompts``.
-            corpus: Stable identifier for the prompt corpus or slice, recorded
-                in artifact provenance.
-            source_layers: Layers to fit. Defaults to every layer below the
-                final layer. Negative indices count from ``n_layers``.
-            dim_batch: Output dimensions per backward pass.
-            max_seq_len: Prompts are truncated to this many tokens.
-            skip_first_positions: Leading positions excluded from the source
-                average.
-            show_progress: Show a tqdm progress bar over prompts.
-            metadata: Extra provenance merged into :attr:`metadata`.
-
-        Returns:
-            The fitted :class:`RelevanceLens`.
-
-        Raises:
-            TypeError: If model is not a ``TransformerBridge``.
-            ValueError: On compatibility mode, training mode, invalid provenance
-                or layer indices, if no prompt was long enough to fit on, or if
-                no relevance rule could be installed on the model.
-            RelevanceRuleUnsupportedError: If a mount that is expected to honor
-                a requested rule cannot, such as a gated MLP whose activation
-                the Identity-rule does not hold for.
-
-        Warns:
-            UserWarning: If some rule mounts were skipped, so the matrices mix
-                rule-modified and ordinary gradients.
-        """
+        """Fit on a raw ``TransformerBridge`` with the relevance rules installed for the fit only;
+        refuses a model on which no rule installs and warns on (and records) partial coverage."""
         options = _prepare_fit(
             model,
             operation=cls.__name__,

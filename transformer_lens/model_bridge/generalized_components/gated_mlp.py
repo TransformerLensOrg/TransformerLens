@@ -33,16 +33,8 @@ _IDENTITY_RULE_UNSUPPORTED_ACTIVATIONS = {"relu", "relu2", "relu_2", "relu_squar
 
 
 def identity_rule_supports_activation(config: Any) -> bool:
-    """Whether the config's resolved activation form is safe for the Identity-rule.
-
-    The Identity-rule's backward multiplier is ``f(x) / x`` (the removable-singularity
-    limit filled in at zero) rather than the ordinary derivative -- the correct
-    LRP-style rule for SiLU and both GELU variants, but not for the relu family:
-    relu-squared's ratio reduces to ``relu(x)``, not its true derivative
-    ``2 * relu(x)``, and plain relu has no smooth two-sided derivative for the ratio
-    to represent at the removable singularity either. Both are therefore excluded
-    rather than silently applying a rule that does not hold for them.
-    """
+    """Whether the config's activation suits the Identity-rule's ``f(x) / x`` multiplier; the
+    relu family is excluded (relu-squared's ratio is ``relu(x)``, not ``2 * relu(x)``)."""
     return _resolve_activation_fn_name(config) not in _IDENTITY_RULE_UNSUPPORTED_ACTIVATIONS
 
 
@@ -76,15 +68,8 @@ def resolve_activation_fn(config: Any) -> Callable:
 
 
 class _IdentityRuleActivation(nn.Module):
-    """Route a wrapped activation through the Identity-rule for a scope's duration.
-
-    The opaque gated-MLP path keeps the HF module's own forward intact and installs
-    the Identity-rule by swapping the module's activation callable for this wrapper.
-    Its forward returns ``act_fn(x)`` unchanged, so the native forward value is
-    preserved, while the backward follows the Identity-rule VJP. Storing the wrapped
-    activation as an attribute registers it as a child module when it is itself an
-    ``nn.Module`` (the common ``ACT2FN`` case), so its parameters, if any, stay live.
-    """
+    """Identity-rule wrapper swapped in for an opaque HF MLP's activation callable; a wrapped
+    ``nn.Module`` (the ``ACT2FN`` case) registers as a child so its parameters stay live."""
 
     def __init__(self, wrapped: Callable[[torch.Tensor], torch.Tensor]):
         super().__init__()
@@ -134,22 +119,13 @@ class GatedMLPBridge(MLPBridge):
         super().__init__(name, config, submodules=submodules or {}, optional=optional)
         self._relevance_rule_activation_active = False
         self._relevance_rule_gate_active = False
-        # Opaque-path rule installers hold their teardown state here. The activation
-        # wrap records (attr_name, original_value, was_child_module) so the swapped
-        # activation callable can be restored exactly; the gate handle is the
-        # forward-pre-hook that scales the gradient entering the down projection.
+        # Opaque-path teardown state: (attr_name, original_value, was_child_module) restores the
+        # swapped activation exactly; the handle is the down projection's gradient-scale pre-hook.
         self._relevance_activation_wrap: Optional[Tuple[str, Any, bool]] = None
         self._relevance_gate_hook_handle: Optional[Any] = None
 
     def _is_gated_mlp_shaped(self) -> bool:
-        """Whether this instance has the gate/up/down submodules a gated MLP needs.
-
-        A container missing one of these was never wired up as a gated-MLP node at
-        all (a different architecture at this mount), which is benign
-        non-applicability rather than an unsupported configuration of a gated-MLP
-        node -- unlike an activation form the Identity-rule cannot honor, which
-        occupies exactly this node's shape but cannot be honored correctly.
-        """
+        """Whether gate/in/out are wired; if not, this mount is benignly not a gated MLP."""
         if self.original_component is None:
             return False
         gate_module = getattr(self, "gate", None)
@@ -158,15 +134,7 @@ class GatedMLPBridge(MLPBridge):
         return gate_module is not None and in_module is not None and out_module is not None
 
     def _find_activation_attr(self) -> Optional[str]:
-        """The attribute name under which the HF module holds its activation callable.
-
-        The opaque path installs the Identity-rule by swapping this attribute, so the
-        activation must be reachable as a callable attribute the native forward calls
-        (the ``ACT2FN`` module the gated-MLP families store as ``act_fn``). Returns
-        ``None`` when no such attribute exists, in which case the Identity-rule cannot
-        be wrapped in and ``"activation"`` is reported unsupported rather than
-        installed as a silent no-op.
-        """
+        """Name of the HF module's callable activation attribute the opaque path swaps, or None."""
         component = self.original_component
         if component is None:
             return None
@@ -176,13 +144,7 @@ class GatedMLPBridge(MLPBridge):
         return None
 
     def _activation_rule_installable(self) -> bool:
-        """Whether the Identity-rule can be installed on this instance's activation.
-
-        Requires both a config activation form the ratio rule is valid for (the
-        relu family is excluded) and, on the opaque path, an activation callable the
-        bridge can wrap in place. Subclasses that reconstruct the forward themselves
-        override this, since they call the activation directly and never wrap it.
-        """
+        """Needs a supported activation form and, on the opaque path, a swappable callable."""
         return (
             identity_rule_supports_activation(self.config)
             and self._find_activation_attr() is not None
@@ -190,15 +152,8 @@ class GatedMLPBridge(MLPBridge):
 
     @property
     def _relevance_rule_kinds(self) -> Tuple[str, ...]:
-        """The relevance-rule kinds this instance can currently honor.
-
-        Empty when this is not a gated-MLP-shaped node. Otherwise always includes
-        ``"multiplicative_gate"`` (the Half-rule is a gradient scale at the gate*up
-        product and needs no weight or activation access) and includes
-        ``"activation"`` only when the Identity-rule can be installed on the
-        configured activation, so a relu-family activation, or one the bridge cannot
-        reach to wrap, is excluded.
-        """
+        """Gate rule on any gated-MLP node, since it needs no weight or activation access;
+        activation rule only when installable."""
         if not self._is_gated_mlp_shaped():
             return ()
         kinds: Tuple[str, ...] = ("multiplicative_gate",)
@@ -208,16 +163,7 @@ class GatedMLPBridge(MLPBridge):
 
     @property
     def _relevance_rule_unsupported_kinds(self) -> Tuple[str, ...]:
-        """Kinds this gated-MLP node is expected to honor but currently cannot.
-
-        Unlike a kind simply absent from ``_relevance_rule_kinds`` because this is
-        not a gated-MLP-shaped node at all (benign non-applicability, reported
-        skipped), a gated-MLP node whose activation form or activation callable the
-        Identity-rule cannot honor is exactly the kind of component a caller expects
-        the rule to work on. Requesting ``"activation"`` there raises instead of
-        silently reporting the mount skipped. The Half-rule applies to every
-        gated-MLP node, so ``"multiplicative_gate"`` is never reported unsupported.
-        """
+        """``("activation",)`` on a gated-MLP node that cannot install it, so a request raises."""
         if not self._is_gated_mlp_shaped():
             return ()
         if "activation" not in self._relevance_rule_kinds:
@@ -225,13 +171,8 @@ class GatedMLPBridge(MLPBridge):
         return ()
 
     def _install_activation_rule(self) -> None:
-        """Swap the HF module's activation callable for the Identity-rule wrapper.
-
-        No-op when the activation callable cannot be located; requesting the
-        activation rule in that case is refused earlier through
-        ``_relevance_rule_unsupported_kinds``. The original value and whether it was
-        a registered child module are recorded so teardown restores it exactly.
-        """
+        """Swap the HF activation callable for the Identity-rule wrapper; a missing callable is
+        already refused through ``_relevance_rule_unsupported_kinds``."""
         component = self.original_component
         attr = self._find_activation_attr()
         if component is None or attr is None:
@@ -262,15 +203,8 @@ class GatedMLPBridge(MLPBridge):
         self._relevance_activation_wrap = None
 
     def _install_gate_rule(self) -> None:
-        """Halve the gradient entering the down projection to reproduce the Half-rule.
-
-        The gate*up product is the down projection's input, so a forward-pre-hook
-        that routes that input through ``scale_gradient(..., 0.5)`` halves the single
-        gradient feeding the product before it splits, which matches halving both
-        product-rule terms. The native forward value is unchanged, and the down
-        projection's own weight gradient stays ordinary because it is taken against
-        the unscaled downstream gradient.
-        """
+        """Half-rule on the opaque path: halve the gradient into the down projection's input (the
+        gate*up product); down's own weight gradient stays ordinary."""
         out_module = getattr(self, "out", None)
         down_component = getattr(out_module, "original_component", None)
         if down_component is None:
@@ -294,13 +228,8 @@ class GatedMLPBridge(MLPBridge):
             self._relevance_gate_hook_handle = None
 
     def _enable_relevance_rule(self, kind: str) -> None:
-        """Activate the named rule and install its opaque-path hook.
-
-        The boolean flag drives the reconstructed forward paths (compatibility mode
-        here, and the inline forward of subclasses that override it). The install
-        step additionally attaches the rule to the live HF submodules for the opaque
-        native forward, which a flag alone cannot alter.
-        """
+        """Set the flag (read by reconstructed forwards) and install the opaque-path hook (which
+        the native forward needs, since a flag alone cannot alter it)."""
         if kind == "activation":
             self._relevance_rule_activation_active = True
             self._install_activation_rule()
@@ -380,10 +309,8 @@ class GatedMLPBridge(MLPBridge):
         hidden_states = args[0]
         hidden_states = self.hook_in(hidden_states)
         new_args = (hidden_states,) + args[1:]
-        # The active relevance rules are attached to the live HF submodules (the
-        # activation callable and the down projection) by _enable_relevance_rule,
-        # so the native forward runs unchanged and its own internal hooks, gate
-        # multipliers, and activation sparsity all remain in the backward graph.
+        # Rules live on the HF submodules (see _enable_relevance_rule), so the native forward's
+        # own hooks, gate multipliers and activation sparsity stay in the backward graph.
         output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
         return output

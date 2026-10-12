@@ -1,25 +1,5 @@
-"""Relevance-rule coverage classification for architectures that mount q/k/v-norm
-or sandwich-norm placeholders instead of a rule-capable ln1/ln2.
-
-``use_relevance_rules`` targets the "normalization" rule kind only at the ln1/ln2
-mount name (see ``_CANONICAL_MOUNTS`` in ``transformer_lens.model_bridge._relevance_rules``),
-matched on the last segment of a live module's registered name. These tests inspect
-each adapter's declared ``component_mapping`` directly (no HF weights, no live module
-wiring) to lock in the structural facts that make the mechanism's "not applicable"
-behavior correct for these three documented edge cases, without needing to build a
-working forward-capable module tree per adapter:
-
-- Gemma 3n: every per-block norm (including the per-head q/k/v norms) is a plain
-  ``GeneralizedComponent`` placeholder, and none of them is keyed "ln1"/"ln2".
-- Gemma 4: ln1/ln2 exist (sandwich norms) but are plain ``GeneralizedComponent``
-  placeholders, not ``NormalizationBridge`` -- rule-incapable even though the mount
-  name matches. The per-head q/k/v norms are, like Gemma 3n, keyed under "self_attn",
-  never "ln1"/"ln2".
-- StableLM: ln1/ln2 ARE real ``NormalizationBridge`` instances (a genuine rule
-  target), but the per-head norms are keyed "q_norm"/"k_norm" under "attn" even
-  though the wrapped HF module is named "q_layernorm"/"k_layernorm" -- the mount
-  key, not the wrapped module's own name, is what the canonical-mount check reads.
-"""
+"""Normalization-rule mount classification read from adapter ``component_mapping``s for
+Gemma 3n, Gemma 4 and StableLM, whose q/k/v or sandwich norms are placeholders."""
 
 from typing import Any
 
@@ -103,8 +83,7 @@ class TestStableLmPlaceholders:
         return StableLmArchitectureAdapter(cfg)
 
     def test_ln1_and_ln2_are_genuine_rule_targets(self):
-        """Unlike Gemma 3n/4, StableLM's block-level norms ARE rule-capable --
-        this is the genuine positive case the other two are contrasted against."""
+        """The positive case: unlike Gemma 3n/4, StableLM's block norms are rule-capable."""
         block_submodules = _block_submodules(self._adapter())
         for key in ("ln1", "ln2"):
             component = block_submodules[key]
@@ -113,10 +92,7 @@ class TestStableLmPlaceholders:
             assert component._relevance_rule_kinds == ("normalization",)
 
     def test_per_head_norms_are_keyed_q_norm_k_norm_not_ln1_ln2(self):
-        """The wrapped HF module is named q_layernorm/k_layernorm, but the mount
-        KEY the canonical-mount check reads is q_norm/k_norm -- distinct either
-        way from ln1/ln2, so these stay invisible to the "normalization" rule
-        regardless of which naming convention the underlying HF module uses."""
+        """The canonical-mount check reads the mount key (q_norm), not the HF name (q_layernorm)."""
         block_submodules = _block_submodules(self._adapter())
         attn_submodules = _attn_submodules(block_submodules, "attn")
         assert attn_submodules["q_norm"].name == "q_layernorm"
