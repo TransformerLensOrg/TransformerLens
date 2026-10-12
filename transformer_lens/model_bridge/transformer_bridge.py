@@ -2998,7 +2998,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             top_k: Number of tokens to sample from. If None, sample from all tokens
             top_p: Probability mass to sample from. If 1.0, sample from all tokens
             temperature: Temperature for sampling. Higher values will make the model more random
-            freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens
+            freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens.
+                Nonzero values require the hooked generation loop; the stateful/SSM
+                HF fallback with use_past_kv_cache=False raises NotImplementedError.
             repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
@@ -3367,10 +3369,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     )
 
         if is_stateful_model and not use_stateful_cache:
+            if freq_penalty != 0.0:
+                raise NotImplementedError(
+                    "freq_penalty requires use_past_kv_cache=True for stateful/SSM models. "
+                    "The HF generation fallback has no equivalent frequency penalty."
+                )
             hf_kwargs: dict[str, Any] = {
                 "max_new_tokens": max_new_tokens,
                 "do_sample": do_sample,
                 "temperature": temperature,
+                "repetition_penalty": repetition_penalty,
                 # hf_generate defaults this to True, so omitting it would make
                 # generate(stop_at_eos=False) silently stop at EOS on this path.
                 "stop_at_eos": stop_at_eos,
