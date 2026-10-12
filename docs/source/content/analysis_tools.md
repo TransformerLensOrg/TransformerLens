@@ -189,8 +189,12 @@ For SVD head decomposition, inspect the rank report before assigning meaning to 
 individual direction. Near-equal singular values define a subspace whose basis can
 rotate; numerically null directions are also unsuitable for individual attribution.
 The weight decomposition alone is not a causal validation of a proposed subfunction.
+See [SVD Circuits](svd_circuits.md) for the degeneracy guard, the causal gate, and a
+worked example, and the [SVD Circuits demo](../generated/demos/SVD_Circuits_Demo.html)
+for a runnable walkthrough.
 
-API: {func}`~transformer_lens.tools.analysis.svd_circuits.decompose_head`.
+API: {func}`~transformer_lens.tools.analysis.svd_circuits.decompose_head`,
+{func}`~transformer_lens.tools.analysis.svd_circuits.patch_along_directions`.
 
 ## Try a geometry question without downloading a model
 
