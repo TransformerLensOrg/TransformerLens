@@ -254,7 +254,7 @@ def get_tokens_with_bos_removed(
         else:
             real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
 
-        tokens = tokens.scatter(dim=1, index=real_bos_positions.unsqueeze(-1), value=-100)
+        tokens = tokens.scatter(dim=-1, index=real_bos_positions.unsqueeze(-1), value=-100)
         return tokens[tokens != -100].view(*bos_removed_shape)
 
 
