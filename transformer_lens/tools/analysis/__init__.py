@@ -17,6 +17,10 @@ Tools:
       layers, or attention heads.
     - direct_path_patching: Direct path patching for head-to-head circuit
       analysis.
+    - interchange: Interchange interventions on linear subspaces: set a base's
+      activation inside a subspace to its value on a source input, with
+      difference-of-means, probe and random bases, a norm-matched placebo, and
+      batched, gradient-free evaluation.
     - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
@@ -72,6 +76,16 @@ from transformer_lens.tools.analysis.direct_logit_attribution import (
 from transformer_lens.tools.analysis.direct_path_patching import (
     get_act_patch_direct_path,
     get_act_patch_direct_path_all_sources,
+)
+from transformer_lens.tools.analysis.interchange import (
+    NormMatchedPlacebo,
+    SubspaceInterchange,
+    collect_activations,
+    intervened_logits,
+    mean_difference_basis,
+    probe_basis,
+    random_basis,
+    run_with_intervention,
 )
 from transformer_lens.tools.analysis.jacobian_lens import (
     JacobianLens,
@@ -172,6 +186,7 @@ __all__ = [
     "LogitReadout",
     "LogitSignature",
     "Node",
+    "NormMatchedPlacebo",
     "PatchResult",
     "ProjectedFactor",
     "ProjectionKernelResult",
@@ -185,10 +200,12 @@ __all__ = [
     "SparseProbeResult",
     "SparseProbeSweep",
     "SubspaceBasis",
+    "SubspaceInterchange",
     "VocabularyRanking",
     "WeightLayout",
     "attention_head_subspace_affinity",
     "attribution_patch",
+    "collect_activations",
     "decompose_head",
     "direct_logit_attribution",
     "estimate_occupancy",
@@ -197,16 +214,21 @@ __all__ = [
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
+    "intervened_logits",
     "load_artifact",
     "logit_lens",
     "logit_readout",
     "logit_signature",
+    "mean_difference_basis",
     "orthonormal_subspace",
     "patch_along_directions",
+    "probe_basis",
     "project_activations",
     "projection_kernel",
+    "random_basis",
     "random_projection_kernel_moments",
     "run_causal_swap_benchmark",
+    "run_with_intervention",
     "select_displacement_matched_control_token",
     "solve_coordinate_patch",
     "solve_coordinate_patch_positions",
