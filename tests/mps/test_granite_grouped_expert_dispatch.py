@@ -6,17 +6,48 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-import transformers
-from packaging.version import Version
 from torch import nn
 from torch.nn import functional as F
 from transformers.models.granitemoehybrid.modeling_granitemoehybrid import (
     GraniteMoeHybridExperts,
 )
 
-from transformer_lens.model_bridge.generalized_components.moe import MoEBridge
+from transformer_lens.model_bridge.generalized_components import moe
+from transformer_lens.model_bridge.generalized_components.moe import (
+    MoEBridge,
+    _mps_output_slice_writes_are_broken,
+)
 
 pytestmark = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")
+
+
+@pytest.fixture(autouse=True)
+def isolated_probe_cache():
+    moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+    yield
+    moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_runtime_probe_matches_direct_slice_write_diagnostic(dtype):
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    inputs = torch.randn(10, 64, generator=generator).to(device="mps", dtype=dtype)
+    weights = torch.randn(4, 64, 32, generator=generator).to(device="mps", dtype=dtype)
+    with torch.no_grad():
+        expected = inputs[5:] @ weights[3]
+        output = torch.zeros(10, 32, device="mps", dtype=dtype)
+        torch.mm(inputs[5:], weights[3], out=output[5:])
+    products_match = torch.allclose(
+        output[5:], expected, rtol=max(1e-5, 2 * torch.finfo(dtype).eps), atol=1e-5
+    )
+    prefix_intact = torch.count_nonzero(output[:5]).item() == 0
+    cpu_rng = torch.get_rng_state().clone()
+    mps_rng = torch.mps.get_rng_state().clone()
+    detected = _mps_output_slice_writes_are_broken(inputs.device, dtype)
+    assert detected == (not (products_match and prefix_intact))
+    assert _mps_output_slice_writes_are_broken(inputs.device, dtype) == detected
+    torch.testing.assert_close(torch.get_rng_state(), cpu_rng, rtol=0, atol=0)
+    torch.testing.assert_close(torch.mps.get_rng_state(), mps_rng, rtol=0, atol=0)
 
 
 class _FixedRoutes(nn.Module):
@@ -73,11 +104,8 @@ def test_fixed_route_experts_match_independent_oracle_and_repeat():
         assert first.device.type == "mps"
         torch.testing.assert_close(first.cpu(), expected, rtol=1e-4, atol=1e-6)
         torch.testing.assert_close(second, first, rtol=0, atol=0)
-        if (
-            Version(torch.__version__).public == "2.11.0"
-            and Version(transformers.__version__).public == "5.13.0"
-        ):
-            assert any("eager Granite" in str(warning.message) for warning in caught)
+        warned = any("eager Granite" in str(warning.message) for warning in caught)
+        assert warned == _mps_output_slice_writes_are_broken(first.device, first.dtype)
         assert len(observed) == 2
         assert block.experts.config._experts_implementation == "grouped_mm"
     finally:

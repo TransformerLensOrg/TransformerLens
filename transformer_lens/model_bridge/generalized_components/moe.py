@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import logging
 import warnings
+from threading import Lock
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import torch
-from packaging.version import Version
 from torch import nn
 
 from transformer_lens.hook_points import HookPoint
@@ -32,6 +32,39 @@ _BATCHED_INPUT_PROJECTIONS = frozenset({"gate_up_proj", "gate_proj", "up_proj"})
 _BATCHED_OUTPUT_PROJECTIONS = frozenset({"down_proj"})
 _BATCHED_PROJECTIONS = _BATCHED_INPUT_PROJECTIONS | _BATCHED_OUTPUT_PROJECTIONS
 
+_MPS_OUTPUT_SLICE_RESULTS: Dict[Tuple[torch.device, torch.dtype], bool] = {}
+_MPS_OUTPUT_SLICE_LOCK = Lock()
+
+
+def _probe_mps_output_slice_writes(device: torch.device, dtype: torch.dtype) -> bool:
+    """Check for incorrect nonzero-offset matmul output writes using isolated tensors."""
+    with torch.no_grad():
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        inputs = torch.randn(10, 64, generator=generator).to(device=device, dtype=dtype)
+        weights = torch.randn(4, 64, 32, generator=generator).to(device=device, dtype=dtype)
+        output = torch.zeros(10, 32, device=device, dtype=dtype)
+        expected = inputs[5:] @ weights[3]
+        torch.mm(inputs[5:], weights[3], out=output[5:])
+        rtol = max(1e-5, 2 * torch.finfo(dtype).eps)
+        prefix_intact = torch.count_nonzero(output[:5]).item() == 0
+        products_match = torch.allclose(output[5:], expected, rtol=rtol, atol=1e-5)
+        return not (prefix_intact and products_match)
+
+
+def _mps_output_slice_writes_are_broken(device: torch.device, dtype: torch.dtype) -> bool:
+    """Cache the primitive check once per device and dtype, including concurrent first use."""
+    key = (device, dtype)
+    with _MPS_OUTPUT_SLICE_LOCK:
+        if key not in _MPS_OUTPUT_SLICE_RESULTS:
+            try:
+                _MPS_OUTPUT_SLICE_RESULTS[key] = _probe_mps_output_slice_writes(device, dtype)
+            except (RuntimeError, TypeError) as error:
+                raise RuntimeError(
+                    f"Cannot verify MPS matmul output-slice writes on {device} with {dtype}. "
+                    "Select eager experts explicitly or use CPU execution."
+                ) from error
+        return _MPS_OUTPUT_SLICE_RESULTS[key]
+
 
 def _granite_mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
     """Dispatch locally, without changing the config shared by other expert layers."""
@@ -42,10 +75,11 @@ def _granite_mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) 
         isinstance(hidden_states, torch.Tensor)
         and hidden_states.device.type == "mps"
         and getattr(config, "_experts_implementation", None) == "grouped_mm"
+        and _mps_output_slice_writes_are_broken(hidden_states.device, hidden_states.dtype)
     ):
         warnings.warn(
-            "Using eager Granite MoE Hybrid experts on MPS to avoid incorrect grouped "
-            "matrix products in torch 2.11.0; expert execution may be slower.",
+            "Using eager Granite MoE Hybrid experts on MPS after detecting incorrect "
+            "matmul output-slice writes; expert execution may be slower.",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -67,16 +101,11 @@ def _guard_granite_mps_experts(component: nn.Module) -> None:
         "transformers.models.granitemoehybrid.modeling_granitemoehybrid"
     ):
         return
-    import transformers
     from transformers.models.granitemoehybrid.modeling_granitemoehybrid import (
         GraniteMoeHybridExperts,
     )
 
-    if (
-        type(experts) is not GraniteMoeHybridExperts
-        or Version(torch.__version__).public != "2.11.0"
-        or Version(transformers.__version__).public != "5.13.0"
-    ):
+    if type(experts) is not GraniteMoeHybridExperts:
         return
     # Respect custom instance forwards rather than silently replacing them.
     if getattr(experts.forward, "__func__", None) is not GraniteMoeHybridExperts.forward:
