@@ -1,4 +1,4 @@
-"""Scoped Granite expert dispatch without shared configuration mutation."""
+"""Shared HF expert dispatch without shared configuration mutation."""
 
 import copy
 import warnings
@@ -9,17 +9,25 @@ from types import SimpleNamespace
 import pytest
 import torch
 from torch import nn
+from transformers.integrations import moe as hf_moe
+from transformers.integrations.moe import ExpertsInterface, use_experts_implementation
+from transformers.models.granitemoe.modeling_granitemoe import GraniteMoeExperts
 from transformers.models.granitemoehybrid.modeling_granitemoehybrid import (
     GraniteMoeHybridExperts,
 )
+from transformers.models.mixtral.modeling_mixtral import MixtralExperts
+from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeExperts
 
 from transformer_lens.model_bridge.generalized_components import moe
 from transformer_lens.model_bridge.generalized_components.moe import (
-    _granite_mps_experts_forward,
-    _guard_granite_mps_experts,
+    _mps_experts_forward,
+    _guard_mps_experts,
+    _hf_eager_experts_forward,
     _mps_output_slice_writes_are_broken,
     _probe_mps_output_slice_writes,
 )
+
+_EXPERT_CLASSES = [GraniteMoeHybridExperts, GraniteMoeExperts, MixtralExperts, Qwen3MoeExperts]
 
 
 @pytest.fixture(autouse=True)
@@ -52,16 +60,28 @@ class _Experts(nn.Module):
         return self.config._experts_implementation
 
 
-def test_dispatch_does_not_mutate_shared_config():
+@pytest.fixture
+def stub_dispatch(monkeypatch):
+    recognize = moe._hf_eager_experts_forward
+
+    def eager(forward):
+        if forward is _Experts.forward:
+            return forward.__wrapped__
+        return recognize(forward)
+
+    monkeypatch.setattr(moe, "_hf_eager_experts_forward", eager)
+
+
+def test_dispatch_does_not_mutate_shared_config(stub_dispatch):
     config = SimpleNamespace(_experts_implementation="grouped_mm")
     experts = [_Experts(config), _Experts(config)]
     mps = torch.empty(1).as_subclass(_MpsInput)
     cpu = torch.empty(1)
-    with pytest.warns(RuntimeWarning, match="eager Granite"):
+    with pytest.warns(RuntimeWarning, match="eager experts"):
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(
                 pool.map(
-                    lambda pair: _granite_mps_experts_forward(*pair),
+                    lambda pair: _mps_experts_forward(*pair),
                     [(experts[0], mps), (experts[1], cpu)],
                 )
             )
@@ -72,29 +92,34 @@ def test_dispatch_does_not_mutate_shared_config():
 @pytest.mark.parametrize("policy", ["eager", "batched_mm", None])
 def test_other_policies_are_unchanged(policy):
     experts = _Experts(SimpleNamespace(_experts_implementation=policy))
-    assert _granite_mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == policy
+    assert _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == policy
 
 
-def test_exception_does_not_leave_dispatch_state():
+def test_exception_does_not_leave_dispatch_state(stub_dispatch):
     experts = _Experts(SimpleNamespace(_experts_implementation="grouped_mm"))
     experts.fail = True
     with pytest.warns(RuntimeWarning), pytest.raises(ValueError, match="expert failure"):
-        _granite_mps_experts_forward(experts, hidden_states=torch.empty(1).as_subclass(_MpsInput))
+        _mps_experts_forward(experts, hidden_states=torch.empty(1).as_subclass(_MpsInput))
     assert experts.config._experts_implementation == "grouped_mm"
     experts.fail = False
     with pytest.warns(RuntimeWarning):
         assert (
-            _granite_mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == "eager"
+            _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == "eager"
         )
 
 
-def _block():
+def _block(expert_class=GraniteMoeHybridExperts):
     config = SimpleNamespace(
-        hidden_size=8, intermediate_size=4, num_local_experts=4, hidden_act="silu"
+        hidden_size=8,
+        intermediate_size=4,
+        moe_intermediate_size=4,
+        num_local_experts=4,
+        num_experts=4,
+        hidden_act="silu",
     )
     config._experts_implementation = "grouped_mm"
     block = nn.Module()
-    block.experts = GraniteMoeHybridExperts(config)
+    block.experts = expert_class(config)
     return block
 
 
@@ -111,7 +136,9 @@ def _block():
     ],
 )
 @pytest.mark.parametrize("broken", [False, True])
-def test_dispatch_uses_probe_not_package_versions(monkeypatch, torch_version, hf_version, broken):
+def test_dispatch_uses_probe_not_package_versions(
+    monkeypatch, torch_version, hf_version, broken, stub_dispatch
+):
     import transformers
 
     monkeypatch.setattr(torch, "__version__", torch_version)
@@ -124,14 +151,14 @@ def test_dispatch_uses_probe_not_package_versions(monkeypatch, torch_version, hf
 
     monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", probe)
     block = _block()
-    _guard_granite_mps_experts(block)
-    assert block.experts.forward.__func__ is _granite_mps_experts_forward
+    _guard_mps_experts(block)
+    assert block.experts.forward.__func__ is _mps_experts_forward
     assert not probes
     assert block.experts.config._experts_implementation == "grouped_mm"
     experts = _Experts(block.experts.config)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        actual = _granite_mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput))
+        actual = _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput))
     assert actual == ("eager" if broken else "grouped_mm")
     assert len(caught) == int(broken)
     assert probes == [(torch.device("mps"), torch.float32)]
@@ -196,7 +223,7 @@ def test_concurrent_first_use_probes_once(monkeypatch):
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, NotImplementedError, TypeError])
-def test_probe_failure_is_diagnostic_and_not_cached(monkeypatch, error_type):
+def test_probe_failure_is_diagnostic_and_not_cached(monkeypatch, error_type, stub_dispatch):
     error = error_type("unsupported diagnostic")
 
     def probe(device, dtype):
@@ -207,14 +234,14 @@ def test_probe_failure_is_diagnostic_and_not_cached(monkeypatch, error_type):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with pytest.raises(RuntimeError, match="Select eager experts explicitly") as raised:
-            _granite_mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput))
+            _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput))
     assert raised.value.__cause__ is error
     assert not caught
     assert not moe._MPS_OUTPUT_SLICE_RESULTS
     assert experts.config._experts_implementation == "grouped_mm"
     monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", lambda device, dtype: False)
     assert (
-        _granite_mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == "grouped_mm"
+        _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == "grouped_mm"
     )
 
 
@@ -251,32 +278,34 @@ def test_unaffected_calls_do_not_probe(monkeypatch, policy, device):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         assert (
-            _granite_mps_experts_forward(experts, torch.empty(1).as_subclass(DeviceInput)) == policy
+            _mps_experts_forward(experts, torch.empty(1).as_subclass(DeviceInput)) == policy
         )
     assert not caught
     assert not moe._MPS_OUTPUT_SLICE_RESULTS
 
 
-def test_installation_is_idempotent_and_deepcopy_safe(monkeypatch):
+@pytest.mark.parametrize("expert_class", _EXPERT_CLASSES)
+def test_installation_is_idempotent_and_deepcopy_safe(monkeypatch, expert_class):
     import transformers
 
     monkeypatch.setattr(torch, "__version__", "2.11.0")
     monkeypatch.setattr(transformers, "__version__", "5.13.0")
-    block = _block()
-    _guard_granite_mps_experts(block)
+    block = _block(expert_class)
+    _guard_mps_experts(block)
     forward = block.experts.forward
-    _guard_granite_mps_experts(block)
+    _guard_mps_experts(block)
     assert block.experts.forward is forward
     cloned = copy.deepcopy(block)
     assert cloned.experts.forward.__self__ is cloned.experts
 
 
-def test_guarded_cpu_experts_keep_grouped_execution_without_warning(monkeypatch):
+@pytest.mark.parametrize("expert_class", _EXPERT_CLASSES)
+def test_guarded_cpu_experts_keep_grouped_execution_without_warning(monkeypatch, expert_class):
     import transformers
 
     monkeypatch.setattr(torch, "__version__", "2.11.0")
     monkeypatch.setattr(transformers, "__version__", "5.13.0")
-    block = _block()
+    block = _block(expert_class)
     with torch.no_grad():
         for parameter in block.experts.parameters():
             parameter.normal_(std=0.1)
@@ -285,7 +314,7 @@ def test_guarded_cpu_experts_keep_grouped_execution_without_warning(monkeypatch)
     weights = torch.ones(5, 1)
     with torch.no_grad():
         expected = block.experts(inputs, indices, weights)
-    _guard_granite_mps_experts(block)
+    _guard_mps_experts(block)
     with warnings.catch_warnings(record=True) as caught, torch.no_grad():
         warnings.simplefilter("always")
         actual = block.experts(inputs, indices, weights)
@@ -303,23 +332,24 @@ def test_dispatch_does_not_create_missing_policy():
     inputs = torch.empty(1).as_subclass(_MpsInput)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        assert _granite_mps_experts_forward(experts, inputs) is inputs
+        assert _mps_experts_forward(experts, inputs) is inputs
     assert not caught
     assert vars(experts.config) == {}
 
 
-def test_guarded_eager_cpu_forward_preserves_hooks_and_gradients(monkeypatch):
+@pytest.mark.parametrize("expert_class", _EXPERT_CLASSES)
+def test_guarded_eager_cpu_forward_preserves_hooks_and_gradients(monkeypatch, expert_class):
     import transformers
 
     monkeypatch.setattr(torch, "__version__", "2.11.0")
     monkeypatch.setattr(transformers, "__version__", "5.13.0")
-    block = _block()
+    block = _block(expert_class)
     block.experts.config._experts_implementation = "eager"
     with torch.no_grad():
         for parameter in block.experts.parameters():
             parameter.normal_(std=0.1)
     reference = copy.deepcopy(block)
-    _guard_granite_mps_experts(block)
+    _guard_mps_experts(block)
     inputs = torch.randn(5, 8, requires_grad=True)
     routes = torch.rand(5, 1, requires_grad=True)
     indices = torch.tensor([[0], [0], [1], [3], [3]])
@@ -351,10 +381,129 @@ def test_guarded_eager_cpu_forward_preserves_hooks_and_gradients(monkeypatch):
 def test_unrelated_experts_and_custom_forwards_are_unchanged():
     block = nn.Module()
     block.experts = _Experts(SimpleNamespace(_experts_implementation="grouped_mm"))
-    _guard_granite_mps_experts(block)
+    _guard_mps_experts(block)
     assert block.experts.forward.__func__ is _Experts.forward
     block = _block()
     custom = lambda hidden_states: hidden_states
     block.experts.forward = custom
-    _guard_granite_mps_experts(block)
+    _guard_mps_experts(block)
     assert block.experts.forward is custom
+
+
+def _decorated_block(interface, config=None):
+    @use_experts_implementation(experts_interface=interface)
+    class DecoratedExperts(nn.Module):
+        def __init__(self, config):
+            super().__init__()
+            self.received = None
+
+        def forward(self, hidden_states, token=None, *, payload=None):
+            self.received = (hidden_states, token, payload)
+            return "eager"
+
+    block = nn.Module()
+    block.experts = DecoratedExperts(
+        config if config is not None else SimpleNamespace(_experts_implementation="grouped_mm")
+    )
+    return block
+
+
+@pytest.mark.parametrize("broken", [False, True])
+@pytest.mark.parametrize("keyword_input", [False, True])
+def test_shared_decorator_dispatch_preserves_arguments_and_global_registry(
+    monkeypatch, broken, keyword_input
+):
+    def grouped(experts, hidden_states, token=None, *, payload=None):
+        experts.received = (hidden_states, token, payload)
+        return "grouped_mm"
+
+    registry = dict(hf_moe.ALL_EXPERTS_FUNCTIONS)
+    interface = ExpertsInterface()
+    interface["grouped_mm"] = grouped
+    monkeypatch.setattr(hf_moe, "grouped_mm_experts_forward", grouped)
+    monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", lambda device, dtype: broken)
+    block = _decorated_block(interface)
+    _guard_mps_experts(block)
+    assert block.experts.forward.__func__ is _mps_experts_forward
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    token, payload = object(), object()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if keyword_input:
+            actual = block.experts(hidden_states=inputs, token=token, payload=payload)
+        else:
+            actual = block.experts(inputs, token, payload=payload)
+    assert actual == ("eager" if broken else "grouped_mm")
+    assert block.experts.received == (inputs, token, payload)
+    assert len(caught) == int(broken)
+    assert vars(block.experts.config) == {"_experts_implementation": "grouped_mm"}
+    assert dict(hf_moe.ALL_EXPERTS_FUNCTIONS) == registry
+
+
+def test_guarded_shared_config_supports_concurrent_cpu_and_mps_dispatch(monkeypatch):
+    def grouped(experts, hidden_states):
+        return "grouped_mm"
+
+    interface = ExpertsInterface()
+    interface["grouped_mm"] = grouped
+    monkeypatch.setattr(hf_moe, "grouped_mm_experts_forward", grouped)
+    config = SimpleNamespace(_experts_implementation="grouped_mm")
+    blocks = [_decorated_block(interface, config), _decorated_block(interface, config)]
+    for block in blocks:
+        _guard_mps_experts(block)
+    inputs = [torch.empty(1).as_subclass(_MpsInput), torch.empty(1)]
+    with pytest.warns(RuntimeWarning, match="eager experts"):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            actual = list(pool.map(lambda pair: pair[0].experts(pair[1]), zip(blocks, inputs)))
+    assert actual == ["eager", "grouped_mm"]
+    assert all(block.experts.config is config for block in blocks)
+    assert vars(config) == {"_experts_implementation": "grouped_mm"}
+
+
+@pytest.mark.parametrize("expert_class", _EXPERT_CLASSES)
+def test_recovers_real_expert_eager_forward(expert_class):
+    assert _hf_eager_experts_forward(expert_class.forward) is expert_class.forward.__wrapped__
+
+
+def test_custom_grouped_interface_is_not_overridden():
+    def custom(experts, hidden_states):
+        return "custom"
+
+    interface = ExpertsInterface()
+    interface["grouped_mm"] = custom
+    block = _decorated_block(interface)
+    forward = block.experts.forward
+    _guard_mps_experts(block)
+    assert block.experts.forward == forward
+    with warnings.catch_warnings(record=True) as caught:
+        assert block.experts(torch.empty(1).as_subclass(_MpsInput)) == "custom"
+    assert not caught
+    assert not moe._MPS_OUTPUT_SLICE_RESULTS
+
+
+def test_interface_changed_after_installation_is_respected():
+    interface = ExpertsInterface()
+    block = _decorated_block(interface)
+    _guard_mps_experts(block)
+    assert block.experts.forward.__func__ is _mps_experts_forward
+    interface["grouped_mm"] = lambda experts, hidden_states: "custom"
+    with warnings.catch_warnings(record=True) as caught:
+        assert block.experts(torch.empty(1).as_subclass(_MpsInput)) == "custom"
+    assert not caught
+    assert not moe._MPS_OUTPUT_SLICE_RESULTS
+
+
+def test_mismatched_wrapped_forward_is_not_recognized(monkeypatch):
+    block = _decorated_block(ExpertsInterface())
+    forward = type(block.experts).forward
+    monkeypatch.setattr(forward, "__wrapped__", lambda experts, inputs: inputs)
+    _guard_mps_experts(block)
+    assert block.experts.forward.__func__ is forward
+
+
+def test_ordinary_expert_lists_are_unchanged():
+    block = nn.Module()
+    block.experts = nn.ModuleList([nn.Linear(8, 4)])
+    forward = block.experts.forward
+    _guard_mps_experts(block)
+    assert block.experts.forward == forward

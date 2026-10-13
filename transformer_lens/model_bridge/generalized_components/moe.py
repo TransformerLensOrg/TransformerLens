@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import logging
 import warnings
+from inspect import getclosurevars
 from threading import Lock
-from types import MethodType
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from types import CodeType, FunctionType, MethodType
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import torch
 from torch import nn
@@ -66,29 +67,64 @@ def _mps_output_slice_writes_are_broken(device: torch.device, dtype: torch.dtype
         return _MPS_OUTPUT_SLICE_RESULTS[key]
 
 
-def _granite_mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
+def _mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
     """Dispatch locally, without changing the config shared by other expert layers."""
     hidden_states = args[0] if args else kwargs.get("hidden_states")
     forward = type(experts).forward
     config: Any = getattr(experts, "config", None)
+    eager = None
     if (
         isinstance(hidden_states, torch.Tensor)
         and hidden_states.device.type == "mps"
         and getattr(config, "_experts_implementation", None) == "grouped_mm"
-        and _mps_output_slice_writes_are_broken(hidden_states.device, hidden_states.dtype)
+    ):
+        eager = _hf_eager_experts_forward(forward)
+    if eager is not None and _mps_output_slice_writes_are_broken(
+        hidden_states.device, hidden_states.dtype
     ):
         warnings.warn(
-            "Using eager Granite MoE Hybrid experts on MPS after detecting incorrect "
+            "Using eager experts on MPS after detecting incorrect "
             "matmul output-slice writes; expert execution may be slower.",
             RuntimeWarning,
             stacklevel=2,
         )
-        return getattr(forward, "__wrapped__")(experts, *args, **kwargs)
+        return eager(experts, *args, **kwargs)
     return forward(experts, *args, **kwargs)
 
 
-def _guard_granite_mps_experts(component: nn.Module) -> None:
-    """Install instance-local dispatch only for the verified HF expert implementation.
+def _hf_eager_experts_forward(forward: Any) -> Optional[Callable[..., Any]]:
+    """Recognize HF's shared grouped dispatcher and recover its original eager forward."""
+    from transformers.integrations.moe import (
+        ExpertsInterface,
+        grouped_mm_experts_forward,
+        use_experts_implementation,
+    )
+
+    if not isinstance(forward, FunctionType):
+        return None
+    if not any(
+        forward.__code__ is candidate
+        for wrapper in use_experts_implementation.__code__.co_consts
+        if isinstance(wrapper, CodeType) and wrapper.co_name == "wrapper"
+        for candidate in wrapper.co_consts
+        if isinstance(candidate, CodeType) and candidate.co_name == "forward"
+    ):
+        return None
+    closure = getclosurevars(forward).nonlocals
+    original = closure.get("original_forward")
+    interface = closure.get("experts_interface")
+    if (
+        not callable(original)
+        or original is not getattr(forward, "__wrapped__", None)
+        or not isinstance(interface, ExpertsInterface)
+        or interface.get_interface("grouped_mm", original) is not grouped_mm_experts_forward
+    ):
+        return None
+    return original
+
+
+def _guard_mps_experts(component: nn.Module) -> None:
+    """Install instance-local dispatch only for HF's shared grouped expert implementation.
 
     The bound method preserves nn.Module hooks and deepcopy semantics. Configs and
     global dispatch tables remain untouched, including during concurrent forwards.
@@ -97,22 +133,12 @@ def _guard_granite_mps_experts(component: nn.Module) -> None:
     if not isinstance(experts, nn.Module):
         return
     experts = unwrap_bridge(experts)
-    if type(experts).__module__ != (
-        "transformers.models.granitemoehybrid.modeling_granitemoehybrid"
-    ):
+    forward = type(experts).forward
+    if getattr(experts.forward, "__func__", None) is not forward:
         return
-    from transformers.models.granitemoehybrid.modeling_granitemoehybrid import (
-        GraniteMoeHybridExperts,
-    )
-
-    if type(experts) is not GraniteMoeHybridExperts:
+    if _hf_eager_experts_forward(forward) is None:
         return
-    # Respect custom instance forwards rather than silently replacing them.
-    if getattr(experts.forward, "__func__", None) is not GraniteMoeHybridExperts.forward:
-        return
-    if not callable(getattr(GraniteMoeHybridExperts.forward, "__wrapped__", None)):
-        raise RuntimeError("Granite eager expert forward is unavailable for the MPS workaround")
-    setattr(experts, "forward", MethodType(_granite_mps_experts_forward, experts))
+    setattr(experts, "forward", MethodType(_mps_experts_forward, experts))
 
 
 class UnfoldableMoEParameter(Exception):
@@ -516,7 +542,7 @@ class MoEBridge(GeneralizedComponent):
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
             kwargs = {**kwargs, "hidden_states": hooked}
-        _guard_granite_mps_experts(self.original_component)
+        _guard_mps_experts(self.original_component)
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):
             if not output:

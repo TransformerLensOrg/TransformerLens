@@ -1,4 +1,4 @@
-"""Granite expert correctness on MPS with fixed routes and an independent oracle."""
+"""Shared HF expert correctness on MPS with fixed routes and an independent oracle."""
 
 import copy
 import warnings
@@ -8,9 +8,13 @@ import pytest
 import torch
 from torch import nn
 from torch.nn import functional as F
+from transformers.integrations import moe as hf_moe
+from transformers.models.granitemoe.modeling_granitemoe import GraniteMoeExperts
 from transformers.models.granitemoehybrid.modeling_granitemoehybrid import (
     GraniteMoeHybridExperts,
 )
+from transformers.models.mixtral.modeling_mixtral import MixtralExperts
+from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeExperts
 
 from transformer_lens.model_bridge.generalized_components import moe
 from transformer_lens.model_bridge.generalized_components.moe import (
@@ -19,6 +23,11 @@ from transformer_lens.model_bridge.generalized_components.moe import (
 )
 
 pytestmark = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")
+
+
+@pytest.fixture(params=[GraniteMoeHybridExperts, GraniteMoeExperts, MixtralExperts, Qwen3MoeExperts])
+def expert_class(request):
+    return request.param
 
 
 @pytest.fixture(autouse=True)
@@ -51,13 +60,18 @@ def test_runtime_probe_matches_direct_slice_write_diagnostic(dtype):
 
 
 class _FixedRoutes(nn.Module):
-    def __init__(self):
+    def __init__(self, expert_class=GraniteMoeHybridExperts):
         super().__init__()
         config = SimpleNamespace(
-            hidden_size=64, intermediate_size=32, num_local_experts=4, hidden_act="silu"
+            hidden_size=64,
+            intermediate_size=32,
+            moe_intermediate_size=32,
+            num_local_experts=4,
+            num_experts=4,
+            hidden_act="silu",
         )
         config._experts_implementation = "grouped_mm"
-        self.experts = GraniteMoeHybridExperts(config)
+        self.experts = expert_class(config)
         generator = torch.Generator().manual_seed(0)
         with torch.no_grad():
             for parameter in self.experts.parameters():
@@ -84,8 +98,8 @@ def _oracle(block, inputs, top_k_weights=None):
     return torch.stack(contributions)
 
 
-def test_fixed_route_experts_match_independent_oracle_and_repeat():
-    block = _FixedRoutes()
+def test_fixed_route_experts_match_independent_oracle_and_repeat(expert_class):
+    block = _FixedRoutes(expert_class)
     inputs = torch.randn(10, 64, generator=torch.Generator().manual_seed(1))
     with torch.no_grad():
         expected = _oracle(block, inputs)
@@ -104,7 +118,7 @@ def test_fixed_route_experts_match_independent_oracle_and_repeat():
         assert first.device.type == "mps"
         torch.testing.assert_close(first.cpu(), expected, rtol=1e-4, atol=1e-6)
         torch.testing.assert_close(second, first, rtol=0, atol=0)
-        warned = any("eager Granite" in str(warning.message) for warning in caught)
+        warned = any("eager experts" in str(warning.message) for warning in caught)
         assert warned == _mps_output_slice_writes_are_broken(first.device, first.dtype)
         assert len(observed) == 2
         assert block.experts.config._experts_implementation == "grouped_mm"
@@ -112,8 +126,8 @@ def test_fixed_route_experts_match_independent_oracle_and_repeat():
         handle.remove()
 
 
-def test_dispatch_follows_cpu_mps_cpu_migration():
-    block = _FixedRoutes()
+def test_dispatch_follows_cpu_mps_cpu_migration(expert_class):
+    block = _FixedRoutes(expert_class)
     bridge = MoEBridge("moe")
     bridge.set_original_component(block)
     inputs = torch.randn(10, 64, generator=torch.Generator().manual_seed(1))
@@ -137,8 +151,8 @@ def test_dispatch_follows_cpu_mps_cpu_migration():
     assert block.experts.config._experts_implementation == "grouped_mm"
 
 
-def test_explicit_eager_policy_and_expert_hooks_are_preserved():
-    block = _FixedRoutes().to("mps")
+def test_explicit_eager_policy_and_expert_hooks_are_preserved(expert_class):
+    block = _FixedRoutes(expert_class).to("mps")
     block.experts.config._experts_implementation = "eager"
     bridge = MoEBridge("moe")
     bridge.set_original_component(block)
@@ -170,8 +184,8 @@ def test_explicit_eager_policy_and_expert_hooks_are_preserved():
         handle.remove()
 
 
-def test_corrected_experts_preserve_input_route_and_parameter_gradients():
-    block = _FixedRoutes()
+def test_corrected_experts_preserve_input_route_and_parameter_gradients(expert_class):
+    block = _FixedRoutes(expert_class)
     block.indices = torch.tensor(
         [
             [0, 1],
@@ -228,8 +242,8 @@ def test_corrected_experts_preserve_input_route_and_parameter_gradients():
     assert block.experts.config._experts_implementation == "grouped_mm"
 
 
-def test_failed_expert_forward_leaves_policy_and_parameters_intact():
-    block = _FixedRoutes().to("mps")
+def test_failed_expert_forward_leaves_policy_and_parameters_intact(expert_class):
+    block = _FixedRoutes(expert_class).to("mps")
     bridge = MoEBridge("moe")
     bridge.set_original_component(block)
     inputs = torch.randn(10, 64).to("mps")
@@ -253,3 +267,37 @@ def test_failed_expert_forward_leaves_policy_and_parameters_intact():
     torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-6)
     for parameter, saved in zip(block.experts.parameters(), parameters):
         torch.testing.assert_close(parameter, saved, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_real_expert_dispatch_selects_grouped_or_eager_from_probe(monkeypatch, expert_class, broken):
+    grouped_calls = []
+
+    def safe_grouped(inputs, weights, offs):
+        grouped_calls.append(offs.cpu().tolist())
+        products = []
+        start = 0
+        for index, end in enumerate(offs.cpu().tolist()):
+            products.append(inputs[start:end] @ weights[index])
+            start = end
+        return torch.cat(products)
+
+    monkeypatch.setattr(hf_moe, "_grouped_mm", safe_grouped)
+    monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", lambda device, dtype: broken)
+    registry = dict(hf_moe.ALL_EXPERTS_FUNCTIONS)
+    block = _FixedRoutes(expert_class)
+    inputs = torch.randn(10, 64, generator=torch.Generator().manual_seed(1))
+    with torch.no_grad():
+        expected = _oracle(block, inputs)
+    block.to("mps")
+    bridge = MoEBridge("moe")
+    bridge.set_original_component(block)
+    with torch.no_grad(), warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        actual = bridge(layer_input=inputs.to("mps"))
+    assert block.experts.forward.__func__ is moe._mps_experts_forward
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-6)
+    assert len(caught) == int(broken)
+    assert grouped_calls == ([] if broken else [[2, 5, 5, 10]] * 2)
+    assert block.experts.config._experts_implementation == "grouped_mm"
+    assert dict(hf_moe.ALL_EXPERTS_FUNCTIONS) == registry
