@@ -1198,6 +1198,20 @@ class ActivationCache:
         try:
             scale = self[key]
         except KeyError as e:
+            norm = f"ln{2 if mlp_input else 1}"
+            blocks = getattr(self.model, "blocks", None)
+            block = blocks[layer] if blocks is not None and layer is not None else None
+            if (
+                block is not None
+                and getattr(block, norm, None) is None
+                and getattr(block, f"{norm}_post", None) is not None
+            ):
+                sublayer = "MLP" if mlp_input else "attention"
+                raise KeyError(
+                    f"Layer {layer} has no {norm} (pre-{sublayer} norm): this architecture "
+                    f"normalizes sublayer outputs ({norm}_post) instead, so a mid-layer cached-scale "
+                    f"LN is undefined. Use apply_ln=False, or apply LN at the final layer."
+                ) from e
             raise KeyError(
                 f"Cached LN scale not found at '{key}'. apply_ln operations require the model "
                 f"to have cached this hook (some non-decoder-only architectures expose LN scale "

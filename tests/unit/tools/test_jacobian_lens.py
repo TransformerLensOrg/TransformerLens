@@ -1,6 +1,7 @@
 """Unit tests for the TransformerBridge-only Jacobian lens implementation."""
 
 import gc
+from dataclasses import FrozenInstanceError
 from enum import IntEnum
 from inspect import Parameter, signature
 from types import SimpleNamespace
@@ -725,6 +726,79 @@ def test_fit_rejects_negative_skip_first_positions(toy_model: _ToyBridge) -> Non
             corpus=CORPUS,
             skip_first_positions=-1,
             show_progress=False,
+        )
+
+
+def _prepare_toy_fit(dtype: torch.dtype = torch.float32) -> Any:
+    return jacobian_lens_module._prepare_fit(
+        _ToyBridge(dtype=dtype),
+        operation="JacobianLens",
+        estimator="jacobian_lens",
+        corpus=CORPUS,
+        source_layers=[-2, -3, -2],
+        dim_batch=4,
+        max_seq_len=64,
+        skip_first_positions=SKIP_FIRST,
+        metadata=None,
+    )
+
+
+def test_shared_fit_preparation_resolves_immutable_options() -> None:
+    options = _prepare_toy_fit()
+    assert options.source_layers == (N_LAYERS - 3, N_LAYERS - 2)
+    assert options.target_layer == N_LAYERS - 1
+    assert options.d_model == D_MODEL
+    assert options.fit_dtype == torch.float32
+    assert options.corpus == CORPUS
+    assert options.dim_batch == 4
+    assert options.max_seq_len == 64
+    assert options.skip_first_positions == SKIP_FIRST
+    with pytest.raises(FrozenInstanceError):
+        setattr(options, "target_layer", 0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_shared_fit_preparation_warns_without_running_half_precision_fit(
+    dtype: torch.dtype,
+) -> None:
+    with pytest.warns(UserWarning, match="transport gradients at reduced precision") as record:
+        options = _prepare_toy_fit(dtype)
+    assert options.fit_dtype == dtype
+    assert len(record) == 1
+    assert "float32 TransformerBridge" in str(record[0].message)
+
+
+def test_shared_dtype_warning_accounts_for_the_preparation_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    def warn(message: str, category: Any, *, stacklevel: int) -> None:
+        calls.append((message, category, stacklevel))
+
+    monkeypatch.setattr(jacobian_lens_module.warnings, "warn", warn)
+    _prepare_toy_fit(torch.bfloat16)
+    assert len(calls) == 1
+    assert calls[0][1:] == (UserWarning, 3)
+
+
+def test_estimators_share_fit_preparation_and_provenance_helpers() -> None:
+    import transformer_lens.tools.analysis.relevance_lens as relevance_lens_module
+
+    assert relevance_lens_module._prepare_fit is jacobian_lens_module._prepare_fit
+    assert relevance_lens_module._build_fit_metadata is jacobian_lens_module._build_fit_metadata
+
+
+def test_estimator_fields_cannot_override_common_fit_provenance() -> None:
+    model = _ToyBridge()
+    with pytest.raises(ValueError, match="estimator metadata cannot override"):
+        jacobian_lens_module._build_fit_metadata(
+            model,
+            _prepare_toy_fit(),
+            estimator="jacobian_lens",
+            n_prompts=1,
+            metadata=None,
+            estimator_metadata={"corpus": "other"},
         )
 
 

@@ -60,6 +60,8 @@ class MyArchitectureAdapter(ArchitectureAdapter):
         }
 ```
 
+Norm keys name the norm's position, not the HF attribute: `ln1`/`ln2` feed attention/MLP, `ln1_post`/`ln2_post` sit on their outputs before the residual add. A post-norm-only block (OLMo 2) declares only `ln1_post`/`ln2_post`; `BlockBridge` then derives `hook_attn_out`, `hook_mlp_out`, and `hook_resid_mid`. Never put a post-norm in the `ln1`/`ln2` slot — tools read those as the norm feeding the sublayer.
+
 Optional overrides on the class:
 
 - `default_cfg` — class-level defaults merged into the runtime config

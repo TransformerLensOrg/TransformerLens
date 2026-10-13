@@ -57,7 +57,7 @@ class TestFlexOlmoBridge:
         assert len(bridge.blocks) == 3
         assert isinstance(bridge.blocks[0].mlp, MoEBridge)
         # OLMo-2 post-norm layout carried through the subclass
-        assert bridge.blocks[0].ln1.original_component is not None
+        assert bridge.blocks[0].ln1_post.original_component is not None
 
     def test_forward_matches_hf(self) -> None:
         bridge, hf_reference = tiny_flex_olmo_bridge()

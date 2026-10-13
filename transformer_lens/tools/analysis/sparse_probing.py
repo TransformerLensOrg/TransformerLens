@@ -298,21 +298,109 @@ def _validate_inputs(
     )
 
 
+def _class_test_count(test_fraction: float, count: int) -> int:
+    return min(max(math.ceil(test_fraction * count), 1), count - 1)
+
+
 def _stratified_split(
     canonical_labels: torch.Tensor,
     test_fraction: float,
     generator: torch.Generator,
+    groups: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    if groups is not None:
+        return _grouped_split(canonical_labels, test_fraction, generator, groups)
     train_parts = []
     test_parts = []
     for class_value in (False, True):
         indices = torch.where(canonical_labels == class_value)[0]
         permutation = torch.randperm(indices.numel(), generator=generator)
         shuffled = indices[permutation]
-        test_count = min(max(math.ceil(test_fraction * indices.numel()), 1), indices.numel() - 1)
+        test_count = _class_test_count(test_fraction, indices.numel())
         test_parts.append(shuffled[:test_count])
         train_parts.append(shuffled[test_count:])
     return torch.cat(train_parts), torch.cat(test_parts)
+
+
+def _grouped_split(
+    canonical_labels: torch.Tensor,
+    test_fraction: float,
+    generator: torch.Generator,
+    groups: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Hold out whole groups, aiming each class's held-out rows at the row-split target."""
+    if not isinstance(groups, torch.Tensor):
+        raise ValueError(f"groups must be a torch.Tensor, got {type(groups).__name__}")
+    if groups.ndim != 1:
+        raise ValueError(f"groups must be one-dimensional, got shape {tuple(groups.shape)}")
+    if groups.shape[0] != canonical_labels.shape[0]:
+        raise ValueError("groups and labels must contain the same number of examples")
+    if (
+        torch.is_floating_point(groups)
+        or torch.is_complex(groups)
+        or groups.dtype == torch.bool
+        or groups.is_quantized
+    ):
+        raise ValueError(f"groups must have an integer dtype, got {groups.dtype}")
+
+    row_groups, group_indices = torch.unique(
+        groups.detach().to(device="cpu"), sorted=True, return_inverse=True
+    )
+    group_count = row_groups.numel()
+    negatives = torch.bincount(group_indices[~canonical_labels], minlength=group_count).tolist()
+    positives = torch.bincount(group_indices[canonical_labels], minlength=group_count).tolist()
+    counts = list(zip(negatives, positives))
+    if min(sum(1 for c in counts if c[k] > 0) for k in (0, 1)) < 2:
+        raise ValueError("groups must provide at least two groups per class")
+    totals = (sum(negatives), sum(positives))
+    targets = tuple(_class_test_count(test_fraction, total) for total in totals)
+
+    def cost(test_counts: tuple[int, int]) -> float:
+        return sum(((test_counts[k] - targets[k]) / totals[k]) ** 2 for k in (0, 1))
+
+    def shifted(test_counts: tuple[int, int], group: int, sign: int) -> tuple[int, int]:
+        return (
+            test_counts[0] + sign * counts[group][0],
+            test_counts[1] + sign * counts[group][1],
+        )
+
+    order = torch.randperm(group_count, generator=generator).tolist()
+    in_test = [False] * group_count
+    test_counts = (0, 0)
+    for group in order:
+        candidate = shifted(test_counts, group, 1)
+        if cost(candidate) < cost(test_counts):
+            in_test[group] = True
+            test_counts = candidate
+
+    # Balancing can leave a side without a class. Each class sits in two or more groups, so some
+    # group holding the missing class can always move without the donor losing a class it has.
+    while True:
+        train_counts = (totals[0] - test_counts[0], totals[1] - test_counts[1])
+        gaps = [
+            (to_test, k)
+            for to_test, held in ((True, test_counts), (False, train_counts))
+            for k in (0, 1)
+            if held[k] == 0
+        ]
+        if not gaps:
+            break
+        to_test, missing = gaps[0]
+        donor = train_counts if to_test else test_counts
+        sign = 1 if to_test else -1
+        movable = [
+            group
+            for group in order
+            if in_test[group] != to_test
+            and counts[group][missing] > 0
+            and all(donor[k] == 0 or donor[k] > counts[group][k] for k in (0, 1))
+        ]
+        group = min(movable, key=lambda group: cost(shifted(test_counts, group, sign)))
+        in_test[group] = to_test
+        test_counts = shifted(test_counts, group, sign)
+
+    test_rows = torch.tensor(in_test, dtype=torch.bool)[group_indices]
+    return torch.where(~test_rows)[0], torch.where(test_rows)[0]
 
 
 def _feature_scores(
@@ -765,6 +853,7 @@ def fit_sparse_probe(
     k: int,
     test_fraction: int | float = 0.3,
     positive_label: int | bool = 1,
+    groups: Integer[torch.Tensor, "example"] | None = None,
     preprocess: str = "none",
     std_floor: int | float = 1e-3,
     class_weight: str | None = "balanced",
@@ -784,8 +873,11 @@ def fit_sparse_probe(
             ``[example, feature]``.
         labels: Boolean or integer binary labels shaped ``[example]``.
         k: Number of coordinates selected by absolute train class-mean difference.
-        test_fraction: Requested held-out fraction within each class.
+        test_fraction: Requested held-out fraction within each class. With ``groups`` it
+            targets held-out rows per class, which whole groups only approximate.
         positive_label: Label defining the positive class and score sign.
+        groups: Optional integer group IDs; each group is held out whole, with both classes on
+            both sides. Groups may mix classes, but each class must appear in two or more.
         preprocess: ``"none"`` or train-only ``"standardize"``.
         std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, so a
             near-constant column is not amplified to unit scale; ``0`` disables it.
@@ -805,7 +897,7 @@ def fit_sparse_probe(
         and optimizer diagnostics.
 
     Raises:
-        ValueError: If inputs or options violate the binary-probe contract.
+        ValueError: If inputs, groups, or options violate the binary-probe contract.
         SparseProbeConvergenceError: If the optimizer fails or misses its
             convergence threshold.
     """
@@ -826,7 +918,7 @@ def fit_sparse_probe(
     )
     generator = torch.Generator(device="cpu").manual_seed(validated.seed)
     train_indices, test_indices = _stratified_split(
-        validated.canonical_labels, validated.test_fraction, generator
+        validated.canonical_labels, validated.test_fraction, generator, groups=groups
     )
     feature_scores = _feature_scores(
         validated.features, validated.canonical_labels[train_indices], train_indices
@@ -861,6 +953,7 @@ def sweep_sparse_probe(
     ks: Sequence[int],
     test_fraction: int | float = 0.3,
     positive_label: int | bool = 1,
+    groups: Integer[torch.Tensor, "example"] | None = None,
     preprocess: str = "none",
     std_floor: int | float = 1e-3,
     class_weight: str | None = "balanced",
@@ -885,8 +978,11 @@ def sweep_sparse_probe(
             ``[example, feature]``.
         labels: Boolean or integer binary labels shaped ``[example]``.
         ks: Strictly increasing unique sparsity levels.
-        test_fraction: Requested held-out fraction within each class.
+        test_fraction: Requested held-out fraction within each class. With ``groups`` it
+            targets held-out rows per class, which whole groups only approximate.
         positive_label: Label defining the positive class and score sign.
+        groups: Optional integer group IDs; each group is held out whole, with both classes on
+            both sides. Groups may mix classes, but each class must appear in two or more.
         preprocess: ``"none"`` or train-only ``"standardize"``.
         std_floor: Lower bound on a non-constant column's ``"standardize"`` scale, shared by
             every fit; ``0`` disables it.
@@ -910,7 +1006,7 @@ def sweep_sparse_probe(
         cover only its converged repeats.
 
     Raises:
-        ValueError: If the grid, controls, inputs, or options are invalid.
+        ValueError: If the grid, controls, inputs, groups, or options are invalid.
         SparseProbeConvergenceError: If a main-probe fit fails to converge.
             Control-fit convergence failures do not raise here — they are collected
             in ``SparseProbeSweep.rejections``; any other error still propagates.
@@ -943,7 +1039,7 @@ def sweep_sparse_probe(
     )
     generator = torch.Generator(device="cpu").manual_seed(validated.seed)
     train_indices, test_indices = _stratified_split(
-        validated.canonical_labels, validated.test_fraction, generator
+        validated.canonical_labels, validated.test_fraction, generator, groups=groups
     )
     train_labels = validated.canonical_labels[train_indices]
     feature_scores = _feature_scores(validated.features, train_labels, train_indices)

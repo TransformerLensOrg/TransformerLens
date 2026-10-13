@@ -240,6 +240,8 @@ class GatedMLPBridge(MLPBridge):
         original = component._modules[attr] if was_child_module else getattr(component, attr, None)
         # _find_activation_attr only returns an attribute whose value is callable.
         wrapper = _IdentityRuleActivation(cast(Callable[[torch.Tensor], torch.Tensor], original))
+        # Avoid recursively changing the original activation's training state.
+        wrapper.training = component.training
         if not was_child_module:
             component.__dict__.pop(attr, None)
         component._modules[attr] = wrapper

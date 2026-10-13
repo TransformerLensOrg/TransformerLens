@@ -144,14 +144,10 @@ def test_attn_in_cross_run_patch_matches_legacy(
 @pytest.mark.slow
 @pytest.mark.skipif(
     os.getenv("RUN_OLMO2_GAP_TEST", "") != "1",
-    reason="Set RUN_OLMO2_GAP_TEST=1 to exercise the OLMo-2 post-norm gap (1B-param download).",
+    reason="Set RUN_OLMO2_GAP_TEST=1 to exercise OLMo-2 post-norm split-QKV (1B-param download).",
 )
-@pytest.mark.xfail(
-    strict=True,
-    reason="OLMo 2 post-norm: ln1 maps to post_attention_layernorm, so pre-ln1 capture "
-    "reads post-attention residual. Flip to passing when the carve-out is fixed.",
-)
-def test_olmo2_pre_ln_capture_known_gap() -> None:
+def test_olmo2_post_norm_split_qkv_cross_run_patching() -> None:
+    """OLMo 2 has no pre-attention norm, so the fork must not re-normalize."""
     bridge = TransformerBridge.boot_transformers("allenai/OLMo-2-0425-1B", device="cpu")
     bridge.enable_compatibility_mode(no_processing=True)
     bridge.set_use_split_qkv_input(True)

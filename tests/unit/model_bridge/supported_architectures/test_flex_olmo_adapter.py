@@ -48,9 +48,9 @@ class TestFlexOlmoMapping:
     def test_inherits_olmo2_post_norm_layout(self, adapter):
         assert isinstance(adapter, Olmo2ArchitectureAdapter)
         blocks = adapter.component_mapping["blocks"]
-        assert isinstance(blocks.submodules["ln1"], RMSNormalizationBridge)
-        assert blocks.submodules["ln1"].name == "post_attention_layernorm"
-        assert blocks.submodules["ln2"].name == "post_feedforward_layernorm"
+        assert isinstance(blocks.submodules["ln1_post"], RMSNormalizationBridge)
+        assert blocks.submodules["ln1_post"].name == "post_attention_layernorm"
+        assert blocks.submodules["ln2_post"].name == "post_feedforward_layernorm"
         attn = blocks.submodules["attn"]
         assert attn.submodules["q_norm"].name == "q_norm"
 
@@ -58,8 +58,8 @@ class TestFlexOlmoMapping:
         """hook_attn_out / hook_mlp_out must stay on the post-norm outputs (#1648);
         a future de-inheritance from olmo2 must not silently regress this."""
         block = adapter.component_mapping["blocks"]
-        assert block.hook_aliases["hook_attn_out"] == "ln1.hook_out"
-        assert block.hook_aliases["hook_mlp_out"] == "ln2.hook_out"
+        assert block.hook_aliases["hook_attn_out"] == "ln1_post.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
         assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
 
 
