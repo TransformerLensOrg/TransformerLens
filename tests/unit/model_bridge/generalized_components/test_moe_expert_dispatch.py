@@ -1,6 +1,7 @@
 """Shared HF expert dispatch without shared configuration mutation."""
 
 import copy
+import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
@@ -33,9 +34,11 @@ _EXPERT_CLASSES = [GraniteMoeHybridExperts, GraniteMoeExperts, MixtralExperts, Q
 @pytest.fixture(autouse=True)
 def isolated_probe(monkeypatch):
     moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+    moe._MPS_EXPERTS_WARNED = False
     monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", lambda device, dtype: True)
     yield
     moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+    moe._MPS_EXPERTS_WARNED = False
 
 
 class _MpsInput(torch.Tensor):
@@ -102,10 +105,12 @@ def test_exception_does_not_leave_dispatch_state(stub_dispatch):
         _mps_experts_forward(experts, hidden_states=torch.empty(1).as_subclass(_MpsInput))
     assert experts.config._experts_implementation == "grouped_mm"
     experts.fail = False
-    with pytest.warns(RuntimeWarning):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         assert (
             _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == "eager"
         )
+    assert not caught
 
 
 def _block(expert_class=GraniteMoeHybridExperts):
@@ -507,3 +512,109 @@ def test_ordinary_expert_lists_are_unchanged():
     forward = block.experts.forward
     _guard_mps_experts(block)
     assert block.experts.forward == forward
+
+
+@pytest.mark.parametrize("concurrent", [False, True])
+def test_warning_is_once_across_layers_models_and_forwards(concurrent):
+    blocks = [_decorated_block(ExpertsInterface()) for _ in range(4)]
+    for block in blocks:
+        _guard_mps_experts(block)
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if concurrent:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda block: block.experts(inputs), blocks * 8))
+        else:
+            results = [block.experts(inputs) for block in blocks * 8]
+    assert results == ["eager"] * 32
+    assert len(caught) == 1
+    assert caught[0].category is RuntimeWarning
+    assert "eager experts" in str(caught[0].message)
+    assert moe._MPS_EXPERTS_WARNED
+
+
+def test_warning_identifies_external_caller_through_runtime_wrappers(monkeypatch):
+    modules = []
+
+    def currentframe():
+        frame = sys._getframe(1)
+        while frame is not None:
+            modules.append(frame.f_globals.get("__name__", ""))
+            frame = frame.f_back
+        return sys._getframe(1)
+
+    monkeypatch.setattr(moe, "currentframe", currentframe)
+    block = _decorated_block(ExpertsInterface())
+    _guard_mps_experts(block)
+    assert not moe._MPS_EXPERTS_WARNED
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        caller_line = sys._getframe().f_lineno + 1
+        result = block.experts(inputs)
+    assert result == "eager"
+    assert len(caught) == 1
+    assert caught[0].filename == __file__
+    assert caught[0].lineno == caller_line
+    assert any(module.startswith("jaxtyping.") for module in modules)
+    assert any(module.startswith("torch.") for module in modules)
+
+
+def test_warning_as_error_propagates_without_consuming_notification():
+    block = _decorated_block(ExpertsInterface())
+    _guard_mps_experts(block)
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        for _ in range(2):
+            with pytest.raises(RuntimeWarning, match="eager experts"):
+                block.experts(inputs)
+            assert not moe._MPS_EXPERTS_WARNED
+            assert block.experts.received is None
+            assert block.experts.config._experts_implementation == "grouped_mm"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert block.experts(inputs) == "eager"
+        assert block.experts(inputs) == "eager"
+    assert len(caught) == 1
+    assert moe._MPS_EXPERTS_WARNED
+
+
+def test_unaffected_calls_do_not_consume_fallback_notification(monkeypatch):
+    def grouped(experts, hidden_states):
+        return "grouped_mm"
+
+    interface = ExpertsInterface()
+    interface["grouped_mm"] = grouped
+    monkeypatch.setattr(hf_moe, "grouped_mm_experts_forward", grouped)
+    monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", lambda device, dtype: False)
+    block = _decorated_block(interface)
+    _guard_mps_experts(block)
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert block.experts(torch.empty(1)) == "grouped_mm"
+        assert block.experts(inputs) == "grouped_mm"
+        block.experts.config._experts_implementation = "eager"
+        assert block.experts(inputs) == "eager"
+    assert not caught
+    assert not moe._MPS_EXPERTS_WARNED
+    block.experts.config._experts_implementation = "grouped_mm"
+    moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+    monkeypatch.setattr(moe, "_probe_mps_output_slice_writes", lambda device, dtype: True)
+    with pytest.warns(RuntimeWarning, match="eager experts"):
+        assert block.experts(inputs) == "eager"
+
+
+def test_fallback_warning_does_not_suppress_unrelated_warnings():
+    block = _decorated_block(ExpertsInterface())
+    _guard_mps_experts(block)
+    inputs = torch.empty(1).as_subclass(_MpsInput)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert block.experts(inputs) == "eager"
+        warnings.warn("Unrelated diagnostic", UserWarning)
+        assert block.experts(inputs) == "eager"
+        warnings.warn("Unrelated diagnostic", UserWarning)
+    assert [warning.category for warning in caught] == [RuntimeWarning, UserWarning, UserWarning]

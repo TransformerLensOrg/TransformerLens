@@ -33,8 +33,10 @@ def expert_class(request):
 @pytest.fixture(autouse=True)
 def isolated_probe_cache():
     moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+    moe._MPS_EXPERTS_WARNED = False
     yield
     moe._MPS_OUTPUT_SLICE_RESULTS.clear()
+    moe._MPS_EXPERTS_WARNED = False
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
@@ -118,8 +120,12 @@ def test_fixed_route_experts_match_independent_oracle_and_repeat(expert_class):
         assert first.device.type == "mps"
         torch.testing.assert_close(first.cpu(), expected, rtol=1e-4, atol=1e-6)
         torch.testing.assert_close(second, first, rtol=0, atol=0)
-        warned = any("eager experts" in str(warning.message) for warning in caught)
-        assert warned == _mps_output_slice_writes_are_broken(first.device, first.dtype)
+        fallback_warnings = [
+            warning for warning in caught if "eager experts" in str(warning.message)
+        ]
+        assert len(fallback_warnings) == int(
+            _mps_output_slice_writes_are_broken(first.device, first.dtype)
+        )
         assert len(observed) == 2
         assert block.experts.config._experts_implementation == "grouped_mm"
     finally:
