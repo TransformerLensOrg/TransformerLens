@@ -1705,19 +1705,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
             block = self.blocks[i]
+            scale = getattr(block, "residual_contribution_scale", 1.0)
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O.to(accumulated.device)
+                accumulated = accumulated + b_O.to(accumulated.device) * scale
             if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
-                    accumulated = accumulated + b_out.to(accumulated.device)
+                    accumulated = accumulated + b_out.to(accumulated.device) * scale
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
+            scale = getattr(block, "residual_contribution_scale", 1.0)
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O.to(accumulated.device)
+                accumulated = accumulated + b_O.to(accumulated.device) * scale
         return accumulated
 
     def all_composition_scores(self, mode: str) -> CompositionScores:

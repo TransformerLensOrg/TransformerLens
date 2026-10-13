@@ -30,6 +30,8 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
     multipliers are applied by the HF model's native forward pass;
     ScaledResidualBlockBridge accounts for residual_multiplier so
     hook_attn_out / hook_mlp_out expose the scaled residual contributions.
+    EmbeddingBridge similarly exposes embedding_multiplier at hook_embed,
+    while per-head hook_result includes the residual multiplier.
 
     Optional Parameters (may not exist in state_dict):
     -------------------------------------------------
@@ -60,6 +62,13 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         """Build the standard Granite attention bridge (GraniteMoeHybrid passes optional)."""
         return self._qkvo_attention_bridge(optional=optional)
 
+    def _build_embedding_bridge(self) -> EmbeddingBridge:
+        """Expose the embedding's scaled residual contribution at hook_out."""
+        return EmbeddingBridge(
+            name="model.embed_tokens",
+            output_contribution_scale=getattr(self.cfg, "embedding_multiplier", 1.0),
+        )
+
     def _build_mlp_bridge(self) -> GatedMLPBridge:
         """Build the dense gated MLP bridge."""
         return self._gated_mlp()
@@ -84,7 +93,7 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
     def _build_component_mapping(self) -> dict:
         """Build the full component mapping for dense Granite."""
         return {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "embed": self._build_embedding_bridge(),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             # HF multiplies each sublayer output by residual_multiplier before the
             # residual add, so hook_attn_out / hook_mlp_out must expose the scaled

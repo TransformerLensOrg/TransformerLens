@@ -1,7 +1,6 @@
 """Granite MoE architecture adapter."""
 
 from transformer_lens.model_bridge.generalized_components import (
-    EmbeddingBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     ScaledResidualBlockBridge,
@@ -23,7 +22,7 @@ class GraniteMoeArchitectureAdapter(GraniteArchitectureAdapter):
     def _build_component_mapping(self) -> dict:
         """Build component mapping with MoE instead of dense MLP."""
         return {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "embed": self._build_embedding_bridge(),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb"),
             # HF multiplies each sublayer output by residual_multiplier before the
             # residual add; hook_attn_out / hook_mlp_out expose the scaled contribution.
