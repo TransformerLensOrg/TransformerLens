@@ -9,9 +9,17 @@ fire before any forward pass.
 from unittest.mock import MagicMock
 
 import pytest
+import torch
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components import (
+    BlockBridge,
+    LinearBridge,
+)
 from transformer_lens.tools.analysis import direct_logit_attribution
+
+TOKENS = torch.tensor([[1, 2, 3, 4]])
 
 
 def _mock_bridge(compatibility_mode=True, layer_types=("attn+mlp",)):
@@ -51,3 +59,59 @@ def test_direct_logit_attribution_is_exported_from_analysis_package():
 
     assert analysis.direct_logit_attribution is direct_logit_attribution
     assert hasattr(analysis, "DirectLogitAttribution")
+
+
+def _native_bridge(compat=True):
+    cfg = TransformerBridgeConfig(
+        n_layers=2,
+        d_model=32,
+        d_head=8,
+        n_heads=4,
+        d_mlp=64,
+        d_vocab=16,
+        n_ctx=8,
+        act_fn="gelu",
+        normalization_type="LN",
+        seed=0,
+    )
+    model = TransformerBridge.boot_native(cfg).eval()
+    if compat:
+        model.enable_compatibility_mode()
+    return model
+
+
+def _forbid_forward(model, monkeypatch):
+    def forward_ran(*args, **kwargs):
+        raise AssertionError("the model was run before the readout-path check")
+
+    monkeypatch.setattr(model, "run_with_cache", forward_ran)
+
+
+class _StackedStreamBlock(BlockBridge):
+    hook_out_is_single_residual_stream = False
+
+
+@pytest.mark.parametrize("compat", [True, False])
+def test_rejects_head_transform_component_before_any_forward(compat, monkeypatch):
+    model = _native_bridge(compat)
+    model.add_module("mlm_head", LinearBridge(name="cls.predictions.transform.dense").eval())
+    _forbid_forward(model, monkeypatch)
+    with pytest.raises(ValueError, match=r"DLA .* mounts \['mlm_head'\]"):
+        direct_logit_attribution(model, TOKENS, answer_tokens=5)
+
+
+def test_rejects_multi_stream_block_before_any_forward(monkeypatch):
+    model = _native_bridge()
+    model.blocks[0].__class__ = _StackedStreamBlock
+    _forbid_forward(model, monkeypatch)
+    with pytest.raises(ValueError, match="DLA requires single-stream"):
+        direct_logit_attribution(model, TOKENS, answer_tokens=5)
+
+
+def test_prompt_path_rejects_a_readout_transform_it_cannot_see():
+    model = _native_bridge()
+    torch.manual_seed(1)
+    dense = torch.nn.Linear(32, 32)
+    model.unembed.register_forward_pre_hook(lambda module, args: (torch.tanh(dense(args[0])),))
+    with pytest.raises(ValueError, match="differs from the model's own log-probabilities"):
+        direct_logit_attribution(model, TOKENS, answer_tokens=5, incorrect_tokens=6)

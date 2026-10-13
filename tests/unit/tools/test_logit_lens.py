@@ -1,6 +1,6 @@
 """Unit tests for the logit lens and logit readout.
 
-Everything here runs on a tiny random GPT-2 built in memory (no Hub download);
+Everything here runs on a tiny random GPT-2 or native bridge built in memory (no Hub download);
 real-model exactness lives in ``tests/integration/test_logit_lens.py``.
 """
 
@@ -10,6 +10,12 @@ import pytest
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.generalized_components import (
+    BlockBridge,
+    LinearBridge,
+)
 from transformer_lens.model_bridge.sources import build_bridge_from_module
 from transformer_lens.tools.analysis import (
     LogitLensResult,
@@ -426,3 +432,75 @@ def test_empty_vectors_raise(tiny):
     model, _, _ = tiny
     with pytest.raises(ValueError, match="no rows"):
         logit_readout(model, torch.zeros(0, D_MODEL))
+
+
+def _native_bridge():
+    cfg = TransformerBridgeConfig(
+        n_layers=2,
+        d_model=D_MODEL,
+        d_head=8,
+        n_heads=4,
+        d_mlp=64,
+        d_vocab=D_VOCAB,
+        n_ctx=16,
+        act_fn="gelu",
+        normalization_type="LN",
+        seed=0,
+    )
+    return TransformerBridge.boot_native(cfg).eval()
+
+
+def _forbid_forward(model, monkeypatch):
+    def forward_ran(*args, **kwargs):
+        raise AssertionError("the model was run before the readout-path check")
+
+    monkeypatch.setattr(model, "run_with_cache", forward_ran)
+
+
+class _StackedStreamBlock(BlockBridge):
+    hook_out_is_single_residual_stream = False
+
+
+def test_head_transform_component_is_refused_before_any_forward(monkeypatch):
+    model = _native_bridge()
+    model.add_module("mlm_head", LinearBridge(name="cls.predictions.transform.dense").eval())
+    _forbid_forward(model, monkeypatch)
+    with pytest.raises(ValueError, match=r"logit_lens .* mounts \['mlm_head'\]"):
+        logit_lens(model, TOKENS)
+    with pytest.raises(ValueError, match=r"logit_readout .* mounts \['mlm_head'\]"):
+        logit_readout(model, torch.zeros(2, D_MODEL))
+
+
+def test_multi_stream_block_is_refused_before_any_forward(monkeypatch):
+    model = _native_bridge()
+    model.blocks[1].__class__ = _StackedStreamBlock
+    _forbid_forward(model, monkeypatch)
+    with pytest.raises(ValueError, match=r"blocks.1 \(_StackedStreamBlock\) carries a stack"):
+        logit_lens(model, TOKENS)
+    with pytest.raises(ValueError, match="single-stream"):
+        logit_readout(model, torch.zeros(2, D_MODEL))
+
+
+def test_prompt_path_refuses_a_readout_transform_it_cannot_see():
+    model = _native_bridge()
+    torch.manual_seed(1)
+    dense = torch.nn.Linear(D_MODEL, D_MODEL)
+    model.unembed.register_forward_pre_hook(lambda module, args: (torch.tanh(dense(args[0])),))
+    with pytest.raises(ValueError, match="differs from the model's own logits by up to"):
+        logit_lens(model, TOKENS)
+
+
+def test_prompt_path_tolerates_low_precision_sized_readout_error():
+    model = _native_bridge()
+    model.unembed.register_forward_pre_hook(lambda module, args: (args[0] * 1.005,))
+    logit_lens(model, TOKENS)
+    model.unembed.register_forward_pre_hook(lambda module, args: (args[0] * 1.5,))
+    with pytest.raises(ValueError, match="differs from the model's own logits"):
+        logit_lens(model, TOKENS)
+
+
+def test_prompt_path_refuses_logits_narrower_than_w_u():
+    model = _native_bridge()
+    model.unembed.register_forward_hook(lambda module, args, output: output[..., :-1])
+    with pytest.raises(ValueError, match=r"returned logits of shape \(2, 5, 63\)"):
+        logit_lens(model, TOKENS)
