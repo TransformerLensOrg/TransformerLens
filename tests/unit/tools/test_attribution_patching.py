@@ -1392,7 +1392,7 @@ class _EdgeScoringBlock(nn.Module):
             per_head_out = self.hook_result(per_head_out_raw)
         else:
             per_head_out = per_head_out_raw
-        residual = residual + per_head_out.sum(dim=-2)
+        residual = residual + self._attention_write(per_head_out.sum(dim=-2))
 
         mlp_in = self.hook_mlp_in(residual) if self.cfg.use_hook_mlp_in else residual
         mlp_out = self.hook_mlp_out(self.w_mlp(mlp_in))
@@ -1406,6 +1406,10 @@ class _EdgeScoringBlock(nn.Module):
         edge into the logits reader.
         """
         return per_head_out
+
+    def _attention_write(self, summed: torch.Tensor) -> torch.Tensor:
+        """The summed head output as the residual stream receives it; identity here."""
+        return summed
 
 
 class _NonlinearEdgeScoringBlock(_EdgeScoringBlock):
@@ -3287,3 +3291,166 @@ def test_random_edge_set_baseline_is_reproducible_under_a_fixed_seed() -> None:
     assert first == second
     # Different seeds give different draws, so the seed is actually used.
     assert first != _random_edge_sets(edges, 8, draws=3, seed=1)
+
+
+class _ResidualWriteEdgeScoringBlock(_EdgeScoringBlock):
+    """``_EdgeScoringBlock`` whose summed head output is transformed before the residual add.
+
+    ``"bias"`` adds a constant, ``"rms"`` RMS-normalizes each position, ``"scale"`` halves it,
+    ``"parallel"`` adds a second mixer's output that bypasses ``hook_attn_out``.
+    """
+
+    def __init__(
+        self, layer: int, cfg: SimpleNamespace, *, write: str, marker: bool, dtype: torch.dtype
+    ) -> None:
+        super().__init__(D_MODEL, N_HEADS, D_HEAD, layer, dtype, cfg)
+        self.write = write
+        self.output_bias = torch.linspace(0.5, 1.0, D_MODEL, dtype=dtype)
+        self.hook_attn_out = HookPoint()
+        self.hook_attn_out.name = f"blocks.{layer}.hook_attn_out"
+        if marker:
+            # The records BlockBridge keeps for a post-norm, a scaled residual or a parallel mixer.
+            self.submodules = {"attn": nn.Identity(), "ln1": nn.Identity()}
+            if write == "rms":
+                self.submodules["ln1_post"] = nn.Identity()
+                self.hook_aliases = {"hook_attn_out": "ln1_post.hook_out"}
+            elif write == "scale":
+                self.residual_contribution_scale = 0.5
+            elif write == "parallel":
+                self.submodules["mamba"] = nn.Identity()
+
+    def _attention_write(self, summed: torch.Tensor) -> torch.Tensor:
+        if self.write == "parallel":
+            return self.hook_attn_out(summed) + torch.tanh(summed)
+        if self.write == "bias":
+            written = summed + self.output_bias
+        elif self.write == "rms":
+            written = summed * torch.rsqrt(summed.pow(2).mean(dim=-1, keepdim=True) + 1e-6)
+        else:
+            written = summed * 0.5
+        return self.hook_attn_out(written)
+
+
+class _ResidualWriteEdgeScoringToyBridge(_EdgeScoringToyBridge):
+    """``_EdgeScoringToyBridge`` built from :class:`_ResidualWriteEdgeScoringBlock` layers."""
+
+    def __init__(
+        self, *, write: str, marker: bool = False, dtype: torch.dtype = torch.float32
+    ) -> None:
+        super().__init__(dtype=dtype)
+        torch.manual_seed(2)
+        self.blocks = nn.ModuleList(
+            [
+                _ResidualWriteEdgeScoringBlock(
+                    layer, self.cfg, write=write, marker=marker, dtype=dtype
+                )
+                for layer in range(N_LAYERS)
+            ]
+        )
+        self.forward_calls = 0
+        self.eval()
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        hooks = super().hook_dict
+        for layer, block in enumerate(self.blocks):
+            hooks[f"blocks.{layer}.hook_attn_out"] = block.hook_attn_out
+        return hooks
+
+    def forward(
+        self, tokens: torch.Tensor, return_type: str | None = "logits"
+    ) -> torch.Tensor | None:
+        self.forward_calls += 1
+        return super().forward(tokens, return_type=return_type)
+
+
+_NON_ADDITIVE = "normalized or scaled before the residual add.*not a head's residual contribution"
+_TRANSFORMED_WRITES = ["rms", "scale"]
+_DECLARED_WRITES = [*_TRANSFORMED_WRITES, "parallel"]
+
+
+def _residual_write_inputs() -> tuple[torch.Tensor, torch.Tensor, Callable]:
+    return torch.tensor([[1, 2, 3]]), torch.tensor([[3, 2, 1]]), _metric_fn(answer=1, wrong=2)
+
+
+@pytest.mark.parametrize("write", _DECLARED_WRITES)
+def test_edge_attribution_refuses_a_declared_residual_write_transform_before_any_forward(
+    write: str,
+) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write, marker=True)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize("write", _DECLARED_WRITES)
+def test_faithfulness_refuses_a_declared_residual_write_transform_before_any_forward(
+    write: str,
+) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write, marker=True)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize("write", _TRANSFORMED_WRITES)
+def test_edge_attribution_refuses_an_undeclared_residual_write_transform_before_the_backward(
+    write: str,
+) -> None:
+    """Without the structural record, the clean cache's head sum still exposes the transform."""
+    model = _ResidualWriteEdgeScoringToyBridge(write=write)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    assert model.forward_calls == 1
+
+
+@pytest.mark.parametrize("write", _TRANSFORMED_WRITES)
+def test_faithfulness_refuses_an_undeclared_residual_write_transform(write: str) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 1
+
+
+@pytest.mark.parametrize("marker", [True, False])
+@pytest.mark.parametrize("write", _TRANSFORMED_WRITES)
+def test_node_attribution_still_scores_a_transformed_residual_write(
+    write: str, marker: bool
+) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write, marker=marker)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    result = attribution_patch(model, clean, corrupt, metric)
+
+    assert len(result.node_scores) == _expected_node_count()
+    assert all(math.isfinite(score) for score in result.node_scores.values())
+    assert any(score != 0.0 for score in result.node_scores.values())
+
+
+def test_a_constant_attention_output_offset_keeps_edge_scoring_exact() -> None:
+    """An output bias belongs to no head, so the guard must accept it and edges stay exact."""
+    model = _ResidualWriteEdgeScoringToyBridge(write="bias")
+    clean, corrupt, metric = _residual_write_inputs()
+
+    edge_result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    node_result = attribution_patch(model, clean, corrupt, metric)
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    assert set(edge_result.node_scores) == set(node_result.node_scores)
+    for node, direct_score in node_result.node_scores.items():
+        assert edge_result.node_scores[node] == pytest.approx(direct_score, abs=1e-5)
+    assert report.recovered == pytest.approx(0.0, abs=1e-6)

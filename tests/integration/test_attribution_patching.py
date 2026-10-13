@@ -518,3 +518,43 @@ def test_edge_class_gpt2_removal_keeps_candidate_exclusions(
     if edge_class != "into_logits":
         gap = report.full_metric - report.corrupt_metric
         assert abs(float(metric(expected) - metric(restored)) / gap) > 1e-4
+
+
+POST_NORM_MODEL = "hf-internal-testing/tiny-random-Gemma2ForCausalLM"
+
+
+@pytest.fixture(scope="module")
+def post_norm_bridge():
+    return TransformerBridge.boot_transformers(POST_NORM_MODEL, device="cpu", dtype=torch.float32)
+
+
+def test_post_norm_bridge_refuses_edge_scoring_before_any_forward(post_norm_bridge) -> None:
+    """Gemma 2 normalizes the head sum before the residual add, so per-head results differ."""
+    clean = torch.tensor([[2, 10, 11, 12]])
+    corrupt = torch.tensor([[2, 10, 13, 12]])
+    metric = _logit_diff_metric(answer_id=5, wrong_id=6)
+    refusal = "normalized or scaled before the residual add.*not a head's residual contribution"
+    forwards: list[int] = []
+    counter = post_norm_bridge.original_model.register_forward_pre_hook(
+        lambda *_: forwards.append(1)
+    )
+    try:
+        with pytest.raises(ValueError, match=refusal):
+            attribution_patch(
+                post_norm_bridge,
+                clean,
+                corrupt,
+                metric,
+                config=EdgeAttributionConfig(granularity="edge"),
+            )
+        with pytest.raises(ValueError, match=refusal):
+            faithfulness(post_norm_bridge, clean, corrupt, metric, [])
+        assert forwards == []
+
+        result = attribution_patch(post_norm_bridge, clean, corrupt, metric)
+    finally:
+        counter.remove()
+
+    assert forwards
+    assert {node.kind for node in result.node_scores} == {"embed", "attn_head_out", "mlp_out"}
+    assert all(math.isfinite(score) for score in result.node_scores.values())

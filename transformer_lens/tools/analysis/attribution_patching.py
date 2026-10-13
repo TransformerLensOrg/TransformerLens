@@ -56,6 +56,9 @@ from typing import (
 
 import torch
 
+from transformer_lens.model_bridge.generalized_components.block import (
+    VARIANT_SUBMODULE_NAMES,
+)
 from transformer_lens.tools.analysis._model_state import require_eval_mode
 
 MetricFn = Callable[[torch.Tensor], torch.Tensor]
@@ -522,6 +525,86 @@ def _edge_hook_names(n_layers: int) -> list[str]:
     return _required_hook_names(n_layers, granularity="edge") + _required_edge_reader_hook_names(
         n_layers
     )
+
+
+# Pre-norm blocks measured at most 2.7e-3 (gpt2, pythia-70m and Qwen2.5-0.5B in bfloat16, CPU
+# and MPS; float32 stays below 1e-7); post-norm blocks measured 0.05 to 19.
+_ATTN_WRITE_RTOL = 2.5e-2
+
+
+def _attn_write_hook_names(n_layers: int) -> list[str]:
+    """Each layer's attention residual write, cached only to check it against the head sum."""
+    return [f"blocks.{layer}.hook_attn_out" for layer in range(n_layers)]
+
+
+def _non_additive_attention_error(detail: str) -> ValueError:
+    return ValueError(
+        "per-head attention outputs are normalized or scaled before the residual add on this "
+        f"architecture ({detail}), so attn.hook_result is not a head's residual contribution: "
+        "edge granularity and faithfulness are unsupported here. Node granularity "
+        '(EdgeAttributionConfig(granularity="node")) is available.'
+    )
+
+
+def _check_attention_write_structure(model: Any) -> None:
+    """Refuse blocks that declare a norm, scale or parallel mixer between head sum and residual."""
+    for layer, block in enumerate(getattr(model, "blocks", ())):
+        submodules = getattr(block, "submodules", None)
+        if not isinstance(submodules, dict) or "attn" not in submodules:
+            continue
+        scale = getattr(block, "residual_contribution_scale", 1.0)
+        if scale != 1.0:
+            raise _non_additive_attention_error(
+                f"blocks.{layer} scales its attention output by {scale}"
+            )
+        # Falcon-H1 scales attention and adds a parallel Mamba output inline, after
+        # attn.hook_out, so the cached head-sum check cannot see either.
+        mixers = [name for name in VARIANT_SUBMODULE_NAMES if name != "attn" and name in submodules]
+        if mixers:
+            raise _non_additive_attention_error(
+                f"blocks.{layer} shares that add with a parallel {mixers[0]} mixer"
+            )
+        aliases = getattr(block, "hook_aliases", None)
+        target = aliases.get("hook_attn_out") if isinstance(aliases, dict) else None
+        candidates = [target] if isinstance(target, str) else list(target or [])
+        # A fallback chain resolves to its first target whose owner the block declares.
+        for candidate in candidates:
+            owner = candidate.split(".", 1)[0]
+            if owner not in submodules:
+                continue
+            if owner != "attn":
+                raise _non_additive_attention_error(
+                    f"blocks.{layer}.hook_attn_out reads {candidate}, after the head sum"
+                )
+            break
+
+
+def _check_attention_write_is_head_sum(cache: GradientCache, n_layers: int) -> None:
+    """Refuse a layer whose ``hook_attn_out`` is not its head-result sum plus a constant."""
+    for layer in range(n_layers):
+        per_head = cache.activations.get(f"blocks.{layer}.attn.hook_result")
+        written = cache.activations.get(f"blocks.{layer}.hook_attn_out")
+        if per_head is None or written is None:
+            continue
+        work_dtype = torch.promote_types(written.dtype, torch.float32)
+        written = written.to(work_dtype)
+        head_sum = per_head.sum(dim=2, dtype=work_dtype)
+        if head_sum.shape != written.shape:
+            raise _non_additive_attention_error(
+                f"blocks.{layer}.hook_attn_out has shape {tuple(written.shape)}, the summed "
+                f"attn.hook_result {tuple(head_sum.shape)}"
+            )
+        # The output bias belongs to no head and cancels in every clean-minus-corrupt delta,
+        # so only the position-varying part of the remainder breaks additivity.
+        remainder = written - head_sum
+        remainder = remainder - remainder.mean(dim=(0, 1), keepdim=True)
+        scale = written.norm().clamp_min(torch.finfo(work_dtype).tiny)
+        relative = float(remainder.norm() / scale)
+        if relative > _ATTN_WRITE_RTOL:
+            raise _non_additive_attention_error(
+                f"blocks.{layer}.hook_attn_out differs from the summed attn.hook_result by "
+                f"{relative:.2g} of its norm"
+            )
 
 
 def _writer_hook_names(n_layers: int) -> list[str]:
@@ -1244,7 +1327,10 @@ def attribution_patch(
         ValueError: if ``clean``/``corrupt`` are not 2D, hold a different number of
             pairs, a pair tokenizes to different lengths (activations must align
             position-by-position), or the model or one of its submodules is in
-            training mode.
+            training mode. At edge granularity, also if per-head attention outputs
+            are normalized or scaled before the residual add (post-norm,
+            scaled-residual or parallel-mixer blocks), where ``attn.hook_result`` is not
+            a head's residual contribution.
     """
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
@@ -1269,6 +1355,7 @@ def attribution_patch(
     n_layers = int(model.cfg.n_layers)
 
     if config.granularity == "edge":
+        _check_attention_write_structure(model)
         hook_names = _edge_hook_names(n_layers)
         edge_totals: dict[tuple[Node, Node], float] = {}
 
@@ -1280,9 +1367,10 @@ def attribution_patch(
                     model,
                     clean[index : index + 1],
                     metric_fn,
-                    names_filter=hook_names,
+                    names_filter=hook_names + _attn_write_hook_names(n_layers),
                     compute_gradient=False,
                 )
+                _check_attention_write_is_head_sum(clean_cache, n_layers)
                 corrupt_cache = cache_activation_and_gradient(
                     model, corrupt[index : index + 1], metric_fn, names_filter=hook_names
                 )
@@ -1446,7 +1534,9 @@ def faithfulness(
             is not in the graph, the clean and corrupt metrics are equal (so
             the recovered fraction is undefined), mean calibration is missing,
             empty, misaligned, on a different input device, has an unsupported
-            dtype, contains an evaluated endpoint, or is supplied in corrupt mode.
+            dtype, contains an evaluated endpoint, or is supplied in corrupt mode;
+            or per-head attention outputs are normalized or scaled before the
+            residual add (post-norm, scaled-residual or parallel-mixer blocks).
     """
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
@@ -1492,15 +1582,17 @@ def faithfulness(
         raise ValueError("mean_tokens is only accepted with mean ablation")
 
     require_eval_mode(model, operation="faithfulness()")
+    _check_attention_write_structure(model)
 
     kept = _normalize_circuit(circuit)
     n_layers = int(model.cfg.n_layers)
-    hook_names = _edge_hook_names(n_layers)
+    hook_names = _edge_hook_names(n_layers) + _attn_write_hook_names(n_layers)
 
     with torch.no_grad(), _edge_hook_flags(model):
         corrupt_cache = cache_activation_and_gradient(
             model, corrupt, metric_fn, names_filter=hook_names, compute_gradient=False
         )
+        _check_attention_write_is_head_sum(corrupt_cache, n_layers)
         edges = enumerate_edges(model, corrupt_cache)
         graph = set(edges)
         unknown = [edge for edge in kept if edge not in graph]
