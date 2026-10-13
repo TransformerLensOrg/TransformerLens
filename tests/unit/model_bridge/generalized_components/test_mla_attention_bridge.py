@@ -2,10 +2,16 @@
 
 import pytest
 import torch
-from transformers import DeepseekV3Config, DeepseekV3ForCausalLM
+from transformers import (
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+    DeepseekV3Config,
+    DeepseekV3ForCausalLM,
+)
 
 from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
+    _apply_rotary_complex,
 )
 
 
@@ -435,3 +441,97 @@ class TestMLACompatibilityMaskSentinel:
         seq = scores.shape[-1]
         masked = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1).expand_as(scores)
         assert torch.isfinite(scores[masked]).all()
+
+
+class TestMLAComplexRope:
+    """DeepSeek-V2 complex RoPE on rope slices that are not aligned in storage.
+
+    The rope portions are split off the end of wider tensors, so an odd
+    ``qk_nope_head_dim`` or ``kv_lora_rank`` (e.g. after structured pruning)
+    leaves them at an odd storage offset with odd strides.
+    """
+
+    ROPE_DIM = 4
+
+    @staticmethod
+    def _rotate(x: torch.Tensor, angles: torch.Tensor) -> torch.Tensor:
+        """Reference rotation of adjacent pairs, written without complex numbers."""
+        cos, sin = angles.cos()[:, None], angles.sin()[:, None]
+        even, odd = x[..., 0::2], x[..., 1::2]
+        return torch.stack((even * cos - odd * sin, even * sin + odd * cos), dim=-1).flatten(3)
+
+    @pytest.mark.parametrize(
+        "nope_dim, kv_lora_rank",
+        [(4, 8), (3, 8), (4, 7), (3, 7)],
+        ids=["aligned", "odd-nope", "odd-kv-rank", "odd-both"],
+    )
+    def test_rotation_does_not_depend_on_storage_layout(self, nope_dim, kv_lora_rank):
+        batch, heads, seq = 2, 2, 5
+        torch.manual_seed(0)
+        angles = torch.randn(batch, seq, self.ROPE_DIM // 2)
+        freqs_cis = torch.polar(torch.ones_like(angles), angles)
+
+        # Same view/transpose/split sequence as MLAAttentionBridge.forward
+        q_states = torch.randn(batch, seq, heads * (nope_dim + self.ROPE_DIM))
+        q_states = q_states.view(batch, seq, heads, -1).transpose(1, 2)
+        _, q_rot = torch.split(q_states, [nope_dim, self.ROPE_DIM], dim=-1)
+        compressed_kv = torch.randn(batch, seq, kv_lora_rank + self.ROPE_DIM)
+        _, k_rot = torch.split(compressed_kv, [kv_lora_rank, self.ROPE_DIM], dim=-1)
+        k_rot = k_rot.view(batch, 1, seq, self.ROPE_DIM)
+
+        q_out, k_out = _apply_rotary_complex(q_rot, k_rot, freqs_cis)
+
+        assert torch.allclose(q_out, self._rotate(q_rot, angles), atol=1e-6)
+        assert torch.allclose(k_out, self._rotate(k_rot, angles), atol=1e-6)
+
+    def test_contiguous_slice_at_odd_offset(self):
+        """A slice can be contiguous and still start at an odd storage offset."""
+        angles = torch.randn(1, 1, self.ROPE_DIM // 2)
+        freqs_cis = torch.polar(torch.ones_like(angles), angles)
+        q_rot = torch.randn(3 + self.ROPE_DIM)[3:].view(1, 1, 1, self.ROPE_DIM)
+        assert q_rot.is_contiguous() and q_rot.storage_offset() % 2 == 1
+
+        q_out, k_out = _apply_rotary_complex(q_rot, q_rot, freqs_cis)
+
+        assert torch.allclose(q_out, self._rotate(q_rot, angles), atol=1e-6)
+        assert torch.allclose(k_out, q_out)
+
+    def test_bridge_forward_with_odd_nope_dim_and_kv_rank(self):
+        config = DeepseekV2Config(
+            vocab_size=100,
+            hidden_size=32,
+            intermediate_size=64,
+            moe_intermediate_size=16,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=2,
+            q_lora_rank=8,
+            kv_lora_rank=7,
+            qk_nope_head_dim=3,
+            qk_rope_head_dim=self.ROPE_DIM,
+            v_head_dim=8,
+            first_k_dense_replace=1,
+            n_routed_experts=2,
+            n_shared_experts=1,
+            num_experts_per_tok=1,
+        )
+        model = DeepseekV2ForCausalLM(config)
+        bridge = MLAAttentionBridge(name="self_attn", config=config, submodules={})
+        bridge.set_original_component(model.model.layers[0].self_attn)
+
+        batch, seq = 2, 6
+        hidden_states = torch.randn(batch, seq, config.hidden_size)
+        position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
+        freqs_cis = model.model.rotary_emb(hidden_states, position_ids)
+        assert freqs_cis.is_complex()
+
+        captured = {}
+        bridge.hook_pattern.add_hook(lambda t, hook: captured.update(pattern=t))
+        with torch.no_grad():
+            out = bridge(hidden_states, position_embeddings=freqs_cis, attention_mask=None)[0]
+        bridge.hook_pattern.remove_hooks()
+
+        assert out.shape == hidden_states.shape
+        assert torch.isfinite(out).all()
+        row_sums = captured["pattern"].sum(dim=-1)
+        assert torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-5)
