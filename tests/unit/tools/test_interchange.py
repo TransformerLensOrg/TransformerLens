@@ -11,6 +11,7 @@ from transformer_lens.tools.analysis.interchange import (
     NormMatchedPlacebo,
     SubspaceInterchange,
     collect_activations,
+    intervened_logits,
     mean_difference_basis,
     probe_basis,
     random_basis,
@@ -111,27 +112,72 @@ def test_a_full_interchange_reproduces_the_source_output():
     assert torch.allclose(out, model(source), atol=1e-5)
 
 
-def test_positions_select_one_vector_per_example():
-    model = _Toy(seq=True)
-    base, source = torch.randn(4, 3, D_MODEL), torch.randn(4, 3, D_MODEL)
-    last = torch.full((4,), 2)
-    _, cache = model.run_with_cache(source)
-    acts = collect_activations(model, "hook_mid", source, model, positions=last, batch_size=3)
-    assert torch.allclose(acts, cache["hook_mid"][:, 2])
+class _SumToy(_Toy):
+    """Reads every position, so each row's write shows in its output."""
 
+    def __init__(self):
+        super().__init__(seq=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.out(self.hook_mid(self.inp(x)).sum(1))
+
+
+def test_positions_select_one_vector_per_example():
+    rows = torch.tensor([0, 2, 1, 2])
+    base, source = torch.randn(4, 3, D_MODEL), torch.randn(4, 3, D_MODEL)
     full = SubspaceInterchange(torch.eye(D_MODEL))
-    at_last = run_with_intervention(model, "hook_mid", full, base, acts, model, positions=last)
-    assert torch.allclose(at_last, model(source), atol=1e-5)
-    first = collect_activations(
-        model, "hook_mid", source, model, positions=torch.zeros(4, dtype=torch.long)
-    )
-    at_first = run_with_intervention(
-        model, "hook_mid", full, base, first, model, positions=torch.zeros(4, dtype=torch.long)
-    )
-    assert torch.allclose(at_first, model(base), atol=1e-6)  # the output never reads position 0
+
+    model = _Toy(seq=True)  # reads only the last position
+    _, cache = model.run_with_cache(source)
+    acts = collect_activations(model, "hook_mid", source, model, positions=rows, batch_size=3)
+    assert torch.allclose(acts, cache["hook_mid"][torch.arange(4), rows])
+    out = run_with_intervention(model, "hook_mid", full, base, acts, model, positions=rows)
+    at_last = rows == 2
+    assert torch.allclose(out[at_last], model(source)[at_last], atol=1e-5)
+    assert torch.allclose(out[~at_last], model(base)[~at_last], atol=1e-6)
+
+    summed = _SumToy()
+    source_acts = collect_activations(summed, "hook_mid", source, summed, positions=rows)
+    out = run_with_intervention(summed, "hook_mid", full, base, source_acts, summed, positions=rows)
+    with torch.no_grad():
+        expected = summed.inp(base)
+        expected[torch.arange(4), rows] = summed.inp(source)[torch.arange(4), rows]
+        assert torch.allclose(out, summed.out(expected.sum(1)), atol=1e-5)
 
     with pytest.raises(ValueError, match="one position index per example"):
         collect_activations(model, "hook_mid", source, model)
+
+
+class _Pattern(HookedRootModule):
+    """A 4-D hook, shaped like an attention pattern: [batch, head, query, key]."""
+
+    def __init__(self):
+        super().__init__()
+        self.hook_pattern = HookPoint()
+        self.setup()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.hook_pattern(x).flatten(1)[:, :2]
+
+
+def test_positions_must_match_the_activation():
+    pattern = _Pattern()
+    x, at = torch.randn(4, 2, 3, 3), torch.zeros(4, dtype=torch.long)
+    with pytest.raises(ValueError, match="must be \\[batch, pos, d_model\\]"):
+        collect_activations(pattern, "hook_pattern", x, pattern, positions=at)
+    with pytest.raises(ValueError, match="must be \\[batch, pos, d_model\\]"):
+        run_with_intervention(
+            pattern,
+            "hook_pattern",
+            SubspaceInterchange(torch.eye(3)),
+            x,
+            torch.randn(4, 3),
+            pattern,
+            positions=at,
+        )
+    model = _Toy(seq=True)
+    with pytest.raises(ValueError, match="one index per example"):
+        collect_activations(model, "hook_mid", torch.randn(4, 3, D_MODEL), model, positions=at[:3])
 
 
 def test_the_intervention_is_differentiable():
@@ -146,12 +192,38 @@ def test_the_intervention_is_differentiable():
     assert basis.grad is not None and basis.grad.abs().sum() > 0
 
 
-def test_a_hook_that_fires_twice_is_refused():
+def test_a_hook_must_fire_exactly_once():
     class _Twice(_Toy):
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             h = self.hook_mid(self.inp(x))
             return self.out(self.hook_mid(h))
 
-    model = _Twice()
-    with pytest.raises(RuntimeError, match="fired 2 times"):
-        collect_activations(model, "hook_mid", torch.randn(2, D_MODEL), model)
+    class _Unused(_Toy):
+        def __init__(self):
+            super().__init__()
+            self.hook_unused = HookPoint()
+            self.setup()
+
+    x, source, full = (
+        torch.randn(2, D_MODEL),
+        torch.randn(2, D_MODEL),
+        SubspaceInterchange(torch.eye(D_MODEL)),
+    )
+    for model, hook, times in ((_Twice(), "hook_mid", 2), (_Unused(), "hook_unused", 0)):
+        with pytest.raises(RuntimeError, match=f"fired {times} times"):
+            collect_activations(model, hook, x, model)
+        with pytest.raises(RuntimeError, match=f"fired {times} times"):
+            run_with_intervention(model, hook, full, x, source, model)
+
+
+def test_intervened_logits_matches_one_pass_in_bounded_batches():
+    model = _Toy()
+    base, source = torch.randn(10, D_MODEL), torch.randn(10, D_MODEL)
+    acts = collect_activations(model, "hook_mid", source, model)
+    intervention = SubspaceInterchange(random_basis(D_MODEL, 2, seed=0).requires_grad_(True))
+    one = run_with_intervention(model, "hook_mid", intervention, base, acts, model)
+    batched = intervened_logits(model, "hook_mid", intervention, base, acts, model, batch_size=3)
+    assert torch.allclose(batched, one.detach(), atol=1e-6)
+    assert not batched.requires_grad and batched.device.type == "cpu"
+    with pytest.raises(ValueError, match="one row per base"):
+        intervened_logits(model, "hook_mid", intervention, base, acts[:-1], model)

@@ -26,8 +26,8 @@ from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.tools.analysis import (
     SubspaceInterchange,
     collect_activations,
+    intervened_logits,
     mean_difference_basis,
-    run_with_intervention,
 )
 
 bridge = TransformerBridge.boot_transformers("gpt2")
@@ -41,16 +41,22 @@ hook = "blocks.1.hook_out"
 
 source_acts = collect_activations(bridge, hook, source, task_logits, positions=subject)
 basis = mean_difference_basis(source_acts, labels=[1, 0])
-logits = run_with_intervention(
+logits = intervened_logits(
     bridge, hook, SubspaceInterchange(basis), base, source_acts, task_logits, positions=subject
 )
 print(task_logits(base).argmax(-1), logits.argmax(-1))  # tensor([0, 1]) tensor([1, 0])
 ```
 
-`task_logits` runs the model and reads the task out of its output, so the tools do not assume
-next-token prediction. Activations at the hook must be `[batch, d_model]`, or
-`[batch, pos, d_model]` with one position index per example. A real experiment fits the basis on
-held-out pairs, not on the pairs it evaluates.
+`task_logits` runs the model in one forward pass and reads the task out of its output, so the
+tools do not assume next-token prediction; the hook must fire exactly once in that pass.
+Activations at the hook must be `[batch, d_model]`, or `[batch, pos, d_model]` with one position
+index per example. A real experiment fits the basis on held-out pairs, not on the pairs it
+evaluates.
+
+`collect_activations` and `intervened_logits` run in batches of `batch_size` without gradients and
+return CPU tensors, so memory does not grow with the number of pairs. `run_with_intervention` is
+the same intervention as one differentiable forward pass, for training an intervention's
+parameters.
 
 ## Bases and baselines
 

@@ -6,8 +6,8 @@ from transformer_lens.tools.analysis.interchange import (
     NormMatchedPlacebo,
     SubspaceInterchange,
     collect_activations,
+    intervened_logits,
     random_basis,
-    run_with_intervention,
 )
 
 PROMPTS = ["The key near the cabinet", "The keys near the cabinet"]
@@ -34,16 +34,17 @@ def test_a_full_interchange_at_the_last_block_reproduces_the_source_logits(gpt2_
     hook = f"blocks.{gpt2_bridge.cfg.n_layers - 1}.hook_out"
     swapped = tokens.flip(0)  # each prompt takes the other's activation
     source_acts = collect_activations(gpt2_bridge, hook, swapped, task_logits, positions=last)
+    out = intervened_logits(
+        gpt2_bridge,
+        hook,
+        SubspaceInterchange(torch.eye(gpt2_bridge.cfg.d_model)),
+        tokens,
+        source_acts,
+        task_logits,
+        positions=last,
+        batch_size=1,
+    )
     with torch.no_grad():
-        out = run_with_intervention(
-            gpt2_bridge,
-            hook,
-            SubspaceInterchange(torch.eye(gpt2_bridge.cfg.d_model)),
-            tokens,
-            source_acts,
-            task_logits,
-            positions=last,
-        )
         expected = task_logits(swapped)
     assert torch.allclose(out, expected, atol=1e-4)
     # Singular and plural prompts prefer different verbs, so the swap flips both predictions
