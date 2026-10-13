@@ -558,3 +558,47 @@ def test_post_norm_bridge_refuses_edge_scoring_before_any_forward(post_norm_brid
     assert forwards
     assert {node.kind for node in result.node_scores} == {"embed", "attn_head_out", "mlp_out"}
     assert all(math.isfinite(score) for score in result.node_scores.values())
+
+
+GQA_MODEL = "hf-internal-testing/tiny-random-MistralForCausalLM"
+
+
+@pytest.fixture(scope="module")
+def gqa_bridge():
+    model = TransformerBridge.boot_transformers(GQA_MODEL, device="cpu", dtype=torch.float32)
+    model.eval()
+    return model
+
+
+def test_gqa_bridge_refuses_edge_scoring_before_any_forward(gqa_bridge) -> None:
+    """Mistral shares each K/V head across query heads, so K/V reader inputs are not per head."""
+    assert gqa_bridge.cfg.n_key_value_heads < gqa_bridge.cfg.n_heads
+    clean = torch.tensor([[2, 10, 11, 12]])
+    corrupt = torch.tensor([[2, 10, 13, 12]])
+    metric = _logit_diff_metric(answer_id=5, wrong_id=6)
+    refusal = (
+        rf"blocks\.0 has n_key_value_heads={gqa_bridge.cfg.n_key_value_heads} for "
+        rf"n_heads={gqa_bridge.cfg.n_heads} \(GQA/MQA\).*node.*is available"
+    )
+    forwards: list[int] = []
+    counter = gqa_bridge.original_model.register_forward_pre_hook(lambda *_: forwards.append(1))
+    try:
+        with pytest.raises(ValueError, match=refusal):
+            attribution_patch(
+                gqa_bridge,
+                clean,
+                corrupt,
+                metric,
+                config=EdgeAttributionConfig(granularity="edge"),
+            )
+        with pytest.raises(ValueError, match=refusal):
+            faithfulness(gqa_bridge, clean, corrupt, metric, [])
+        assert forwards == []
+
+        result = attribution_patch(gqa_bridge, clean, corrupt, metric)
+    finally:
+        counter.remove()
+
+    assert forwards
+    assert {node.kind for node in result.node_scores} == {"embed", "attn_head_out", "mlp_out"}
+    assert all(math.isfinite(score) for score in result.node_scores.values())

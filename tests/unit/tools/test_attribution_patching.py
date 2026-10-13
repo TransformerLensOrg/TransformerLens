@@ -3454,3 +3454,137 @@ def test_a_constant_attention_output_offset_keeps_edge_scoring_exact() -> None:
     for node, direct_score in node_result.node_scores.items():
         assert edge_result.node_scores[node] == pytest.approx(direct_score, abs=1e-5)
     assert report.recovered == pytest.approx(0.0, abs=1e-6)
+
+
+class _ForwardCountingEdgeScoringToyBridge(_EdgeScoringToyBridge):
+    """``_EdgeScoringToyBridge`` that counts its forwards."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.forward_calls = 0
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        self.forward_calls += 1
+        return super().forward(*args, **kwargs)
+
+
+_UNDECLARED = object()
+
+
+def _declare_kv_heads(
+    model: _EdgeScoringToyBridge,
+    monkeypatch: pytest.MonkeyPatch,
+    scalar: Any,
+    per_layer: list[int | None] | None,
+) -> None:
+    """Give the toy's cfg the head-count fields a GQA Bridge carries; it declares none itself."""
+    if scalar is _UNDECLARED:
+        return
+    monkeypatch.setattr(model.cfg, "n_heads", N_HEADS, raising=False)
+    monkeypatch.setattr(model.cfg, "n_key_value_heads", scalar, raising=False)
+    monkeypatch.setattr(model.cfg, "per_layer_num_key_value_heads", per_layer, raising=False)
+
+
+def _grouped_kv_refusal(layer: int) -> str:
+    return (
+        rf"blocks\.{layer} has n_key_value_heads=1 for n_heads={N_HEADS} \(GQA/MQA\).*"
+        r"edge granularity and faithfulness are unsupported.*granularity=\"node\"\)\) is available"
+    )
+
+
+# (scalar n_key_value_heads, per-layer counts, first grouped layer)
+_GROUPED_KV = [
+    pytest.param(1, None, 0, id="scalar"),
+    pytest.param(None, [N_HEADS, 1], 1, id="per-layer"),
+    pytest.param(N_HEADS, [None, 1], 1, id="per-layer-over-matching-scalar"),
+    pytest.param(1, [N_HEADS, None], 1, id="none-entry-falls-back-to-scalar"),
+    pytest.param(1, [N_HEADS], 1, id="short-list-falls-back-to-scalar"),
+]
+
+
+@pytest.mark.parametrize("scalar, per_layer, layer", _GROUPED_KV)
+def test_edge_attribution_refuses_grouped_kv_heads_before_any_forward(
+    monkeypatch: pytest.MonkeyPatch, scalar: Any, per_layer: list | None, layer: int
+) -> None:
+    model = _ForwardCountingEdgeScoringToyBridge()
+    _declare_kv_heads(model, monkeypatch, scalar, per_layer)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(layer)):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize("scalar, per_layer, layer", _GROUPED_KV)
+def test_faithfulness_refuses_grouped_kv_heads_before_any_forward(
+    monkeypatch: pytest.MonkeyPatch, scalar: Any, per_layer: list | None, layer: int
+) -> None:
+    model = _ForwardCountingEdgeScoringToyBridge()
+    _declare_kv_heads(model, monkeypatch, scalar, per_layer)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(layer)):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 0
+
+
+def test_grouped_kv_refusal_skips_a_block_without_attention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hybrid's SSM block inherits the scalar K/V count, so the refusal names the attn block."""
+    model = _ForwardCountingEdgeScoringToyBridge()
+    _declare_kv_heads(model, monkeypatch, 1, None)
+    mixer_only = {"ln1": nn.Identity(), "mixer": nn.Identity()}
+    monkeypatch.setattr(model.blocks[0], "submodules", mixer_only, raising=False)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(1)):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(1)):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize(
+    "scalar, per_layer",
+    [
+        pytest.param(_UNDECLARED, None, id="undeclared"),
+        pytest.param(None, None, id="scalar-none"),
+        pytest.param(N_HEADS, None, id="scalar-equal"),
+        pytest.param(1, [N_HEADS, N_HEADS], id="per-layer-overrides-grouped-scalar"),
+    ],
+)
+def test_edge_scoring_is_unchanged_when_kv_heads_match_query_heads(
+    monkeypatch: pytest.MonkeyPatch, scalar: Any, per_layer: list | None
+) -> None:
+    reference, clean, corrupt, metric = _faithfulness_toy()
+    expected = attribution_patch(
+        reference, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    expected_report = faithfulness(reference, clean, corrupt, metric, [])
+    model, *_ = _faithfulness_toy()
+    _declare_kv_heads(model, monkeypatch, scalar, per_layer)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    assert result.edge_scores
+    assert result == expected
+    assert report == expected_report
+
+
+def test_node_attribution_still_scores_grouped_kv_heads(monkeypatch: pytest.MonkeyPatch) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    _declare_kv_heads(model, monkeypatch, 1, None)
+
+    result = attribution_patch(model, clean, corrupt, metric)
+
+    assert len(result.node_scores) == _expected_node_count()
+    assert all(math.isfinite(score) for score in result.node_scores.values())
+    assert any(score != 0.0 for score in result.node_scores.values())

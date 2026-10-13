@@ -537,12 +537,17 @@ def _attn_write_hook_names(n_layers: int) -> list[str]:
     return [f"blocks.{layer}.hook_attn_out" for layer in range(n_layers)]
 
 
+_EDGE_UNSUPPORTED = (
+    "edge granularity and faithfulness are unsupported here. Node granularity "
+    '(EdgeAttributionConfig(granularity="node")) is available.'
+)
+
+
 def _non_additive_attention_error(detail: str) -> ValueError:
     return ValueError(
         "per-head attention outputs are normalized or scaled before the residual add on this "
         f"architecture ({detail}), so attn.hook_result is not a head's residual contribution: "
-        "edge granularity and faithfulness are unsupported here. Node granularity "
-        '(EdgeAttributionConfig(granularity="node")) is available.'
+        f"{_EDGE_UNSUPPORTED}"
     )
 
 
@@ -577,6 +582,27 @@ def _check_attention_write_structure(model: Any) -> None:
                     f"blocks.{layer}.hook_attn_out reads {candidate}, after the head sum"
                 )
             break
+
+
+def _check_kv_heads_match_query_heads(model: Any) -> None:
+    """Refuse GQA/MQA attention layers, whose K/V reader inputs are shared across query heads."""
+    cfg = model.cfg
+    blocks = list(getattr(model, "blocks", ()))
+    scalar_kv = getattr(cfg, "n_key_value_heads", None)
+    per_layer_kv = getattr(cfg, "per_layer_num_key_value_heads", None) or []
+    for layer in range(cfg.n_layers):
+        submodules = getattr(blocks[layer], "submodules", None) if layer < len(blocks) else None
+        # A hybrid's SSM or linear-attention block inherits the scalar count but has no K/V heads.
+        if isinstance(submodules, dict) and "attn" not in submodules:
+            continue
+        kv = per_layer_kv[layer] if layer < len(per_layer_kv) else None
+        if kv is None:
+            kv = scalar_kv
+        if kv is not None and kv != cfg.n_heads:
+            raise ValueError(
+                f"blocks.{layer} has n_key_value_heads={kv} for n_heads={cfg.n_heads} (GQA/MQA), "
+                f"so its K/V inputs are not per query head: {_EDGE_UNSUPPORTED}"
+            )
 
 
 def _check_attention_write_is_head_sum(cache: GradientCache, n_layers: int) -> None:
@@ -1330,7 +1356,8 @@ def attribution_patch(
             training mode. At edge granularity, also if per-head attention outputs
             are normalized or scaled before the residual add (post-norm,
             scaled-residual or parallel-mixer blocks), where ``attn.hook_result`` is not
-            a head's residual contribution.
+            a head's residual contribution, or if an attention layer's K/V head count
+            differs from ``n_heads`` (GQA/MQA).
     """
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
@@ -1356,6 +1383,7 @@ def attribution_patch(
 
     if config.granularity == "edge":
         _check_attention_write_structure(model)
+        _check_kv_heads_match_query_heads(model)
         hook_names = _edge_hook_names(n_layers)
         edge_totals: dict[tuple[Node, Node], float] = {}
 
@@ -1536,7 +1564,8 @@ def faithfulness(
             empty, misaligned, on a different input device, has an unsupported
             dtype, contains an evaluated endpoint, or is supplied in corrupt mode;
             or per-head attention outputs are normalized or scaled before the
-            residual add (post-norm, scaled-residual or parallel-mixer blocks).
+            residual add (post-norm, scaled-residual or parallel-mixer blocks), or an
+            attention layer's K/V head count differs from ``n_heads`` (GQA/MQA).
     """
     if clean.ndim != 2 or corrupt.ndim != 2:
         raise ValueError(
@@ -1583,6 +1612,7 @@ def faithfulness(
 
     require_eval_mode(model, operation="faithfulness()")
     _check_attention_write_structure(model)
+    _check_kv_heads_match_query_heads(model)
 
     kept = _normalize_circuit(circuit)
     n_layers = int(model.cfg.n_layers)
