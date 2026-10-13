@@ -102,6 +102,34 @@ def _check_fold_ln(model: Any) -> None:
         pass  # non-standard model — cannot inspect LN weights, proceed
 
 
+def _check_direct_path_support(model: Any, src_layer: int, component: str) -> None:
+    """Refuse blocks without attention, and K/V patches where query heads share K/V heads."""
+    cfg = model.cfg
+    for layer in range(src_layer, cfg.n_layers):
+        if getattr(model.blocks[layer], "attn", None) is None:
+            raise ValueError(
+                f"blocks.{layer} has no `attn` component (an SSM, mixer, linear-attention or "
+                "AltUp block), and direct path patching needs one in every block from "
+                f"src_layer={src_layer} on."
+            )
+    if component == "q":
+        return
+    n_heads = cfg.n_heads
+    scalar_kv = getattr(cfg, "n_key_value_heads", None)
+    per_layer_kv = getattr(cfg, "per_layer_num_key_value_heads", None) or []
+    # Only destinations are K/V-patched; the source is read via hook_z and W_O, per query head.
+    for layer in range(src_layer + 1, cfg.n_layers):
+        kv = per_layer_kv[layer] if layer < len(per_layer_kv) else None
+        if kv is None:
+            kv = scalar_kv
+        if kv is not None and kv != n_heads:
+            raise ValueError(
+                f"component={component!r} is unsupported here: blocks.{layer} has "
+                f"n_key_value_heads={kv} for n_heads={n_heads} (GQA/MQA), so per-query-head "
+                'K/V semantics are undefined. component="q" is available.'
+            )
+
+
 # ---------------------------------------------------------------------------
 # Core hook factory
 # ---------------------------------------------------------------------------
@@ -202,7 +230,8 @@ def get_act_patch_direct_path(
     src_head:
         Head index of the source attention head.
     component:
-        Which input to patch at the destination head — "q" (default), "k", or "v".
+        Which input to patch at the destination head — "q" (default), "k", or "v";
+        "k" and "v" raise ValueError on GQA/MQA models.
     verbose:
         Whether to show a tqdm progress bar.
 
@@ -213,6 +242,7 @@ def get_act_patch_direct_path(
         A → B is patched in.  Entries for dst_layer <= src_layer are left as 0.0
         (no causal path from A to those layers).
     """
+    _check_direct_path_support(model, src_layer, component)
     _check_fold_ln(model)
 
     n_layers = model.cfg.n_layers
@@ -303,6 +333,7 @@ def get_act_patch_direct_path_all_sources(
     intended for small models or targeted sub-sweeps.  For large models prefer
     calling get_act_patch_direct_path per source head.
     """
+    _check_direct_path_support(model, 0, component)
     _check_fold_ln(model)
 
     n_layers = model.cfg.n_layers
