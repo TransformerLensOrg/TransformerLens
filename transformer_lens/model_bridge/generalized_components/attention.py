@@ -810,7 +810,9 @@ class AttentionBridge(GeneralizedComponent):
                 d_head=d_head,
             )
         per_head = torch.einsum("bshd,hdm->bshm", z_4d, w_per_head)
-        per_head = self.hook_result(per_head)
+        per_head = self._hook_scaled_output(
+            per_head, self.hook_result, getattr(self, "_result_contribution_scale", 1.0)
+        )
         summed = per_head.sum(dim=-2)
         if bias is not None:
             summed = summed + bias

@@ -25,6 +25,7 @@ class EmbeddingBridge(GeneralizedComponent):
         name: str,
         config: Optional[Any] = None,
         submodules: Optional[Dict[str, GeneralizedComponent]] = {},
+        output_contribution_scale: float = 1.0,
     ):
         """Initialize the embedding bridge.
 
@@ -32,8 +33,11 @@ class EmbeddingBridge(GeneralizedComponent):
             name: The name of this component
             config: Optional configuration (unused for EmbeddingBridge)
             submodules: Dictionary of GeneralizedComponent submodules to register
+            output_contribution_scale: Outer HF runtime scale exposed by hook_out.
+                Observation preserves the raw forward; edits are unscaled before returning.
         """
         super().__init__(name, config, submodules=submodules)
+        self._output_contribution_scale = float(output_contribution_scale)
 
     @property
     def W_E(self) -> torch.Tensor:
@@ -90,5 +94,5 @@ class EmbeddingBridge(GeneralizedComponent):
             output = output[0]
         if target_dtype is not None and output.dtype != target_dtype:
             output = output.to(dtype=target_dtype)
-        output = self.hook_out(output)
+        output = self._hook_scaled_output(output, self.hook_out, self._output_contribution_scale)
         return output

@@ -15,7 +15,6 @@ from typing import Any
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    EmbeddingBridge,
     GatedRMSNormBridge,
     JointGateUpMLPBridge,
     LinearBridge,
@@ -110,7 +109,7 @@ class GraniteMoeHybridArchitectureAdapter(GraniteArchitectureAdapter):
         # the contribution, so hook_mlp_out stays absent; without experts it fires
         # on the scaled shared_mlp output.
         mapping: dict = {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            "embed": self._build_embedding_bridge(),
             "blocks": ScaledResidualBlockBridge(
                 name="model.layers",
                 submodules=block_submodules,

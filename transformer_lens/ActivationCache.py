@@ -686,12 +686,6 @@ class ActivationCache:
         logit_attrs = (scaled_residual_stack * logit_directions).sum(dim=-1)
         return logit_attrs
 
-    def _embedding_contribution(self) -> torch.Tensor:
-        """Return the embedding's residual contribution, without changing its native hook."""
-        embed = self["hook_embed"]
-        multiplier = getattr(self.model.cfg, "embedding_multiplier", 1.0)
-        return embed if multiplier == 1.0 else embed * multiplier
-
     def decompose_resid(
         self,
         layer: Optional[int] = None,
@@ -732,8 +726,8 @@ class ActivationCache:
                 A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
             incl_embeds:
-                Whether to include embed & pos_embed. Embedding contributions include
-                any post-embedding runtime multiplier; the cached hook remains unscaled.
+                Whether to include embed & pos_embed, whose hooks expose their
+                contributions to the residual stream.
             return_labels:
                 Whether to return a list of labels for the residual stream components.
                 Useful for labelling graphs.
@@ -756,7 +750,7 @@ class ActivationCache:
         labels = []
         if incl_embeds:
             if self.has_embed:
-                components_list = [self._embedding_contribution()]
+                components_list = [self["hook_embed"]]
                 labels.append("embed")
             if self.has_pos_embed:
                 components_list.append(self["hook_pos_embed"])
@@ -827,7 +821,9 @@ class ActivationCache:
                 # Preserve broadcast promotion for caches collected under autocast.
                 dtype = torch.promote_types(z.dtype, weights.dtype)
                 z, weights = z.to(dtype), weights.to(dtype)
-            self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
+            result = torch.einsum("...hd,hdm->...hm", z, weights)
+            scale = getattr(self.model.blocks[layer].attn, "_result_contribution_scale", 1.0)
+            self.cache_dict[result_key] = result if scale == 1.0 else result * scale
         return all_cached
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
@@ -1165,6 +1161,7 @@ class ActivationCache:
         neuron_acts = self[("post", layer, "mlp")]
         block = self.model.blocks[layer]
         W_out = block.mlp.W_out
+        contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
@@ -1172,6 +1169,8 @@ class ActivationCache:
         if neuron_slice is not None:
             neuron_acts = neuron_slice.apply(neuron_acts, dim=-1)
             W_out = neuron_slice.apply(W_out, dim=0)
+        if contribution_scale != 1.0:
+            neuron_acts = neuron_acts * contribution_scale
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
@@ -1246,6 +1245,7 @@ class ActivationCache:
         for l in range(layer):
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
+            contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
             if apply_centering:
@@ -1254,6 +1254,8 @@ class ActivationCache:
                 lin_form_l = W_proj_l - W_means_l[:, None] * sum_p[None, :]
             else:
                 lin_form_l = W_proj_l
+            if contribution_scale != 1.0:
+                lin_form_l = lin_form_l * contribution_scale
             a_l = self[("post", l, "mlp")]
             a_l = pos_slice.apply(a_l, dim=-2)
             a_l = neuron_slice.apply(a_l, dim=-1)
@@ -1633,7 +1635,7 @@ class ActivationCache:
                 components.append(mlp_stack)
 
         if self.has_embed:
-            embed = pos_slice.apply(self._embedding_contribution(), -2)[None]
+            embed = pos_slice.apply(self["hook_embed"], -2)[None]
             if ln_folded:
                 embed = _ln_then_project(embed)
             elif project_2d is not None:
