@@ -233,7 +233,7 @@ class NormalizationBridge(GeneralizedComponent):
         # Gemma-family RMSNorm stores weight as an offset from 1 (output uses 1 + weight).
         weight = (
             (1.0 + self.weight)
-            if getattr(self.config, "rmsnorm_uses_offset", False)
+            if self.uses_rms_norm and getattr(self.config, "rmsnorm_uses_offset", False)
             else self.weight
         )
         hidden_states = hidden_states * weight
@@ -378,7 +378,7 @@ class NormalizationBridge(GeneralizedComponent):
         except AttributeError:
             weight = None
         bias = getattr(component, "bias", None) if not self.uses_rms_norm else None
-        offset = bool(getattr(self.config, "rmsnorm_uses_offset", False))
+        offset = self.uses_rms_norm and bool(getattr(self.config, "rmsnorm_uses_offset", False))
         result: torch.Tensor = _NativeLNRuleForward.apply(
             x_centered, denom, weight, bias, x, component, offset, input_dtype
         )
