@@ -12,12 +12,14 @@ from transformer_lens.tools.analysis.interchange import (
     NormMatchedPlacebo,
     SubspaceInterchange,
     _model_device,
+    arbitrary_targets,
     collect_activations,
     fit_das,
     intervened_logits,
     mean_difference_basis,
     probe_basis,
     random_basis,
+    reinitialized,
     run_with_intervention,
 )
 
@@ -366,3 +368,59 @@ def test_das_leaves_the_model_untouched():
     assert model.scale.requires_grad and torch.equal(model.scale.detach(), before)
     with pytest.raises(ValueError, match="same length"):
         fit_das(model, "hook_mid", base, source[:-1], targets, model, rank=1)
+
+
+def test_arbitrary_targets_are_fixed_per_key_and_seed():
+    keys = [f"source {i}" for i in range(400)]
+    targets = arbitrary_targets(keys, n_classes=3, seed=0)
+    assert targets.dtype == torch.long and set(targets.tolist()) == {0, 1, 2}
+    assert torch.equal(targets, arbitrary_targets(keys, n_classes=3, seed=0))
+    assert not torch.equal(targets, arbitrary_targets(keys, n_classes=3, seed=1))
+    assert torch.equal(arbitrary_targets(keys[:5] * 2, n_classes=3, seed=0)[5:], targets[:5])
+    assert all(abs(c - 400 / 3) < 50 for c in torch.bincount(targets).tolist())
+
+
+def test_reinitialized_resets_parameters_and_keeps_buffers():
+    model = _Planted(torch.randn(D_MODEL))
+    model.inner = nn.Linear(D_MODEL, D_MODEL)
+    before = model.inner.weight.detach().clone()
+    fresh = reinitialized(model, seed=0)
+    assert not torch.equal(fresh.inner.weight, before)
+    assert torch.equal(model.inner.weight, before)  # the original is untouched
+    assert torch.equal(fresh.direction, model.direction)
+    assert not fresh.training
+    assert torch.equal(reinitialized(model, seed=0).inner.weight, fresh.inner.weight)
+
+
+def test_das_beats_the_arbitrary_label_control_on_held_out_pairs():
+    model, base, source, targets = _planted_pairs()
+    keys = lambda rows: [tuple(r.tolist()) for r in rows]
+    fits = {
+        "real": fit_das(
+            model, "hook_mid", base, source, targets, model, rank=1, epochs=30, lr=5e-2
+        ),
+        "arbitrary": fit_das(
+            model,
+            "hook_mid",
+            base,
+            source,
+            arbitrary_targets(keys(source), 2, seed=0),
+            model,
+            rank=1,
+            epochs=30,
+            lr=5e-2,
+        ),
+    }
+    _, test_base, test_source, _ = _planted_pairs(seed=1)
+    expected = {
+        "real": (test_source @ model.direction > 0).long(),
+        "arbitrary": arbitrary_targets(keys(test_source), 2, seed=0),
+    }
+    source_acts = collect_activations(model, "hook_mid", test_source, model)
+    accuracy = {}
+    for name, result in fits.items():
+        logits = intervened_logits(
+            model, "hook_mid", SubspaceInterchange(result.subspace), test_base, source_acts, model
+        )
+        accuracy[name] = (logits.argmax(-1) == expected[name]).float().mean().item()
+    assert accuracy["real"] > 0.9 and accuracy["arbitrary"] < 0.7

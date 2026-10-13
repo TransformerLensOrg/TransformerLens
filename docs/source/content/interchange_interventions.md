@@ -113,6 +113,54 @@ together. The model's parameters are frozen during training and restored afterwa
 DAS is expressive enough to fit arbitrary label mappings and to find effects in randomly
 initialised models (Arora et al., 2024), so its IIA needs controls trained the same way.
 
+## Trained controls
+
+Train each control with the same pairs, hook point, rank, budget and seeds as the real alignment,
+and evaluate it on the same held-out pairs:
+
+- **Arbitrary labels.** `arbitrary_targets(keys, n_classes, seed)` gives each source a fixed
+  pseudo-random class. DAS trained on these shows how much IIA the method's expressivity alone
+  produces.
+- **An untrained model.** `random_init_bridge(model_name, seed=...)` builds the architecture with
+  its HuggingFace initialisation and no training; `reinitialized(model, seed)` does the same for a
+  `HookedRootModule`. An effect DAS finds there does not come from anything the model learned.
+
+```python
+from transformer_lens.tools.analysis import arbitrary_targets, random_init_bridge
+
+# Arbitrary labels: a fixed pseudo-random class per source, for fit and held-out pairs alike
+labels = lambda sources: arbitrary_targets([bridge.to_string(s) for s in sources], 2, seed=0)
+arbitrary = fit_das(
+    bridge, hook, fit_base, fit_source, labels(fit_source), task_logits, rank=1,
+    base_positions=fit_at, source_positions=fit_at, epochs=10,
+)
+logits = intervened_logits(
+    bridge, hook, SubspaceInterchange(arbitrary.subspace), test_base, test_acts, task_logits,
+    positions=test_at,
+)
+print((logits.argmax(-1) == labels(test_source)).float().mean())  # near chance, 0.5
+
+# An untrained model: the same pairs and targets, its own activations and readout
+untrained = random_init_bridge("gpt2", seed=0)
+untrained_logits = lambda tokens: untrained(tokens)[:, -1, answers]
+random_init = fit_das(
+    untrained, hook, fit_base, fit_source, fit_targets, untrained_logits, rank=1,
+    base_positions=fit_at, source_positions=fit_at, epochs=10,
+)
+untrained_acts = collect_activations(
+    untrained, hook, test_source, untrained_logits, positions=test_at
+)
+logits = intervened_logits(
+    untrained, hook, SubspaceInterchange(random_init.subspace), test_base, untrained_acts,
+    untrained_logits, positions=test_at,
+)
+print((logits.argmax(-1) == test_targets).float().mean())  # near chance, 0.5
+```
+
+Report the real alignment's IIA minus each control's (its selectivity), with uncertainty over the
+evaluation pairs. A subspace that does not clearly beat both controls is not evidence that the
+model carries the variable there.
+
 ## Placebo
 
 `NormMatchedPlacebo(reference, basis)` moves each base exactly as far as `reference` does, but

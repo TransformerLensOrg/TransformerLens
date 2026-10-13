@@ -2,6 +2,7 @@
 
 import torch
 
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.interchange import (
     NormMatchedPlacebo,
     SubspaceInterchange,
@@ -9,6 +10,7 @@ from transformer_lens.tools.analysis.interchange import (
     fit_das,
     intervened_logits,
     random_basis,
+    random_init_bridge,
 )
 
 PROMPTS = ["The key near the cabinet", "The keys near the cabinet"]
@@ -119,3 +121,17 @@ def test_das_finds_subject_number_on_held_out_nouns(gpt2_bridge):
 
     assert accuracy(result.subspace) >= 0.9
     assert accuracy(random_basis(gpt2_bridge.cfg.d_model, 1, seed=0)) <= 0.2
+
+
+def test_random_init_bridge_keeps_the_architecture_without_the_training(gpt2_bridge):
+    untrained = random_init_bridge("gpt2", seed=0, device="cpu")
+    again = random_init_bridge("gpt2", seed=0, device="cpu")
+    assert untrained.cfg.n_layers == gpt2_bridge.cfg.n_layers
+    assert untrained.cfg.d_model == gpt2_bridge.cfg.d_model
+    assert untrained.W_E.dtype == torch.float32
+    assert not torch.allclose(untrained.W_E, gpt2_bridge.W_E)
+    assert torch.equal(untrained.W_E, again.W_E)
+    require_eval_mode(untrained, operation="the random-init control")  # ready for fit_das
+    tokens = untrained.to_tokens(PROMPTS)
+    with torch.no_grad():
+        assert untrained(tokens).shape == gpt2_bridge(tokens).shape
