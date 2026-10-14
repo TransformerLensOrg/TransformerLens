@@ -43,6 +43,7 @@ from typing import (
 
 import torch
 
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.jacobian_lens import DEFAULT_K, JacobianLens
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
@@ -373,8 +374,8 @@ def run_causal_swap_trial(
 
     Raises:
         ValueError: If the source and target concepts resolve to the same token id, which
-            would make the coordinate patch a silent no-op, or if ``control_seeds`` is
-            empty.
+            would make the coordinate patch a silent no-op, if ``control_seeds`` is empty, or
+            if the model is in training mode.
     """
     if decomposition_cache is None:
         decomposition_cache = {}
@@ -390,6 +391,7 @@ def run_causal_swap_trial(
             f"source and target resolve to the same token id {source_id}; a coordinate "
             "patch would be a silent no-op"
         )
+    require_eval_mode(model, operation="run_causal_swap_trial()")
 
     with torch.no_grad():
         baseline_logits = model(tokens)[0, -1].float()
@@ -517,6 +519,7 @@ def run_causal_swap_benchmark(
         ``(trials, excluded_baselines)``.
     """
     all_specs = list(iter_prompt_trials(corpus))
+    require_eval_mode(model, operation="run_causal_swap_benchmark()")
     specs_by_prompt: Dict[Tuple[str, str], List[PromptTrialSpec]] = {}
     baselines: List[BaselineRecord] = []
     for spec in all_specs:

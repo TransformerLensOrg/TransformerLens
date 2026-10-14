@@ -8,6 +8,7 @@ it in TransformerBridge via MPTArchitectureAdapter. Verifies:
 - MLP hooks fire: blocks.0.mlp.hook_in, blocks.0.mlp.hook_out
 - Norm hooks fire: blocks.0.ln1.hook_out, blocks.0.ln2.hook_out
 - Residual stream hooks fire: blocks.0.hook_resid_pre, blocks.0.hook_resid_post
+- use_attn_result fires blocks.{i}.attn.hook_result without moving the logits
 """
 
 import pytest
@@ -194,3 +195,32 @@ class TestMPTHookCoverage:
         assert (
             upper.abs() < 1e-6
         ).all(), f"Attention pattern is not causal; upper-triangle max = {upper.abs().max():.2e}"
+
+
+# ---------------------------------------------------------------------------
+# use_attn_result: per-head attention output through the full bridge
+# ---------------------------------------------------------------------------
+
+
+class TestMPTUseAttnResult:
+    """use_attn_result must make hook_result fire on every MPT layer without moving logits."""
+
+    def test_hook_result_fires_and_sums_to_attn_out(self, mpt_bridge: TransformerBridge) -> None:
+        tokens = torch.randint(0, _D_VOCAB, (1, 8), generator=torch.Generator().manual_seed(0))
+        with torch.no_grad():
+            reference = mpt_bridge(tokens)
+        mpt_bridge.set_use_attn_result(True)
+        try:
+            with torch.no_grad():
+                logits, cache = mpt_bridge.run_with_cache(tokens)
+        finally:
+            mpt_bridge.set_use_attn_result(False)
+
+        for layer in range(_N_LAYERS):
+            result = cache[f"blocks.{layer}.attn.hook_result"]
+            assert result.shape == (1, 8, _N_HEADS, _D_MODEL)
+            # no_bias=True: the heads alone sum to the attention output.
+            torch.testing.assert_close(
+                result.sum(dim=2), cache[f"blocks.{layer}.attn.hook_out"], atol=1e-5, rtol=1e-5
+            )
+        torch.testing.assert_close(logits, reference, atol=1e-5, rtol=1e-5)

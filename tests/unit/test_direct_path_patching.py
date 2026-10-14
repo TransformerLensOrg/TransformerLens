@@ -442,3 +442,144 @@ class TestEdgeCases:
                 verbose=False,
             )
         assert results.device.type == tiny_model.cfg.device or results.is_cpu
+
+
+# ---------------------------------------------------------------------------
+# Unsupported architectures
+# ---------------------------------------------------------------------------
+
+_GQA_REFUSAL = r'per-query-head K/V semantics are undefined\. component="q" is available'
+
+
+def _fresh_model_and_cache(**overrides):
+    model = TransformerBridge.boot_native(_tiny_cfg(**overrides))
+    model.eval()
+    tokens = torch.randint(0, 100, (1, 8), generator=torch.Generator().manual_seed(0))
+    with torch.no_grad():
+        _, cache = model.run_with_cache(tokens)
+    return model, tokens, cache
+
+
+def _count_forwards(model):
+    calls: list[int] = []
+    # run_with_hooks calls forward() directly, so a pre-hook on the bridge itself never fires.
+    model.embed.register_forward_pre_hook(lambda module, args: calls.append(1))
+    return calls
+
+
+def _sweep(model, tokens, cache, src_layer=0, component="q"):
+    return get_act_patch_direct_path(
+        model, tokens, cache, cache, simple_metric, src_layer, 0, component, verbose=False
+    )
+
+
+class TestUnsupportedArchitectures:
+    @pytest.mark.parametrize("component", ["k", "v"])
+    def test_gqa_kv_refused_before_any_forward(self, component):
+        model, tokens, cache = _fresh_model_and_cache(n_key_value_heads=2)
+        forwards = _count_forwards(model)
+        with pytest.raises(ValueError, match=_GQA_REFUSAL):
+            _sweep(model, tokens, cache, component=component)
+        assert forwards == []
+        assert _sweep(model, tokens, cache, src_layer=2, component=component).eq(0).all()
+
+    def test_gqa_q_still_runs(self):
+        model, tokens, cache = _fresh_model_and_cache(n_key_value_heads=2)
+        with torch.no_grad():
+            results = _sweep(model, tokens, cache, component="q")
+        assert results.shape == (model.cfg.n_layers, model.cfg.n_heads)
+
+    def test_per_layer_kv_count_checked_on_destination_layers(self):
+        model, tokens, cache = _fresh_model_and_cache()
+        model.cfg.per_layer_num_key_value_heads = [2, 2, 4]
+        with torch.no_grad():
+            _sweep(model, tokens, cache, src_layer=1, component="k")
+        model.cfg.per_layer_num_key_value_heads = [4, 4, 2]
+        with pytest.raises(ValueError, match=r"blocks\.2 has n_key_value_heads=2 for n_heads=4"):
+            _sweep(model, tokens, cache, src_layer=1, component="k")
+
+    def test_block_without_attention_refused_before_any_forward(self, monkeypatch):
+        model, tokens, cache = _fresh_model_and_cache()
+        monkeypatch.delattr(model.blocks[1], "attn")
+        forwards = _count_forwards(model)
+        for src_layer in (0, 1):
+            with pytest.raises(ValueError, match=r"blocks\.1 has no `attn` component"):
+                _sweep(model, tokens, cache, src_layer=src_layer)
+        with pytest.raises(ValueError, match=r"blocks\.1 has no `attn` component"):
+            get_act_patch_direct_path_all_sources(
+                model, tokens, cache, cache, simple_metric, verbose=False
+            )
+        assert forwards == []
+        assert _sweep(model, tokens, cache, src_layer=2).eq(0).all()
+
+    @pytest.mark.parametrize(
+        "kv_heads, drop_attn, component, refusal",
+        [
+            (2, False, "k", _GQA_REFUSAL),
+            (2, False, "v", _GQA_REFUSAL),
+            (None, True, "q", r"blocks\.2 has no `attn` component"),
+        ],
+        ids=["gqa-k", "gqa-v", "no-attn"],
+    )
+    def test_all_sources_refuses_before_fold_warning(
+        self, monkeypatch, kv_heads, drop_attn, component, refusal
+    ):
+        """A refused all-sources sweep must not first warn that its results need folded LN."""
+        model, tokens, cache = _fresh_model_and_cache(n_key_value_heads=kv_heads)
+        if drop_attn:
+            monkeypatch.delattr(model.blocks[2], "attn")
+        with torch.no_grad():
+            model.blocks[0].ln1.weight.fill_(2.0)
+        forwards = _count_forwards(model)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            with pytest.raises(ValueError, match=refusal):
+                get_act_patch_direct_path_all_sources(
+                    model, tokens, cache, cache, simple_metric, component, verbose=False
+                )
+        assert forwards == []
+
+
+# ---------------------------------------------------------------------------
+# Evaluation-mode guard
+# ---------------------------------------------------------------------------
+
+
+def _training_flags(model):
+    modules = [*model.named_modules(), *model.original_model.named_modules()]
+    return [(name, module.training) for name, module in modules]
+
+
+class TestEvalModeGuard:
+    @pytest.mark.parametrize(
+        ("enter_training", "root_training"),
+        [
+            (lambda model: model.train(), True),
+            (lambda model: model.blocks[1].attn.train(), False),
+        ],
+        ids=["whole-model", "one-attn"],
+    )
+    def test_both_entry_points_refuse_before_any_forward_or_fold_warning(
+        self, enter_training, root_training
+    ):
+        model, tokens, cache = _fresh_model_and_cache()
+        with torch.no_grad():
+            model.blocks[0].ln1.weight.fill_(2.0)
+        enter_training(model)
+        flags = _training_flags(model)
+        forwards = _count_forwards(model)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            with pytest.raises(
+                ValueError, match=r"get_act_patch_direct_path\(\) .*model\.eval\(\)"
+            ):
+                _sweep(model, tokens, cache)
+            with pytest.raises(
+                ValueError, match=r"get_act_patch_direct_path_all_sources\(\) .*model\.eval\(\)"
+            ):
+                get_act_patch_direct_path_all_sources(
+                    model, tokens, cache, cache, simple_metric, verbose=False
+                )
+        assert forwards == []
+        assert model.training is root_training
+        assert _training_flags(model) == flags

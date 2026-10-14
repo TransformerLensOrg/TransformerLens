@@ -242,6 +242,60 @@ def _read_weight(weight: torch.Tensor) -> torch.Tensor:
     return weight if weight.dtype == torch.float64 else weight.float()
 
 
+def _has_attn(block) -> bool:
+    """Whether ``block`` declares an ``attn`` submodule.
+
+    A bridge block resolves an unknown name through its wrapped HF module, so its declared
+    ``submodules`` are the reliable record of whether it carries attention.
+    """
+    submodules = getattr(block, "submodules", None)
+    if isinstance(submodules, dict):
+        return "attn" in submodules
+    return getattr(block, "attn", None) is not None
+
+
+def _layer_attention(model, layer: int):
+    """Return ``model.blocks[layer].attn``, refusing a layer that has no attention block."""
+    blocks = getattr(model, "blocks", None)
+    if blocks is None:
+        raise ValueError(
+            f"decompose_head reads layer {layer}'s head weights from blocks[{layer}].attn, but "
+            f"{type(model).__name__} has no `blocks` stack; encoder-decoder bridges keep "
+            "separate encoder and decoder stacks, which decompose_head does not read."
+        )
+    block = blocks[layer]
+    if not _has_attn(block):
+        submodules = getattr(block, "submodules", None)
+        exposes = f" (it exposes {sorted(submodules)})" if isinstance(submodules, dict) else ""
+        attention_layers = [i for i, candidate in enumerate(blocks) if _has_attn(candidate)]
+        hint = (
+            f"Layers with an `attn` submodule: {attention_layers}."
+            if attention_layers
+            else "No block in this model has one."
+        )
+        raise ValueError(
+            f"decompose_head needs an attention block at layer {layer}, but blocks[{layer}] "
+            f"({type(block).__name__}) has no `attn` submodule{exposes}. {hint}"
+        )
+    return block.attn
+
+
+def _hook_result_never_fired(model, layer: int, operation: str) -> ValueError:
+    """Refusal for a bridge that accepted ``use_attn_result`` but never fired ``hook_result``."""
+    blocks = getattr(model, "blocks", None)
+    attn_class = None
+    if blocks is not None and 0 <= layer < len(blocks) and _has_attn(blocks[layer]):
+        attn_class = type(blocks[layer].attn).__name__
+    architecture = getattr(getattr(model, "cfg", None), "architecture", None)
+    names = [name for name in (architecture, attn_class) if name]
+    where = f" ({', '.join(names)})" if names else ""
+    return ValueError(
+        f"{operation}: the attention bridge{where} accepted use_attn_result but never fired "
+        f"blocks.{layer}.attn.hook_result, so per-head outputs are unavailable on this "
+        "architecture."
+    )
+
+
 def _head_weights(
     model, layer: int, head: int
 ) -> Tuple[
@@ -259,7 +313,7 @@ def _head_weights(
     ``h // (n_heads // n_kv_heads)``); a no-op for multi-head attention, where the
     head counts already match.
     """
-    attn = model.blocks[layer].attn
+    attn = _layer_attention(model, layer)
     n_kv_heads = attn.W_K.shape[0]
     kv_head = head // (model.cfg.n_heads // n_kv_heads)
     W_Q_h = _read_weight(attn.W_Q[head])  # [d_model, d_head]
@@ -412,8 +466,10 @@ def decompose_head(
         :class:`HeadSVD` for each requested map.
 
     Raises:
-        ValueError: If ``layer`` or ``head`` is out of range, or ``which`` is
-            empty, a bare string, or contains an unknown entry.
+        ValueError: If ``layer`` or ``head`` is out of range, if ``which`` is
+            empty, a bare string, or contains an unknown entry, or if the model has
+            no ``blocks`` stack or ``blocks[layer]`` has no ``attn`` submodule (SSM,
+            mixer, linear-attention and AltUp blocks, encoder-decoder bridges).
     """
     n_layers = model.cfg.n_layers
     n_heads = model.cfg.n_heads
@@ -685,7 +741,8 @@ def project_activations(
         ValueError: If ``head_svd.which != "OV"``, if ``head_svd`` was decomposed under
             a different folded-LayerNorm state than ``model`` now has, if ``prompt``
             is not a single prompt (a tensor that is not 1-D, or is 2-D with a leading
-            dimension greater than one), or if the model is in training mode.
+            dimension greater than one), if the model is in training mode, or if the
+            attention bridge accepted ``use_attn_result`` but never fired ``hook_result``.
         NotImplementedError: If the model's attention adapter exposes no per-head result,
             so ``set_use_attn_result(True)`` cannot fork the attention output.
     """
@@ -717,6 +774,8 @@ def project_activations(
         _, cache = model.run_with_cache(prompt, names_filter=lambda name: name == hook_name)
     finally:
         model.set_use_attn_result(previous)
+    if hook_name not in cache:
+        raise _hook_result_never_fired(model, head_svd.layer, "project_activations()")
     result = cache[hook_name][..., head_svd.head, :]
     if result.shape[0] != 1:
         raise ValueError(
@@ -908,7 +967,9 @@ def patch_along_directions(
             are both given or both omitted, if any index is out of ``[0, rank)``, if the
             retained set is empty (``keep=[]`` or ``ablate`` over the full rank) or spans the
             full rank (``keep`` over every direction) and no explicit ``threshold`` is
-            supplied, if ``n_baseline < 1``, or if the model is in training mode.
+            supplied, if ``n_baseline < 1``, if the model is in training mode, or if the
+            attention bridge accepted ``use_attn_result`` but never fired ``hook_result``
+            (checked after the patched forward, before any control forward).
         NotImplementedError: If the model's attention adapter exposes no per-head result,
             so ``set_use_attn_result(True)`` cannot fork the attention output.
         DegenerateDirectionError: If the retained directions split a degenerate block
@@ -954,9 +1015,18 @@ def patch_along_directions(
     model.set_use_attn_result(True)
     try:
         original_metric = float(metric(model(prompt)))
-        patched_logits = model.run_with_hooks(
-            prompt, fwd_hooks=[(hook_name, _make_subspace_hook(head_svd.head, kept_projector))]
-        )
+        kept_hook = _make_subspace_hook(head_svd.head, kept_projector)
+        kept_hook_calls: List[bool] = []
+
+        def recording_hook(activation: torch.Tensor, hook) -> torch.Tensor:
+            kept_hook_calls.append(True)
+            return kept_hook(activation, hook)
+
+        patched_logits = model.run_with_hooks(prompt, fwd_hooks=[(hook_name, recording_hook)])
+        # A bridge can accept use_attn_result without ever firing hook_result; gating that
+        # no-op patch against the controls would report a verdict about nothing.
+        if not kept_hook_calls:
+            raise _hook_result_never_fired(model, head_svd.layer, "patch_along_directions()")
         patched_metric = float(metric(patched_logits))
 
         baseline_deltas: List[float] = []

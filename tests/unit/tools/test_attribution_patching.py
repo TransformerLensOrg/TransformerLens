@@ -1392,7 +1392,7 @@ class _EdgeScoringBlock(nn.Module):
             per_head_out = self.hook_result(per_head_out_raw)
         else:
             per_head_out = per_head_out_raw
-        residual = residual + per_head_out.sum(dim=-2)
+        residual = residual + self._attention_write(per_head_out.sum(dim=-2))
 
         mlp_in = self.hook_mlp_in(residual) if self.cfg.use_hook_mlp_in else residual
         mlp_out = self.hook_mlp_out(self.w_mlp(mlp_in))
@@ -1406,6 +1406,10 @@ class _EdgeScoringBlock(nn.Module):
         edge into the logits reader.
         """
         return per_head_out
+
+    def _attention_write(self, summed: torch.Tensor) -> torch.Tensor:
+        """The summed head output as the residual stream receives it; identity here."""
+        return summed
 
 
 class _NonlinearEdgeScoringBlock(_EdgeScoringBlock):
@@ -2544,9 +2548,13 @@ def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
 # ---------------------------------------------------------------------------
 #
 # faithfulness() ablates every edge outside a candidate circuit and reports how
-# much of the clean-to-corrupt metric gap the circuit recovers. The two boundary
-# circuits pin it: keeping nothing must reproduce the corrupt run, keeping
-# everything must reproduce the clean run.
+# much of the clean-to-corrupt metric gap the circuit recovers. Keeping every
+# edge must reproduce the clean run. Keeping nothing pins little: the logits
+# reader then drops every writer and is rebuilt wholly from the replacements,
+# and every head and MLP output equals its replacement, so the corrupt run
+# comes back even when an upstream reader is rebuilt wrongly or a writer is
+# sliced wrongly. Dropping writers' out-edges must instead match patching
+# those writers' own outputs.
 
 
 def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tensor, Callable]:
@@ -2577,14 +2585,98 @@ def test_faithfulness_recovers_the_full_metric_for_the_full_circuit() -> None:
     assert report.total_edges == len(edges)
 
 
-def test_faithfulness_recovers_nothing_for_the_empty_circuit() -> None:
-    model, clean, corrupt, metric = _faithfulness_toy()
+@torch.no_grad()
+def _writer_patch_recovery(
+    model: _EdgeScoringToyBridge,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric: Callable[[torch.Tensor], torch.Tensor],
+    hook_name: str,
+    index: tuple,
+) -> float:
+    """Recovered fraction when ``hook_name[index]`` takes its corrupt value on the clean run."""
+    captured: dict[str, torch.Tensor] = {}
 
-    report = faithfulness(model, clean, corrupt, metric, [])
+    def capture(tensor: torch.Tensor, *, hook: Any) -> None:
+        del hook
+        captured["corrupt"] = tensor.clone()
 
-    assert report.recovered == pytest.approx(0.0, abs=1e-6)
-    assert report.circuit_size == 0
-    assert report.total_edges > 0
+    def patch(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        patched = tensor.clone()
+        patched[index] = captured["corrupt"][index]
+        return patched
+
+    with model.hooks(fwd_hooks=[(hook_name, capture)]):
+        corrupt_metric = float(metric(model(corrupt)))
+    with model.hooks(fwd_hooks=[(hook_name, patch)]):
+        patched_metric = float(metric(model(clean)))
+    clean_metric = float(metric(model(clean)))
+    return (patched_metric - corrupt_metric) / (clean_metric - corrupt_metric)
+
+
+def _summed_logit_diff(logits: torch.Tensor) -> torch.Tensor:
+    return (logits[0, :, 1] - logits[0, :, 2]).sum()
+
+
+_ALL = slice(None)
+# Writer kind, layer, heads and dropped positions, then the hook and index holding
+# those writers' own output. The embed dropped at every position is the corrupt
+# run itself, so it is dropped at one position. Both layer-0 heads write through
+# one hook, so each reader they feed combines two corrections.
+_WRITER_DROPS: dict[str, tuple[Any, ...]] = {
+    "L0H1": ("attn_head_out", 0, [1], range(SEQ_LEN), "blocks.0.attn.hook_z", (0, _ALL, 1)),
+    "L0_mlp": ("mlp_out", 0, [None], range(SEQ_LEN), "blocks.0.hook_mlp_out", (0, _ALL)),
+    "embed_pos0": ("embed", None, [None], [0], "hook_embed", (0, 0)),
+    "L1H1": ("attn_head_out", 1, [1], range(SEQ_LEN), "blocks.1.attn.hook_z", (0, _ALL, 1)),
+    "L0H1_pos2": ("attn_head_out", 0, [1], [2], "blocks.0.attn.hook_z", (0, 2, 1)),
+    "L0_heads_pos12": (
+        "attn_head_out",
+        0,
+        [0, 1],
+        range(1, SEQ_LEN),
+        "blocks.0.attn.hook_z",
+        (0, slice(1, None), _ALL),
+    ),
+}
+
+
+@pytest.mark.parametrize("bridge", [_EdgeScoringToyBridge, _NonlinearEdgeScoringToyBridge])
+@pytest.mark.parametrize("drop", list(_WRITER_DROPS))
+def test_faithfulness_writer_drop_matches_patching_the_writer_output(
+    bridge: type[_EdgeScoringToyBridge], drop: str
+) -> None:
+    """Dropping writers' out-edges recovers what patching those writers' own outputs does.
+
+    The toy is position-wise, so the pair differs at every position and the
+    metric reads every position: a writer's edges at an unread position could
+    otherwise be mishandled without moving the metric.
+    """
+    model = bridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[4, 1, 5]])
+    metric = _summed_logit_diff
+    kind, layer, heads, positions, _, _ = _WRITER_DROPS[drop]
+    dropped = {
+        Node(kind, position, layer=layer, head=head) for head in heads for position in positions
+    }
+    edges = _graph_edges(model, corrupt, metric)
+    circuit = [edge for edge in edges if edge[0] not in dropped]
+    assert len(circuit) < len(edges)
+
+    report = faithfulness(model, clean, corrupt, metric, circuit)
+
+    references = {
+        name: _writer_patch_recovery(model, clean, corrupt, metric, hook_name, index)
+        for name, (*_, hook_name, index) in _WRITER_DROPS.items()
+    }
+    reference = references.pop(drop)
+    assert report.recovered == pytest.approx(reference, abs=1e-5)
+    # Dropping nothing recovers 1, dropping everything 0, and dropping another
+    # listed writer its own reference; none of those can match this one.
+    assert reference != pytest.approx(0.0, abs=1e-2)
+    assert reference != pytest.approx(1.0, abs=1e-2)
+    assert all(reference != pytest.approx(other, abs=1e-2) for other in references.values())
 
 
 def test_faithfulness_full_and_corrupt_metrics_match_direct_evaluation() -> None:
@@ -3287,3 +3379,300 @@ def test_random_edge_set_baseline_is_reproducible_under_a_fixed_seed() -> None:
     assert first == second
     # Different seeds give different draws, so the seed is actually used.
     assert first != _random_edge_sets(edges, 8, draws=3, seed=1)
+
+
+class _ResidualWriteEdgeScoringBlock(_EdgeScoringBlock):
+    """``_EdgeScoringBlock`` whose summed head output is transformed before the residual add.
+
+    ``"bias"`` adds a constant, ``"rms"`` RMS-normalizes each position, ``"scale"`` halves it,
+    ``"parallel"`` adds a second mixer's output that bypasses ``hook_attn_out``.
+    """
+
+    def __init__(
+        self, layer: int, cfg: SimpleNamespace, *, write: str, marker: bool, dtype: torch.dtype
+    ) -> None:
+        super().__init__(D_MODEL, N_HEADS, D_HEAD, layer, dtype, cfg)
+        self.write = write
+        self.output_bias = torch.linspace(0.5, 1.0, D_MODEL, dtype=dtype)
+        self.hook_attn_out = HookPoint()
+        self.hook_attn_out.name = f"blocks.{layer}.hook_attn_out"
+        if marker:
+            # The records BlockBridge keeps for a post-norm, a scaled residual or a parallel mixer.
+            self.submodules = {"attn": nn.Identity(), "ln1": nn.Identity()}
+            if write == "rms":
+                self.submodules["ln1_post"] = nn.Identity()
+                self.hook_aliases = {"hook_attn_out": "ln1_post.hook_out"}
+            elif write == "scale":
+                self.residual_contribution_scale = 0.5
+            elif write == "parallel":
+                self.submodules["mamba"] = nn.Identity()
+
+    def _attention_write(self, summed: torch.Tensor) -> torch.Tensor:
+        if self.write == "parallel":
+            return self.hook_attn_out(summed) + torch.tanh(summed)
+        if self.write == "bias":
+            written = summed + self.output_bias
+        elif self.write == "rms":
+            written = summed * torch.rsqrt(summed.pow(2).mean(dim=-1, keepdim=True) + 1e-6)
+        else:
+            written = summed * 0.5
+        return self.hook_attn_out(written)
+
+
+class _ResidualWriteEdgeScoringToyBridge(_EdgeScoringToyBridge):
+    """``_EdgeScoringToyBridge`` built from :class:`_ResidualWriteEdgeScoringBlock` layers."""
+
+    def __init__(
+        self, *, write: str, marker: bool = False, dtype: torch.dtype = torch.float32
+    ) -> None:
+        super().__init__(dtype=dtype)
+        torch.manual_seed(2)
+        self.blocks = nn.ModuleList(
+            [
+                _ResidualWriteEdgeScoringBlock(
+                    layer, self.cfg, write=write, marker=marker, dtype=dtype
+                )
+                for layer in range(N_LAYERS)
+            ]
+        )
+        self.forward_calls = 0
+        self.eval()
+
+    @property
+    def hook_dict(self) -> dict[str, HookPoint]:
+        hooks = super().hook_dict
+        for layer, block in enumerate(self.blocks):
+            hooks[f"blocks.{layer}.hook_attn_out"] = block.hook_attn_out
+        return hooks
+
+    def forward(
+        self, tokens: torch.Tensor, return_type: str | None = "logits"
+    ) -> torch.Tensor | None:
+        self.forward_calls += 1
+        return super().forward(tokens, return_type=return_type)
+
+
+_NON_ADDITIVE = "normalized or scaled before the residual add.*not a head's residual contribution"
+_TRANSFORMED_WRITES = ["rms", "scale"]
+_DECLARED_WRITES = [*_TRANSFORMED_WRITES, "parallel"]
+
+
+def _residual_write_inputs() -> tuple[torch.Tensor, torch.Tensor, Callable]:
+    return torch.tensor([[1, 2, 3]]), torch.tensor([[3, 2, 1]]), _metric_fn(answer=1, wrong=2)
+
+
+@pytest.mark.parametrize("write", _DECLARED_WRITES)
+def test_edge_attribution_refuses_a_declared_residual_write_transform_before_any_forward(
+    write: str,
+) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write, marker=True)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize("write", _DECLARED_WRITES)
+def test_faithfulness_refuses_a_declared_residual_write_transform_before_any_forward(
+    write: str,
+) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write, marker=True)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize("write", _TRANSFORMED_WRITES)
+def test_edge_attribution_refuses_an_undeclared_residual_write_transform_before_the_backward(
+    write: str,
+) -> None:
+    """Without the structural record, the clean cache's head sum still exposes the transform."""
+    model = _ResidualWriteEdgeScoringToyBridge(write=write)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    assert model.forward_calls == 1
+
+
+@pytest.mark.parametrize("write", _TRANSFORMED_WRITES)
+def test_faithfulness_refuses_an_undeclared_residual_write_transform(write: str) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_NON_ADDITIVE):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 1
+
+
+@pytest.mark.parametrize("marker", [True, False])
+@pytest.mark.parametrize("write", _TRANSFORMED_WRITES)
+def test_node_attribution_still_scores_a_transformed_residual_write(
+    write: str, marker: bool
+) -> None:
+    model = _ResidualWriteEdgeScoringToyBridge(write=write, marker=marker)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    result = attribution_patch(model, clean, corrupt, metric)
+
+    assert len(result.node_scores) == _expected_node_count()
+    assert all(math.isfinite(score) for score in result.node_scores.values())
+    assert any(score != 0.0 for score in result.node_scores.values())
+
+
+def test_a_constant_attention_output_offset_keeps_edge_scoring_exact() -> None:
+    """An output bias belongs to no head, so the guard must accept it and edges stay exact."""
+    model = _ResidualWriteEdgeScoringToyBridge(write="bias")
+    clean, corrupt, metric = _residual_write_inputs()
+
+    edge_result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    node_result = attribution_patch(model, clean, corrupt, metric)
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    assert set(edge_result.node_scores) == set(node_result.node_scores)
+    for node, direct_score in node_result.node_scores.items():
+        assert edge_result.node_scores[node] == pytest.approx(direct_score, abs=1e-5)
+    assert report.recovered == pytest.approx(0.0, abs=1e-6)
+
+
+class _ForwardCountingEdgeScoringToyBridge(_EdgeScoringToyBridge):
+    """``_EdgeScoringToyBridge`` that counts its forwards."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.forward_calls = 0
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        self.forward_calls += 1
+        return super().forward(*args, **kwargs)
+
+
+_UNDECLARED = object()
+
+
+def _declare_kv_heads(
+    model: _EdgeScoringToyBridge,
+    monkeypatch: pytest.MonkeyPatch,
+    scalar: Any,
+    per_layer: list[int | None] | None,
+) -> None:
+    """Give the toy's cfg the head-count fields a GQA Bridge carries; it declares none itself."""
+    if scalar is _UNDECLARED:
+        return
+    monkeypatch.setattr(model.cfg, "n_heads", N_HEADS, raising=False)
+    monkeypatch.setattr(model.cfg, "n_key_value_heads", scalar, raising=False)
+    monkeypatch.setattr(model.cfg, "per_layer_num_key_value_heads", per_layer, raising=False)
+
+
+def _grouped_kv_refusal(layer: int) -> str:
+    return (
+        rf"blocks\.{layer} has n_key_value_heads=1 for n_heads={N_HEADS} \(GQA/MQA\).*"
+        r"edge granularity and faithfulness are unsupported.*granularity=\"node\"\)\) is available"
+    )
+
+
+# (scalar n_key_value_heads, per-layer counts, first grouped layer)
+_GROUPED_KV = [
+    pytest.param(1, None, 0, id="scalar"),
+    pytest.param(None, [N_HEADS, 1], 1, id="per-layer"),
+    pytest.param(N_HEADS, [None, 1], 1, id="per-layer-over-matching-scalar"),
+    pytest.param(1, [N_HEADS, None], 1, id="none-entry-falls-back-to-scalar"),
+    pytest.param(1, [N_HEADS], 1, id="short-list-falls-back-to-scalar"),
+]
+
+
+@pytest.mark.parametrize("scalar, per_layer, layer", _GROUPED_KV)
+def test_edge_attribution_refuses_grouped_kv_heads_before_any_forward(
+    monkeypatch: pytest.MonkeyPatch, scalar: Any, per_layer: list | None, layer: int
+) -> None:
+    model = _ForwardCountingEdgeScoringToyBridge()
+    _declare_kv_heads(model, monkeypatch, scalar, per_layer)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(layer)):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize("scalar, per_layer, layer", _GROUPED_KV)
+def test_faithfulness_refuses_grouped_kv_heads_before_any_forward(
+    monkeypatch: pytest.MonkeyPatch, scalar: Any, per_layer: list | None, layer: int
+) -> None:
+    model = _ForwardCountingEdgeScoringToyBridge()
+    _declare_kv_heads(model, monkeypatch, scalar, per_layer)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(layer)):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 0
+
+
+def test_grouped_kv_refusal_skips_a_block_without_attention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hybrid's SSM block inherits the scalar K/V count, so the refusal names the attn block."""
+    model = _ForwardCountingEdgeScoringToyBridge()
+    _declare_kv_heads(model, monkeypatch, 1, None)
+    mixer_only = {"ln1": nn.Identity(), "mixer": nn.Identity()}
+    monkeypatch.setattr(model.blocks[0], "submodules", mixer_only, raising=False)
+    clean, corrupt, metric = _residual_write_inputs()
+
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(1)):
+        attribution_patch(
+            model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+        )
+    with pytest.raises(ValueError, match=_grouped_kv_refusal(1)):
+        faithfulness(model, clean, corrupt, metric, [])
+    assert model.forward_calls == 0
+
+
+@pytest.mark.parametrize(
+    "scalar, per_layer",
+    [
+        pytest.param(_UNDECLARED, None, id="undeclared"),
+        pytest.param(None, None, id="scalar-none"),
+        pytest.param(N_HEADS, None, id="scalar-equal"),
+        pytest.param(1, [N_HEADS, N_HEADS], id="per-layer-overrides-grouped-scalar"),
+    ],
+)
+def test_edge_scoring_is_unchanged_when_kv_heads_match_query_heads(
+    monkeypatch: pytest.MonkeyPatch, scalar: Any, per_layer: list | None
+) -> None:
+    reference, clean, corrupt, metric = _faithfulness_toy()
+    expected = attribution_patch(
+        reference, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    expected_report = faithfulness(reference, clean, corrupt, metric, [])
+    model, *_ = _faithfulness_toy()
+    _declare_kv_heads(model, monkeypatch, scalar, per_layer)
+
+    result = attribution_patch(
+        model, clean, corrupt, metric, config=EdgeAttributionConfig(granularity="edge")
+    )
+    report = faithfulness(model, clean, corrupt, metric, [])
+
+    assert result.edge_scores
+    assert result == expected
+    assert report == expected_report
+
+
+def test_node_attribution_still_scores_grouped_kv_heads(monkeypatch: pytest.MonkeyPatch) -> None:
+    model, clean, corrupt, metric = _faithfulness_toy()
+    _declare_kv_heads(model, monkeypatch, 1, None)
+
+    result = attribution_patch(model, clean, corrupt, metric)
+
+    assert len(result.node_scores) == _expected_node_count()
+    assert all(math.isfinite(score) for score in result.node_scores.values())
+    assert any(score != 0.0 for score in result.node_scores.values())
