@@ -451,9 +451,10 @@ def fit_das(
     source_acts = collect_activations(
         model, hook_name, source_inputs, task_logits, positions=source_positions, batch_size=micro
     )
-    # Seed the initialisation without moving the caller's random stream
+    # The subspace is built on the CPU, so seed only the CPU generator, inside a fork that restores
+    # it; torch.manual_seed would also reseed every CUDA, MPS and XPU generator
     with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(seed)
+        torch.default_generator.manual_seed(seed)
         subspace = LearnedSubspace(source_acts.shape[1], rank)
     subspace = subspace.to(device if device is not None else _model_device(model))
     step = SubspaceInterchange(subspace, strength)

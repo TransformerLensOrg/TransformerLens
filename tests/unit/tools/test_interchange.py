@@ -322,6 +322,22 @@ def test_das_leaves_the_callers_random_stream_alone():
     assert torch.equal(first.basis, again.basis)  # the seed still fixes the result
 
 
+def test_das_never_reseeds_a_device_generator(monkeypatch):
+    def reseeded(*args, **kwargs):
+        raise AssertionError("fit_das reseeded a global or device generator")
+
+    for module, name in (
+        (torch, "manual_seed"),
+        (torch.random, "manual_seed"),
+        (torch.cuda, "manual_seed"),
+        (torch.cuda, "manual_seed_all"),
+        (torch.mps, "manual_seed"),
+    ):
+        monkeypatch.setattr(module, name, reseeded)
+    model, base, source, targets = _planted_pairs(n=32)
+    fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
+
+
 def test_the_subspace_defaults_to_the_models_device():
     assert _model_device(nn.Linear(2, 2, device="meta")) == torch.device("meta")
     assert _model_device(_Pattern()) == torch.device("cpu")  # no parameters
