@@ -726,7 +726,8 @@ class ActivationCache:
                 A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
             incl_embeds:
-                Whether to include embed & pos_embed
+                Whether to include embed & pos_embed, whose hooks expose their
+                contributions to the residual stream.
             return_labels:
                 Whether to return a list of labels for the residual stream components.
                 Useful for labelling graphs.
@@ -820,7 +821,9 @@ class ActivationCache:
                 # Preserve broadcast promotion for caches collected under autocast.
                 dtype = torch.promote_types(z.dtype, weights.dtype)
                 z, weights = z.to(dtype), weights.to(dtype)
-            self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
+            result = torch.einsum("...hd,hdm->...hm", z, weights)
+            scale = getattr(self.model.blocks[layer].attn, "_result_contribution_scale", 1.0)
+            self.cache_dict[result_key] = result if scale == 1.0 else result * scale
         return all_cached
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
@@ -1158,6 +1161,7 @@ class ActivationCache:
         neuron_acts = self[("post", layer, "mlp")]
         block = self.model.blocks[layer]
         W_out = block.mlp.W_out
+        contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
@@ -1165,6 +1169,8 @@ class ActivationCache:
         if neuron_slice is not None:
             neuron_acts = neuron_slice.apply(neuron_acts, dim=-1)
             W_out = neuron_slice.apply(W_out, dim=0)
+        if contribution_scale != 1.0:
+            neuron_acts = neuron_acts * contribution_scale
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
@@ -1239,6 +1245,7 @@ class ActivationCache:
         for l in range(layer):
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
+            contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
             if apply_centering:
@@ -1247,6 +1254,8 @@ class ActivationCache:
                 lin_form_l = W_proj_l - W_means_l[:, None] * sum_p[None, :]
             else:
                 lin_form_l = W_proj_l
+            if contribution_scale != 1.0:
+                lin_form_l = lin_form_l * contribution_scale
             a_l = self[("post", l, "mlp")]
             a_l = pos_slice.apply(a_l, dim=-2)
             a_l = neuron_slice.apply(a_l, dim=-1)
@@ -1530,7 +1539,7 @@ class ActivationCache:
         2. Neuron / MLP results (only if ``cfg.attn_only=False`` and
            ``layer > 0``; ``L * d_mlp`` rows when ``expand_neurons=True``,
            else ``L`` rows)
-        3. ``embed`` (1 row, if the model has token embeddings)
+        3. ``embed`` (1 row, including any post-embedding runtime multiplier)
         4. ``pos_embed`` (1 row, if the model has positional embeddings)
         5. ``bias`` (1 row, the accumulated layer biases)
 
@@ -1626,7 +1635,7 @@ class ActivationCache:
                 components.append(mlp_stack)
 
         if self.has_embed:
-            embed = pos_slice.apply(self["embed"], -2)[None]
+            embed = pos_slice.apply(self["hook_embed"], -2)[None]
             if ln_folded:
                 embed = _ln_then_project(embed)
             elif project_2d is not None:

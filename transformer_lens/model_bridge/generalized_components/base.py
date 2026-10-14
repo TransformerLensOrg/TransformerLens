@@ -135,6 +135,22 @@ class GeneralizedComponent(nn.Module):
             self.hook_aliases = self.__class__.hook_aliases.copy()
             self.hook_aliases.update(hook_alias_overrides)
 
+    def _hook_scaled_output(
+        self, output: torch.Tensor, hook_point: HookPoint, scale: float
+    ) -> torch.Tensor:
+        """Expose a residual contribution while leaving an outer HF scale intact."""
+        if scale == 1.0:
+            return hook_point(output)
+        if not hook_point.has_hooks(dir="both"):
+            return output
+        hooked = hook_point(output * scale)
+        # Recompute the reference because an in-place hook can mutate its input.
+        if not hook_point.has_hooks(dir="bwd") and torch.equal(hooked, output * scale):
+            return output
+        if scale == 0.0:
+            raise ValueError("Cannot edit or backward-hook a contribution with zero runtime scale")
+        return hooked / scale
+
     def mark_pos_dim(self, pos_dim: int) -> None:
         """Declare the position axis of every HookPoint this component owns.
 

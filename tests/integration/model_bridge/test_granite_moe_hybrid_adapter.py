@@ -20,6 +20,7 @@ Coverage focus (SSM mixer access normalization):
 """
 
 import contextlib
+import copy
 
 import pytest
 import torch
@@ -42,6 +43,34 @@ LAYER_TYPES = ["mamba", "attention", "mamba"]
 CANONICAL_LAYER_TYPES = ["linear_attention", "full_attention", "linear_attention"]
 MAMBA_LAYERS = [0, 2]
 ATTN_LAYER = 1
+
+
+def test_hybrid_embedding_hook_exposes_scaled_contribution(hf_model, tokens):
+    cfg = GraniteMoeHybridConfig.from_dict(hf_model.config.to_dict())
+    cfg.embedding_multiplier = 12.0
+    cfg.residual_multiplier = 0.22
+    cfg._attn_implementation = "eager"
+    model = AutoModelForCausalLM.from_config(cfg).to(torch.float32).eval()
+    reference = copy.deepcopy(model)
+    bridge_config = build_bridge_config_from_hf(
+        cfg, "GraniteMoeHybridForCausalLM", "granitemoehybrid-tiny", torch.float32
+    )
+    adapter = GraniteMoeHybridArchitectureAdapter(bridge_config)
+    bridge = TransformerBridge(model=model, adapter=adapter, tokenizer=_MockTokenizer())
+    try:
+        with torch.no_grad():
+            baseline = bridge(tokens, use_cache=False)
+            logits, cache = bridge.run_with_cache(
+                tokens, use_cache=False, names_filter=["hook_embed", "blocks.0.hook_in"]
+            )
+            expected = reference(tokens, use_cache=False).logits
+            embed = reference.model.embed_tokens(tokens) * cfg.embedding_multiplier
+        torch.testing.assert_close(logits, baseline, rtol=0, atol=0)
+        torch.testing.assert_close(logits, expected, rtol=1e-5, atol=1e-7)
+        torch.testing.assert_close(cache["hook_embed"], embed)
+        torch.testing.assert_close(cache["hook_embed"], cache["blocks.0.hook_in"])
+    finally:
+        bridge.close()
 
 
 class _MockTokenizer:

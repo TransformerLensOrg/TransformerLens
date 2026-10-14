@@ -535,6 +535,9 @@ class ScaledResidualBlockBridge(BlockBridge):
         self.residual_contribution_scale = scale
         self.scaled_attn_submodule = scaled_attn_submodule
         self.scaled_mlp_submodule = scaled_mlp_submodule
+        attn = self.submodules.get(scaled_attn_submodule) if self.submodules else None
+        if attn is not None:
+            attn._result_contribution_scale = scale
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
         for alias in ("hook_attn_out", "hook_mlp_out"):
@@ -605,13 +608,9 @@ class ScaledResidualBlockBridge(BlockBridge):
             out = output[0] if is_tuple else output
             if not isinstance(out, torch.Tensor):
                 return None
-            scaled = out * scale
-            hooked = hook_point(scaled)
-            # Compare against a freshly computed reference: an in-place mutation
-            # alters `scaled` itself, so an identity check would miss it.
-            if not hook_point.has_hooks(dir="bwd") and torch.equal(hooked, out * scale):
+            new = self._hook_scaled_output(out, hook_point, scale)
+            if new is out:
                 return None
-            new = hooked / scale
             return ((new,) + output[1:]) if is_tuple else new
 
         return _hook

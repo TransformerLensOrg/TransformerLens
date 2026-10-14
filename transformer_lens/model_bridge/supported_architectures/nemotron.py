@@ -25,6 +25,8 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
     """Architecture adapter for NemotronForCausalLM models."""
 
     _testing_eager = "config"
+    # LayerNorm1P stores gamma as an offset from 1; subclasses with plain LayerNorm set False.
+    _layernorm_weight_offset = True
 
     def __init__(self, cfg: Any) -> None:
         """Initialize the Nemotron architecture adapter."""
@@ -36,12 +38,13 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
 
-        # LayerNorm1P applies gamma as (weight + 1); standard LN folding would
-        # fold the stored weight without the offset. Keep raw weights.
-        self.supports_fold_ln = False
-        self.supports_center_writing_weights = False
-        # The bridge's own norm paths (hook edits, backward hooks, LN-rule) need the offset too.
-        self.cfg.rmsnorm_uses_offset = True
+        offset = self._layernorm_weight_offset
+        # Standard LN folding would fold the stored weight without the offset. Keep raw weights.
+        self.supports_fold_ln = not offset
+        self.supports_center_writing_weights = not offset
+        # Read by analysis tools (DLA, path patching, SVD); the bridge's own norm paths
+        # use the per-norm uses_weight_offset below.
+        self.cfg.rmsnorm_uses_offset = offset
 
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
@@ -59,6 +62,7 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
                         name="input_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,
+                        uses_weight_offset=offset,
                     ),
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
@@ -76,12 +80,16 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
                         name="post_attention_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,
+                        uses_weight_offset=offset,
                     ),
                     "mlp": self._ungated_mlp(),
                 },
             ),
             "ln_final": NormalizationBridge(
-                name="model.norm", config=self.cfg, use_native_layernorm_autograd=True
+                name="model.norm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+                uses_weight_offset=offset,
             ),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
