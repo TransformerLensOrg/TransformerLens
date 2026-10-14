@@ -47,6 +47,10 @@ def tiny_image_bridge():
         torch.manual_seed(3)
         model = Gemma3ForConditionalGeneration(config).eval()
         with torch.no_grad():
+            # A uniform offset error can be canceled by the projector's RMSNorm.
+            for module in model.model.vision_tower.modules():
+                if isinstance(module, torch.nn.LayerNorm):
+                    module.weight.copy_(torch.linspace(0.7, 1.3, module.weight.numel()))
             # HF initializes this projection to zero, hiding vision-path regressions.
             model.model.multi_modal_projector.mm_input_projection_weight.normal_(0, 0.2)
         pixels = torch.randn(1, 3, 8, 8)
