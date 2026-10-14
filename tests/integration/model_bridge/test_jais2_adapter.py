@@ -6,9 +6,14 @@ nn.LayerNorm in a standard pre-norm layout, so unlike its Nemotron parent
 that the re-enabled fold path stays faithful.
 """
 
+import pytest
 import torch
 
 from tests.integration.model_bridge.helpers import make_tiny_pair
+from transformer_lens.model_bridge._relevance_rules import (
+    RelevanceRules,
+    use_relevance_rules,
+)
 
 
 def _tiny_jais2_pair():
@@ -62,3 +67,46 @@ class TestJais2Bridge:
             expected = torch.log_softmax(ref(input_ids=ids).logits, dim=-1)
         max_diff = (out - expected).abs().max().item()
         assert max_diff < 1e-5, f"Compat-mode vs HF log_softmax max diff = {max_diff}"
+
+
+def _perturbed_jais2_bridge():
+    bridge, _ = _tiny_jais2_pair()
+    # Unit LN init makes a stray (1 + w) a uniform 2x scale; non-unit weights expose it.
+    with torch.no_grad():
+        for module in bridge.original_model.modules():
+            if isinstance(module, torch.nn.LayerNorm):
+                module.weight.copy_(torch.linspace(0.7, 1.3, module.weight.numel()))
+    return bridge
+
+
+class TestJais2PlainLayerNormHooks:
+    """Jais 2 inherits Nemotron's norm mapping but must not inherit LayerNorm1P's (1 + w)."""
+
+    @pytest.mark.parametrize("norm_name", ["blocks.0.ln1", "blocks.0.ln2", "ln_final"])
+    @pytest.mark.parametrize("hook_name", ["hook_scale", "hook_normalized"])
+    @pytest.mark.parametrize("direction", ["fwd", "bwd"])
+    def test_identity_hooks_preserve_logits(self, norm_name, hook_name, direction) -> None:
+        bridge = _perturbed_jais2_bridge()
+        ids = torch.tensor([[1, 7, 8, 9, 10]])
+        with torch.no_grad():
+            clean = bridge(ids)
+        message = "Backward hooks" if direction == "bwd" else "reconstructed from the hooked values"
+        key = f"{norm_name}.{hook_name}"
+        with bridge.hooks(**{f"{direction}_hooks": [(key, lambda t, hook: t.clone())]}):
+            with pytest.warns(UserWarning, match=message):
+                hooked = bridge(ids)
+        torch.testing.assert_close(hooked.detach(), clean, atol=1e-6, rtol=1e-5)
+
+    def test_ln_rule_vjp_uses_plain_weight(self) -> None:
+        bridge = _perturbed_jais2_bridge()
+        ln = bridge.blocks[0].ln1
+        component = ln.original_component
+        x = torch.randn(1, 5, bridge.cfg.d_model, requires_grad=True)
+        probe = torch.randn_like(x)
+        with use_relevance_rules(bridge, RelevanceRules(normalization=True)):
+            ln(x).backward(probe)
+        x_oracle = x.detach().clone().requires_grad_(True)
+        centered = x_oracle - x_oracle.mean(-1, keepdim=True)
+        denom = (centered.pow(2).mean(-1, keepdim=True) + component.eps).sqrt().detach()
+        (centered / denom * component.weight.detach()).backward(probe)
+        torch.testing.assert_close(x.grad, x_oracle.grad)
