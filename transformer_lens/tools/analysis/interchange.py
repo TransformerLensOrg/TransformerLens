@@ -13,7 +13,10 @@ variable at that hook point (Geiger et al., 2021).
 
 The module provides the intervention, fixed-direction bases to intervene on (the difference of
 class means, a linear probe's weights, a random basis), and a norm-matched random-subspace placebo.
-An interchange accuracy is not evidence on its own: compare it with the placebo and the baselines.
+:func:`fit_das` learns the basis instead, by distributed alignment search (DAS; Geiger et al.,
+2024): it trains an orthonormal basis so that the interchange produces the high-level model's
+predicted outputs. An interchange accuracy is not evidence on its own: compare it with the placebo
+and the baselines.
 
 Works with any model exposing the hook API (``TransformerBridge`` or a ``HookedRootModule``).
 Activations at the hook must be ``[batch, d_model]``, or ``[batch, pos, d_model]`` with one
@@ -23,12 +26,16 @@ position index per example.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Hashable, Iterator, Optional, Sequence, Union
+from typing import Any, Callable, Hashable, Iterator, Optional, Sequence, Union, cast
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from jaxtyping import Float, Int
+from torch import nn
+from torch.nn.utils.parametrizations import orthogonal
 
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.projection_kernel import orthonormal_subspace
 
 TaskLogits = Callable[[torch.Tensor], Float[torch.Tensor, "batch n_classes"]]
@@ -99,20 +106,47 @@ def probe_basis(
     return orthonormal_subspace((w - w.mean(0)).T, rank=w.shape[0] - 1).basis
 
 
+class LearnedSubspace(nn.Module):
+    """A trainable rank-``rank`` subspace of ``d_model`` whose basis stays orthonormal.
+
+    Args:
+        d_model: Dimension of the activation.
+        rank: Number of basis directions, in ``[1, d_model]``.
+    """
+
+    def __init__(self, d_model: int, rank: int):
+        super().__init__()
+        if not 0 < rank <= d_model:
+            raise ValueError(f"rank must be in [1, {d_model}], got {rank}")
+        self.proj = orthogonal(nn.Linear(rank, d_model, bias=False))
+
+    @property
+    def basis(self) -> Float[torch.Tensor, "d_model rank"]:
+        return cast(torch.Tensor, self.proj.weight)
+
+
+Basis = Union[torch.Tensor, LearnedSubspace]
+
+
+def _basis(basis: Basis, like: torch.Tensor) -> torch.Tensor:
+    b = basis.basis if isinstance(basis, LearnedSubspace) else basis
+    return b.to(like.device, like.dtype)
+
+
 @dataclass(frozen=True)
 class SubspaceInterchange:
     """Set the base's coordinates inside ``basis`` to the source's.
 
     Attributes:
-        basis: Orthonormal basis, ``[d_model, rank]``.
+        basis: Orthonormal basis, ``[d_model, rank]``, or a :class:`LearnedSubspace`.
         strength: 1 interchanges the coordinates; other values scale the move, 0 leaves the base.
     """
 
-    basis: torch.Tensor
+    basis: Basis
     strength: float = 1.0
 
     def __call__(self, base: torch.Tensor, source: torch.Tensor) -> torch.Tensor:
-        B = self.basis.to(base.device, base.dtype)
+        B = _basis(self.basis, base)
         return base + self.strength * ((source - base) @ B) @ B.T
 
 
@@ -202,9 +236,11 @@ def collect_activations(
         Activations, ``[batch, d_model]``.
 
     Raises:
-        ValueError: If the activation does not match the positions given (or not given).
+        ValueError: If any part of the model is in training mode, or the activation does not match
+            the positions given (or not given).
         RuntimeError: If the hook does not fire exactly once per forward pass.
     """
+    require_eval_mode(model, operation="collect_activations")
     out = []
     for idx in _chunks(len(inputs), batch_size):
         store: list[torch.Tensor] = []
@@ -302,7 +338,11 @@ def intervened_logits(
 
     Returns:
         Task logits under the intervention, ``[batch, n_classes]``.
+
+    Raises:
+        ValueError: If any part of the model is in training mode, or the inputs do not pair up.
     """
+    require_eval_mode(model, operation="intervened_logits")
     if len(source_activations) != len(base_inputs):
         raise ValueError("source_activations must have one row per base input")
     out = []
@@ -318,3 +358,139 @@ def intervened_logits(
         )
         out.append(logits.detach().cpu())
     return torch.cat(out)
+
+
+def _model_device(model: Any) -> torch.device:
+    parameter = next(iter(model.parameters()), None)
+    return parameter.device if parameter is not None else torch.device("cpu")
+
+
+@dataclass(frozen=True)
+class DASResult:
+    """A subspace learned by :func:`fit_das`.
+
+    Attributes:
+        subspace: The learned subspace; pass it to :class:`SubspaceInterchange`.
+        losses: Mean training loss per epoch.
+        hook_name: The hook point it was trained at.
+        rank: Its rank.
+    """
+
+    subspace: LearnedSubspace
+    losses: tuple[float, ...]
+    hook_name: str
+    rank: int
+
+    @property
+    def basis(self) -> Float[torch.Tensor, "d_model rank"]:
+        return self.subspace.basis.detach()
+
+
+def fit_das(
+    model: Any,
+    hook_name: str,
+    base_inputs: torch.Tensor,
+    source_inputs: torch.Tensor,
+    targets: Int[torch.Tensor, "batch"],
+    task_logits: TaskLogits,
+    *,
+    rank: int,
+    base_positions: Optional[Int[torch.Tensor, "batch"]] = None,
+    source_positions: Optional[Int[torch.Tensor, "batch"]] = None,
+    epochs: int = 20,
+    batch_size: int = 128,
+    lr: float = 1e-2,
+    strength: float = 1.0,
+    seed: int = 0,
+    device: Optional[Union[str, torch.device]] = None,
+    micro_batch_size: Optional[int] = None,
+) -> DASResult:
+    """Learn the subspace whose interchange makes the model output ``targets`` (DAS).
+
+    ``targets[i]`` is the class the high-level causal model predicts for base ``i`` with the
+    aligned variable set to its value in source ``i``. The basis is trained with cross-entropy
+    on the task logits under the interchange. Model parameters are frozen during the call and
+    their ``requires_grad`` flags restored afterwards.
+
+    Train on pairs where several variables differ between base and source, labelled by the
+    high-level model's interchange, as well as on pairs that differ only in the aligned variable:
+    otherwise the subspace can learn whatever the pairs happen to move together.
+
+    Args:
+        model: A model exposing the hook API.
+        hook_name: The hook point to align.
+        base_inputs: Base inputs, one row per pair.
+        source_inputs: Source inputs, one row per pair.
+        targets: The high-level model's output class for each pair under the interchange.
+        task_logits: Runs the model on a batch of inputs and returns task logits.
+        rank: Dimension of the subspace.
+        base_positions: For ``[batch, pos, d_model]`` activations, the base position per pair.
+        source_positions: Likewise for the sources.
+        epochs: Passes over the pairs.
+        batch_size: Pairs per optimisation step.
+        lr: Adam learning rate.
+        strength: Interchange strength during training.
+        seed: Seed for the basis initialisation and the batch order.
+        device: Device for the subspace's parameters; by default the device of the model's
+            parameters, or the CPU for a model without any.
+        micro_batch_size: Split each batch into parts this size and accumulate gradients: the same
+            gradients, up to floating-point rounding, in less memory.
+
+    Returns:
+        The learned subspace with its training losses.
+
+    Raises:
+        ValueError: If any part of the model is in training mode, or the inputs and targets differ
+            in length.
+    """
+    require_eval_mode(model, operation="fit_das")
+    if not (len(base_inputs) == len(source_inputs) == len(targets)):
+        raise ValueError("base_inputs, source_inputs and targets must have the same length")
+    rng = np.random.default_rng(seed)
+    micro = micro_batch_size or batch_size
+    source_acts = collect_activations(
+        model, hook_name, source_inputs, task_logits, positions=source_positions, batch_size=micro
+    )
+    # The subspace is built on the CPU, so seed only the CPU generator, inside a fork that restores
+    # it; torch.manual_seed would also reseed every CUDA, MPS and XPU generator
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(seed)
+        subspace = LearnedSubspace(source_acts.shape[1], rank)
+    subspace = subspace.to(device if device is not None else _model_device(model))
+    step = SubspaceInterchange(subspace, strength)
+    optimizer = torch.optim.Adam(subspace.parameters(), lr=lr)
+    labels = torch.as_tensor(targets, dtype=torch.long)
+
+    flags = [p.requires_grad for p in model.parameters()]
+    model.requires_grad_(False)
+    losses = []
+    try:
+        for _ in range(epochs):
+            order = torch.as_tensor(rng.permutation(len(labels)))
+            total = 0.0
+            for chunk in _chunks(len(order), batch_size):
+                batch = order[chunk]
+                optimizer.zero_grad()
+                for part in _chunks(len(batch), micro):
+                    idx = batch[part]
+                    logits = run_with_intervention(
+                        model,
+                        hook_name,
+                        step,
+                        base_inputs[idx],
+                        source_acts[idx],
+                        task_logits,
+                        positions=_at(base_positions, idx),
+                    )
+                    # Summed, then divided by the whole batch, so split batches give equal gradients
+                    loss = F.cross_entropy(
+                        logits, labels[idx].to(logits.device), reduction="sum"
+                    ) / len(batch)
+                    loss.backward()
+                    total += loss.item() * len(batch)
+                optimizer.step()
+            losses.append(total / len(order))
+    finally:
+        for p, flag in zip(model.parameters(), flags):
+            p.requires_grad_(flag)
+    return DASResult(subspace.eval(), tuple(losses), hook_name, rank)

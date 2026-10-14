@@ -19,8 +19,9 @@ Tools:
       analysis.
     - interchange: Interchange interventions on linear subspaces: set a base's
       activation inside a subspace to its value on a source input, with
-      difference-of-means, probe and random bases, a norm-matched placebo, and
-      batched, gradient-free evaluation.
+      difference-of-means, probe and random bases, a norm-matched placebo,
+      batched gradient-free evaluation, and distributed alignment search (DAS)
+      to learn the subspace.
     - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
@@ -78,9 +79,12 @@ from transformer_lens.tools.analysis.direct_path_patching import (
     get_act_patch_direct_path_all_sources,
 )
 from transformer_lens.tools.analysis.interchange import (
+    DASResult,
+    LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
     collect_activations,
+    fit_das,
     intervened_logits,
     mean_difference_basis,
     probe_basis,
@@ -166,6 +170,7 @@ __all__ = [
     "BackwardLensResult",
     "BenchmarkCorpus",
     "CoordinatePatch",
+    "DASResult",
     "DegenerateDirectionError",
     "DirectLogitAttribution",
     "EdgeAttributionConfig",
@@ -181,6 +186,7 @@ __all__ = [
     "JSpaceVarianceProfile",
     "JacobianLens",
     "JacobianLensReadout",
+    "LearnedSubspace",
     "LinearGradientFactors",
     "LogitLensResult",
     "LogitReadout",
@@ -210,6 +216,7 @@ __all__ = [
     "direct_logit_attribution",
     "estimate_occupancy",
     "faithfulness",
+    "fit_das",
     "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
