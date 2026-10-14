@@ -2548,9 +2548,13 @@ def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
 # ---------------------------------------------------------------------------
 #
 # faithfulness() ablates every edge outside a candidate circuit and reports how
-# much of the clean-to-corrupt metric gap the circuit recovers. The two boundary
-# circuits pin it: keeping nothing must reproduce the corrupt run, keeping
-# everything must reproduce the clean run.
+# much of the clean-to-corrupt metric gap the circuit recovers. Keeping every
+# edge must reproduce the clean run. Keeping nothing pins little: the logits
+# reader then drops every writer and is rebuilt wholly from the replacements,
+# and every head and MLP output equals its replacement, so the corrupt run
+# comes back even when an upstream reader is rebuilt wrongly or a writer is
+# sliced wrongly. Dropping writers' out-edges must instead match patching
+# those writers' own outputs.
 
 
 def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tensor, Callable]:
@@ -2581,14 +2585,98 @@ def test_faithfulness_recovers_the_full_metric_for_the_full_circuit() -> None:
     assert report.total_edges == len(edges)
 
 
-def test_faithfulness_recovers_nothing_for_the_empty_circuit() -> None:
-    model, clean, corrupt, metric = _faithfulness_toy()
+@torch.no_grad()
+def _writer_patch_recovery(
+    model: _EdgeScoringToyBridge,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric: Callable[[torch.Tensor], torch.Tensor],
+    hook_name: str,
+    index: tuple,
+) -> float:
+    """Recovered fraction when ``hook_name[index]`` takes its corrupt value on the clean run."""
+    captured: dict[str, torch.Tensor] = {}
 
-    report = faithfulness(model, clean, corrupt, metric, [])
+    def capture(tensor: torch.Tensor, *, hook: Any) -> None:
+        del hook
+        captured["corrupt"] = tensor.clone()
 
-    assert report.recovered == pytest.approx(0.0, abs=1e-6)
-    assert report.circuit_size == 0
-    assert report.total_edges > 0
+    def patch(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+        del hook
+        patched = tensor.clone()
+        patched[index] = captured["corrupt"][index]
+        return patched
+
+    with model.hooks(fwd_hooks=[(hook_name, capture)]):
+        corrupt_metric = float(metric(model(corrupt)))
+    with model.hooks(fwd_hooks=[(hook_name, patch)]):
+        patched_metric = float(metric(model(clean)))
+    clean_metric = float(metric(model(clean)))
+    return (patched_metric - corrupt_metric) / (clean_metric - corrupt_metric)
+
+
+def _summed_logit_diff(logits: torch.Tensor) -> torch.Tensor:
+    return (logits[0, :, 1] - logits[0, :, 2]).sum()
+
+
+_ALL = slice(None)
+# Writer kind, layer, heads and dropped positions, then the hook and index holding
+# those writers' own output. The embed dropped at every position is the corrupt
+# run itself, so it is dropped at one position. Both layer-0 heads write through
+# one hook, so each reader they feed combines two corrections.
+_WRITER_DROPS: dict[str, tuple[Any, ...]] = {
+    "L0H1": ("attn_head_out", 0, [1], range(SEQ_LEN), "blocks.0.attn.hook_z", (0, _ALL, 1)),
+    "L0_mlp": ("mlp_out", 0, [None], range(SEQ_LEN), "blocks.0.hook_mlp_out", (0, _ALL)),
+    "embed_pos0": ("embed", None, [None], [0], "hook_embed", (0, 0)),
+    "L1H1": ("attn_head_out", 1, [1], range(SEQ_LEN), "blocks.1.attn.hook_z", (0, _ALL, 1)),
+    "L0H1_pos2": ("attn_head_out", 0, [1], [2], "blocks.0.attn.hook_z", (0, 2, 1)),
+    "L0_heads_pos12": (
+        "attn_head_out",
+        0,
+        [0, 1],
+        range(1, SEQ_LEN),
+        "blocks.0.attn.hook_z",
+        (0, slice(1, None), _ALL),
+    ),
+}
+
+
+@pytest.mark.parametrize("bridge", [_EdgeScoringToyBridge, _NonlinearEdgeScoringToyBridge])
+@pytest.mark.parametrize("drop", list(_WRITER_DROPS))
+def test_faithfulness_writer_drop_matches_patching_the_writer_output(
+    bridge: type[_EdgeScoringToyBridge], drop: str
+) -> None:
+    """Dropping writers' out-edges recovers what patching those writers' own outputs does.
+
+    The toy is position-wise, so the pair differs at every position and the
+    metric reads every position: a writer's edges at an unread position could
+    otherwise be mishandled without moving the metric.
+    """
+    model = bridge()
+    clean = torch.tensor([[1, 2, 3]])
+    corrupt = torch.tensor([[4, 1, 5]])
+    metric = _summed_logit_diff
+    kind, layer, heads, positions, _, _ = _WRITER_DROPS[drop]
+    dropped = {
+        Node(kind, position, layer=layer, head=head) for head in heads for position in positions
+    }
+    edges = _graph_edges(model, corrupt, metric)
+    circuit = [edge for edge in edges if edge[0] not in dropped]
+    assert len(circuit) < len(edges)
+
+    report = faithfulness(model, clean, corrupt, metric, circuit)
+
+    references = {
+        name: _writer_patch_recovery(model, clean, corrupt, metric, hook_name, index)
+        for name, (*_, hook_name, index) in _WRITER_DROPS.items()
+    }
+    reference = references.pop(drop)
+    assert report.recovered == pytest.approx(reference, abs=1e-5)
+    # Dropping nothing recovers 1, dropping everything 0, and dropping another
+    # listed writer its own reference; none of those can match this one.
+    assert reference != pytest.approx(0.0, abs=1e-2)
+    assert reference != pytest.approx(1.0, abs=1e-2)
+    assert all(reference != pytest.approx(other, abs=1e-2) for other in references.values())
 
 
 def test_faithfulness_full_and_corrupt_metrics_match_direct_evaluation() -> None:

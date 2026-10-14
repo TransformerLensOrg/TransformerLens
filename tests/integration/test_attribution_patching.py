@@ -26,6 +26,7 @@ from transformer_lens.tools.analysis.attribution_patching import (
     _edge_hook_names,
     _mean_writer_contributions,
     attribution_patch,
+    capture_writer_outputs,
     enumerate_edges,
     faithfulness,
 )
@@ -518,6 +519,92 @@ def test_edge_class_gpt2_removal_keeps_candidate_exclusions(
     if edge_class != "into_logits":
         gap = report.full_metric - report.corrupt_metric
         assert abs(float(metric(expected) - metric(restored)) / gap) > 1e-4
+
+
+@torch.no_grad()
+def _writer_patch_recovery(
+    model: TransformerBridge,
+    clean: torch.Tensor,
+    corrupt: torch.Tensor,
+    metric: Callable[[torch.Tensor], torch.Tensor],
+    hook_name: str,
+    index: tuple,
+) -> float:
+    """Recovered fraction when ``hook_name[index]`` takes its corrupt value on the clean run."""
+    corrupt_values: dict[str, torch.Tensor] = {}
+    with model.hooks(fwd_hooks=[(hook_name, _capture_hook(hook_name, corrupt_values))]):
+        corrupt_metric = float(metric(model(corrupt)))
+    patch = _override_reader(index, corrupt_values[hook_name][index])
+    with model.hooks(fwd_hooks=[(hook_name, patch)]):
+        patched_metric = float(metric(model(clean)))
+    clean_metric = float(metric(model(clean)))
+    return (patched_metric - corrupt_metric) / (clean_metric - corrupt_metric)
+
+
+def _assert_layer0_writer_drops_match_output_patches(
+    model: TransformerBridge, head: int, abs_tol: float
+) -> None:
+    clean = model.to_tokens(CLEAN_PROMPT)
+    corrupt = model.to_tokens(CORRUPT_PROMPT)
+    assert clean.shape == corrupt.shape
+    answer_id = int(model.to_tokens(" Paris")[0, -1])
+    wrong_id = int(model.to_tokens(" Moscow")[0, -1])
+    metric = _logit_diff_metric(answer_id, wrong_id)
+    with _edge_hook_flags(model):
+        values = capture_writer_outputs(model, clean, _edge_hook_names(model.cfg.n_layers))
+    edges = enumerate_edges(model, GradientCache(values, {}, torch.tensor(0.0)))
+    positions = range(clean.shape[1])
+    drops = {
+        "blocks.0.attn.hook_z": (
+            {Node("attn_head_out", position, layer=0, head=head) for position in positions},
+            (0, slice(None), head),
+        ),
+        "blocks.0.hook_mlp_out": (
+            {Node("mlp_out", position, layer=0) for position in positions},
+            (0, slice(None)),
+        ),
+    }
+    references = []
+    for hook_name, (dropped, index) in drops.items():
+        circuit = [edge for edge in edges if edge[0] not in dropped]
+        assert len(circuit) < len(edges)
+        report = faithfulness(model, clean, corrupt, metric, circuit)
+        reference = _writer_patch_recovery(model, clean, corrupt, metric, hook_name, index)
+        assert report.recovered == pytest.approx(reference, abs=abs_tol), hook_name
+        # Dropping nothing recovers 1 and dropping everything 0.
+        assert reference != pytest.approx(0.0, abs=1e-2), hook_name
+        assert reference != pytest.approx(1.0, abs=1e-2), hook_name
+        references.append(reference)
+    assert references[0] != pytest.approx(references[1], abs=1e-2)
+
+
+def test_gpt2_writer_drop_matches_patching_the_writer_output(gpt2_bridge) -> None:
+    """Dropping a layer-0 writer's out-edges recovers what patching its own output does.
+
+    Head 4 moves this pair's metric most among layer-0 heads (reference 0.956,
+    against 0.9995 for head 0), keeping the check well clear of the no-op value 1.
+    Measured fp32 error: 2.0e-6 for the head, 2.8e-6 for the MLP.
+    """
+    _assert_layer0_writer_drops_match_output_patches(gpt2_bridge, head=4, abs_tol=1e-4)
+
+
+PARALLEL_MODEL = "EleutherAI/pythia-70m"
+
+
+@pytest.fixture(scope="module")
+def parallel_bridge():
+    return TransformerBridge.boot_transformers(PARALLEL_MODEL, device="cpu", dtype=torch.float32)
+
+
+def test_parallel_attn_mlp_writer_drop_matches_patching_the_writer_output(parallel_bridge) -> None:
+    """The writer-drop identity on blocks whose MLP reads the layer input, not its heads.
+
+    Measured error 1.1e-5 (head 2) and 9.0e-5 (MLP) in fp32, against 2.1e-13 and
+    4.2e-13 in fp64, so the fp32 residual is rounding; the tolerance is 10x the
+    larger fp32 error. Head 2 moves this pair's metric most among layer-0 heads.
+    """
+    assert parallel_bridge.cfg.parallel_attn_mlp
+    _assert_layer0_writer_drops_match_output_patches(parallel_bridge, head=2, abs_tol=9e-4)
 
 
 POST_NORM_MODEL = "hf-internal-testing/tiny-random-Gemma2ForCausalLM"
