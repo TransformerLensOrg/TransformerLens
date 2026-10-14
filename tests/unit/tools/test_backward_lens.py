@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from transformers.pytorch_utils import Conv1D
 
 from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
@@ -23,6 +24,7 @@ from transformer_lens.tools.analysis.backward_lens import (
     _get_dense_mlp_projections,
     _project_residual_factors,
     _rank_vocabulary_logits,
+    _require_unconverted_mlp_blocks,
     _single_batch_matrix,
 )
 
@@ -592,9 +594,58 @@ def test_get_dense_mlp_projections_rejects_a_gated_mlp() -> None:
         _get_dense_mlp_projections(model, (0,))
 
 
-def _native_lens_that_must_not_run(monkeypatch) -> tuple[TransformerBridge, BackwardLens]:
-    """A raw dense-MLP native Bridge in eval mode whose forward raises."""
-    cfg = TransformerBridgeConfig(
+def _linear_mlp(d_model: int = 4, d_mlp: int = 6) -> MLPBridge:
+    return _dense_mlp_bridge(
+        input_component=torch.nn.Linear(d_model, d_mlp),
+        output_component=torch.nn.Linear(d_mlp, d_model),
+    )
+
+
+def _mixed_stack_model() -> SimpleNamespace:
+    """Layer 0 has a dense MLP; layer 1 is an MLP-free block, as in hybrid stacks."""
+    return SimpleNamespace(
+        cfg=SimpleNamespace(d_model=4, d_mlp=6),
+        blocks=[SimpleNamespace(mlp=_linear_mlp()), SimpleNamespace()],
+    )
+
+
+def test_get_dense_mlp_projections_names_a_requested_layer_without_an_mlp() -> None:
+    model = _mixed_stack_model()
+
+    assert set(_get_dense_mlp_projections(model, (0,))) == {0}
+    with pytest.raises(ValueError, match="layer 1 has no MLP.*SimpleNamespace has no mlp"):
+        _get_dense_mlp_projections(model, (0, 1))
+
+
+def test_unconverted_mlp_blocks_accepts_a_stack_with_some_mlp_free_blocks() -> None:
+    _require_unconverted_mlp_blocks(_mixed_stack_model().blocks)
+
+
+def test_unconverted_mlp_blocks_refuses_a_stack_without_any_mlp() -> None:
+    with pytest.raises(ValueError, match=r"no block has an mlp.*block types: SimpleNamespace\)"):
+        _require_unconverted_mlp_blocks([SimpleNamespace(), SimpleNamespace()])
+
+
+@pytest.mark.parametrize("projection_key", ["in", "out"])
+@pytest.mark.parametrize("hook_name", ["hook_in", "hook_out"])
+def test_unconverted_mlp_blocks_refuses_a_converted_projection_hook(
+    projection_key: str, hook_name: str
+) -> None:
+    converted = _linear_mlp()
+    hook_point = getattr(getattr(converted, projection_key), hook_name)
+    hook_point.hook_conversion = RearrangeTensorConversion("(b p) d -> b p d", b=1)
+    blocks = [SimpleNamespace(mlp=_linear_mlp()), SimpleNamespace(), SimpleNamespace(mlp=converted)]
+    name = "input" if projection_key == "in" else "output"
+
+    with pytest.raises(
+        ValueError,
+        match=rf"layer 2 {name} projection {hook_name} .*RearrangeTensorConversion.*bypass",
+    ):
+        _require_unconverted_mlp_blocks(blocks)
+
+
+def _native_dense_cfg(**overrides: Any) -> TransformerBridgeConfig:
+    fields: dict[str, Any] = dict(
         n_layers=2,
         d_model=8,
         d_head=4,
@@ -606,7 +657,37 @@ def _native_lens_that_must_not_run(monkeypatch) -> tuple[TransformerBridge, Back
         normalization_type="LN",
         seed=0,
     )
-    model = TransformerBridge.boot_native(cfg).eval()
+    fields.update(overrides)
+    return TransformerBridgeConfig(**fields)
+
+
+def _with_tokenizer(model: TransformerBridge) -> TransformerBridge:
+    # Only its presence is checked by the constructor.
+    model.tokenizer = SimpleNamespace()
+    return model
+
+
+def test_constructor_refuses_a_bridge_whose_blocks_have_no_mlp() -> None:
+    model = _with_tokenizer(TransformerBridge.boot_native(_native_dense_cfg(attn_only=True)))
+
+    with pytest.raises(ValueError, match="no block has an mlp submodule"):
+        BackwardLens(model)
+
+
+def test_constructor_refuses_a_converted_mlp_projection_hook() -> None:
+    model = _with_tokenizer(TransformerBridge.boot_native(_native_dense_cfg()))
+    BackwardLens(model)
+
+    model.blocks[1].mlp.out.hook_in.hook_conversion = RearrangeTensorConversion(
+        "(b p) d -> b p d", b=1
+    )
+    with pytest.raises(ValueError, match="layer 1 output projection hook_in"):
+        BackwardLens(model)
+
+
+def _native_lens_that_must_not_run(monkeypatch) -> tuple[TransformerBridge, BackwardLens]:
+    """A raw dense-MLP native Bridge in eval mode whose forward raises."""
+    model = TransformerBridge.boot_native(_native_dense_cfg()).eval()
     # Only its presence is checked; tokenization itself is replaced below.
     model.tokenizer = SimpleNamespace()
 

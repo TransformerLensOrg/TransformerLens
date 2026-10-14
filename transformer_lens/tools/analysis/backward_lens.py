@@ -583,6 +583,37 @@ def _require_raw_dense_mlp_bridge(model: Any) -> None:
     for component in ("blocks", "ln_final", "unembed"):
         if not hasattr(model, component):
             raise ValueError(f"Backward Lens requires the standard {component} component")
+    _require_unconverted_mlp_blocks(model.blocks)
+
+
+def _require_unconverted_mlp_blocks(blocks: Any) -> None:
+    """Refuse stacks with no MLP or whose MLP projection hooks fire through a conversion."""
+    block_types: set[str] = set()
+    has_mlp = False
+    for layer, block in enumerate(blocks):
+        block_types.add(type(block).__name__)
+        mlp = getattr(block, "mlp", None)
+        if mlp is None:
+            continue
+        has_mlp = True
+        for name, key in (("input", "in"), ("output", "out")):
+            projection = getattr(mlp, key, None)
+            for hook_name in ("hook_in", "hook_out"):
+                conversion = getattr(getattr(projection, hook_name, None), "hook_conversion", None)
+                if conversion is not None:
+                    # The capture's forward hooks sit on the raw HookPoint modules, so the
+                    # conversion that gives hook consumers [batch, position, width] never runs.
+                    raise ValueError(
+                        f"layer {layer} {name} projection {hook_name} carries a "
+                        f"{type(conversion).__name__} hook_conversion; Backward Lens reads "
+                        "the raw projection tensors, which bypass it, so flattened MLP "
+                        "regions such as OPT's [batch * position, width] are not supported"
+                    )
+    if not has_mlp:
+        raise ValueError(
+            "Backward Lens analyzes dense MLP weights, but no block has an mlp submodule "
+            f"(block types: {', '.join(sorted(block_types))})"
+        )
 
 
 @dataclass(frozen=True)
@@ -619,7 +650,13 @@ def _get_dense_mlp_projections(
     feature_pairs = ((d_model, d_mlp), (d_mlp, d_model))
     projections: dict[int, tuple[_MLPLinear, _MLPLinear]] = {}
     for layer in layers:
-        mlp = model.blocks[layer].mlp
+        block = model.blocks[layer]
+        mlp = getattr(block, "mlp", None)
+        if mlp is None:
+            raise ValueError(
+                f"layer {layer} has no MLP to analyze: its {type(block).__name__} "
+                "has no mlp submodule"
+            )
         if not isinstance(mlp, MLPBridge) or getattr(mlp, "gate", None) is not None:
             raise ValueError(f"layer {layer} must have a dense, non-gated MLPBridge")
         pair = (getattr(mlp, "in", None), getattr(mlp, "out", None))

@@ -378,6 +378,40 @@ def test_capture_rejects_non_bridge_and_non_raw_states(gpt2_bridge, monkeypatch)
         _capture_dense_mlp_gradient_factors(gpt2_bridge, PROMPT, TARGET, [0])
 
 
+@pytest.mark.parametrize(
+    ("model_name", "match"),
+    [
+        pytest.param(
+            "hf-internal-testing/tiny-random-OPTForCausalLM",
+            r"layer 0 input projection hook_in carries a _UnflattenTokens hook_conversion"
+            r".*bypass.*flattened MLP regions",
+            id="opt-flattened-mlp-region",
+        ),
+        pytest.param(
+            "tiiuae/falcon-mamba-tiny-dev",
+            r"no block has an mlp submodule \(block types: SSMBlockBridge\)",
+            id="falcon-mamba-without-mlp",
+        ),
+    ],
+)
+def test_constructor_refuses_unsupported_mlp_structure_without_a_forward(
+    model_name: str, match: str
+) -> None:
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.tools.analysis import BackwardLens
+
+    model = TransformerBridge.boot_transformers(model_name, device="cpu", dtype=torch.float32)
+    forwards: list[None] = []
+    model.original_model.register_forward_pre_hook(lambda *_: forwards.append(None))
+
+    with pytest.raises(ValueError, match=match):
+        BackwardLens(model)
+    assert forwards == []
+    with torch.no_grad():
+        model(model.to_tokens("Hello"))
+    assert len(forwards) == 1
+
+
 def test_capture_rejects_inference_mode(gpt2_bridge) -> None:
     from transformer_lens.tools.analysis.backward_lens import (
         _capture_dense_mlp_gradient_factors,

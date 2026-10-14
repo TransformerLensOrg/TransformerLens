@@ -89,6 +89,20 @@ arbitrary directions. The sampled mean can vary with the seed and draw count, so
 near it can change. Pass an explicit `rng` for repeatability and increase `n_baseline` to
 sample the mean more thoroughly; neither makes a verdict scientifically conclusive.
 
+## Architecture requirements
+
+`decompose_head` reads the head's weights from `model.blocks[layer].attn`, so the
+requested layer must hold an attention block. SSM, mixer, linear-attention and AltUp
+blocks, and encoder-decoder bridges with no `blocks` stack, raise `ValueError`; on a
+hybrid stack the message lists the layers that carry attention.
+
+`project_activations` and `patch_along_directions` enable `use_attn_result` for the call
+and read the head's per-head output from `hook_result`. Bridges whose attention cannot
+compute per-head outputs raise `NotImplementedError` up front. An attention bridge that
+accepts the flag but never fires `hook_result` raises `ValueError`;
+`patch_along_directions` checks right after the patched forward, before any control, so
+it never reports a gate verdict for a patch that changed nothing.
+
 ## Compatibility mode
 
 The vocab readout projects through the final LayerNorm folded into $W_U$, which requires

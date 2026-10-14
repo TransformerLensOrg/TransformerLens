@@ -487,6 +487,65 @@ def test_decompose_head_rejects_bare_string_which():
         decompose_head(model, layer=0, head=0, which="QK")
 
 
+class _StubBridgeBlock:
+    """Bridge-like block: declares its submodules and, like a bridge block, resolves any
+    undeclared name through its wrapped HF module."""
+
+    def __init__(self, submodules, original_component):
+        self.submodules = submodules
+        self.original_component = original_component
+
+    def __getattr__(self, name):
+        if name in self.__dict__.get("submodules", {}):
+            return self.__dict__["submodules"][name]
+        return getattr(self.__dict__["original_component"], name)
+
+
+def _hf_layer_with_raw_attn():
+    """A wrapped HF layer whose own ``attn`` is not a bridge attention (no W_Q/W_K/W_V/W_O)."""
+    return SimpleNamespace(attn=object())
+
+
+def test_decompose_head_refuses_block_without_attn():
+    """A hybrid layer whose block declares no attn (an SSM mixer here) is refused with the layer,
+    the block class, its submodules and the layers that do carry attention, even though the
+    wrapped HF layer answers to ``attn``; the attention layer still decomposes its own weights."""
+    model = _StubModel(n_heads=2, n_kv_heads=2, n_layers=2)
+    attn = model.blocks[1].attn
+    model.blocks = [
+        _StubBridgeBlock({"mixer": object(), "norm": object()}, _hf_layer_with_raw_attn()),
+        _StubBridgeBlock({"attn": attn, "ln1": object()}, _hf_layer_with_raw_attn()),
+    ]
+    with pytest.raises(ValueError, match="attention block at layer 0") as excinfo:
+        decompose_head(model, layer=0, head=0)
+    message = str(excinfo.value)
+    assert "_StubBridgeBlock" in message
+    assert "['mixer', 'norm']" in message
+    assert "Layers with an `attn` submodule: [1]" in message
+
+    ov = decompose_head(model, layer=1, head=1, which=("OV",)).OV
+    assert torch.allclose(_reconstruct(ov), attn.W_V[1] @ attn.W_O[1], atol=1e-4)
+
+
+def test_decompose_head_refuses_when_no_block_has_attn():
+    """A pure-SSM stack names the refused layer and reports that no layer carries attention."""
+    model = _StubModel(n_heads=2, n_kv_heads=2, n_layers=2)
+    model.blocks = [
+        _StubBridgeBlock({"mixer": object(), "norm": object()}, _hf_layer_with_raw_attn())
+        for _ in range(2)
+    ]
+    with pytest.raises(ValueError, match="attention block at layer 1.*No block in this model"):
+        decompose_head(model, layer=1, head=0)
+
+
+def test_decompose_head_refuses_model_without_blocks():
+    """An encoder-decoder bridge has no `blocks` stack; the refusal names the requested layer
+    instead of surfacing the bridge's bare AttributeError."""
+    model = SimpleNamespace(cfg=SimpleNamespace(n_layers=2, n_heads=2))
+    with pytest.raises(ValueError, match="layer 1's head weights.*no `blocks` stack"):
+        decompose_head(model, layer=1, head=0)
+
+
 # --------------------------------------------------------------------------- #
 # OV output-direction convention (cross-check against SVDInterpreter)
 # --------------------------------------------------------------------------- #
@@ -1173,6 +1232,53 @@ def test_patch_along_directions_reports_delta_and_restores_use_attn_result():
         assert stub.cfg.use_attn_result == initial
 
 
+class _SilentResultStubModel(_PatchStubModel):
+    """Accepts use_attn_result but never fires hook_result: the cache comes back without it and
+    run_with_hooks ignores its hooks. Counts run_with_hooks calls to expose control forwards."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.run_with_hooks_calls = 0
+
+    def run_with_cache(self, prompt, names_filter):
+        return self(prompt), {}
+
+    def run_with_hooks(self, prompt, fwd_hooks):
+        self.run_with_hooks_calls += 1
+        return self(prompt)
+
+
+@pytest.mark.parametrize("initial", [False, True])
+def test_project_activations_refuses_when_hook_result_never_fires(initial):
+    """A cache without the read hook is refused with a ValueError naming the hook, rather than
+    the cache's bare KeyError, and use_attn_result is restored to its prior value."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = _SilentResultStubModel(d_model=D_MODEL, n_heads=1)
+    model.set_use_attn_result(initial)
+    with pytest.raises(ValueError, match=r"never fired blocks\.0\.attn\.hook_result"):
+        project_activations(model, ov, "prompt")
+    assert model.cfg.use_attn_result is initial
+
+
+@pytest.mark.parametrize("initial", [False, True])
+def test_patch_refuses_when_hook_result_never_fires_before_controls(initial):
+    """A patch hook that never ran leaves the forward unpatched, so the refusal must come right
+    after the patched forward: no control forward runs and no gate verdict is produced."""
+    ov = _factored_head_svd(
+        *_factored_with_spectrum([8.0, 4.0, 2.0, 1.0]), which="OV", layer=0, head=0, eps=1e-2
+    )
+    model = _SilentResultStubModel(d_model=D_MODEL, n_heads=1)
+    model.set_use_attn_result(initial)
+    with pytest.raises(ValueError, match=r"never fired blocks\.0\.attn\.hook_result"):
+        patch_along_directions(
+            model, ov, "prompt", lambda logits: float(logits.sum()), keep=[0], n_baseline=4
+        )
+    assert model.run_with_hooks_calls == 1
+    assert model.cfg.use_attn_result is initial
+
+
 def _span_aligned_stub(ov, weights):
     """A patch stub whose single head writes ``ov.V @ weights`` at every position and whose
     readout is that same in-span vector.
@@ -1535,6 +1641,42 @@ def test_patch_along_directions_restores_use_attn_result(tiny_bridge):
             assert tiny_bridge.cfg.use_attn_result == initial
     finally:
         tiny_bridge.set_use_attn_result(original)
+
+
+def test_activation_tools_refuse_bridge_attention_that_never_fires_hook_result(monkeypatch):
+    """A real bridge whose attention accepts use_attn_result and keeps its output but skips
+    hook_result (an attention reimplementation missing the per-head fork) is refused by both
+    tools, naming the architecture and the attention class; the patch refuses after one hooked
+    forward, before any control."""
+    bridge = _make_tiny_bridge()
+    ov = decompose_head(bridge, 0, 0, which=("OV",)).OV
+    attn = bridge.blocks[0].attn
+    monkeypatch.setattr(
+        attn,
+        "_compute_per_head_result",
+        lambda z_4d, n_heads, d_head: attn.o.original_component(z_4d.flatten(-2)),
+    )
+    prompt = torch.tensor([[5, 63, 7, 9]])
+
+    with pytest.raises(ValueError, match="never fired") as excinfo:
+        project_activations(bridge, ov, prompt)
+    assert f"(GPT2LMHeadModel, {type(attn).__name__})" in str(excinfo.value)
+    assert bridge.cfg.use_attn_result is False
+
+    hooked_forwards = []
+    run_with_hooks = bridge.run_with_hooks
+
+    def spy(*args, **kwargs):
+        hooked_forwards.append(kwargs.get("fwd_hooks"))
+        return run_with_hooks(*args, **kwargs)
+
+    monkeypatch.setattr(bridge, "run_with_hooks", spy)
+    with pytest.raises(ValueError, match="never fired"):
+        patch_along_directions(
+            bridge, ov, prompt, lambda logits: float(logits.sum()), keep=[0], n_baseline=3
+        )
+    assert len(hooked_forwards) == 1
+    assert bridge.cfg.use_attn_result is False
 
 
 # --------------------------------------------------------------------------- #

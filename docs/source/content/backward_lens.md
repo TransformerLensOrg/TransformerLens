@@ -183,14 +183,19 @@ The current implementation requires:
   Bridge-orientable weight layout (`Conv1D`, e.g. GPT-2, or `torch.nn.Linear`,
   e.g. Pythia/GPT-NeoX).
 - Original, trainable weights and a dense, non-gated MLP.
+- MLP projections whose input and output tensors keep the `[batch, position, width]`
+  layout. The lens reads those tensors directly, so a model whose MLP region runs on
+  flattened `[batch * position, width]` tensors (OPT) is refused at construction, as is
+  a model in which no block exposes an `mlp` (Mamba, RWKV). In a
+  hybrid stack, requesting a layer whose block has no MLP raises `ValueError`.
 - Compatibility mode and weight processing to remain disabled.
 - The model and all submodules in evaluation mode (`model.eval()`).
 - One non-empty prompt, one single-token target, and unique valid layer indices.
 
 It does not currently support batched prompts, multi-token target losses, gated MLPs,
-architecture families whose MLP projections have an unknown weight layout,
-compatibility-mode weights, model editing, or causal claims about the displayed
-vocabulary rankings.
+models without MLPs, architecture families whose MLP projections have an unknown weight
+layout or a flattened token layout, compatibility-mode weights, model editing, or causal
+claims about the displayed vocabulary rankings.
 
 ## Model-state safety
 
@@ -209,6 +214,9 @@ computation.
 |---|---|
 | Raw-Bridge or processed-weight error | Reboot with `TransformerBridge.boot_transformers(...)`; do not enable compatibility mode or process weights. |
 | Evaluation-mode error | A module, often dropout, is in training mode; call `model.eval()` before analyzing. |
+| Construction error naming a `hook_conversion` | The model's MLP region runs on flattened `[batch * position, width]` tensors (OPT), which the lens reads before the Bridge converts them; such models are not supported. |
+| Construction error saying no block has an `mlp` | No block exposes an `mlp` to analyze (Mamba, RWKV); such models are not supported. |
+| `layer N has no MLP` error | In a hybrid stack, that layer's block has no MLP; request layers whose blocks have one. |
 | Target encodes to zero or multiple tokens | Choose text that maps to one token under the model's tokenizer without BOS; check leading whitespace. |
 | Duplicate or out-of-range layer error | Pass a non-empty sequence of unique indices in `[0, model.cfg.n_layers)`. |
 | Normalized logits were not requested | Call `analyze(..., normalized=True)` before using `logits(normalized=True)` or normalized ranks. |
