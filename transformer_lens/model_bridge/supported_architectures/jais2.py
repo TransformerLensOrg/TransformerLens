@@ -16,13 +16,11 @@ from transformer_lens.model_bridge.supported_architectures.nemotron import (
 class Jais2ArchitectureAdapter(NemotronArchitectureAdapter):
     """Architecture adapter for Jais2ForCausalLM models."""
 
+    # Plain nn.LayerNorm, not Nemotron's LayerNorm1P: no weight offset, foldable.
+    _layernorm_weight_offset = False
+
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
-        # Nemotron's fold/center disable is for LayerNorm1P (weight+1 gamma);
-        # Jais 2 uses plain nn.LayerNorm, the standard foldable case.
-        self.supports_fold_ln = True
-        self.supports_center_writing_weights = True
-        self.cfg.rmsnorm_uses_offset = False
         # Jais 2 sets attention_bias=True; the Nemotron parent is bias-free by
         # default and omits bias reshapes, so Q/K/V biases would keep the flat
         # (n*d_head,) layout instead of (n, d_head).
