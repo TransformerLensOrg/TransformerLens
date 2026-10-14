@@ -531,33 +531,53 @@ def arbitrary_targets(
 def reinitialized(model: nn.Module, seed: int) -> nn.Module:
     """A copy of ``model`` with freshly initialised parameters: the random-init control.
 
-    For models built from standard ``nn`` layers, such as a ``HookedRootModule``: every submodule
-    with ``reset_parameters`` is reset. Buffers, such as fixed architectural matrices, are kept. For
-    HuggingFace models use :func:`random_init_bridge`, which applies the architecture's own
-    initialisation scheme.
+    For models built from standard ``nn`` layers, such as a ``HookedRootModule``: every module with
+    ``reset_parameters`` is reset, so every parameter must belong to one. Buffers, such as fixed
+    architectural matrices, are kept. For HuggingFace models use :func:`random_init_bridge`, which
+    applies the architecture's own initialisation scheme.
 
     Args:
         model: The trained model; it is not modified.
         seed: Seed for the new parameters.
 
     Returns:
-        The untrained copy, in evaluation mode.
+        The untrained copy, on the device of the model's parameters, in evaluation mode.
+
+    Raises:
+        ValueError: If a parameter belongs to no module with ``reset_parameters``, so it would keep
+            its trained value.
     """
-    clone = copy.deepcopy(model)
-    torch.manual_seed(seed)
-    for module in clone.modules():
-        reset = getattr(module, "reset_parameters", None)
-        if module is not clone and callable(reset):
-            reset()
-    return clone.eval()
+    covered = {
+        id(parameter)
+        for module in model.modules()
+        if callable(getattr(module, "reset_parameters", None))
+        for parameter in module.parameters(recurse=False)
+    }
+    missing = [name for name, parameter in model.named_parameters() if id(parameter) not in covered]
+    if missing:
+        more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
+        raise ValueError(
+            f"reinitialized cannot reset {', '.join(missing[:5])}{more}: no module's "
+            "reset_parameters covers them, so they would keep their trained values. Reset them "
+            "yourself, or use random_init_bridge for a HuggingFace model."
+        )
+    device = _model_device(model)
+    clone = copy.deepcopy(model).cpu()
+    # Reset on the CPU, seeding only the CPU generator inside a fork that restores it;
+    # torch.manual_seed would also reseed every CUDA, MPS and XPU generator
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(seed)
+        for module in clone.modules():
+            reset = getattr(module, "reset_parameters", None)
+            if callable(reset):
+                reset()
+    return clone.to(device).eval()
 
 
 def random_init_bridge(
     model_name: str,
     *,
     seed: int,
-    model_class: Any = None,
-    revision: Optional[str] = None,
     dtype: torch.dtype = torch.float32,
     device: Optional[Union[str, torch.device]] = None,
     **boot_kwargs: Any,
@@ -566,31 +586,30 @@ def random_init_bridge(
 
     The random-init control: train :func:`fit_das` on it with the same pairs, rank and budget as
     on the trained model. Effects DAS finds here come from the method and the architecture, not
-    from anything the model learned.
+    from anything the model learned. The model is built by ``boot_transformers`` with
+    ``load_weights=False``, so it has the same model class and prepared configuration as the
+    trained bridge.
 
     Args:
-        model_name: HuggingFace model name, as for ``TransformerBridge.boot_transformers``.
+        model_name: Model name or alias, as for ``TransformerBridge.boot_transformers``.
         seed: Seed for the initialisation.
-        model_class: HuggingFace model class to build; ``AutoModelForCausalLM`` by default.
-        revision: Model revision whose configuration to use.
         dtype: Parameter dtype.
-        device: Device to move the bridge to.
-        **boot_kwargs: Passed on to ``TransformerBridge.boot_transformers``.
+        device: Device to move the bridge to; the CPU by default.
+        **boot_kwargs: Passed on to ``TransformerBridge.boot_transformers``, e.g. ``revision``.
 
     Returns:
         The untrained ``TransformerBridge``, in evaluation mode.
     """
-    from transformers import AutoConfig, AutoModelForCausalLM
-
     from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
-    torch.manual_seed(seed)
-    config = AutoConfig.from_pretrained(model_name, revision=revision)
-    # from_config follows the config's dtype, and a supplied hf_model keeps its own dtype and
-    # placement, so both are set explicitly
-    hf_model = (model_class or AutoModelForCausalLM).from_config(config).to(dtype)
-    bridge = TransformerBridge.boot_transformers(
-        model_name, revision=revision, hf_model=hf_model, dtype=dtype, **boot_kwargs
-    )
-    # HuggingFace builds models from a config in training mode; the analyses require eval mode
+    # The model is built on the CPU, so seed only the CPU generator, inside a fork that restores it
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(seed)
+        bridge = TransformerBridge.boot_transformers(
+            model_name, load_weights=False, dtype=dtype, **boot_kwargs
+        )
+    # Building from a config follows the config's dtype, and HuggingFace leaves the model in
+    # training mode; the analyses require eval mode
+    maybe_cast_floating_params(bridge.original_model, dtype)
     return (bridge if device is None else bridge.to(device)).eval()

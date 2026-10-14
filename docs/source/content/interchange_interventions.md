@@ -36,18 +36,19 @@ task_logits = lambda tokens: bridge(tokens)[:, -1, answers]
 hook = "blocks.1.hook_out"
 
 
-def pairs(nouns):
+def pairs(nouns, place):
     """Bases and sources differ only in the subject's number; the target is the source's verb."""
-    singular = bridge.to_tokens([f"The {n} near the cabinet" for n in nouns])
-    plural = bridge.to_tokens([f"The {n}s near the cabinet" for n in nouns])
+    singular = bridge.to_tokens([f"The {n} {place}" for n in nouns])
+    plural = bridge.to_tokens([f"The {n}s {place}" for n in nouns])
     base, source = torch.cat([singular, plural]), torch.cat([plural, singular])
     targets = (torch.arange(len(base)) < len(nouns)).long()  # " are" when the source is plural
     subject = torch.full((len(base),), 2)  # the subject token, after the BOS token and "The"
     return base, source, targets, subject
 
 
-fit_base, fit_source, fit_targets, fit_at = pairs(["key", "dog", "cat", "book", "car", "boy"])
-test_base, test_source, test_targets, test_at = pairs(["girl", "bird", "tree", "house"])
+nouns = ["key", "dog", "cat", "book", "car", "boy", "girl", "bird"]
+fit_base, fit_source, fit_targets, fit_at = pairs(nouns, "near the cabinet")
+test_base, test_source, test_targets, test_at = pairs(nouns, "behind the table")
 
 # Fit the basis on the fit pairs' sources, labelled by subject number ...
 fit_acts = collect_activations(bridge, hook, fit_source, task_logits, positions=fit_at)
@@ -65,7 +66,9 @@ print((logits.argmax(-1) == test_targets).float().mean())  # tensor(1.)
 tools do not assume next-token prediction; the hook must fire exactly once in that pass.
 Activations at the hook must be `[batch, d_model]`, or `[batch, pos, d_model]` with one position
 index per example. Fit a basis on one set of pairs and evaluate it on pairs it was not fit on, as
-here.
+here: the held-out pairs put the same nouns in a new frame. Reusing the nouns gives the
+arbitrary-label control below keys it can learn; holding out nouns as well is a stronger test of
+the real alignment.
 
 `collect_activations` and `intervened_logits` run in batches of `batch_size` without gradients and
 return CPU tensors, so memory does not grow with the number of pairs. `run_with_intervention` is
@@ -118,9 +121,11 @@ initialised models (Arora et al., 2024), so its IIA needs controls trained the s
 Train each control with the same pairs, hook point, rank, budget and seeds as the real alignment,
 and evaluate it on the same held-out pairs:
 
-- **Arbitrary labels.** `arbitrary_targets(keys, n_classes, seed)` gives each source a fixed
+- **Arbitrary labels.** `arbitrary_targets(keys, n_classes, seed)` gives each key a fixed
   pseudo-random class. DAS trained on these shows how much IIA the method's expressivity alone
-  produces.
+  produces. Key the labels by something that recurs between the fit and held-out pairs, such as
+  the source's subject word: on keys the fit pairs never contained, the labels are fresh coin
+  flips, every subspace scores chance, and the control can reject nothing.
 - **An untrained model.** `random_init_bridge(model_name, seed=...)` builds the architecture with
   its HuggingFace initialisation and no training; `reinitialized(model, seed)` does the same for a
   `HookedRootModule`. An effect DAS finds there does not come from anything the model learned.
@@ -128,8 +133,9 @@ and evaluate it on the same held-out pairs:
 ```python
 from transformer_lens.tools.analysis import arbitrary_targets, random_init_bridge
 
-# Arbitrary labels: a fixed pseudo-random class per source, for fit and held-out pairs alike
-labels = lambda sources: arbitrary_targets([bridge.to_string(s) for s in sources], 2, seed=0)
+# Arbitrary labels: a fixed pseudo-random class per source subject word, which recurs between the
+# fit and held-out pairs
+labels = lambda sources: arbitrary_targets([bridge.to_string(s[2]) for s in sources], 2, seed=0)
 arbitrary = fit_das(
     bridge, hook, fit_base, fit_source, labels(fit_source), task_logits, rank=1,
     base_positions=fit_at, source_positions=fit_at, epochs=10,
@@ -138,7 +144,7 @@ logits = intervened_logits(
     bridge, hook, SubspaceInterchange(arbitrary.subspace), test_base, test_acts, task_logits,
     positions=test_at,
 )
-print((logits.argmax(-1) == labels(test_source)).float().mean())  # near chance, 0.5
+print((logits.argmax(-1) == labels(test_source)).float().mean())  # tensor(0.6250)
 
 # An untrained model: the same pairs and targets, its own activations and readout
 untrained = random_init_bridge("gpt2", seed=0)
@@ -154,11 +160,13 @@ logits = intervened_logits(
     untrained, hook, SubspaceInterchange(random_init.subspace), test_base, untrained_acts,
     untrained_logits, positions=test_at,
 )
-print((logits.argmax(-1) == test_targets).float().mean())  # near chance, 0.5
+print((logits.argmax(-1) == test_targets).float().mean())  # tensor(0.8125)
 ```
 
-Report the real alignment's IIA minus each control's (its selectivity), with uncertainty over the
-evaluation pairs. A subspace that does not clearly beat both controls is not evidence that the
+Here the arbitrary labels reach 0.62 and the untrained model 0.81, against 1.0 for the real
+alignment: DAS finds a subspace that moves even an untrained model's output, which is why the real
+alignment's IIA has to be read against both. Report the real alignment's IIA minus each control's
+(its selectivity), with uncertainty over the evaluation pairs. A subspace that does not clearly beat both controls is not evidence that the
 model carries the variable there.
 
 ## Placebo

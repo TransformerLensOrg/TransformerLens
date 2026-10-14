@@ -324,9 +324,9 @@ def test_das_leaves_the_callers_random_stream_alone():
     assert torch.equal(first.basis, again.basis)  # the seed still fixes the result
 
 
-def test_das_never_reseeds_a_device_generator(monkeypatch):
+def _forbid_reseeding(monkeypatch):
     def reseeded(*args, **kwargs):
-        raise AssertionError("fit_das reseeded a global or device generator")
+        raise AssertionError("a global or device generator was reseeded")
 
     for module, name in (
         (torch, "manual_seed"),
@@ -336,6 +336,10 @@ def test_das_never_reseeds_a_device_generator(monkeypatch):
         (torch.mps, "manual_seed"),
     ):
         monkeypatch.setattr(module, name, reseeded)
+
+
+def test_das_never_reseeds_a_device_generator(monkeypatch):
+    _forbid_reseeding(monkeypatch)
     model, base, source, targets = _planted_pairs(n=32)
     fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
 
@@ -380,47 +384,100 @@ def test_arbitrary_targets_are_fixed_per_key_and_seed():
     assert all(abs(c - 400 / 3) < 50 for c in torch.bincount(targets).tolist())
 
 
-def test_reinitialized_resets_parameters_and_keeps_buffers():
-    model = _Planted(torch.randn(D_MODEL))
-    model.inner = nn.Linear(D_MODEL, D_MODEL)
-    before = model.inner.weight.detach().clone()
+class _Layers(HookedRootModule):
+    """Only standard layers, each with reset_parameters, and a fixed buffer."""
+
+    def __init__(self):
+        super().__init__()
+        self.inp = nn.Linear(D_MODEL, D_MODEL)
+        self.norm = nn.LayerNorm(D_MODEL)
+        self.register_buffer("fixed", torch.randn(D_MODEL))
+        self.hook_mid = HookPoint()
+        self.setup()
+        self.eval()
+
+
+def test_reinitialized_resets_every_parameter_and_keeps_buffers():
+    model = _Layers()
+    with torch.no_grad():
+        model.norm.weight.add_(1.0)  # as training would, away from LayerNorm's ones and zeros
+        model.norm.bias.add_(1.0)
+    before = {name: p.detach().clone() for name, p in model.named_parameters()}
     fresh = reinitialized(model, seed=0)
-    assert not torch.equal(fresh.inner.weight, before)
-    assert torch.equal(model.inner.weight, before)  # the original is untouched
-    assert torch.equal(fresh.direction, model.direction)
-    assert not fresh.training
-    assert torch.equal(reinitialized(model, seed=0).inner.weight, fresh.inner.weight)
+    for name, parameter in fresh.named_parameters():
+        assert not torch.equal(parameter, before[name]), name
+        assert torch.equal(dict(model.named_parameters())[name], before[name])  # original untouched
+    assert torch.equal(fresh.fixed, model.fixed) and not fresh.training
+    assert torch.equal(reinitialized(model, seed=0).inp.weight, fresh.inp.weight)
 
 
-def test_das_beats_the_arbitrary_label_control_on_held_out_pairs():
-    model, base, source, targets = _planted_pairs()
-    keys = lambda rows: [tuple(r.tolist()) for r in rows]
-    fits = {
-        "real": fit_das(
-            model, "hook_mid", base, source, targets, model, rank=1, epochs=30, lr=5e-2
-        ),
-        "arbitrary": fit_das(
-            model,
-            "hook_mid",
-            base,
-            source,
-            arbitrary_targets(keys(source), 2, seed=0),
-            model,
-            rank=1,
-            epochs=30,
-            lr=5e-2,
-        ),
-    }
-    _, test_base, test_source, _ = _planted_pairs(seed=1)
-    expected = {
-        "real": (test_source @ model.direction > 0).long(),
-        "arbitrary": arbitrary_targets(keys(test_source), 2, seed=0),
-    }
-    source_acts = collect_activations(model, "hook_mid", test_source, model)
-    accuracy = {}
-    for name, result in fits.items():
-        logits = intervened_logits(
-            model, "hook_mid", SubspaceInterchange(result.subspace), test_base, source_acts, model
-        )
-        accuracy[name] = (logits.argmax(-1) == expected[name]).float().mean().item()
-    assert accuracy["real"] > 0.9 and accuracy["arbitrary"] < 0.7
+def test_reinitialized_refuses_parameters_it_cannot_reset():
+    with pytest.raises(ValueError, match="cannot reset scale"):
+        reinitialized(_Planted(torch.randn(D_MODEL)), seed=0)  # a parameter on the root itself
+
+    class _RawWeight(nn.Module):  # like HuggingFace's Conv1D: a parameter and no reset_parameters
+        def __init__(self):
+            super().__init__()
+            self.weight = nn.Parameter(torch.randn(D_MODEL, D_MODEL))
+
+    model = _Layers()
+    model.conv = _RawWeight()
+    with pytest.raises(ValueError, match="cannot reset conv.weight"):
+        reinitialized(model, seed=0)
+
+
+def test_reinitialized_leaves_every_random_stream_alone(monkeypatch):
+    model = _Layers()
+    torch.manual_seed(123)
+    expected = torch.rand(3)
+    torch.manual_seed(123)
+    _forbid_reseeding(monkeypatch)
+    reinitialized(model, seed=0)
+    assert torch.equal(torch.rand(3), expected)
+
+
+def _typed_pairs(prototypes: torch.Tensor, n: int, generator: torch.Generator):
+    """Random bases; sources drawn from a few recurring types, so the types act as keys."""
+    kinds = torch.randint(len(prototypes), (n,), generator=generator)
+    sources = prototypes[kinds] + 0.05 * torch.randn(n, D_MODEL, generator=generator)
+    return torch.randn(n, D_MODEL, generator=generator), sources, kinds
+
+
+def _held_out_iia(model, fit, test, fit_targets, test_targets) -> float:
+    result = fit_das(
+        model, "hook_mid", fit[0], fit[1], fit_targets, model, rank=1, epochs=40, lr=5e-2
+    )
+    acts = collect_activations(model, "hook_mid", test[1], model)
+    logits = intervened_logits(
+        model, "hook_mid", SubspaceInterchange(result.subspace), test[0], acts, model
+    )
+    return (logits.argmax(-1) == test_targets).float().mean().item()
+
+
+def test_das_beats_the_arbitrary_label_control_on_recurring_keys():
+    generator = torch.Generator().manual_seed(0)
+    model = _Planted(torch.randn(D_MODEL, generator=generator))
+    prototypes = torch.randn(64, D_MODEL, generator=generator)
+    fit, test = _typed_pairs(prototypes, 256, generator), _typed_pairs(prototypes, 256, generator)
+    # Held-out sources share their keys with training sources, so the control could be learned
+    assert set(test[2].tolist()) <= set(fit[2].tolist())
+    real = lambda sources: (sources @ model.direction > 0).long()
+    labels = lambda kinds: arbitrary_targets(kinds.tolist(), 2, seed=0)
+    assert _held_out_iia(model, fit, test, real(fit[1]), real(test[1])) > 0.9
+    assert _held_out_iia(model, fit, test, labels(fit[2]), labels(test[2])) < 0.7
+
+
+def test_the_arbitrary_label_control_can_reject_a_subspace():
+    # Types placed so that one direction fits their arbitrary labels: the control then does as
+    # well as the real alignment, and DAS does not beat it
+    generator = torch.Generator().manual_seed(0)
+    model = _Planted(torch.randn(D_MODEL, generator=generator))
+    prototypes = torch.randn(8, D_MODEL, generator=generator)
+    wanted = arbitrary_targets(list(range(8)), 2, seed=0)
+    prototypes[(prototypes @ model.direction > 0).long() != wanted] *= -1
+    fit, test = _typed_pairs(prototypes, 256, generator), _typed_pairs(prototypes, 256, generator)
+    real = lambda sources: (sources @ model.direction > 0).long()
+    labels = lambda kinds: arbitrary_targets(kinds.tolist(), 2, seed=0)
+    control = _held_out_iia(model, fit, test, labels(fit[2]), labels(test[2]))
+    assert control > 0.9
+    assert _held_out_iia(model, fit, test, real(fit[1]), real(test[1])) - control < 0.1
