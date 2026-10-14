@@ -3019,12 +3019,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
             return_cache: If True, also return an ActivationCache for the full prompt +
-                generated sequence, identical to ``run_with_cache(output)``, and the call
+                generated sequence, identical to ``run_with_cache(output)`` with the
+                effective prompt attention mask extended over the generated tokens. The call
                 returns an ``(output, cache)`` tuple. Implemented as one extra clean forward
                 over the output, so the cache includes every hook point (attention patterns
                 included). Supported only for single-sequence, decoder-only text generation;
                 encoder-decoder, SSM, multimodal, batched, and inputs_embeds inputs raise
-                NotImplementedError. The cache spans prompt + max_new_tokens and can be large,
+                NotImplementedError. The cache spans prompt + actually generated tokens and can be large,
                 use ``names_filter`` to scope it and/or ``device`` to offload it.
             return_input_tokens: If True, return an ``(output, input_tokens)`` tuple where
                 ``input_tokens`` is the token tensor that was actually fed to the model
@@ -3077,7 +3078,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
             If return_cache=True, returns an ``(output, ActivationCache)`` tuple where ``output`` is the
-            value that would otherwise be returned and the cache equals ``run_with_cache(output)``.
+            value that would otherwise be returned and the cache equals ``run_with_cache(output)``
+            with the effective prompt attention mask extended over the generated tokens.
             If return_input_tokens=True, returns an ``(output, input_tokens)`` tuple.
             If both return_cache and return_input_tokens are True, returns ``(output, cache, input_tokens)``.
 
@@ -3533,11 +3535,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return result
 
         if return_cache:
-            # return_cache: recompute one clean forward over the full generated sequence so the
-            # cache is identical to run_with_cache(output_tokens) - all hook points, including
-            # attention patterns. The guards above restrict this to single-sequence, decoder-only
-            # text generation (see issue #697).
-            _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
+            # Preserve generation's context and positions during the clean cache recomputation.
+            cache_kwargs: Dict[str, Any] = {}
+            if initial_attention_mask is not None:
+                cache_kwargs["attention_mask"] = torch.cat(
+                    [
+                        initial_attention_mask,
+                        initial_attention_mask.new_ones((batch_size, sampled_tokens.shape[1])),
+                    ],
+                    dim=1,
+                )
+            _, cache = self.run_with_cache(
+                output_tokens, names_filter=names_filter, device=device, **cache_kwargs
+            )
             if return_input_tokens:
                 return result, cache, input_tokens
             return result, cache
