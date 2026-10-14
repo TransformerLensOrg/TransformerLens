@@ -8,9 +8,12 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.tools.analysis import SubspaceInterchange as exported_interchange
 from transformer_lens.tools.analysis.interchange import (
+    LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
+    _model_device,
     collect_activations,
+    fit_das,
     intervened_logits,
     mean_difference_basis,
     probe_basis,
@@ -32,6 +35,7 @@ class _Toy(HookedRootModule):
         self.hook_mid = HookPoint()
         self.seq = seq
         self.setup()
+        self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.hook_mid(self.inp(x))
@@ -155,6 +159,7 @@ class _Pattern(HookedRootModule):
         super().__init__()
         self.hook_pattern = HookPoint()
         self.setup()
+        self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.hook_pattern(x).flatten(1)[:, :2]
@@ -203,6 +208,7 @@ def test_a_hook_must_fire_exactly_once():
             super().__init__()
             self.hook_unused = HookPoint()
             self.setup()
+            self.eval()
 
     x, source, full = (
         torch.randn(2, D_MODEL),
@@ -227,3 +233,136 @@ def test_intervened_logits_matches_one_pass_in_bounded_batches():
     assert not batched.requires_grad and batched.device.type == "cpu"
     with pytest.raises(ValueError, match="one row per base"):
         intervened_logits(model, "hook_mid", intervention, base, acts[:-1], model)
+
+
+class _Planted(HookedRootModule):
+    """The output depends on the hidden state only through one planted direction."""
+
+    def __init__(self, direction: torch.Tensor):
+        super().__init__()
+        self.register_buffer("direction", direction / direction.norm())
+        self.scale = nn.Parameter(torch.tensor(4.0))
+        self.hook_mid = HookPoint()
+        self.setup()
+        self.eval()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        score = self.scale * (self.hook_mid(x) @ self.direction)
+        return torch.stack([-score, score], dim=-1)
+
+
+def _planted_pairs(n: int = 256, seed: int = 0):
+    generator = torch.Generator().manual_seed(seed)
+    direction = torch.randn(D_MODEL, generator=generator)
+    model = _Planted(direction)
+    base = torch.randn(n, D_MODEL, generator=generator)
+    source = torch.randn(n, D_MODEL, generator=generator)
+    targets = (source @ model.direction > 0).long()  # the variable comes from the source
+    return model, base, source, targets
+
+
+def test_learned_subspace_stays_orthonormal_and_checks_its_rank():
+    subspace = LearnedSubspace(D_MODEL, 3)
+    assert subspace.basis.shape == (D_MODEL, 3) and _orthonormal(subspace.basis.detach())
+    with pytest.raises(ValueError, match="rank must be in"):
+        LearnedSubspace(D_MODEL, 0)
+    with pytest.raises(ValueError, match="rank must be in"):
+        LearnedSubspace(D_MODEL, D_MODEL + 1)
+
+
+def test_das_recovers_a_planted_direction():
+    model, base, source, targets = _planted_pairs()
+    result = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=30, lr=5e-2)
+    cosine = (result.basis[:, 0] @ model.direction).abs()
+    assert cosine > 0.95
+    assert result.losses[-1] < result.losses[0]
+
+    _, test_base, test_source, _ = _planted_pairs(seed=1)
+    source_acts = collect_activations(model, "hook_mid", test_source, model)
+    logits = intervened_logits(
+        model, "hook_mid", SubspaceInterchange(result.subspace), test_base, source_acts, model
+    )
+    # The planted direction differs per seed, so evaluate on the training model's direction
+    held_out_targets = (test_source @ model.direction > 0).long()
+    assert (logits.argmax(-1) == held_out_targets).float().mean() > 0.9
+
+
+def test_splitting_batches_trains_the_same_way():
+    model, base, source, targets = _planted_pairs()
+    kwargs = dict(rank=1, epochs=30, lr=5e-2, batch_size=64)
+    sizes: dict[str, list[int]] = {"whole": [], "split": []}
+
+    def recording(name):
+        def task_logits(x):
+            sizes[name].append(len(x))
+            return model(x)
+
+        return task_logits
+
+    whole = fit_das(model, "hook_mid", base, source, targets, recording("whole"), **kwargs)
+    split = fit_das(
+        model, "hook_mid", base, source, targets, recording("split"), micro_batch_size=16, **kwargs
+    )
+    # Only a split run keeps every forward pass to the micro-batch size
+    assert max(sizes["whole"]) == 64 and max(sizes["split"]) == 16
+    # Gradients agree up to rounding; Adam's sign-like first steps can amplify that slightly
+    assert abs(whole.losses[0] - split.losses[0]) < 1e-2
+    for result in (whole, split):
+        assert (result.basis[:, 0] @ model.direction).abs() > 0.95
+
+
+def test_das_leaves_the_callers_random_stream_alone():
+    model, base, source, targets = _planted_pairs(n=32)
+    torch.manual_seed(123)
+    expected = torch.rand(3)
+    torch.manual_seed(123)
+    first = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
+    assert torch.equal(torch.rand(3), expected)
+    again = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
+    assert torch.equal(first.basis, again.basis)  # the seed still fixes the result
+
+
+def test_das_never_reseeds_a_device_generator(monkeypatch):
+    def reseeded(*args, **kwargs):
+        raise AssertionError("fit_das reseeded a global or device generator")
+
+    for module, name in (
+        (torch, "manual_seed"),
+        (torch.random, "manual_seed"),
+        (torch.cuda, "manual_seed"),
+        (torch.cuda, "manual_seed_all"),
+        (torch.mps, "manual_seed"),
+    ):
+        monkeypatch.setattr(module, name, reseeded)
+    model, base, source, targets = _planted_pairs(n=32)
+    fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
+
+
+def test_the_subspace_defaults_to_the_models_device():
+    assert _model_device(nn.Linear(2, 2, device="meta")) == torch.device("meta")
+    assert _model_device(_Pattern()) == torch.device("cpu")  # no parameters
+    model, base, source, targets = _planted_pairs(n=32)
+    result = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1)
+    assert result.basis.device == model.scale.device
+
+
+def test_models_in_training_mode_are_rejected():
+    model, base, source, targets = _planted_pairs(n=8)
+    model.train()
+    acts = torch.randn(8, D_MODEL)
+    full = SubspaceInterchange(torch.eye(D_MODEL))
+    with pytest.raises(ValueError, match="collect_activations requires .* evaluation mode"):
+        collect_activations(model, "hook_mid", source, model)
+    with pytest.raises(ValueError, match="intervened_logits requires .* evaluation mode"):
+        intervened_logits(model, "hook_mid", full, base, acts, model)
+    with pytest.raises(ValueError, match="fit_das requires .* evaluation mode"):
+        fit_das(model, "hook_mid", base, source, targets, model, rank=1)
+
+
+def test_das_leaves_the_model_untouched():
+    model, base, source, targets = _planted_pairs(n=32)
+    before = model.scale.detach().clone()
+    fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=2)
+    assert model.scale.requires_grad and torch.equal(model.scale.detach(), before)
+    with pytest.raises(ValueError, match="same length"):
+        fit_das(model, "hook_mid", base, source[:-1], targets, model, rank=1)
