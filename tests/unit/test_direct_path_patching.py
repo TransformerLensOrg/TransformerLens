@@ -538,3 +538,48 @@ class TestUnsupportedArchitectures:
                     model, tokens, cache, cache, simple_metric, component, verbose=False
                 )
         assert forwards == []
+
+
+# ---------------------------------------------------------------------------
+# Evaluation-mode guard
+# ---------------------------------------------------------------------------
+
+
+def _training_flags(model):
+    modules = [*model.named_modules(), *model.original_model.named_modules()]
+    return [(name, module.training) for name, module in modules]
+
+
+class TestEvalModeGuard:
+    @pytest.mark.parametrize(
+        ("enter_training", "root_training"),
+        [
+            (lambda model: model.train(), True),
+            (lambda model: model.blocks[1].attn.train(), False),
+        ],
+        ids=["whole-model", "one-attn"],
+    )
+    def test_both_entry_points_refuse_before_any_forward_or_fold_warning(
+        self, enter_training, root_training
+    ):
+        model, tokens, cache = _fresh_model_and_cache()
+        with torch.no_grad():
+            model.blocks[0].ln1.weight.fill_(2.0)
+        enter_training(model)
+        flags = _training_flags(model)
+        forwards = _count_forwards(model)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            with pytest.raises(
+                ValueError, match=r"get_act_patch_direct_path\(\) .*model\.eval\(\)"
+            ):
+                _sweep(model, tokens, cache)
+            with pytest.raises(
+                ValueError, match=r"get_act_patch_direct_path_all_sources\(\) .*model\.eval\(\)"
+            ):
+                get_act_patch_direct_path_all_sources(
+                    model, tokens, cache, cache, simple_metric, verbose=False
+                )
+        assert forwards == []
+        assert model.training is root_training
+        assert _training_flags(model) == flags

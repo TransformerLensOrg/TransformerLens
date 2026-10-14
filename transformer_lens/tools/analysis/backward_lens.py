@@ -18,6 +18,8 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int
 
+from transformer_lens.tools.analysis._model_state import require_eval_mode
+
 WeightLayout = Literal["in_out", "out_in"]
 ProjectedFactor = Literal["forward_inputs", "output_gradients"]
 DEFAULT_TOP_K = 10
@@ -746,12 +748,16 @@ def _capture_dense_mlp_gradient_factors(
     prompt: str,
     target_token: str,
     layers: Sequence[int],
+    *,
+    operation: str | None = None,
 ) -> _DenseMLPGradientCapture:
     """Capture exact dense-MLP weight-gradient factors for one next-token loss.
 
     The analysis performs one grad-enabled forward and exactly one
     :func:`torch.autograd.grad` call. It does not call ``backward``, touch
     parameter ``.grad`` buffers, change training state, or remove caller hooks.
+    With ``operation`` set, training mode is refused under that name once the
+    inputs validate and before the forward.
     """
     if torch.is_inference_mode_enabled():
         raise ValueError(
@@ -785,6 +791,8 @@ def _capture_dense_mlp_gradient_factors(
             "target_token must encode to exactly one token without BOS; " f"got {count} tokens"
         )
     target_token_id = int(target_tokens.item())
+    if operation is not None:
+        require_eval_mode(model, operation=operation)
     input_device = next(model.original_model.parameters()).device
     prompt_tokens = prompt_tokens.to(input_device)
     weights = [
@@ -902,7 +910,9 @@ class BackwardLens:
             raise ValueError(f"top_k must be in [1, {vocabulary_size}]; got {top_k!r}")
         if not isinstance(return_full_logits, bool):
             raise TypeError("return_full_logits must be a bool")
-        capture = _capture_dense_mlp_gradient_factors(self._model, prompt, target_token, layers)
+        capture = _capture_dense_mlp_gradient_factors(
+            self._model, prompt, target_token, layers, operation="BackwardLens.analyze()"
+        )
         layer_results: list[BackwardLensLayerResult] = []
         absolute_errors: list[float] = []
         relative_errors: list[float] = []

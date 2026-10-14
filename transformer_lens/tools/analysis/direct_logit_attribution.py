@@ -45,6 +45,7 @@ import torch
 from jaxtyping import Float
 
 from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.logit_lens import (
     _final_norm,
     _require_direct_readout,
@@ -268,7 +269,8 @@ def direct_logit_attribution(
             neither ``input`` nor ``cache`` is provided, or a
             ``TransformerBridge`` is passed without compatibility mode enabled,
             with an active learned final-norm weight or bias, or with a readout
-            that is not ``ln_final -> unembed``.
+            that is not ``ln_final -> unembed``; also if the model must run while
+            any module is in training mode (a supplied ``cache`` is not checked).
         NotImplementedError: If a ``TransformerBridge`` reports a hybrid block
             layout (Mamba/SSM/Mixer/LinearAttention).
     """
@@ -282,6 +284,7 @@ def direct_logit_attribution(
     if cache is None:
         if input is None:
             raise ValueError("provide either `input` to run the model, or a precomputed `cache`")
+        require_eval_mode(model, operation="direct_logit_attribution()")
         logits, cache = model.run_with_cache(input)
         if is_bridge:
             positions = pos if isinstance(pos, Slice) else Slice(pos)

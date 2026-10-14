@@ -5,7 +5,8 @@ real ``model.hooks(fwd_hooks=...)`` installs against the shared ``_ToyBridge`` f
 ``TransformerBridge`` subclass, no Hugging Face download required.
 """
 
-from typing import Dict, Tuple
+from contextlib import contextmanager
+from typing import Dict, Iterator, Tuple
 
 import pytest
 import torch
@@ -60,6 +61,22 @@ def toy_lens() -> JacobianLens:
         n_prompts=1,
         d_model=D_MODEL,
     )
+
+
+@contextmanager
+def _training_with_forwards_refused(model: _ToyBridge) -> Iterator[None]:
+    """Trains the module-scoped bridge with forwards refused, then restores evaluation mode."""
+
+    def refuse(module: torch.nn.Module, args: object) -> None:
+        raise AssertionError("training mode must be refused before any forward pass")
+
+    handle = model.register_forward_pre_hook(refuse)
+    model.train()
+    try:
+        yield
+    finally:
+        model.eval()
+        handle.remove()
 
 
 def _spec_with_active_source(lens: JacobianLens, model: _ToyBridge, layer: int) -> PromptTrialSpec:
@@ -389,6 +406,23 @@ def test_run_causal_swap_trial_rejects_an_empty_seed_list(
         )
 
 
+def test_run_causal_swap_trial_refuses_training_mode_before_any_forward(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
+    with _training_with_forwards_refused(toy_bridge):
+        with pytest.raises(ValueError, match=r"model\.eval\(\)") as excinfo:
+            run_causal_swap_trial(
+                toy_lens,
+                toy_bridge,
+                spec,
+                layer=1,
+                control_tolerance=CONTROL_TOLERANCE,
+                k=SOLVE_K,
+            )
+    assert "run_causal_swap_trial()" in str(excinfo.value)
+
+
 def _rigged_corpus(model: _ToyBridge) -> BenchmarkCorpus:
     """One function, two concepts: "correct"'s own baseline answer is rigged to be the model's
     actual top1 (baseline-capable); "wrong"'s is rigged to not be (baseline-incapable)."""
@@ -460,3 +494,20 @@ def test_run_causal_swap_benchmark_is_deterministic_given_seed(
     )
     assert first == second
     assert first_excluded == second_excluded
+
+
+def test_run_causal_swap_benchmark_refuses_training_mode_before_any_forward(
+    toy_lens: JacobianLens, toy_bridge: _ToyBridge
+) -> None:
+    corpus = _rigged_corpus(toy_bridge)
+    with _training_with_forwards_refused(toy_bridge):
+        with pytest.raises(ValueError, match=r"model\.eval\(\)") as excinfo:
+            run_causal_swap_benchmark(
+                toy_lens,
+                toy_bridge,
+                corpus,
+                layers=[1],
+                control_tolerance=CONTROL_TOLERANCE,
+                k=SOLVE_K,
+            )
+    assert "run_causal_swap_benchmark()" in str(excinfo.value)

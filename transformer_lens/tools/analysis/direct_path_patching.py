@@ -66,6 +66,7 @@ from transformer_lens.model_protocol import (
     TransformerLensModel,
     TransformerLensModelWithWeights,
 )
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -243,6 +244,7 @@ def get_act_patch_direct_path(
         (no causal path from A to those layers).
     """
     _check_direct_path_support(model, src_layer, component)
+    require_eval_mode(model, operation="get_act_patch_direct_path()")
     _check_fold_ln(model)
 
     n_layers = model.cfg.n_layers
@@ -334,6 +336,7 @@ def get_act_patch_direct_path_all_sources(
     calling get_act_patch_direct_path per source head.
     """
     _check_direct_path_support(model, 0, component)
+    require_eval_mode(model, operation="get_act_patch_direct_path_all_sources()")
     _check_fold_ln(model)
 
     n_layers = model.cfg.n_layers

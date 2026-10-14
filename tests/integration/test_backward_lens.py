@@ -676,6 +676,9 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
 
     from transformer_lens.model_bridge import TransformerBridge
     from transformer_lens.tools.analysis import BackwardLens
+    from transformer_lens.tools.analysis.backward_lens import (
+        _capture_dense_mlp_gradient_factors,
+    )
 
     config = GPT2Config(
         n_layer=2,
@@ -703,7 +706,9 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
     else:
         rng_before = torch.random.get_rng_state()
 
-    result = BackwardLens(bridge).analyze("Small test", " token", [0, 1], normalized=True)
+    # Dropout draws from the RNG only in training mode, which analyze() refuses, so the
+    # RNG contract is checked on the capture analyze() delegates to.
+    _capture_dense_mlp_gradient_factors(bridge, "Small test", " token", [0, 1])
 
     if device == "cuda":
         rng_after = torch.cuda.get_rng_state()
@@ -712,6 +717,11 @@ def test_tiny_gpt2_capture_supports_available_devices_and_reduced_precision(
     else:
         rng_after = torch.random.get_rng_state()
     assert torch.equal(rng_after, rng_before)
+    with pytest.raises(ValueError, match=r"BackwardLens\.analyze\(\) .*model\.eval\(\)"):
+        BackwardLens(bridge).analyze("Small test", " token", [0, 1])
+
+    bridge.eval()
+    result = BackwardLens(bridge).analyze("Small test", " token", [0, 1], normalized=True)
     for layer in result.layers:
         for matrix in (layer.input_projection, layer.output_projection):
             factors = matrix.factors

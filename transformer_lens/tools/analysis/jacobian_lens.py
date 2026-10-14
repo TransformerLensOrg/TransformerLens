@@ -793,8 +793,8 @@ class JacobianLens:
 
         Raises:
             ValueError: If the model fails :meth:`validate_model`, ``input`` is
-                batched, ``top_k`` is invalid, or a requested layer has no
-                transport matrix.
+                batched, ``top_k`` is invalid, a requested layer has no
+                transport matrix, or the model is in training mode.
         """
         self.validate_model(model)
         tokens = model.to_tokens(input) if isinstance(input, str) else input
@@ -816,6 +816,7 @@ class JacobianLens:
             raise ValueError(f"top_k must be at least 1, got {top_k}")
         seq_len = tokens.shape[1]
         norm_positions = _normalize_positions(positions, seq_len)
+        require_eval_mode(model, operation=f"{type(self).__name__}.readout()")
 
         hook_names = {
             layer: _resid_post_hook_name(layer) for layer in layers if layer != final_layer
@@ -982,12 +983,13 @@ class JacobianLens:
 
         Raises:
             ValueError: On an invalid model, a mismatched activation shape, a batched prompt,
-                an unfitted layer, or an invalid ``k`` / ``algorithm``.
+                a prompt while the model is in training mode, an unfitted layer, or an invalid
+                ``k`` / ``algorithm``.
             RuntimeError: If the default nonnegative least-squares solver cannot validate its
                 result against the KKT conditions.
         """
         activation, resolved_layer = self._resolve_activation(
-            model, activation_or_prompt, layer, position
+            model, activation_or_prompt, layer, position, operation="decompose"
         )
         dictionary = self.lens_vector_dictionary(model, resolved_layer)
         return get_sparse_decomposition(
@@ -1037,7 +1039,7 @@ class JacobianLens:
             A :class:`CoordinatePatch` containing the edited frame, diagnostics, and activation.
         """
         activation, resolved_layer = self._resolve_activation(
-            model, activation_or_prompt, layer, position
+            model, activation_or_prompt, layer, position, operation="coordinate_patch"
         )
         dictionary = self.lens_vector_dictionary(model, resolved_layer)
         source_id, target_id = _to_token_ids(model, [source_token, target_token])
@@ -1059,13 +1061,16 @@ class JacobianLens:
         activation_or_prompt: Union[torch.Tensor, str],
         layer: int,
         position: Optional[int],
+        *,
+        operation: str,
     ) -> Tuple[torch.Tensor, int]:
         """Validate the model and layer, then resolve either a raw ``[d_model]`` activation or a
         prompt plus ``position`` to the activation vector to analyse.
 
         Returns ``(activation, resolved_layer)``. Shared by :meth:`decompose`,
         :meth:`coordinate_patch`, and :meth:`occupancy` so all accept the same input forms with
-        identical validation.
+        identical validation. ``operation`` is the calling method's name, used in the
+        training-mode refusal; a raw activation needs no forward and so is never refused.
         """
         self.validate_model(model)
         resolved_layer = _normalize_layer(layer, model.cfg.n_layers)
@@ -1102,6 +1107,7 @@ class JacobianLens:
                 raise ValueError(
                     f"analysis expects a single prompt; got shape {tuple(tokens.shape)}"
                 )
+            require_eval_mode(model, operation=f"{type(self).__name__}.{operation}()")
             hook_name = _resid_post_hook_name(resolved_layer)
             _, cache = model.run_with_cache(tokens, names_filter=lambda name: name == hook_name)
             norm_position = _normalize_positions([position], tokens.shape[1])[0]
@@ -1139,7 +1145,7 @@ class JacobianLens:
             A :class:`JSpaceOccupancy`.
         """
         activation, resolved_layer = self._resolve_activation(
-            model, activation_or_prompt, layer, position
+            model, activation_or_prompt, layer, position, operation="occupancy"
         )
         dictionary = self.lens_vector_dictionary(model, resolved_layer)
         return estimate_occupancy(
@@ -1194,7 +1200,8 @@ class JacobianLens:
 
         Raises:
             ValueError: On an invalid model, an unfitted layer, an empty corpus, a negative
-                ``skip_first``, or a token tensor that does not have shape ``[1, seq]``.
+                ``skip_first``, a token tensor that does not have shape ``[1, seq]``, or a model
+                in training mode.
         """
         self.validate_model(model)
         if skip_first < 0:
@@ -1214,6 +1221,7 @@ class JacobianLens:
         )
         if not prompt_list:
             raise ValueError("prompts must be a non-empty prompt or sequence of prompts")
+        require_eval_mode(model, operation=f"{type(self).__name__}.fraction_of_variance()")
 
         hook_names = {layer: _resid_post_hook_name(layer) for layer in resolved_layers}
         wanted_hooks = set(hook_names.values())

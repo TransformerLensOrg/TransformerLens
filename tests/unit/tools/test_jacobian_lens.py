@@ -134,6 +134,73 @@ def test_fit_rejects_hidden_original_model_submodule_in_training_mode() -> None:
     assert original_model[0].training is True
 
 
+def _forbid_forward(model: _ToyBridge) -> None:
+    def refuse(module: nn.Module, args: Any) -> None:
+        raise AssertionError("training mode must be refused before any forward pass")
+
+    model.register_forward_pre_hook(refuse)
+
+
+_PROMPT_CALLS = {
+    "readout": lambda lens, model: lens.readout(model, "a toy prompt"),
+    "decompose": lambda lens, model: lens.decompose(model, "a toy prompt", 0, position=-1, k=3),
+    "coordinate_patch": lambda lens, model: lens.coordinate_patch(
+        model, "a toy prompt", 0, 3, 5, position=-1, k=1
+    ),
+    "occupancy": lambda lens, model: lens.occupancy(
+        model, "a toy prompt", 0, position=-1, max_atoms=3
+    ),
+    "fraction_of_variance": lambda lens, model: lens.fraction_of_variance(
+        model, ["a toy prompt", "another toy prompt"], k=3, skip_first=0
+    ),
+}
+
+
+@pytest.mark.parametrize("method", list(_PROMPT_CALLS))
+def test_forward_running_methods_refuse_training_mode_before_any_forward(method: str) -> None:
+    model = _ToyBridge()
+    model.train()
+    _forbid_forward(model)
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)") as excinfo:
+        _PROMPT_CALLS[method](_lens(), model)
+    assert f"JacobianLens.{method}()" in str(excinfo.value)
+    assert model.training is True
+
+
+def test_readout_refuses_nested_submodule_in_training_mode() -> None:
+    model = _ToyBridge()
+    model.blocks[2].train()
+    _forbid_forward(model)
+
+    with pytest.raises(ValueError, match=r"found training mode at blocks\.2"):
+        _lens().readout(model, "a toy prompt")
+    assert model.training is False
+
+
+_RAW_ACTIVATION_CALLS = {
+    "decompose": lambda lens, model, activation: lens.decompose(model, activation, 0, k=1).support,
+    "coordinate_patch": lambda lens, model, activation: lens.coordinate_patch(
+        model, activation, 0, 3, 5, k=1
+    ).patched,
+    "occupancy": lambda lens, model, activation: lens.occupancy(
+        model, activation, 0, max_atoms=3
+    ).marginal_captured_variance,
+}
+
+
+@pytest.mark.parametrize("method", list(_RAW_ACTIVATION_CALLS))
+def test_raw_activation_runs_no_forward_so_training_mode_is_accepted(method: str) -> None:
+    model = _ToyBridge()
+    lens = _lens()
+    activation = 2.0 * lens.lens_vector_dictionary(model, 0)[3]
+    expected = _RAW_ACTIVATION_CALLS[method](lens, model, activation)
+    model.train()
+    _forbid_forward(model)
+
+    assert torch.equal(_RAW_ACTIVATION_CALLS[method](lens, model, activation), expected)
+
+
 def test_fit_recovers_closed_form_jacobians(
     toy_model: _ToyBridge, fitted_lens: JacobianLens
 ) -> None:

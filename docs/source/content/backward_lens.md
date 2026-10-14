@@ -184,6 +184,7 @@ The current implementation requires:
   e.g. Pythia/GPT-NeoX).
 - Original, trainable weights and a dense, non-gated MLP.
 - Compatibility mode and weight processing to remain disabled.
+- The model and all submodules in evaluation mode (`model.eval()`).
 - One non-empty prompt, one single-token target, and unique valid layer indices.
 
 It does not currently support batched prompts, multi-token target losses, gated MLPs,
@@ -194,16 +195,20 @@ vocabulary rankings.
 ## Model-state safety
 
 An analysis uses one gradient-enabled forward pass and one `torch.autograd.grad` call.
-It does not call `backward()` or modify parameter `.grad` buffers. It preserves model
-weights, `requires_grad` flags, train/eval state, existing hooks, and CPU/CUDA/MPS RNG
-state, and it removes only its own temporary hooks on success or failure. Existing
-activation-editing hooks still affect the analyzed computation.
+Dropout in training mode would perturb those gradients, so once its inputs validate,
+`analyze(...)` refuses a model with any module in training mode instead of switching
+it to evaluation mode. It does not call `backward()` or modify parameter `.grad`
+buffers. It preserves model weights, `requires_grad` flags, train/eval state, existing
+hooks, and CPU/CUDA/MPS RNG state, and it removes only its own temporary hooks on
+success or failure. Existing activation-editing hooks still affect the analyzed
+computation.
 
 ## Troubleshooting
 
 | Symptom | Cause and resolution |
 |---|---|
 | Raw-Bridge or processed-weight error | Reboot with `TransformerBridge.boot_transformers(...)`; do not enable compatibility mode or process weights. |
+| Evaluation-mode error | A module, often dropout, is in training mode; call `model.eval()` before analyzing. |
 | Target encodes to zero or multiple tokens | Choose text that maps to one token under the model's tokenizer without BOS; check leading whitespace. |
 | Duplicate or out-of-range layer error | Pass a non-empty sequence of unique indices in `[0, model.cfg.n_layers)`. |
 | Normalized logits were not requested | Call `analyze(..., normalized=True)` before using `logits(normalized=True)` or normalized ranks. |

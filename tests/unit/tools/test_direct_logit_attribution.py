@@ -80,9 +80,9 @@ def _native_bridge(compat=True):
     return model
 
 
-def _forbid_forward(model, monkeypatch):
+def _forbid_forward(model, monkeypatch, reason="the model was run before the readout-path check"):
     def forward_ran(*args, **kwargs):
-        raise AssertionError("the model was run before the readout-path check")
+        raise AssertionError(reason)
 
     monkeypatch.setattr(model, "run_with_cache", forward_ran)
 
@@ -115,3 +115,40 @@ def test_prompt_path_rejects_a_readout_transform_it_cannot_see():
     model.unembed.register_forward_pre_hook(lambda module, args: (torch.tanh(dense(args[0])),))
     with pytest.raises(ValueError, match="differs from the model's own log-probabilities"):
         direct_logit_attribution(model, TOKENS, answer_tokens=5, incorrect_tokens=6)
+
+
+def _training_flags(model):
+    modules = [*model.named_modules(), *model.original_model.named_modules()]
+    return [(name, module.training) for name, module in modules]
+
+
+@pytest.mark.parametrize(
+    ("enter_training", "root_training"),
+    [
+        (lambda model: model.train(), True),
+        (lambda model: model.blocks[1].mlp.train(), False),
+    ],
+    ids=["whole-model", "one-mlp"],
+)
+def test_prompt_path_refuses_training_mode_before_any_forward(
+    monkeypatch, enter_training, root_training
+):
+    model = _native_bridge()
+    enter_training(model)
+    flags = _training_flags(model)
+    _forbid_forward(model, monkeypatch, "the model was run before the eval-mode check")
+    with pytest.raises(ValueError, match=r"direct_logit_attribution\(\) .*model\.eval\(\)"):
+        direct_logit_attribution(model, TOKENS, answer_tokens=5)
+    assert model.training is root_training
+    assert _training_flags(model) == flags
+
+
+def test_supplied_cache_is_accepted_after_the_model_enters_training_mode(monkeypatch):
+    model = _native_bridge()
+    _, cache = model.run_with_cache(TOKENS)
+    expected = direct_logit_attribution(model, answer_tokens=5, incorrect_tokens=6, cache=cache)
+    model.train()
+    _forbid_forward(model, monkeypatch, "a supplied cache must not rerun the model")
+    result = direct_logit_attribution(model, answer_tokens=5, incorrect_tokens=6, cache=cache)
+    assert torch.equal(result.attribution, expected.attribution)
+    assert result.labels == expected.labels

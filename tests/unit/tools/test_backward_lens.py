@@ -9,9 +9,12 @@ import torch
 import torch.nn.functional as F
 from transformers.pytorch_utils import Conv1D
 
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.mlp import MLPBridge
 from transformer_lens.tools.analysis.backward_lens import (
+    BackwardLens,
     BackwardLensMatrixResult,
     LinearGradientFactors,
     _build_linear_gradient_factors,
@@ -587,6 +590,82 @@ def test_get_dense_mlp_projections_rejects_a_gated_mlp() -> None:
 
     with pytest.raises(ValueError, match="dense, non-gated"):
         _get_dense_mlp_projections(model, (0,))
+
+
+def _native_lens_that_must_not_run(monkeypatch) -> tuple[TransformerBridge, BackwardLens]:
+    """A raw dense-MLP native Bridge in eval mode whose forward raises."""
+    cfg = TransformerBridgeConfig(
+        n_layers=2,
+        d_model=8,
+        d_head=4,
+        n_heads=2,
+        d_mlp=16,
+        d_vocab=12,
+        n_ctx=8,
+        act_fn="gelu",
+        normalization_type="LN",
+        seed=0,
+    )
+    model = TransformerBridge.boot_native(cfg).eval()
+    # Only its presence is checked; tokenization itself is replaced below.
+    model.tokenizer = SimpleNamespace()
+
+    def one_token_per_word(text: str, **kwargs) -> torch.Tensor:
+        return torch.arange(1, len(text.split()) + 1).unsqueeze(0)
+
+    def forward_ran(*args) -> None:
+        raise AssertionError("Backward Lens ran a forward")
+
+    monkeypatch.setattr(model, "to_tokens", one_token_per_word)
+    model.register_forward_pre_hook(forward_ran)
+    return model, BackwardLens(model)
+
+
+def _training_flags(model: TransformerBridge) -> list[tuple[str, bool]]:
+    modules = [*model.named_modules(), *model.original_model.named_modules()]
+    return [(name, module.training) for name, module in modules]
+
+
+@pytest.mark.parametrize(
+    ("enter_training", "root_training"),
+    [
+        (lambda model: model.train(), True),
+        (lambda model: model.blocks[1].mlp.train(), False),
+    ],
+    ids=["whole-model", "one-mlp"],
+)
+def test_analyze_refuses_training_mode_before_any_forward(
+    monkeypatch, enter_training, root_training
+) -> None:
+    model, lens = _native_lens_that_must_not_run(monkeypatch)
+    # In eval mode the same call reaches the forward, so the sentinel is live.
+    with pytest.raises(AssertionError, match="ran a forward"):
+        lens.analyze("prompt", " token", [0])
+
+    enter_training(model)
+    flags = _training_flags(model)
+    with pytest.raises(ValueError, match=r"BackwardLens\.analyze\(\) .*model\.eval\(\)"):
+        lens.analyze("prompt", " token", [0])
+    assert model.training is root_training
+    assert _training_flags(model) == flags
+
+
+@pytest.mark.parametrize(
+    ("prompt", "target", "layers", "match"),
+    [
+        ("prompt", " token", [2], r"layers must be in \[0, 1\]"),
+        ("prompt", " two tokens", [0], "exactly one token"),
+        (" ".join(["word"] * 9), " token", [0], "exceeds model context limit"),
+    ],
+    ids=["layer-out-of-range", "multi-token-target", "prompt-over-n_ctx"],
+)
+def test_analyze_reports_invalid_inputs_before_training_mode(
+    monkeypatch, prompt: str, target: str, layers: list[int], match: str
+) -> None:
+    model, lens = _native_lens_that_must_not_run(monkeypatch)
+    model.train()
+    with pytest.raises(ValueError, match=match):
+        lens.analyze(prompt, target, layers)
 
 
 def test_public_backward_lens_symbols_are_exported() -> None:
