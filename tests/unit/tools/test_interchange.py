@@ -11,6 +11,7 @@ from transformer_lens.tools.analysis.interchange import (
     LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
+    _model_device,
     collect_activations,
     fit_das,
     intervened_logits,
@@ -34,6 +35,7 @@ class _Toy(HookedRootModule):
         self.hook_mid = HookPoint()
         self.seq = seq
         self.setup()
+        self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.hook_mid(self.inp(x))
@@ -157,6 +159,7 @@ class _Pattern(HookedRootModule):
         super().__init__()
         self.hook_pattern = HookPoint()
         self.setup()
+        self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.hook_pattern(x).flatten(1)[:, :2]
@@ -205,6 +208,7 @@ def test_a_hook_must_fire_exactly_once():
             super().__init__()
             self.hook_unused = HookPoint()
             self.setup()
+            self.eval()
 
     x, source, full = (
         torch.randn(2, D_MODEL),
@@ -240,6 +244,7 @@ class _Planted(HookedRootModule):
         self.scale = nn.Parameter(torch.tensor(4.0))
         self.hook_mid = HookPoint()
         self.setup()
+        self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         score = self.scale * (self.hook_mid(x) @ self.direction)
@@ -285,12 +290,57 @@ def test_das_recovers_a_planted_direction():
 def test_splitting_batches_trains_the_same_way():
     model, base, source, targets = _planted_pairs()
     kwargs = dict(rank=1, epochs=30, lr=5e-2, batch_size=64)
-    whole = fit_das(model, "hook_mid", base, source, targets, model, **kwargs)
-    split = fit_das(model, "hook_mid", base, source, targets, model, micro_batch_size=16, **kwargs)
+    sizes: dict[str, list[int]] = {"whole": [], "split": []}
+
+    def recording(name):
+        def task_logits(x):
+            sizes[name].append(len(x))
+            return model(x)
+
+        return task_logits
+
+    whole = fit_das(model, "hook_mid", base, source, targets, recording("whole"), **kwargs)
+    split = fit_das(
+        model, "hook_mid", base, source, targets, recording("split"), micro_batch_size=16, **kwargs
+    )
+    # Only a split run keeps every forward pass to the micro-batch size
+    assert max(sizes["whole"]) == 64 and max(sizes["split"]) == 16
     # Gradients agree up to rounding; Adam's sign-like first steps can amplify that slightly
     assert abs(whole.losses[0] - split.losses[0]) < 1e-2
     for result in (whole, split):
         assert (result.basis[:, 0] @ model.direction).abs() > 0.95
+
+
+def test_das_leaves_the_callers_random_stream_alone():
+    model, base, source, targets = _planted_pairs(n=32)
+    torch.manual_seed(123)
+    expected = torch.rand(3)
+    torch.manual_seed(123)
+    first = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
+    assert torch.equal(torch.rand(3), expected)
+    again = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1, seed=5)
+    assert torch.equal(first.basis, again.basis)  # the seed still fixes the result
+
+
+def test_the_subspace_defaults_to_the_models_device():
+    assert _model_device(nn.Linear(2, 2, device="meta")) == torch.device("meta")
+    assert _model_device(_Pattern()) == torch.device("cpu")  # no parameters
+    model, base, source, targets = _planted_pairs(n=32)
+    result = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1)
+    assert result.basis.device == model.scale.device
+
+
+def test_models_in_training_mode_are_rejected():
+    model, base, source, targets = _planted_pairs(n=8)
+    model.train()
+    acts = torch.randn(8, D_MODEL)
+    full = SubspaceInterchange(torch.eye(D_MODEL))
+    with pytest.raises(ValueError, match="collect_activations requires .* evaluation mode"):
+        collect_activations(model, "hook_mid", source, model)
+    with pytest.raises(ValueError, match="intervened_logits requires .* evaluation mode"):
+        intervened_logits(model, "hook_mid", full, base, acts, model)
+    with pytest.raises(ValueError, match="fit_das requires .* evaluation mode"):
+        fit_das(model, "hook_mid", base, source, targets, model, rank=1)
 
 
 def test_das_leaves_the_model_untouched():

@@ -33,25 +33,39 @@ from transformer_lens.tools.analysis import (
 bridge = TransformerBridge.boot_transformers("gpt2")
 answers = [bridge.to_single_token(" is"), bridge.to_single_token(" are")]
 task_logits = lambda tokens: bridge(tokens)[:, -1, answers]
-
-base = bridge.to_tokens(["The key near the cabinet", "The keys near the cabinet"])
-source = base.flip(0)  # each base takes the other prompt's subject number
-subject = torch.full((2,), 2)  # the subject token, after the BOS token
 hook = "blocks.1.hook_out"
 
-source_acts = collect_activations(bridge, hook, source, task_logits, positions=subject)
-basis = mean_difference_basis(source_acts, labels=[1, 0])
+
+def pairs(nouns):
+    """Bases and sources differ only in the subject's number; the target is the source's verb."""
+    singular = bridge.to_tokens([f"The {n} near the cabinet" for n in nouns])
+    plural = bridge.to_tokens([f"The {n}s near the cabinet" for n in nouns])
+    base, source = torch.cat([singular, plural]), torch.cat([plural, singular])
+    targets = (torch.arange(len(base)) < len(nouns)).long()  # " are" when the source is plural
+    subject = torch.full((len(base),), 2)  # the subject token, after the BOS token and "The"
+    return base, source, targets, subject
+
+
+fit_base, fit_source, fit_targets, fit_at = pairs(["key", "dog", "cat", "book", "car", "boy"])
+test_base, test_source, test_targets, test_at = pairs(["girl", "bird", "tree", "house"])
+
+# Fit the basis on the fit pairs' sources, labelled by subject number ...
+fit_acts = collect_activations(bridge, hook, fit_source, task_logits, positions=fit_at)
+basis = mean_difference_basis(fit_acts, labels=fit_targets.tolist())
+
+# ... and measure the interchange accuracy (IIA) on held-out pairs
+test_acts = collect_activations(bridge, hook, test_source, task_logits, positions=test_at)
 logits = intervened_logits(
-    bridge, hook, SubspaceInterchange(basis), base, source_acts, task_logits, positions=subject
+    bridge, hook, SubspaceInterchange(basis), test_base, test_acts, task_logits, positions=test_at
 )
-print(task_logits(base).argmax(-1), logits.argmax(-1))  # tensor([0, 1]) tensor([1, 0])
+print((logits.argmax(-1) == test_targets).float().mean())  # tensor(1.)
 ```
 
 `task_logits` runs the model in one forward pass and reads the task out of its output, so the
 tools do not assume next-token prediction; the hook must fire exactly once in that pass.
 Activations at the hook must be `[batch, d_model]`, or `[batch, pos, d_model]` with one position
-index per example. A real experiment fits the basis on held-out pairs, not on the pairs it
-evaluates.
+index per example. Fit a basis on one set of pairs and evaluate it on pairs it was not fit on, as
+here.
 
 `collect_activations` and `intervened_logits` run in batches of `batch_size` without gradients and
 return CPU tensors, so memory does not grow with the number of pairs. `run_with_intervention` is
@@ -78,15 +92,15 @@ base/source pair, the class the high-level model predicts:
 ```python
 from transformer_lens.tools.analysis import fit_das
 
-targets = torch.tensor([1, 0])  # " are" for the base given a plural source, " is" otherwise
 result = fit_das(
-    bridge, hook, base, source, targets, task_logits, rank=1,
-    base_positions=subject, source_positions=subject, epochs=10,
+    bridge, hook, fit_base, fit_source, fit_targets, task_logits, rank=1,
+    base_positions=fit_at, source_positions=fit_at, epochs=10,
 )
 logits = intervened_logits(
-    bridge, hook, SubspaceInterchange(result.subspace), base, source_acts, task_logits,
-    positions=subject,
+    bridge, hook, SubspaceInterchange(result.subspace), test_base, test_acts, task_logits,
+    positions=test_at,
 )
+print((logits.argmax(-1) == test_targets).float().mean())  # tensor(1.)
 ```
 
 `targets[i]` is the high-level model's output for base `i` with the variable taken from source

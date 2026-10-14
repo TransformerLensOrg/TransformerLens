@@ -35,6 +35,7 @@ from jaxtyping import Float, Int
 from torch import nn
 from torch.nn.utils.parametrizations import orthogonal
 
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.projection_kernel import orthonormal_subspace
 
 TaskLogits = Callable[[torch.Tensor], Float[torch.Tensor, "batch n_classes"]]
@@ -235,9 +236,11 @@ def collect_activations(
         Activations, ``[batch, d_model]``.
 
     Raises:
-        ValueError: If the activation does not match the positions given (or not given).
+        ValueError: If any part of the model is in training mode, or the activation does not match
+            the positions given (or not given).
         RuntimeError: If the hook does not fire exactly once per forward pass.
     """
+    require_eval_mode(model, operation="collect_activations")
     out = []
     for idx in _chunks(len(inputs), batch_size):
         store: list[torch.Tensor] = []
@@ -335,7 +338,11 @@ def intervened_logits(
 
     Returns:
         Task logits under the intervention, ``[batch, n_classes]``.
+
+    Raises:
+        ValueError: If any part of the model is in training mode, or the inputs do not pair up.
     """
+    require_eval_mode(model, operation="intervened_logits")
     if len(source_activations) != len(base_inputs):
         raise ValueError("source_activations must have one row per base input")
     out = []
@@ -351,6 +358,11 @@ def intervened_logits(
         )
         out.append(logits.detach().cpu())
     return torch.cat(out)
+
+
+def _model_device(model: Any) -> torch.device:
+    parameter = next(iter(model.parameters()), None)
+    return parameter.device if parameter is not None else torch.device("cpu")
 
 
 @dataclass(frozen=True)
@@ -419,7 +431,8 @@ def fit_das(
         lr: Adam learning rate.
         strength: Interchange strength during training.
         seed: Seed for the basis initialisation and the batch order.
-        device: Device for the subspace's parameters; the model's device by default.
+        device: Device for the subspace's parameters; by default the device of the model's
+            parameters, or the CPU for a model without any.
         micro_batch_size: Split each batch into parts this size and accumulate gradients: the same
             gradients, up to floating-point rounding, in less memory.
 
@@ -427,19 +440,22 @@ def fit_das(
         The learned subspace with its training losses.
 
     Raises:
-        ValueError: If the inputs and targets differ in length.
+        ValueError: If any part of the model is in training mode, or the inputs and targets differ
+            in length.
     """
+    require_eval_mode(model, operation="fit_das")
     if not (len(base_inputs) == len(source_inputs) == len(targets)):
         raise ValueError("base_inputs, source_inputs and targets must have the same length")
-    torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     micro = micro_batch_size or batch_size
     source_acts = collect_activations(
         model, hook_name, source_inputs, task_logits, positions=source_positions, batch_size=micro
     )
-    subspace = LearnedSubspace(source_acts.shape[1], rank)
-    if device is not None:
-        subspace = subspace.to(device)
+    # Seed the initialisation without moving the caller's random stream
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        subspace = LearnedSubspace(source_acts.shape[1], rank)
+    subspace = subspace.to(device if device is not None else _model_device(model))
     step = SubspaceInterchange(subspace, strength)
     optimizer = torch.optim.Adam(subspace.parameters(), lr=lr)
     labels = torch.as_tensor(targets, dtype=torch.long)
