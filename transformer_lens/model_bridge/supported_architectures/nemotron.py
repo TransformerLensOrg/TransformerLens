@@ -59,6 +59,7 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
                         name="input_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,
+                        uses_weight_offset=True,
                     ),
                     "attn": PositionEmbeddingsAttentionBridge(
                         name="self_attn",
@@ -76,12 +77,16 @@ class NemotronArchitectureAdapter(ArchitectureAdapter):
                         name="post_attention_layernorm",
                         config=self.cfg,
                         use_native_layernorm_autograd=True,
+                        uses_weight_offset=True,
                     ),
                     "mlp": self._ungated_mlp(),
                 },
             ),
             "ln_final": NormalizationBridge(
-                name="model.norm", config=self.cfg, use_native_layernorm_autograd=True
+                name="model.norm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+                uses_weight_offset=True,
             ),
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }

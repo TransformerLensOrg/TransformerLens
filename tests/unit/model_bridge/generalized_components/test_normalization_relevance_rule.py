@@ -163,13 +163,17 @@ class TestForwardIdentity:
 
 
 class TestVJPMatchesDetachedDenomOracle:
-    def test_layernorm(self):
+    @pytest.mark.parametrize("shared_offset", [False, True])
+    def test_layernorm(self, shared_offset):
         bridge = _make_bridge(native=True)
+        bridge.config.uses_rms_norm = shared_offset
+        bridge.config.rmsnorm_uses_offset = shared_offset
         block = _Block(bridge)
         x = torch.randn(2, 5, 16, requires_grad=True)
+        probe = torch.randn_like(x)
         with use_relevance_rules(block, RelevanceRules(normalization=True)):
             y = bridge(x)
-            y.sum().backward()
+            y.backward(probe)
         grad_rule = x.grad.clone()
 
         x_oracle = x.detach().clone().requires_grad_(True)
@@ -181,7 +185,7 @@ class TestVJPMatchesDetachedDenomOracle:
             offset=False,
             eps=1e-5,
         )
-        y_oracle.sum().backward()
+        y_oracle.backward(probe)
         torch.testing.assert_close(grad_rule, x_oracle.grad)
 
     @pytest.mark.parametrize("offset", [False, True], ids=["plain_rms", "gemma_offset"])

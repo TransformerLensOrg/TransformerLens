@@ -122,6 +122,7 @@ class NormalizationBridge(GeneralizedComponent):
         use_native_layernorm_autograd: bool = False,
         uses_rms_norm: Optional[bool] = None,
         optional: bool = False,
+        uses_weight_offset: Optional[bool] = None,
     ):
         """Initialize the normalization bridge.
 
@@ -135,12 +136,15 @@ class NormalizationBridge(GeneralizedComponent):
             uses_rms_norm: Force RMSNorm vs LayerNorm; None defers to introspection
                 then ``config.uses_rms_norm``.
             optional: If True, setup skips this subtree when absent (hybrid architectures).
+            uses_weight_offset: Override the affine weight convention independently of
+                RMS vs LayerNorm. None uses the RMSNorm configuration flag.
         """
         super().__init__(name, config, submodules=submodules, optional=optional)
         self.hook_normalized = HookPoint()
         self.hook_scale = HookPoint()
         self.use_native_layernorm_autograd = use_native_layernorm_autograd
         self._uses_rms_norm_override = uses_rms_norm
+        self._uses_weight_offset_override = uses_weight_offset
         self._relevance_rule_active = False
 
     @property
@@ -184,6 +188,13 @@ class NormalizationBridge(GeneralizedComponent):
             if "RMSNorm" in type(component).__name__:
                 return True
         return bool(getattr(self.config, "uses_rms_norm", False))
+
+    @property
+    def uses_weight_offset(self) -> bool:
+        """Whether affine scaling uses 1 + weight, including explicit LayerNorm1P slots."""
+        if self._uses_weight_offset_override is not None:
+            return self._uses_weight_offset_override
+        return self.uses_rms_norm and bool(getattr(self.config, "rmsnorm_uses_offset", False))
 
     def forward(self, hidden_states: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the normalization bridge.
@@ -230,12 +241,8 @@ class NormalizationBridge(GeneralizedComponent):
         self, hidden_states: torch.Tensor, input_dtype: torch.dtype
     ) -> torch.Tensor:
         """Apply weight/bias in float32 before casting back (matches HF precision)."""
-        # Gemma-family RMSNorm stores weight as an offset from 1 (output uses 1 + weight).
-        weight = (
-            (1.0 + self.weight)
-            if getattr(self.config, "rmsnorm_uses_offset", False)
-            else self.weight
-        )
+        # Gemma RMSNorm and LayerNorm1P store affine weight as an offset from 1.
+        weight = (1.0 + self.weight) if self.uses_weight_offset else self.weight
         hidden_states = hidden_states * weight
         component = self.original_component
         if (
@@ -378,7 +385,7 @@ class NormalizationBridge(GeneralizedComponent):
         except AttributeError:
             weight = None
         bias = getattr(component, "bias", None) if not self.uses_rms_norm else None
-        offset = bool(getattr(self.config, "rmsnorm_uses_offset", False))
+        offset = self.uses_weight_offset
         result: torch.Tensor = _NativeLNRuleForward.apply(
             x_centered, denom, weight, bias, x, component, offset, input_dtype
         )

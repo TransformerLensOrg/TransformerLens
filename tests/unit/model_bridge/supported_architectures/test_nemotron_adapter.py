@@ -75,6 +75,12 @@ class TestNemotronComponentMapping:
         assert submodules["ln2"].name == "post_attention_layernorm"
         assert adapter.component_mapping["ln_final"].name == "model.norm"
 
+    def test_layernorm1p_slots_explicitly_use_weight_offsets(self, adapter):
+        submodules = adapter.component_mapping["blocks"].submodules
+        for norm in (submodules["ln1"], submodules["ln2"], adapter.component_mapping["ln_final"]):
+            assert norm.uses_weight_offset
+            assert not norm.uses_rms_norm
+
     def test_attention_paths(self, adapter):
         attn = adapter.component_mapping["blocks"].submodules["attn"]
         assert isinstance(attn, PositionEmbeddingsAttentionBridge)
