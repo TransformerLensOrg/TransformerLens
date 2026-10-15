@@ -15,8 +15,13 @@ The module provides the intervention, fixed-direction bases to intervene on (the
 class means, a linear probe's weights, a random basis), and a norm-matched random-subspace placebo.
 :func:`fit_das` learns the basis instead, by distributed alignment search (DAS; Geiger et al.,
 2024): it trains an orthonormal basis so that the interchange produces the high-level model's
-predicted outputs. An interchange accuracy is not evidence on its own: compare it with the placebo
-and the baselines.
+predicted outputs.
+
+An interchange accuracy is not evidence on its own. DAS fits arbitrary label mappings and finds
+effects in randomly initialised models (Arora et al., 2024), so the module also provides the
+controls to train the same way: :func:`arbitrary_targets` for an arbitrary-label control, and
+:func:`random_init_bridge` or :func:`reinitialized` for an untrained copy of the model. Compare a
+learned subspace with both, and with the placebo and the baselines.
 
 Works with any model exposing the hook API (``TransformerBridge`` or a ``HookedRootModule``).
 Activations at the hook must be ``[batch, d_model]``, or ``[batch, pos, d_model]`` with one
@@ -25,6 +30,8 @@ position index per example.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Callable, Hashable, Iterator, Optional, Sequence, Union, cast
 
@@ -494,3 +501,115 @@ def fit_das(
         for p, flag in zip(model.parameters(), flags):
             p.requires_grad_(flag)
     return DASResult(subspace.eval(), tuple(losses), hook_name, rank)
+
+
+def arbitrary_targets(
+    keys: Sequence[Hashable], n_classes: int, seed: int
+) -> Int[torch.Tensor, "batch"]:
+    """A fixed pseudo-random class per key: targets for the arbitrary-label control.
+
+    Train :func:`fit_das` on these instead of the high-level model's targets, with the same pairs,
+    rank and budget. The interchange accuracy it reaches shows how much accuracy the method's
+    expressivity alone produces; a learned subspace should clearly exceed it.
+
+    Args:
+        keys: One key per pair identifying its source, e.g. the source text.
+        n_classes: Number of output classes.
+        seed: Seed for the mapping.
+
+    Returns:
+        A class in ``[0, n_classes)`` per key; equal keys always get equal classes.
+    """
+
+    def draw(key: Hashable) -> int:
+        digest = hashlib.sha256(f"{seed}:{key!r}".encode()).digest()
+        return int.from_bytes(digest[:8], "big") % n_classes
+
+    return torch.tensor([draw(k) for k in keys], dtype=torch.long)
+
+
+def reinitialized(model: nn.Module, seed: int) -> nn.Module:
+    """A copy of ``model`` with freshly initialised parameters: the random-init control.
+
+    For models built from standard ``nn`` layers, such as a ``HookedRootModule``: every module with
+    ``reset_parameters`` is reset, so every parameter must belong to one. Buffers, such as fixed
+    architectural matrices, are kept. For HuggingFace models use :func:`random_init_bridge`, which
+    applies the architecture's own initialisation scheme.
+
+    Args:
+        model: The trained model; it is not modified.
+        seed: Seed for the new parameters.
+
+    Returns:
+        The untrained copy, on the device of the model's parameters, in evaluation mode.
+
+    Raises:
+        ValueError: If a parameter belongs to no module with ``reset_parameters``, so it would keep
+            its trained value.
+    """
+    covered = {
+        id(parameter)
+        for module in model.modules()
+        if callable(getattr(module, "reset_parameters", None))
+        for parameter in module.parameters(recurse=False)
+    }
+    missing = [name for name, parameter in model.named_parameters() if id(parameter) not in covered]
+    if missing:
+        more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
+        raise ValueError(
+            f"reinitialized cannot reset {', '.join(missing[:5])}{more}: no module's "
+            "reset_parameters covers them, so they would keep their trained values. Reset them "
+            "yourself, or use random_init_bridge for a HuggingFace model."
+        )
+    device = _model_device(model)
+    clone = copy.deepcopy(model).cpu()
+    # Reset on the CPU, seeding only the CPU generator inside a fork that restores it;
+    # torch.manual_seed would also reseed every CUDA, MPS and XPU generator
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(seed)
+        for module in clone.modules():
+            reset = getattr(module, "reset_parameters", None)
+            if callable(reset):
+                reset()
+    return clone.to(device).eval()
+
+
+def random_init_bridge(
+    model_name: str,
+    *,
+    seed: int,
+    dtype: torch.dtype = torch.float32,
+    device: Optional[Union[str, torch.device]] = None,
+    **boot_kwargs: Any,
+) -> Any:
+    """A ``TransformerBridge`` with the architecture's HuggingFace initialisation and no training.
+
+    The random-init control: train :func:`fit_das` on it with the same pairs, rank and budget as
+    on the trained model. Effects DAS finds here come from the method and the architecture, not
+    from anything the model learned. The model is built by ``boot_transformers`` with
+    ``load_weights=False``, so it has the same model class and prepared configuration as the
+    trained bridge.
+
+    Args:
+        model_name: Model name or alias, as for ``TransformerBridge.boot_transformers``.
+        seed: Seed for the initialisation.
+        dtype: Parameter dtype.
+        device: Device for the bridge; by default the device ``boot_transformers`` would choose.
+        **boot_kwargs: Passed on to ``TransformerBridge.boot_transformers``, e.g. ``revision``.
+
+    Returns:
+        The untrained ``TransformerBridge``, in evaluation mode.
+    """
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
+
+    # The model is built on the CPU, so seed only the CPU generator, inside a fork that restores it
+    with torch.random.fork_rng(devices=[]):
+        torch.default_generator.manual_seed(seed)
+        bridge = TransformerBridge.boot_transformers(
+            model_name, load_weights=False, dtype=dtype, device=device, **boot_kwargs
+        )
+    # Building from a config follows the config's dtype and leaves the weights on the CPU,
+    # whatever device boot recorded; HuggingFace also leaves the model in training mode
+    maybe_cast_floating_params(bridge.original_model, dtype)
+    return bridge.to(bridge.cfg.device).eval()
