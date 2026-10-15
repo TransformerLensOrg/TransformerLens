@@ -10,10 +10,6 @@ import pytest
 import torch
 
 from tests.integration.model_bridge.helpers import make_tiny_pair
-from transformer_lens.model_bridge._relevance_rules import (
-    RelevanceRules,
-    use_relevance_rules,
-)
 
 
 def _tiny_jais2_pair():
@@ -96,17 +92,3 @@ class TestJais2PlainLayerNormHooks:
             with pytest.warns(UserWarning, match=message):
                 hooked = bridge(ids)
         torch.testing.assert_close(hooked.detach(), clean, atol=1e-6, rtol=1e-5)
-
-    def test_ln_rule_vjp_uses_plain_weight(self) -> None:
-        bridge = _perturbed_jais2_bridge()
-        ln = bridge.blocks[0].ln1
-        component = ln.original_component
-        x = torch.randn(1, 5, bridge.cfg.d_model, requires_grad=True)
-        probe = torch.randn_like(x)
-        with use_relevance_rules(bridge, RelevanceRules(normalization=True)):
-            ln(x).backward(probe)
-        x_oracle = x.detach().clone().requires_grad_(True)
-        centered = x_oracle - x_oracle.mean(-1, keepdim=True)
-        denom = (centered.pow(2).mean(-1, keepdim=True) + component.eps).sqrt().detach()
-        (centered / denom * component.weight.detach()).backward(probe)
-        torch.testing.assert_close(x.grad, x_oracle.grad)

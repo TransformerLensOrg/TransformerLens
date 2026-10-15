@@ -17,12 +17,8 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
 )
 from transformer_lens.model_bridge.sources import build_bridge_from_module
-from transformer_lens.tools.analysis import (
-    LogitLensResult,
-    LogitReadout,
-    logit_lens,
-    logit_readout,
-)
+from transformer_lens.tools.analysis import logit_lens, logit_readout
+from transformer_lens.tools.analysis.logit_lens import LogitLensResult, LogitReadout
 
 D_VOCAB = 64
 D_MODEL = 32
@@ -403,7 +399,7 @@ def test_arguments_are_validated_before_the_forward_pass(tiny, monkeypatch):
         logit_lens(model, TOKENS, chunk_size=0)
     with pytest.raises(ValueError, match="top_k must be"):
         logit_lens(model, TOKENS, top_k=D_VOCAB + 1)
-    with pytest.raises(ValueError, match="within"):
+    with pytest.raises(ValueError, match="out of range"):
         logit_lens(model, TOKENS, targets=[D_VOCAB])
 
 
@@ -415,6 +411,15 @@ def test_mixed_targets_keep_positional_names(tiny, monkeypatch):
     assert torch.equal(result.rank_trajectory(" x"), result.rank_trajectory(3))
     with pytest.raises(ValueError, match=r"known: \[' x'\]"):
         result.rank_trajectory(" y")
+
+
+def test_shared_targets_reject_bool_and_empty(tiny):
+    model, _, cache = tiny
+    resid = cache["blocks.1.hook_resid_post"]
+    with pytest.raises(ValueError, match="not bool"):
+        logit_readout(model, resid, targets=[True])
+    with pytest.raises(ValueError, match="at least one token"):
+        logit_readout(model, resid, targets=[])
 
 
 def test_tensor_targets_and_vocab_need_integer_dtypes(tiny):

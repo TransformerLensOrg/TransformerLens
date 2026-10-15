@@ -5,11 +5,12 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from numbers import Integral, Real
+from numbers import Real
 from typing import Dict, MutableMapping, Optional, Sequence, Tuple
 
 import torch
 
+from transformer_lens.tools.analysis._model_state import require_int
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     _SWAP_WARN_COSINE,
     DEFAULT_K,
@@ -137,15 +138,6 @@ def _validate_atom_rows(
     if bool((torch.linalg.vector_norm(atoms, dim=1) == 0).any()):
         raise ValueError(f"{context} contains a zero-norm dictionary atom")
     return atoms
-
-
-def _validate_index(name: str, value: int, num_atoms: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        raise ValueError(f"{name} must be an integer atom index")
-    index = int(value)
-    if not 0 <= index < num_atoms:
-        raise ValueError(f"{name}={index} out of range for dictionary with {num_atoms} atoms")
-    return index
 
 
 def _close(actual: torch.Tensor, expected: torch.Tensor, condition_number: float = 1.0) -> bool:
@@ -387,8 +379,9 @@ def solve_coordinate_patch(
             outside the nonnegative pursuit frame. All three are non-fatal.
     """
     target, dictionary = _validate_inputs(x, dictionary)
-    source_idx = _validate_index("source_idx", source_idx, dictionary.shape[0])
-    target_idx = _validate_index("target_idx", target_idx, dictionary.shape[0])
+    last_atom = dictionary.shape[0] - 1
+    source_idx = require_int(source_idx, "source_idx", minimum=0, maximum=last_atom)
+    target_idx = require_int(target_idx, "target_idx", minimum=0, maximum=last_atom)
     if source_idx == target_idx:
         raise ValueError("source_idx and target_idx must be distinct")
     if mode not in ("substitute", "swap"):

@@ -578,14 +578,21 @@ def estimate_occupancy(
     coefficient-fit residual, so their supports need not match. The occupancy is the step of
     maximum separation between the real and (averaged) control *cumulative* captured variance --
     the point past which further atoms add no more than random directions would. Deterministic
-    given ``seed`` and needs no threshold. (Captured variance is a projection, hence scale-free,
-    so the random control atoms are simply unit-norm.)
+    given ``seed`` on every device and needs no threshold. (Captured variance is a projection,
+    hence scale-free, so the random control atoms are simply unit-norm.)
+
+    The control dictionaries are drawn on the CPU, which is what makes a seed reproduce the same
+    result on every device, and then copied to ``dictionary``'s device. That draw is serial CPU
+    work of ``num_control_dictionaries * num_atoms * d_model`` normals, so for a large
+    dictionary on an accelerator it dominates the run time; lower ``num_control_dictionaries``
+    to trade control precision for speed.
 
     Args:
         x: Target vector, shape ``[d_model]``.
         dictionary: Atom matrix, shape ``[num_atoms, d_model]`` (rows are atoms).
         max_atoms: Number of atoms to select in the real and control recurrences.
-        num_control_dictionaries: Number of random control dictionaries to average over.
+        num_control_dictionaries: Number of random control dictionaries to average over; each
+            is a CPU draw the size of ``dictionary``.
         seed: Seed for the random control dictionaries (reproducibility).
 
     Returns:
@@ -632,13 +639,13 @@ def estimate_occupancy(
         atoms, atom_norms, target, max_atoms
     )
 
-    generator = torch.Generator(device=atoms.device).manual_seed(seed)
+    # Drawn on CPU so a seed gives the same control dictionaries on every device.
+    generator = torch.Generator(device="cpu").manual_seed(seed)
     control_atom_norms = torch.ones(num_atoms, device=atoms.device)
     control_variance_runs: List[torch.Tensor] = []
     for _ in range(num_control_dictionaries):
-        random_atoms = torch.randn(
-            num_atoms, d_model, generator=generator, device=atoms.device, dtype=atoms.dtype
-        )
+        random_atoms = torch.randn(num_atoms, d_model, generator=generator, dtype=atoms.dtype)
+        random_atoms = random_atoms.to(atoms.device)
         random_atoms = random_atoms / (random_atoms * random_atoms).sum(dim=1, keepdim=True).sqrt()
         control_run_variance, _ = _greedy_captured_variance_gains(
             random_atoms, control_atom_norms, target, max_atoms

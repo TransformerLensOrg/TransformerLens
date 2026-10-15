@@ -40,7 +40,11 @@ import torch
 from jaxtyping import Float, Int
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.tools.analysis._model_state import require_eval_mode
+from transformer_lens.tools.analysis._model_state import (
+    hybrid_block_types,
+    require_eval_mode,
+    to_token_ids,
+)
 from transformer_lens.utilities import Slice, SliceInput
 from transformer_lens.utilities.logits_utils import logits_to_df
 from transformer_lens.utilities.quantization import require_readable_weight
@@ -56,9 +60,6 @@ _VALUE_COLUMNS = {"logits": "logit", "log_probs": "log_prob", "probs": "probabil
 
 # Normalization types for which the model has a final norm the lens must apply.
 _FINAL_NORM_TYPES = ("LN", "LNPre", "RMS", "RMSPre")
-
-# Block variants without a ``resid_mid`` hook; mirrors direct_logit_attribution.
-_HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
 
 # Relative to the reference's per-position spread, the identity error measures 0-2e-6 in
 # fp32 and under 1e-2 in bf16; readouts that skip a model's transform measure 0.7-1.5.
@@ -275,21 +276,6 @@ def _decode_nested(ids: torch.Tensor, decode: Callable[[List[int]], str]) -> Any
     return [_decode_nested(row, decode) for row in ids]
 
 
-def _to_token_ids(model: Any, tokens: Union[str, int, Sequence[Union[str, int]]]) -> List[int]:
-    """Resolve strings / ids into a list of single-token ids."""
-    if isinstance(tokens, (str, int)):
-        tokens = [tokens]
-    ids: List[int] = []
-    for token in tokens:
-        if isinstance(token, str):
-            ids.append(int(model.to_single_token(token)))
-        elif isinstance(token, int) and not isinstance(token, bool):
-            ids.append(token)
-        else:
-            raise TypeError(f"tokens must be strings or ints, got {type(token).__name__}")
-    return ids
-
-
 def _target_names(targets: Optional[TokenInput]) -> Optional[List[Optional[str]]]:
     """Positional record of the strings in a shared-targets argument."""
     if targets is None or isinstance(targets, torch.Tensor):
@@ -398,13 +384,13 @@ def _validate_selectors(
     if isinstance(targets, torch.Tensor):
         target_ids = targets.reshape(1) if targets.ndim == 0 else targets
         target_ids = target_ids.to(torch.long)
-    elif targets is not None:
-        target_ids = torch.tensor(_to_token_ids(model, targets), dtype=torch.long)
     for ids, name in ((vocab_ids, "vocab"), (target_ids, "targets")):
         if ids is not None and (
             ids.numel() == 0 or int(ids.min()) < 0 or int(ids.max()) >= d_vocab
         ):
             raise ValueError(f"{name} ids must be within [0, {d_vocab})")
+    if targets is not None and not isinstance(targets, torch.Tensor):
+        target_ids = torch.tensor(to_token_ids(model, targets), dtype=torch.long)
     return vocab_ids, target_ids, d_vocab
 
 
@@ -737,12 +723,11 @@ def logit_lens(
         chunk_size=chunk_size,
     )
     if incl_mid:
-        layer_types = model.layer_types() if hasattr(model, "layer_types") else []
-        hybrid = [t for t in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in t.split("+"))]
+        hybrid = hybrid_block_types(model)
         if hybrid:
             raise ValueError(
                 f"incl_mid=True needs a resid_mid hook on every block, but this stack has "
-                f"block types {sorted(set(hybrid))} without one; use incl_mid=False."
+                f"block types {hybrid} without one; use incl_mid=False."
             )
     pos_slice = positions if isinstance(positions, Slice) else Slice(positions)
     if cache is None:
