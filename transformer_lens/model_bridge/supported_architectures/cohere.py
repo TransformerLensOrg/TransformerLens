@@ -167,6 +167,8 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         scaling does not affect the tied embed.weight.
         logit_scale=1.0 is a no-op (skipped for efficiency).
         """
+        if getattr(self, "_logit_scale_folded", False):
+            return state_dict
         scale: float = getattr(self.cfg, "logit_scale")  # always set by __init__
         if scale != 1.0:
             for key in ("unembed.weight", "unembed.bias"):
@@ -174,6 +176,12 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
                     orig_dtype = state_dict[key].dtype
                     state_dict[key] = (state_dict[key].float() * scale).to(orig_dtype)
         return state_dict
+
+    def finalize_weight_processing(self, hf_model: Any) -> None:
+        # Native Cohere forward still runs after processing. The scale now lives
+        # in lm_head.weight, so multiplying again would shrink logits twice.
+        hf_model.logit_scale = 1.0
+        self._logit_scale_folded = True
 
     def setup_component_testing(self, hf_model: Any, bridge_model: Any = None) -> None:
         """Set rotary embedding reference on attention bridges for component testing.

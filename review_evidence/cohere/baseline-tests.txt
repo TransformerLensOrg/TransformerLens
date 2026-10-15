@@ -1,0 +1,46 @@
+FFFFFF                                                                   [100%]
+=================================== FAILURES ===================================
+___________ test_cohere_folded_forward_matches_hf[raw-logits-short] ____________
+tests/integration/model_bridge/test_cohere_adapter.py:119: in test_cohere_folded_forward_matches_hf
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+E   AssertionError: Processed bridge vs HF max diff = 0.0036601895
+E   assert 0.00366018945351243 < 0.0001
+__________ test_cohere_folded_forward_matches_hf[raw-logits-repeated] __________
+tests/integration/model_bridge/test_cohere_adapter.py:119: in test_cohere_folded_forward_matches_hf
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+E   AssertionError: Processed bridge vs HF max diff = 0.0037727461
+E   assert 0.0037727460730820894 < 0.0001
+___________ test_cohere_folded_forward_matches_hf[raw-logits-batch] ____________
+tests/integration/model_bridge/test_cohere_adapter.py:119: in test_cohere_folded_forward_matches_hf
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+E   AssertionError: Processed bridge vs HF max diff = 0.0037039416
+E   assert 0.0037039415910840034 < 0.0001
+_______ test_cohere_folded_forward_matches_hf[centered-log-probs-short] ________
+tests/integration/model_bridge/test_cohere_adapter.py:119: in test_cohere_folded_forward_matches_hf
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+E   AssertionError: Processed bridge vs HF max diff = 0.003777504
+E   assert 0.0037775039672851562 < 0.0001
+______ test_cohere_folded_forward_matches_hf[centered-log-probs-repeated] ______
+tests/integration/model_bridge/test_cohere_adapter.py:119: in test_cohere_folded_forward_matches_hf
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+E   AssertionError: Processed bridge vs HF max diff = 0.0038919449
+E   assert 0.0038919448852539062 < 0.0001
+_______ test_cohere_folded_forward_matches_hf[centered-log-probs-batch] ________
+tests/integration/model_bridge/test_cohere_adapter.py:119: in test_cohere_folded_forward_matches_hf
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+E   AssertionError: Processed bridge vs HF max diff = 0.0037918091
+E   assert 0.00379180908203125 < 0.0001
+=============================== warnings summary ===============================
+transformer_lens/loading_from_pretrained.py:27
+  /workspace/scratch/9e3da5fef276/cohere-baseline/transformer_lens/loading_from_pretrained.py:27: DeprecationWarning: The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead. Importing from utils.py will be removed in TransformerLens 4.0.
+    import transformer_lens.utils as utils
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_forward_matches_hf[raw-logits-short]
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_forward_matches_hf[raw-logits-repeated]
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_forward_matches_hf[raw-logits-batch]
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_forward_matches_hf[centered-log-probs-short]
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_forward_matches_hf[centered-log-probs-repeated]
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_forward_matches_hf[centered-log-probs-batch]
+6 failed, 24 deselected, 1 warning in 10.15s

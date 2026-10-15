@@ -1,0 +1,14 @@
+Python: 3.12.14
+Platform: Linux-6.18.44-x86_64-with-glibc2.39
+datasets==4.0.0
+huggingface-hub==1.33.0
+numpy==1.26.4
+pandas==2.3.1
+pyarrow==21.0.0
+pytest==9.1.1
+tokenizers==0.22.2
+torch==2.14.1+cpu
+transformers==5.0.0
+Device: CPU
+Checkpoint: trl-internal-testing/tiny-CohereForCausalLM
+Cached checkpoint revision: 90bc56bd12c642f6bf5e710ebd7c626dd7c0201c

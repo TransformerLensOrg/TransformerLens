@@ -204,8 +204,16 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
         has_q_norm = hasattr(hf_attn, "q_norm") and hf_attn.q_norm is not None
         has_k_norm = hasattr(hf_attn, "k_norm") and hf_attn.k_norm is not None
         applied_pre_reshape_norm = False
+        is_cohere = getattr(getattr(hf_attn, "config", None), "model_type", None) == "cohere"
 
-        if has_q_norm:
+        if is_cohere and has_q_norm:
+            # Cohere has per-head weights: normalize [batch, seq, heads, dim]
+            # before transposing the sequence and head dimensions.
+            query_states = hf_attn.q_norm(query_states.view(hidden_shape))
+            if has_k_norm:
+                key_states = hf_attn.k_norm(key_states.view(hidden_shape))
+            applied_pre_reshape_norm = True
+        elif has_q_norm:
             try:
                 # Try pre-reshape norm (OLMo 2 style: norm on flat [batch, seq, hidden])
                 query_states = hf_attn.q_norm(query_states)
@@ -231,6 +239,10 @@ class PositionEmbeddingsAttentionBridge(PositionEmbeddingHooksMixin, AttentionBr
             position_embeddings = self._apply_position_embedding_hooks(position_embeddings)
             cos, sin = position_embeddings
             from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+
+            if is_cohere:
+                # Cohere rotates adjacent pairs rather than split halves.
+                from transformers.models.cohere.modeling_cohere import apply_rotary_pos_emb
 
             # Some models use partial rotary (e.g., GPT-OSS) where cos/sin cover only
             # a portion of head_dim. Split Q/K, rotate the partial dims, recombine.

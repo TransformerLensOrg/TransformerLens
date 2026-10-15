@@ -333,6 +333,8 @@ def boot(
     # Any attribute present on the HF config and not None is copied to bridge_config.
     # This is architecture-agnostic — new architectures don't need changes here.
     _HF_PASSTHROUGH_ATTRS = [
+        # Cohere: used when folding the output scale into unembedding weights.
+        "logit_scale",
         # OPT
         "is_gated_act",
         "word_embed_proj_dim",

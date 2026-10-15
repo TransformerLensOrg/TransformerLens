@@ -3,19 +3,19 @@
 Model: trl-internal-testing/tiny-CohereForCausalLM
   - 2 layers, ~8M params, CPU-safe, no gating required
   - tie_word_embeddings=True by default
-  - logit_scale=0.0625 (1/16)
+  - logit_scale is read from the checkpoint config (not an adapter default)
 
-NOTE: The tiny model has use_qk_norm=False, so QK-norm is not exercised here.
-Cohere's QK-norm is a per-head LayerNorm inside CohereAttention.forward; it is
-handled via HF delegation (PositionEmbeddingsAttentionBridge calls the original
-CohereAttention.forward directly), so functional correctness for that path relies
-on the same delegation mechanism verified in test_forward_matches_hf.
+The pinned checkpoint has use_qk_norm=False. Processed-path tests additionally
+exercise a deterministic synthetic Cohere model with QK normalization enabled.
 """
 
+from copy import deepcopy
 from typing import Any
 
 import pytest
 import torch
+from huggingface_hub import snapshot_download
+from huggingface_hub.constants import HF_HUB_OFFLINE
 from transformers import AutoModelForCausalLM
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
@@ -25,23 +25,30 @@ from transformer_lens.model_bridge.generalized_components.position_embeddings_at
 )
 
 MODEL = "trl-internal-testing/tiny-CohereForCausalLM"
+MODEL_REVISION = "90bc56bd12c642f6bf5e710ebd7c626dd7c0201c"
 
 
 @pytest.fixture(scope="module")
-def cohere_bridge():
+def cohere_checkpoint():
+    """Pin config, tokenizer, and weights together, including bridge boot reads."""
+    return snapshot_download(MODEL, revision=MODEL_REVISION, local_files_only=HF_HUB_OFFLINE)
+
+
+@pytest.fixture(scope="module")
+def cohere_bridge(cohere_checkpoint):
     """Load tiny Cohere bridge once per module (no weight processing)."""
-    return TransformerBridge.boot_transformers(MODEL, device="cpu")
+    return TransformerBridge.boot_transformers(cohere_checkpoint, device="cpu")
 
 
 @pytest.fixture(scope="module")
-def cohere_bridge_processed():
+def cohere_bridge_processed(cohere_checkpoint):
     """Bridge with preprocess_weights applied (fold only, no centering).
 
     process_weights must be called explicitly — boot_transformers does not call
     it automatically. We disable all ProcessWeights options so only the adapter's
     preprocess_weights (logit_scale fold + untie) runs.
     """
-    bridge = TransformerBridge.boot_transformers(MODEL, device="cpu")
+    bridge = TransformerBridge.boot_transformers(cohere_checkpoint, device="cpu")
     bridge.process_weights(
         fold_ln=False,
         center_writing_weights=False,
@@ -53,9 +60,100 @@ def cohere_bridge_processed():
 
 
 @pytest.fixture(scope="module")
-def cohere_hf() -> Any:
+def cohere_hf(cohere_checkpoint) -> Any:
     """Load the raw HF model for side-by-side comparisons."""
-    return AutoModelForCausalLM.from_pretrained(MODEL).eval()
+    return AutoModelForCausalLM.from_pretrained(cohere_checkpoint).eval()
+
+
+@pytest.fixture(
+    scope="module",
+    params=[(False, False), (False, True), (True, False), (True, True)],
+    ids=["raw-logits", "centered-log-probs", "qk-raw-logits", "qk-centered-log-probs"],
+)
+def cohere_folded_pair(request, cohere_hf, cohere_checkpoint):
+    """Independent reference and processed model, with non-identity norm scales.
+
+    Tiny checkpoints can have identity LayerNorm weights, hiding broken folding.
+    Change only a private reference copy, then clone it before processing so the
+    reference cannot inherit mutations made by the bridge.
+    """
+    use_qk_norm, centered = request.param
+    if use_qk_norm:
+        config = deepcopy(cohere_hf.config)
+        config.use_qk_norm = True
+        with torch.random.fork_rng():
+            torch.manual_seed(1124)
+            reference = AutoModelForCausalLM.from_config(config).float().eval()
+        assert reference.model.layers[0].self_attn.q_norm is not None
+    else:
+        reference = deepcopy(cohere_hf).float().eval()
+    with torch.no_grad():
+        for module in reference.modules():
+            if hasattr(module, "variance_epsilon") and hasattr(module, "weight"):
+                module.weight.copy_(
+                    torch.linspace(0.5, 1.5, module.weight.numel()).reshape_as(module.weight)
+                )
+    bridge = TransformerBridge.boot_transformers(
+        cohere_checkpoint,
+        device="cpu",
+        dtype=torch.float32,
+        hf_model=deepcopy(reference),
+        hf_config_overrides={"use_qk_norm": use_qk_norm},
+    ).eval()
+    bridge.enable_compatibility_mode(
+        fold_ln=True,
+        center_writing_weights=centered,
+        center_unembed=centered,
+        fold_value_biases=True,
+        refactor_factored_attn_matrices=False,
+    )
+    return bridge, reference, centered
+
+
+@pytest.mark.parametrize(
+    "token_ids",
+    [
+        [[1, 2, 3, 4]],
+        [[1, 7, 7, 7, 2, 19, 3, 5]],
+        [[1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]],
+        [[1] + [2 + (i * 17) % 127 for i in range(63)]],
+    ],
+    ids=["short", "repeated", "batch", "long-64"],
+)
+def test_cohere_folded_forward_matches_hf(cohere_folded_pair, token_ids):
+    """Exercise normalization folding, including the default centered mode.
+
+    Centering the unembedding changes raw logits by an additive constant, so
+    compare log-probabilities in that mode. No relative tolerance is allowed.
+    """
+    bridge, reference, centered = cohere_folded_pair
+    tokens = torch.tensor(token_ids)
+    with torch.no_grad():
+        actual = bridge(tokens)
+        expected = reference(tokens).logits
+        if centered:
+            actual = actual.float().log_softmax(dim=-1)
+            expected = expected.float().log_softmax(dim=-1)
+    assert actual.shape == expected.shape
+    assert torch.isfinite(actual).all() and torch.isfinite(expected).all()
+    max_diff = (actual - expected).abs().max().item()
+    assert max_diff < 1e-4, f"Processed bridge vs HF max diff = {max_diff:.8g}"
+
+
+def test_cohere_folded_norm_epsilon_placement(cohere_folded_pair):
+    """Low-variance activations expose epsilon moved outside the square root.
+
+    Folding moves the learned norm scale into downstream projections. Restore
+    that scale only on the observed norm output when comparing with native HF.
+    This checks the live processed normalization, not a copied formula.
+    """
+    bridge, reference, _ = cohere_folded_pair
+    native_norm = reference.model.layers[0].input_layernorm
+    x = torch.linspace(-1e-4, 1e-4, bridge.cfg.d_model).reshape(1, 1, -1)
+    with torch.no_grad():
+        actual = bridge.blocks[0].ln1(x) * native_norm.weight
+        expected = native_norm(x)
+    torch.testing.assert_close(actual, expected, atol=1e-4, rtol=0)
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +194,10 @@ class TestCohereBridgeCreation:
     def test_cfg_logit_scale_is_float(self, cohere_bridge: TransformerBridge) -> None:
         assert isinstance(getattr(cohere_bridge.cfg, "logit_scale"), float)
 
-    def test_cfg_logit_scale_value(self, cohere_bridge: TransformerBridge) -> None:
-        assert getattr(cohere_bridge.cfg, "logit_scale") == pytest.approx(0.0625)
+    def test_cfg_logit_scale_value(self, cohere_bridge: TransformerBridge, cohere_hf: Any) -> None:
+        assert getattr(cohere_bridge.cfg, "logit_scale") == pytest.approx(
+            cohere_hf.config.logit_scale
+        )
 
 
 # ---------------------------------------------------------------------------

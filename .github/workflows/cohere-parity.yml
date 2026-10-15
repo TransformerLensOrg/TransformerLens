@@ -1,0 +1,45 @@
+name: Cohere processed parity
+
+on:
+  pull_request:
+    paths:
+      - "transformer_lens/**"
+      - "tests/integration/model_bridge/test_cohere_adapter.py"
+      - "tests/unit/model_bridge/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/cohere-parity.yml"
+  push:
+    branches: ["fix/cohere-processed-parity"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v3
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --frozen --no-default-groups --group dev
+      - name: Run Cohere and adapter lifecycle tests
+        run: |
+          set -o pipefail
+          uv run --frozen --no-default-groups --group dev pytest -o addopts='' \
+            tests/integration/model_bridge/test_cohere_adapter.py \
+            tests/unit/model_bridge/supported_architectures/test_cohere_adapter.py \
+            tests/unit/model_bridge/test_architecture_adapter.py \
+            tests/unit/model_bridge/generalized_components \
+            -q -rs --tb=short 2>&1 | tee cohere-parity-ci.txt
+      - name: Preserve test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cohere-parity-results
+          path: cohere-parity-ci.txt

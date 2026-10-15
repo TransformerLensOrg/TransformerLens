@@ -10,6 +10,8 @@ Covers:
 - preprocess_weights: logit_scale folded into unembed.weight
 """
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -494,6 +496,17 @@ class TestCohereAdapterWeightConversions:
 
 class TestCoherePreprocessWeights:
     """Verify preprocess_weights folds logit_scale into unembed.weight."""
+
+    def test_finalization_disables_native_scale_and_prevents_refolding(self) -> None:
+        adapter = CohereArchitectureAdapter(_make_cfg(logit_scale=0.5))
+        native = SimpleNamespace(logit_scale=0.5)
+        weights = {"unembed.weight": torch.ones(4, 8)}
+        processed = adapter.preprocess_weights(weights)
+        assert native.logit_scale == 0.5  # Native forward changes only after installation.
+        adapter.finalize_weight_processing(native)
+        assert native.logit_scale == 1.0
+        repeated = adapter.preprocess_weights(processed)
+        torch.testing.assert_close(repeated["unembed.weight"], torch.full((4, 8), 0.5))
 
     def _make_state_dict(self, d_model: int = 64, d_vocab: int = 1000) -> dict[str, torch.Tensor]:
         """Minimal state dict with unembed.weight and unembed.bias."""

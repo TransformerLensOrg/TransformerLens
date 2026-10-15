@@ -1,0 +1,9 @@
+........................................................................ [ 59%]
+.......................................s.........                        [100%]
+=============================== warnings summary ===============================
+transformer_lens/loading_from_pretrained.py:27
+  /workspace/scratch/9e3da5fef276/cohere-review/transformer_lens/loading_from_pretrained.py:27: DeprecationWarning: The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead. Importing from utils.py will be removed in TransformerLens 4.0.
+    import transformer_lens.utils as utils
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+120 passed, 1 skipped, 1 warning in 42.03s

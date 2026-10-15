@@ -106,6 +106,10 @@ class ArchitectureAdapter:
         """
         return state_dict
 
+    def finalize_weight_processing(self, hf_model: Any) -> None:
+        """Update native forward behavior after processed weights are installed."""
+        pass
+
     def get_component_mapping(self) -> ComponentMapping:
         """Get the full component mapping.
 

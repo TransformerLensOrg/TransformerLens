@@ -1,0 +1,36 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+____________ test_cohere_folded_norm_epsilon_placement[raw-logits] _____________
+tests/integration/model_bridge/test_cohere_adapter.py:135: in test_cohere_folded_norm_epsilon_placement
+    torch.testing.assert_close(actual, expected, atol=1e-4, rtol=0)
+E   AssertionError: Tensor-likes are not close!
+E   
+E   Mismatched elements: 8 / 8 (100.0%)
+E   Greatest absolute difference: 1.940242886543274 at index (0, 0, 7) (up to 0.0001 allowed)
+E   Greatest relative difference: 40.912681579589844 at index (0, 0, 5) (up to 0 allowed)
+________ test_cohere_folded_norm_epsilon_placement[centered-log-probs] _________
+tests/integration/model_bridge/test_cohere_adapter.py:135: in test_cohere_folded_norm_epsilon_placement
+    torch.testing.assert_close(actual, expected, atol=1e-4, rtol=0)
+E   AssertionError: Tensor-likes are not close!
+E   
+E   Mismatched elements: 8 / 8 (100.0%)
+E   Greatest absolute difference: 1.940242886543274 at index (0, 0, 7) (up to 0.0001 allowed)
+E   Greatest relative difference: 40.912681579589844 at index (0, 0, 5) (up to 0 allowed)
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/_pytest/config/__init__.py:1345
+  /workspace/scratch/9e3da5fef276/cohere-review/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py:1345: PytestAssertRewriteWarning: Module already imported so cannot be rewritten; typeguard
+    self._mark_plugins_for_rewrite(hook, disable_autoload)
+
+.venv/lib/python3.12/site-packages/_pytest/config/__init__.py:1345
+  /workspace/scratch/9e3da5fef276/cohere-review/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py:1345: PytestAssertRewriteWarning: Module already imported so cannot be rewritten; anyio
+    self._mark_plugins_for_rewrite(hook, disable_autoload)
+
+.venv/lib/python3.12/site-packages/_pytest/config/__init__.py:1345
+  /workspace/scratch/9e3da5fef276/cohere-review/.venv/lib/python3.12/site-packages/_pytest/config/__init__.py:1345: PytestAssertRewriteWarning: Module already imported so cannot be rewritten; jaxtyping
+    self._mark_plugins_for_rewrite(hook, disable_autoload)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_norm_epsilon_placement[raw-logits]
+FAILED tests/integration/model_bridge/test_cohere_adapter.py::test_cohere_folded_norm_epsilon_placement[centered-log-probs]
+2 failed, 28 deselected, 3 warnings in 5.29s

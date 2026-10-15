@@ -1,0 +1,16 @@
+........................................................................ [ 54%]
+.............................................................            [100%]
+=============================== warnings summary ===============================
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+transformer_lens/loading_from_pretrained.py:27
+  /workspace/scratch/9e3da5fef276/cohere-review/transformer_lens/loading_from_pretrained.py:27: DeprecationWarning: The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead. Importing from utils.py will be removed in TransformerLens 4.0.
+    import transformer_lens.utils as utils
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+133 passed, 3 warnings in 33.99s
+sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute

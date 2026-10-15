@@ -775,6 +775,8 @@ class TransformerBridge(nn.Module):
             state_dict=state_dict,
             component_mapping=self.real_components,
         )
+        if adapter is not None:
+            adapter.finalize_weight_processing(self.original_model)
 
     def _calculate_loss(self, logits, tokens, loss_per_token=False):
         """Calculate cross-entropy loss."""
