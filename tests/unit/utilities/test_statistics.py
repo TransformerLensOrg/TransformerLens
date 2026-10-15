@@ -76,6 +76,37 @@ def test_bootstrap_ci_matches_per_cell_loop_and_median():
         bootstrap_ci(x, confidence=1.0)
 
 
+@pytest.mark.parametrize("statistic", ["mean", "median"])
+def test_bootstrap_ci_preserves_float64_values(statistic: str):
+    x = torch.full((2, 8), 1.00000001, dtype=torch.float64)
+    low, high = bootstrap_ci(x, statistic=statistic, n_resamples=32)
+    torch.testing.assert_close(low, x[:, 0], rtol=0, atol=0)
+    torch.testing.assert_close(high, x[:, 0], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_statistics_support_floating_dtypes(dtype: torch.dtype):
+    x = torch.tensor([1.0, 2.0], dtype=dtype)
+    low, high = bootstrap_ci(torch.ones(8, dtype=dtype), n_resamples=32)
+    assert low.dtype == high.dtype == dtype
+    assert low.item() == high.item() == 1.0
+    assert sign_flip_permutation_pvalue(x).item() == 0.5
+
+
+@pytest.mark.parametrize("exact_max_n", [0, 12])
+def test_sign_flip_float64_is_invariant_to_positive_scale(exact_max_n: int):
+    effects = torch.tensor([1.0, 2.0], dtype=torch.float64)
+    expected = sign_flip_permutation_pvalue(effects, exact_max_n=exact_max_n)
+    actual = sign_flip_permutation_pvalue(effects * 1e-50, exact_max_n=exact_max_n)
+    assert expected.item() < 1.0
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+def test_sign_flip_preserves_small_float64_effects():
+    effects = torch.tensor([1.0, 1e-8], dtype=torch.float64)
+    assert sign_flip_permutation_pvalue(effects).item() == 0.5
+
+
 def test_sign_flip_exact_enumeration_matches_hand_count():
     effects = torch.tensor([[1.0, 2.0, 3.0, -0.5]])
     observed = effects.mean().abs()
