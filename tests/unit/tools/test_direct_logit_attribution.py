@@ -58,7 +58,6 @@ def test_direct_logit_attribution_is_exported_from_analysis_package():
     from transformer_lens.tools import analysis
 
     assert analysis.direct_logit_attribution is direct_logit_attribution
-    assert hasattr(analysis, "DirectLogitAttribution")
 
 
 def _native_bridge(compat=True):

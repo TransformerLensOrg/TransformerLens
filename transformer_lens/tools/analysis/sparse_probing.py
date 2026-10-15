@@ -17,6 +17,8 @@ from typing import Literal, cast
 import torch
 from jaxtyping import Bool, Float, Int, Integer
 
+from transformer_lens.tools.analysis._model_state import compute_dtype, require_int
+
 PreprocessMode = Literal["none", "standardize"]
 ClassWeightMode = Literal["balanced"] | None
 ArmMode = Literal["random_coordinate", "label_shuffle"]
@@ -185,12 +187,6 @@ def _finite_positive_real(value: int | float, name: str) -> float:
     return result
 
 
-def _positive_integer(value: int, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError(f"{name} must be a positive integer, got {value!r}")
-    return value
-
-
 def _validate_inputs(
     features: torch.Tensor,
     labels: torch.Tensor,
@@ -250,7 +246,7 @@ def _validate_inputs(
     if int(counts.min()) < 2:
         raise ValueError("each class must contain at least two examples")
 
-    validated_k = _positive_integer(k, "k")
+    validated_k = require_int(k, "k")
     if validated_k > features.shape[1]:
         raise ValueError(f"k must be at most the feature count {features.shape[1]}, got {k}")
     if isinstance(test_fraction, bool) or not isinstance(test_fraction, (int, float)):
@@ -271,10 +267,11 @@ def _validate_inputs(
         raise ValueError(f"class_weight must be 'balanced' or None, got {class_weight!r}")
     validated_class_weight = cast(ClassWeightMode, class_weight)
     validated_l2 = _finite_positive_real(l2_strength, "l2_strength")
-    if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed < 2**63:
-        raise ValueError(f"seed must be an integer in [0, 2**63), got {seed!r}")
-    validated_max_iter = _positive_integer(max_iter, "max_iter")
-    validated_refinement_steps = _nonnegative_integer(max_refinement_steps, "max_refinement_steps")
+    validated_seed = require_int(seed, "seed", minimum=0, maximum=2**63 - 1)
+    validated_max_iter = require_int(max_iter, "max_iter")
+    validated_refinement_steps = require_int(
+        max_refinement_steps, "max_refinement_steps", minimum=0
+    )
     validated_tolerance = _finite_positive_real(decrement_tolerance, "decrement_tolerance")
     if validated_tolerance >= 1:
         raise ValueError(
@@ -291,7 +288,7 @@ def _validate_inputs(
         std_floor=validated_std_floor,
         class_weight=validated_class_weight,
         l2_strength=validated_l2,
-        seed=seed,
+        seed=validated_seed,
         max_iter=validated_max_iter,
         max_refinement_steps=validated_refinement_steps,
         decrement_tolerance=validated_tolerance,
@@ -408,9 +405,10 @@ def _feature_scores(
     train_labels: torch.Tensor,
     train_indices: torch.Tensor,
 ) -> torch.Tensor:
-    compute_dtype = torch.float64 if features.dtype == torch.float64 else torch.float32
     device_indices = train_indices.to(device=features.device)
-    train_features = features.index_select(0, device_indices).to(dtype=compute_dtype)
+    train_features = features.index_select(0, device_indices).to(
+        dtype=compute_dtype(features.dtype)
+    )
     positive = train_labels.to(device=features.device)
     scores = train_features[positive].mean(dim=0) - train_features[~positive].mean(dim=0)
     return scores.to(device="cpu").to(dtype=torch.float64)
@@ -840,12 +838,6 @@ def _control_result(
     )
 
 
-def _nonnegative_integer(value: int, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{name} must be a nonnegative integer, got {value!r}")
-    return value
-
-
 def fit_sparse_probe(
     features: Float[torch.Tensor, "example feature"],
     labels: Bool[torch.Tensor, "example"] | Integer[torch.Tensor, "example"],
@@ -1013,15 +1005,13 @@ def sweep_sparse_probe(
     """
     if isinstance(ks, (str, bytes)) or not isinstance(ks, Sequence):
         raise ValueError("ks must be a non-empty sequence of positive integers")
-    k_values = tuple(ks)
+    k_values = tuple(require_int(k, "ks", message="ks must contain positive integers") for k in ks)
     if not k_values:
         raise ValueError("ks must be a non-empty sequence of positive integers")
-    if any(isinstance(k, bool) or not isinstance(k, int) or k < 1 for k in k_values):
-        raise ValueError("ks must contain positive integers")
     if any(right <= left for left, right in zip(k_values, k_values[1:])):
         raise ValueError("ks must be strictly increasing and unique")
-    random_count = _nonnegative_integer(n_random_subsets, "n_random_subsets")
-    shuffle_count = _nonnegative_integer(n_label_shuffles, "n_label_shuffles")
+    random_count = require_int(n_random_subsets, "n_random_subsets", minimum=0)
+    shuffle_count = require_int(n_label_shuffles, "n_label_shuffles", minimum=0)
     validated = _validate_inputs(
         features,
         labels,

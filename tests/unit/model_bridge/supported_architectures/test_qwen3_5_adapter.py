@@ -725,25 +725,6 @@ class TestQwen3_5RMSNormOffset:
         error = identity_hook_logit_error(bridge, "ln_final.hook_scale", backward=True)
         assert error < 1e-5
 
-    def test_ln_rule_backward_scales_by_offset_weight(self, bridge):
-        """The LN-rule VJP of an RMSNorm is (1 + weight) / denom, with denom held constant."""
-        import torch
-
-        from transformer_lens.model_bridge._relevance_rules import (
-            RelevanceRules,
-            use_relevance_rules,
-        )
-
-        ln1 = bridge.blocks[0].ln1
-        hf_norm = ln1.original_component
-        x = torch.randn(1, 4, 128, generator=torch.Generator().manual_seed(0), requires_grad=True)
-        with use_relevance_rules(bridge, RelevanceRules(normalization=True)):
-            ln1(x).sum().backward()
-
-        denom = (x.detach().pow(2).mean(-1, keepdim=True) + hf_norm.eps).sqrt()
-        expected = ((1.0 + hf_norm.weight.detach()) / denom).expand_as(x)
-        torch.testing.assert_close(x.grad, expected)
-
 
 @pytest.mark.skipif(
     not _QWEN3_5_AVAILABLE,

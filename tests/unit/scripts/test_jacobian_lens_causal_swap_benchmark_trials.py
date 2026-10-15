@@ -11,9 +11,7 @@ from typing import Dict, Iterator, Tuple
 import pytest
 import torch
 
-from tests.unit.tools.conftest import D_MODEL, D_VOCAB, _ToyBridge
-from transformer_lens.tools.analysis import JacobianLens
-from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+from scripts.jacobian_lens_causal_swap_benchmark import (
     AnswerMetrics,
     BenchmarkCorpus,
     FunctionSpec,
@@ -22,6 +20,8 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     run_causal_swap_benchmark,
     run_causal_swap_trial,
 )
+from tests.unit.tools.conftest import D_MODEL, D_VOCAB, _ToyBridge
+from transformer_lens.tools.analysis import JacobianLens
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
 )

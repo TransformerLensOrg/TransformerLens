@@ -83,7 +83,7 @@ from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.tools.analysis._model_state import require_eval_mode
+from transformer_lens.tools.analysis._model_state import require_eval_mode, to_token_ids
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
@@ -98,9 +98,12 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     estimate_occupancy,
     get_sparse_decomposition,
 )
+from transformer_lens.tools.analysis.logit_lens import logit_readout
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
-TokenInput = Union[str, int]
+ConceptToken = Union[str, int]
+# Former name, kept so existing imports keep working.
+TokenInput = ConceptToken
 _LensT = TypeVar("_LensT", bound="JacobianLens")
 
 # Backward-provider seam for the fit drive loop. A provider takes the target
@@ -146,13 +149,18 @@ def _resolve_registry_entry(name_or_path: str) -> Optional[Tuple[str, str]]:
     generic Hub download path.
     """
     registry = _load_registry()
-    if name_or_path in registry:
-        entry = registry[name_or_path]
+    entry = registry.get(name_or_path)
+    if isinstance(entry, dict):
         return entry["repo_id"], entry["filename"]
     for entry in registry.values():
         if isinstance(entry, dict) and name_or_path in entry.get("aliases", []):
             return entry["repo_id"], entry["filename"]
     return None
+
+
+def _registry_revision() -> str:
+    """Hub commit that every registry entry is downloaded at unless a caller pins another."""
+    return _load_registry()["revision"]
 
 
 # Fitting excludes early positions (attention sinks with atypical residual statistics)
@@ -266,11 +274,6 @@ class JacobianLens:
             from the reference implementation load with empty metadata.
     """
 
-    # Whether from_pretrained() resolves short model names through the bundled
-    # artifact registry. An estimator whose artifacts live in a different
-    # registry sets this False and accepts only explicit paths or Hub repo ids.
-    _uses_artifact_registry: bool = True
-
     def __init__(
         self,
         jacobians: Dict[int, Float[torch.Tensor, "d_model d_model"]],
@@ -312,18 +315,6 @@ class JacobianLens:
             f"JacobianLens(layers={layers[0]}..{layers[-1]} ({len(layers)}), "
             f"d_model={self.d_model}, n_prompts={self.n_prompts})"
         )
-
-    @classmethod
-    def _validate_artifact_metadata(cls, path: str, metadata: Any) -> None:
-        """Allow legacy artifacts without estimator provenance."""
-
-    @classmethod
-    def _validate_checkpoint_payload(cls, path: str, payload: Dict[str, Any]) -> None:
-        """Allow conversion of reference Jacobian running-sum checkpoints."""
-
-    @classmethod
-    def _validate_merge_inputs(cls, lenses: Sequence["JacobianLens"]) -> None:
-        """Allow generic lenses whose recorded provenance agrees."""
 
     # ------------------------------------------------------------------ #
     # persistence                                                        #
@@ -410,7 +401,6 @@ class JacobianLens:
         """
         payload = torch.load(path, map_location="cpu", weights_only=True)
         if "J" in payload:
-            cls._validate_artifact_metadata(path, payload.get("metadata"))
             return cls(
                 {int(layer): matrix for layer, matrix in payload["J"].items()},
                 n_prompts=int(payload.get("n_prompts", 0)),
@@ -418,7 +408,6 @@ class JacobianLens:
                 metadata=payload.get("metadata"),
             )
         if "jacobian_sum" in payload:
-            cls._validate_checkpoint_payload(path, payload)
             return cls._from_checkpoint_payload(path, payload)
         raise ValueError(
             f"{path} does not look like a Jacobian lens artifact or fit checkpoint. "
@@ -508,11 +497,10 @@ class JacobianLens:
         3. **Registry short name or HF model ID** — if *name_or_path* matches
            a key or alias in the bundled ``jacobian_lens_registry.json`` (e.g.
            ``"gemma-2-2b"`` or ``"google/gemma-2-2b"``), the corresponding
-           artifact in ``neuronpedia/jacobian-lens`` is fetched automatically.
+           artifact in ``neuronpedia/jacobian-lens`` is fetched automatically,
+           at the commit the registry pins unless *revision* is given.
            The *filename* argument is ignored in this case because the registry
-           already encodes the correct subpath. Subclasses that set
-           ``_uses_artifact_registry = False`` skip this step and refuse a bare
-           short name, since the registry holds only Jacobian lens artifacts.
+           already encodes the correct subpath.
         4. **Explicit Hub repo** — otherwise *name_or_path* is treated as a Hub
            repo id and *filename* is used as-is, preserving full backward
            compatibility (e.g. ``from_pretrained("neuronpedia/jacobian-lens",
@@ -526,9 +514,10 @@ class JacobianLens:
             filename: File (or subpath) inside a local directory or an explicit
                 Hub repo.  Ignored when *name_or_path* resolves via the
                 registry.
-            revision: Optional Hub revision (branch, tag, or commit) to pin.
-                When omitted, the Hub repository's mutable default branch is
-                followed; pin a commit hash for reproducible analyses.
+            revision: Optional Hub revision (branch, tag, or commit). When
+                omitted, registry names resolve at the registry's pinned commit
+                and an explicit Hub repo follows its mutable default branch;
+                pin a commit hash for reproducible analyses of the latter.
             model: If given, :meth:`validate_model` is called so dimension or
                 weight-processing mismatches fail here rather than at first use.
 
@@ -559,18 +548,10 @@ class JacobianLens:
         else:
             from huggingface_hub import hf_hub_download
 
-            if cls._uses_artifact_registry:
-                resolved = _resolve_registry_entry(name_or_path)
-            else:
-                if "/" not in name_or_path:
-                    raise ValueError(
-                        f"{cls.__name__} does not resolve short names from the "
-                        "Jacobian lens registry; pass an explicit path or a Hub "
-                        f"repo id (owner/name) instead of {name_or_path!r}."
-                    )
-                resolved = None
+            resolved = _resolve_registry_entry(name_or_path)
             if resolved is not None:
                 repo_id, resolved_filename = resolved
+                revision = _registry_revision() if revision is None else revision
             else:
                 repo_id, resolved_filename = name_or_path, filename
 
@@ -594,9 +575,8 @@ class JacobianLens:
         parallelized across processes or machines and merged afterwards.
         Provenance must match across shards (apart from ``n_prompts``), so a
         merge cannot silently relabel matrices fitted with different models,
-        corpora, dtypes, or recorded estimator settings. Estimator-specific
-        subclasses also validate that the inputs belong to their estimator.
-        The merged count replaces the per-shard count.
+        corpora, dtypes, or recorded estimator settings. The merged count
+        replaces the per-shard count.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
@@ -619,7 +599,6 @@ class JacobianLens:
         first = lenses[0]
         for lens in lenses:
             _validate_metadata(lens.metadata)
-        cls._validate_merge_inputs(lenses)
         first_provenance = {
             key: value for key, value in first.metadata.items() if key != "n_prompts"
         }
@@ -847,7 +826,8 @@ class JacobianLens:
                 )
                 residual = activation[0, norm_positions, :]
                 transported = self.transport(residual, layer) if use_jacobian else residual.float()
-                layer_logits = _unembed(model, transported)
+                # fp32 only after the output transform: the model soft-caps in W_U's dtype.
+                layer_logits = logit_readout(model, transported, apply_ln=True).values.float()
                 layer_topk = layer_logits.topk(top_k, dim=-1)
             lens_topk_values[layer] = layer_topk.values.cpu()
             lens_topk_indices[layer] = layer_topk.indices.cpu()
@@ -873,7 +853,7 @@ class JacobianLens:
     def lens_vectors(
         self,
         model: Any,
-        tokens: Union[TokenInput, Sequence[TokenInput]],
+        tokens: Union[ConceptToken, Sequence[ConceptToken]],
         layer: int,
     ) -> Float[torch.Tensor, "n d_model"]:
         """Residual-stream directions for vocabulary tokens at a layer.
@@ -893,7 +873,7 @@ class JacobianLens:
         """
         self.validate_model(model)
         layer = _normalize_layer(layer, model.cfg.n_layers)
-        token_ids = _to_token_ids(model, tokens)
+        token_ids = to_token_ids(model, tokens)
         unembed_columns = model.W_U[:, token_ids].float()  # [d_model, n]
         matrix = self._matrix_on(layer, unembed_columns.device)
         return (matrix.T @ unembed_columns).T
@@ -1002,8 +982,8 @@ class JacobianLens:
         model: Any,
         activation_or_prompt: Union[torch.Tensor, str],
         layer: int,
-        source_token: TokenInput,
-        target_token: TokenInput,
+        source_token: ConceptToken,
+        target_token: ConceptToken,
         *,
         position: Optional[int] = None,
         decomposition: Optional[JSpaceDecomposition] = None,
@@ -1042,7 +1022,7 @@ class JacobianLens:
             model, activation_or_prompt, layer, position, operation="coordinate_patch"
         )
         dictionary = self.lens_vector_dictionary(model, resolved_layer)
-        source_id, target_id = _to_token_ids(model, [source_token, target_token])
+        source_id, target_id = to_token_ids(model, [source_token, target_token])
         return solve_coordinate_patch(
             activation.float().to(dictionary.device),
             dictionary,
@@ -1131,6 +1111,11 @@ class JacobianLens:
         Resolves ``activation_or_prompt`` (a raw ``[d_model]`` vector, or a prompt plus
         ``position``) exactly as :meth:`decompose`, builds the cached full-vocabulary dictionary
         via :meth:`lens_vector_dictionary`, and calls :func:`estimate_occupancy`.
+
+        Each control dictionary is a ``[d_vocab, d_model]`` draw made on the CPU so a seed gives
+        the same result on every device. On an accelerator those draws dominate the run time
+        (seconds per control for a large vocabulary), so lower ``num_control_dictionaries`` when
+        speed matters more than control precision.
 
         Args:
             model: A raw ``TransformerBridge``.
@@ -1286,7 +1271,7 @@ class JacobianLens:
     def steering_hooks(
         self,
         model: Any,
-        token: TokenInput,
+        token: ConceptToken,
         layers: Sequence[int],
         *,
         alpha: float = 4.0,
@@ -1327,6 +1312,7 @@ class JacobianLens:
 
             def transform(
                 selected: Float[torch.Tensor, "batch pos d_model"],
+                positions: List[int],
                 unit: torch.Tensor = unit,
                 device_units: Dict[torch.device, torch.Tensor] = device_units,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
@@ -1345,7 +1331,7 @@ class JacobianLens:
     def ablation_hooks(
         self,
         model: Any,
-        tokens: Union[TokenInput, Sequence[TokenInput]],
+        tokens: Union[ConceptToken, Sequence[ConceptToken]],
         layers: Sequence[int],
         *,
         positions: Optional[Sequence[int]] = None,
@@ -1374,6 +1360,7 @@ class JacobianLens:
 
             def transform(
                 selected: Float[torch.Tensor, "batch pos d_model"],
+                positions: List[int],
                 units: torch.Tensor = units,
                 device_units: Dict[torch.device, torch.Tensor] = device_units,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
@@ -1395,97 +1382,31 @@ class JacobianLens:
     def swap_hooks(
         self,
         model: Any,
-        source_token: TokenInput,
-        target_token: TokenInput,
+        source_token: ConceptToken,
+        target_token: ConceptToken,
         layers: Sequence[int],
         *,
         alpha: float = 1.0,
         positions: Optional[Sequence[int]] = None,
+        clamp_to: Optional[Union[ActivationCache, Mapping[str, torch.Tensor]]] = None,
     ) -> List[Tuple[str, Any]]:
-        """Hooks that swap two concepts' *live* coordinates in lens space.
+        """Hooks that exchange two concepts' coordinates in lens space.
 
         The paper's patching-in-lens-coordinates intervention: with
         ``V = [v_s, v_t]`` and lens coordinates ``c = V⁺ h`` (pseudoinverse),
-        the update is ``h <- h + alpha * V (sigma(c) - c)`` where ``sigma``
-        exchanges the two coordinates. The component of ``h`` orthogonal to
-        ``span{v_s, v_t}`` is untouched. ``alpha=2`` is the paper's
-        "double-strength" swap.
+        the update is ``h <- h + alpha * V (c_target - c)``. The component of
+        ``h`` orthogonal to ``span{v_s, v_t}`` is untouched. ``alpha=2`` is the
+        paper's "double-strength" swap.
 
-        This transform re-reads ``c`` from the activation seen by every hook.
-        It is therefore an involution when applied repeatedly in a subspace
-        whose coordinates are preserved between layers: a second application
-        can undo the first. For the paper's multi-layer clamp protocol, use
-        :meth:`swap_clamp_hooks` with activations cached from the clean run.
+        Without ``clamp_to``, ``c_target = sigma(c)`` exchanges the two *live*
+        coordinates, re-read from the activation seen by every hook. It is
+        therefore an involution when applied repeatedly in a subspace whose
+        coordinates are preserved between layers: a second application can undo
+        the first.
 
-        Args:
-            model: The model the hooks will run on.
-            source_token: The concept to remove (e.g. ``" France"``).
-            target_token: The concept to install (e.g. ``" China"``).
-            layers: Layers to intervene at.
-            alpha: Swap strength.
-            positions: Chunk-local positions to swap (negative indices allowed
-                and normalized on every hook invocation). Defaults to all.
-
-        Returns:
-            ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
-        """
-        self.validate_model(model)
-        source_id, target_id = _to_token_ids(model, [source_token, target_token])
-        if source_id == target_id:
-            raise ValueError(
-                "source_token and target_token resolve to the same token id; "
-                "a coordinate swap would be a silent no-op"
-            )
-
-        hooks = []
-        for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
-            vectors = self.lens_vectors(model, [source_id, target_id], layer)
-            units = _unit_rows(vectors, layer=layer)
-            _diagnose_intervention_pair(
-                units, description=f"swap vectors at layer {layer}", stacklevel=3
-            )
-            basis = vectors.T  # [d, 2]
-            pinv = torch.linalg.pinv(basis)  # [2, d]
-            device_basis: Dict[torch.device, torch.Tensor] = {}
-            device_pinv: Dict[torch.device, torch.Tensor] = {}
-
-            def transform(
-                selected: Float[torch.Tensor, "batch pos d_model"],
-                basis: torch.Tensor = basis,
-                pinv: torch.Tensor = pinv,
-                device_basis: Dict[torch.device, torch.Tensor] = device_basis,
-                device_pinv: Dict[torch.device, torch.Tensor] = device_pinv,
-            ) -> Float[torch.Tensor, "batch pos d_model"]:
-                local_basis = _cached_on_device(basis, device_basis, selected.device)
-                local_pinv = _cached_on_device(pinv, device_pinv, selected.device)
-                coords = selected.float() @ local_pinv.T  # [..., 2]
-                delta = alpha * ((coords[..., [1, 0]] - coords) @ local_basis.T)
-                return selected.float() + delta
-
-            hooks.append(
-                (
-                    _resid_post_hook_name(layer),
-                    _make_intervention_hook(transform, positions, model.cfg.d_model),
-                )
-            )
-        return hooks
-
-    def swap_clamp_hooks(
-        self,
-        model: Any,
-        source_token: TokenInput,
-        target_token: TokenInput,
-        layers: Sequence[int],
-        clean_cache: Union[ActivationCache, Mapping[str, torch.Tensor]],
-        *,
-        positions: Optional[Sequence[int]] = None,
-    ) -> List[Tuple[str, Any]]:
-        """Hooks that clamp lens coordinates to their clean-run exchange.
-
-        For each layer, this projects the corresponding activation from
-        ``clean_cache`` into that layer's lens basis, exchanges its source and
-        target coordinates once, and holds the live activation at that fixed
-        target. Unlike :meth:`swap_hooks`, the update is idempotent at each
+        With ``clamp_to`` (the paper's multi-layer clamp protocol), ``c_target``
+        is the exchange of each layer's *clean-run* coordinates, fixed when the
+        hooks are built, so at ``alpha=1`` the update is idempotent at each
         layer: ``h <- h + V (c_target - V⁺h)``.
 
         Args:
@@ -1493,35 +1414,40 @@ class JacobianLens:
             source_token: The concept to remove (e.g. ``" France"``).
             target_token: The concept to install (e.g. ``" China"``).
             layers: Layers to intervene at.
-            clean_cache: Activations from an unmodified ``run_with_cache`` at
-                each requested layer's ``blocks.{layer}.hook_out`` name. Either
-                the ``ActivationCache`` it returns by default or the plain dict
-                from ``return_cache_object=False`` is accepted.
-            positions: Chunk-local positions to clamp (negative indices allowed
-                and normalized against the clean activations). Defaults to all.
+            alpha: Swap strength; with ``clamp_to``, the fraction of the way to
+                the clamped coordinates.
+            positions: Chunk-local positions to swap (negative indices allowed
+                and normalized on every hook invocation, and against the clean
+                activations when clamping). Defaults to all.
+            clamp_to: Activations from an unmodified ``run_with_cache`` at each
+                requested layer's ``blocks.{layer}.hook_out`` name. Either the
+                ``ActivationCache`` it returns by default or the plain dict from
+                ``return_cache_object=False`` is accepted.
 
         Returns:
             ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
         """
         self.validate_model(model)
-        source_id, target_id = _to_token_ids(model, [source_token, target_token])
-        if source_id == target_id:
-            raise ValueError(
-                "source_token and target_token resolve to the same token id; "
-                "a coordinate clamp would be a silent no-op"
-            )
+        source_id, target_id = _distinct_ids(
+            model,
+            source_token,
+            target_token,
+            operation="swap" if clamp_to is None else "clamp",
+        )
 
         hooks = []
         for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
             hook_name = _resid_post_hook_name(layer)
-            if hook_name not in clean_cache:
-                raise ValueError(f"clean_cache is missing activation {hook_name!r}")
-            clean = clean_cache[hook_name]
-            _validate_residual_activation(
-                clean, d_model=model.cfg.d_model, hook_name=f"clean_cache[{hook_name!r}]"
-            )
-            normalized = _normalize_positions(positions, clean.shape[1])
-            clean_selected = clean if positions is None else clean[:, normalized, :]
+            clean_selected: Optional[torch.Tensor] = None
+            if clamp_to is not None:
+                if hook_name not in clamp_to:
+                    raise ValueError(f"clamp_to is missing activation {hook_name!r}")
+                clean = clamp_to[hook_name]
+                _validate_residual_activation(
+                    clean, d_model=model.cfg.d_model, hook_name=f"clamp_to[{hook_name!r}]"
+                )
+                normalized = _normalize_positions(positions, clean.shape[1])
+                clean_selected = clean if positions is None else clean[:, normalized, :]
 
             vectors = self.lens_vectors(model, [source_id, target_id], layer)
             units = _unit_rows(vectors, layer=layer)
@@ -1530,49 +1456,73 @@ class JacobianLens:
             )
             basis = vectors.T  # [d, 2]
             pinv = torch.linalg.pinv(basis)  # [2, d]
-            target_coords = (clean_selected.float() @ pinv.T)[..., [1, 0]]
+            clamped = None
+            if clean_selected is not None:
+                clamped = (clean_selected.float() @ pinv.T)[..., [1, 0]]
             device_basis: Dict[torch.device, torch.Tensor] = {}
             device_pinv: Dict[torch.device, torch.Tensor] = {}
-            device_targets: Dict[torch.device, torch.Tensor] = {}
+            device_clamped: Dict[torch.device, torch.Tensor] = {}
 
             def transform(
                 selected: Float[torch.Tensor, "batch pos d_model"],
+                positions: List[int],
                 basis: torch.Tensor = basis,
                 pinv: torch.Tensor = pinv,
-                target_coords: torch.Tensor = target_coords,
+                clamped: Optional[torch.Tensor] = clamped,
                 device_basis: Dict[torch.device, torch.Tensor] = device_basis,
                 device_pinv: Dict[torch.device, torch.Tensor] = device_pinv,
-                device_targets: Dict[torch.device, torch.Tensor] = device_targets,
+                device_clamped: Dict[torch.device, torch.Tensor] = device_clamped,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
                 local_basis = _cached_on_device(basis, device_basis, selected.device)
                 local_pinv = _cached_on_device(pinv, device_pinv, selected.device)
-                local_targets = _cached_on_device(target_coords, device_targets, selected.device)
-                if local_targets.shape[1] != selected.shape[1] or local_targets.shape[0] not in (
-                    1,
-                    selected.shape[0],
-                ):
-                    raise ValueError(
-                        "clean_cache activation shape is incompatible with the live activation: "
-                        f"target coordinates have shape {tuple(local_targets.shape)}, "
-                        f"live activation has shape {tuple(selected.shape)}"
-                    )
-                coords = selected.float() @ local_pinv.T
-                delta = (local_targets - coords) @ local_basis.T
+                coords = selected.float() @ local_pinv.T  # [..., 2]
+                if clamped is None:
+                    target = coords[..., [1, 0]]
+                else:
+                    target = _cached_on_device(clamped, device_clamped, selected.device)
+                    if target.shape[1] != selected.shape[1] or target.shape[0] not in (
+                        1,
+                        selected.shape[0],
+                    ):
+                        raise ValueError(
+                            "clamp_to activation shape is incompatible with the live "
+                            f"activation: target coordinates have shape {tuple(target.shape)}, "
+                            f"live activation has shape {tuple(selected.shape)}"
+                        )
+                delta = alpha * ((target - coords) @ local_basis.T)
                 return selected.float() + delta
 
             hooks.append(
-                (
-                    hook_name,
-                    _make_intervention_hook(transform, positions, model.cfg.d_model),
-                )
+                (hook_name, _make_intervention_hook(transform, positions, model.cfg.d_model))
             )
         return hooks
+
+    def swap_clamp_hooks(
+        self,
+        model: Any,
+        source_token: ConceptToken,
+        target_token: ConceptToken,
+        layers: Sequence[int],
+        clean_cache: Union[ActivationCache, Mapping[str, torch.Tensor]],
+        *,
+        positions: Optional[Sequence[int]] = None,
+    ) -> List[Tuple[str, Any]]:
+        """Deprecated: use :meth:`swap_hooks` with ``clamp_to=clean_cache``."""
+        warnings.warn(
+            "JacobianLens.swap_clamp_hooks is deprecated; use swap_hooks(model, source_token, "
+            "target_token, layers, clamp_to=clean_cache), which builds the same hooks.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.swap_hooks(
+            model, source_token, target_token, layers, positions=positions, clamp_to=clean_cache
+        )
 
     def coordinate_patch_hooks(
         self,
         model: Any,
-        source_token: TokenInput,
-        target_token: TokenInput,
+        source_token: ConceptToken,
+        target_token: ConceptToken,
         layers: Sequence[int],
         *,
         positions: Sequence[int],
@@ -1633,12 +1583,7 @@ class JacobianLens:
         if not positions:
             raise ValueError("positions must contain at least one index")
         resolved_layers = [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]
-        source_id, target_id = _to_token_ids(model, [source_token, target_token])
-        if source_id == target_id:
-            raise ValueError(
-                "source_token and target_token resolve to the same token id; "
-                "a coordinate patch would be a silent no-op"
-            )
+        source_id, target_id = _distinct_ids(model, source_token, target_token, operation="patch")
         warnings.warn(
             f"coordinate_patch_hooks installs {len(resolved_layers)} layer(s) x "
             f"{len(positions)} position(s) of coordinate-patch hooks; every (batch, position) "
@@ -1648,27 +1593,20 @@ class JacobianLens:
             stacklevel=2,
         )
 
-        requested = tuple(positions)
         hooks = []
         for layer in resolved_layers:
             dictionary = self.lens_vector_dictionary(model, layer)
 
-            def hook_fn(
-                activation: Float[torch.Tensor, "batch pos d_model"],
-                hook: Any,
+            def transform(
+                selected: Float[torch.Tensor, "batch pos d_model"],
+                positions: List[int],
                 layer: int = layer,
                 dictionary: torch.Tensor = dictionary,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
-                hook_name = getattr(hook, "name", "intervention hook")
-                _validate_residual_activation(
-                    activation, d_model=model.cfg.d_model, hook_name=hook_name
-                )
-                normalized = _normalize_positions(requested, activation.shape[1])
-                selected = activation[:, normalized, :].float().to(dictionary.device)
                 patched, _ = solve_coordinate_patch_positions(
-                    selected,
+                    selected.float().to(dictionary.device),
                     dictionary,
-                    normalized,
+                    positions,
                     source_id,
                     target_id,
                     layer=layer,
@@ -1678,13 +1616,14 @@ class JacobianLens:
                     alpha=alpha,
                     algorithm=algorithm,
                 )
-                output = activation.clone()
-                output[:, normalized, :] = patched.to(
-                    device=activation.device, dtype=activation.dtype
-                )
-                return output
+                return patched
 
-            hooks.append((_resid_post_hook_name(layer), hook_fn))
+            hooks.append(
+                (
+                    _resid_post_hook_name(layer),
+                    _make_intervention_hook(transform, positions, model.cfg.d_model),
+                )
+            )
         return hooks
 
     # ------------------------------------------------------------------ #
@@ -1792,7 +1731,7 @@ class JacobianLens:
 
 @dataclass(frozen=True)
 class _FitOptions:
-    """Resolved options shared by transport-matrix estimators."""
+    """Validated options for one fit."""
 
     source_layers: Tuple[int, ...]
     target_layer: int
@@ -1815,9 +1754,8 @@ def _prepare_fit(
     max_seq_len: int,
     skip_first_positions: int,
     metadata: Optional[Dict[str, Any]],
-    estimator_metadata_keys: Sequence[str] = (),
 ) -> _FitOptions:
-    """Validate the shared fit contract before tokenization or rule installation."""
+    """Validate the shared fit contract before any tokenization."""
     _require_raw_bridge(model, estimator=operation)
     require_eval_mode(model, operation=f"{operation}.fit()")
     if not isinstance(corpus, str) or not corpus.strip():
@@ -1848,15 +1786,8 @@ def _prepare_fit(
         max_seq_len=max_seq_len,
         skip_first_positions=skip_first_positions,
     )
-    # Preflight metadata before fitting supplies counts and estimator-specific values.
-    _build_fit_metadata(
-        model,
-        options,
-        estimator=estimator,
-        n_prompts=0,
-        metadata=metadata,
-        estimator_metadata=dict.fromkeys(estimator_metadata_keys),
-    )
+    # Preflight so bad provenance fails before the fit, not after it.
+    _build_fit_metadata(model, options, estimator=estimator, n_prompts=0, metadata=metadata)
     if options.fit_dtype in (torch.float16, torch.bfloat16):
         warnings.warn(
             f"fitting in {options.fit_dtype} accumulates transport gradients at reduced "
@@ -1874,9 +1805,8 @@ def _build_fit_metadata(
     estimator: str,
     n_prompts: int,
     metadata: Optional[Dict[str, Any]],
-    estimator_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Combine validated user provenance with common and estimator-specific fit fields."""
+    """Combine validated user provenance with the fit's own provenance fields."""
     fit_metadata: Dict[str, Any] = {
         "model_name": getattr(model.cfg, "model_name", None),
         "model_revision": _get_model_revision(model),
@@ -1894,11 +1824,6 @@ def _build_fit_metadata(
         "skip_first_positions": options.skip_first_positions,
         "transformer_lens_fit": True,
     }
-    extra_metadata = dict(estimator_metadata or {})
-    overlapping = sorted(set(fit_metadata).intersection(extra_metadata))
-    if overlapping:
-        raise ValueError(f"estimator metadata cannot override common fit provenance: {overlapping}")
-    fit_metadata.update(extra_metadata)
     reserved = sorted(set(fit_metadata).intersection(metadata or {}))
     if reserved:
         raise ValueError(f"metadata cannot override fit provenance keys: {reserved}")
@@ -1924,8 +1849,7 @@ def _get_model_revision(model: Any) -> Optional[str]:
 def _require_raw_bridge(model: Any, *, estimator: str) -> None:
     """Require the causal raw-Bridge contract used by fit and readout.
 
-    ``estimator`` names the calling estimator in diagnostics, since this guard
-    is shared by every matrix-lens estimator.
+    ``estimator`` names the calling class or operation in diagnostics.
     """
     from transformer_lens.model_bridge import TransformerBridge
 
@@ -2063,11 +1987,11 @@ def _unit_rows(vectors: torch.Tensor, *, layer: int) -> torch.Tensor:
 
 
 def _make_intervention_hook(
-    transform: Callable[[torch.Tensor], torch.Tensor],
+    transform: Callable[[torch.Tensor, List[int]], torch.Tensor],
     positions: Optional[Sequence[int]],
     d_model: int,
 ) -> Callable[..., torch.Tensor]:
-    """Apply a transform with shared position, dtype, and device hardening."""
+    """Apply ``transform(selected, positions)`` with shared position/dtype/device hardening."""
     requested = None if positions is None else tuple(positions)
     if requested == ():
         raise ValueError("positions must contain at least one index")
@@ -2079,7 +2003,7 @@ def _make_intervention_hook(
         _validate_residual_activation(activation, d_model=d_model, hook_name=hook_name)
         normalized = _normalize_positions(requested, activation.shape[1])
         selected = activation if requested is None else activation[:, normalized, :]
-        transformed = transform(selected)
+        transformed = transform(selected, normalized)
         if transformed.shape != selected.shape:
             raise ValueError(
                 f"intervention returned shape {tuple(transformed.shape)}, "
@@ -2095,41 +2019,17 @@ def _make_intervention_hook(
     return hook_fn
 
 
-def _unembed(
-    model: Any, residual: Float[torch.Tensor, "pos d_model"]
-) -> Float[torch.Tensor, "pos d_vocab"]:
-    """Apply the model's own final norm, unembedding, logit scale, and soft cap.
-
-    The norm/unembed components contract on ``[batch, pos, d_model]``, so the
-    position rows are passed through with a singleton batch axis. The residual
-    is moved to the unembedding's device for sharded/multi-GPU models.
-    """
-    unembed_weight = model.W_U
-    compute_dtype = unembed_weight.dtype
-    batched = residual.to(device=unembed_weight.device, dtype=compute_dtype).unsqueeze(0)
-    logits = model.unembed(model.ln_final(batched)).squeeze(0)
-    return model.adapter.apply_output_logits_transform(logits).float()
-
-
-def _to_token_ids(model: Any, tokens: Union[TokenInput, Sequence[TokenInput]]) -> List[int]:
-    """Convert token strings / ids into a list of single-token ids."""
-    if isinstance(tokens, (str, int)):
-        tokens = [tokens]
-    ids: List[int] = []
-    for token in tokens:
-        if isinstance(token, str):
-            ids.append(model.to_single_token(token))
-        elif isinstance(token, bool):
-            raise ValueError(f"token {token!r} must be a string or integer token id, not bool")
-        else:
-            ids.append(int(token))
-    if not ids:
-        raise ValueError("tokens must contain at least one token")
-    d_vocab = model.W_U.shape[1]
-    invalid = [token_id for token_id in ids if not 0 <= token_id < d_vocab]
-    if invalid:
-        raise ValueError(f"token ids {invalid} out of range for vocabulary size {d_vocab}")
-    return ids
+def _distinct_ids(
+    model: Any, source_token: ConceptToken, target_token: ConceptToken, *, operation: str
+) -> Tuple[int, int]:
+    """Resolve a source/target pair, refusing one that names the same token twice."""
+    source_id, target_id = to_token_ids(model, [source_token, target_token])
+    if source_id == target_id:
+        raise ValueError(
+            "source_token and target_token resolve to the same token id; "
+            f"a coordinate {operation} would be a silent no-op"
+        )
+    return source_id, target_id
 
 
 def _validate_residual_activation(
@@ -2213,8 +2113,8 @@ def _jacobian_for_prompt(
     graph there.
 
     The backward pass is taken through ``backward_provider`` rather than calling
-    ``torch.autograd.grad`` directly, so the capture / cotangent-batching /
-    averaging mechanics are shared by any estimator. The ordinary J-lens path
+    ``torch.autograd.grad`` directly, so an alternate estimator would reuse the
+    capture / cotangent-batching / averaging mechanics. The ordinary J-lens path
     passes :func:`_ordinary_vjp`, which reproduces the original numerics exactly.
     """
     d_model = model.cfg.d_model
@@ -2287,15 +2187,14 @@ def _fit_transport_matrices(
 ) -> Tuple[Dict[int, Float[torch.Tensor, "d_model d_model"]], int]:
     """Estimator-independent J-lens drive loop.
 
-    Owns the mechanics shared by every estimator: the frozen-parameter
-    lifecycle, the per-prompt forward/backward accumulation (source/target
-    residual capture, one-hot cotangent batching, ``dim_batch`` chunking,
-    valid-position selection, and source-position averaging all live in
-    :func:`_jacobian_for_prompt`), the prompt-accumulation running sum, and the
-    final division into per-prompt means. Only the backward step varies: it is
-    taken through ``backward_provider``, so an alternate estimator reuses this
-    loop unchanged. Callers own input validation, provenance, and lens
-    construction.
+    Owns the fit mechanics: the frozen-parameter lifecycle, the per-prompt
+    forward/backward accumulation (source/target residual capture, one-hot
+    cotangent batching, ``dim_batch`` chunking, valid-position selection, and
+    source-position averaging all live in :func:`_jacobian_for_prompt`), the
+    prompt-accumulation running sum, and the final division into per-prompt
+    means. Only the backward step is pluggable: it is taken through
+    ``backward_provider``, so an alternate estimator would reuse this loop
+    unchanged. Callers own input validation, provenance, and lens construction.
 
     Args:
         model: A raw ``TransformerBridge`` whose parameters are frozen for the

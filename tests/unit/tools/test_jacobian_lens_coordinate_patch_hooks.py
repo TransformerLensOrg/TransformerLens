@@ -54,9 +54,13 @@ def test_coordinate_patch_hooks_requires_nonempty_positions(toy_model: _ToyBridg
         _lens().coordinate_patch_hooks(toy_model, 3, 5, layers=[0], positions=[])
 
 
-def test_coordinate_patch_hooks_rejects_identical_tokens(toy_model: _ToyBridge) -> None:
-    with pytest.raises(ValueError, match="same token|identical|distinct"):
-        _lens().coordinate_patch_hooks(toy_model, 3, 3, layers=[0], positions=[0])
+# The toy tokenizer maps a string to its length, so " ab" spells id 3.
+@pytest.mark.parametrize("source", [3, " ab"], ids=["id", "string"])
+def test_coordinate_patch_hooks_rejects_identical_tokens(
+    toy_model: _ToyBridge, source: Any
+) -> None:
+    with pytest.raises(ValueError, match="same token id; a coordinate patch would be"):
+        _lens().coordinate_patch_hooks(toy_model, source, 3, layers=[0], positions=[0])
 
 
 def test_coordinate_patch_hooks_changes_only_requested_positions(toy_model: _ToyBridge) -> None:

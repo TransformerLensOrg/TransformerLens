@@ -11,6 +11,7 @@ from transformer_lens.utilities import (
     derive_generator,
     sign_flip_permutation_pvalue,
     standard_error,
+    success_rate_ci,
 )
 
 
@@ -111,3 +112,68 @@ def test_sign_flip_monte_carlo_separates_effect_from_null():
     assert torch.equal(same, p_strong)
     with pytest.raises(ValueError, match="alternative"):
         sign_flip_permutation_pvalue(strong, alternative="both")
+
+
+def test_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval():
+    successes = [True, True, False, True, False, True, True, False]
+    result = success_rate_ci(successes)
+    assert result.ci_low <= result.point_estimate <= result.ci_high
+    assert 0.0 <= result.ci_low and result.ci_high <= 1.0
+    assert result.point_estimate == pytest.approx(sum(successes) / len(successes))
+
+
+def test_success_rate_ci_pins_zero_of_six_upper_bound():
+    # The exact interval must widen for an all-failure sample. A percentile bootstrap returns
+    # [0, 0] here by construction, asserting a certainty the data does not support.
+    result = success_rate_ci([False] * 6)
+    assert result.ci_low == 0.0
+    assert result.ci_high == pytest.approx(0.4592581, abs=1e-6)
+
+
+def test_success_rate_ci_pins_all_success_lower_bound():
+    result = success_rate_ci([True] * 6)
+    assert result.ci_high == 1.0
+    assert result.ci_low == pytest.approx(0.5407419, abs=1e-6)
+
+
+def test_success_rate_ci_matches_closed_form_at_the_boundaries():
+    # At k=0 and k=n the Clopper-Pearson bounds reduce to closed forms, which pins the
+    # bisection direction independently of the interior values. Reversing it collapses every
+    # interval to [0, 1].
+    assert success_rate_ci([False] * 6).ci_high == pytest.approx(1 - 0.025 ** (1 / 6))
+    assert success_rate_ci([True] * 6).ci_low == pytest.approx(0.025 ** (1 / 6))
+
+
+def test_success_rate_ci_narrows_as_the_trial_count_grows():
+    # The same observed rate carries less uncertainty with more trials; a degenerate interval
+    # would not move.
+    small = success_rate_ci([False] * 6)
+    large = success_rate_ci([False] * 600)
+    assert large.ci_high < small.ci_high
+
+
+def test_success_rate_ci_records_trial_and_success_counts():
+    result = success_rate_ci([True, False, True])
+    assert result.n_trials == 3
+    assert result.n_successes == 2
+
+
+def test_success_rate_ci_is_deterministic():
+    successes = [True, False, True]
+    assert success_rate_ci(successes) == success_rate_ci(successes)
+
+
+def test_success_rate_ci_rejects_empty_input():
+    with pytest.raises(ValueError, match="empty"):
+        success_rate_ci([])
+
+
+def test_success_rate_ci_old_analysis_path_forwards_with_a_deprecation_warning():
+    with pytest.warns(DeprecationWarning, match="import it from transformer_lens.utilities"):
+        from transformer_lens.tools.analysis import success_rate_ci as forwarded
+    assert forwarded is success_rate_ci
+
+    from transformer_lens.tools import analysis
+
+    with pytest.raises(AttributeError):
+        getattr(analysis, "not_an_analysis_name")

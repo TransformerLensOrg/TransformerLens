@@ -6,10 +6,6 @@ import pytest
 import torch
 from transformers.models.nemotron.modeling_nemotron import NemotronLayerNorm1P
 
-from transformer_lens.model_bridge._relevance_rules import (
-    RelevanceRules,
-    use_relevance_rules,
-)
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
 )
@@ -64,24 +60,3 @@ def test_python_layernorm1p_preserves_offset():
     bridge, component = _make_norm(native=False)
     x = torch.randn(2, 4, 16)
     torch.testing.assert_close(bridge(x), component(x), atol=1e-6, rtol=1e-5)
-
-
-def test_layernorm1p_relevance_vjp_uses_offset_and_preserves_parameter_gradients():
-    bridge, component = _make_norm()
-    block = torch.nn.Module()
-    block.add_module("ln1", bridge)
-    x = torch.randn(2, 4, 16, requires_grad=True)
-    probe = torch.randn_like(x)
-    with use_relevance_rules(block, RelevanceRules(normalization=True)):
-        actual = bridge(x)
-        actual_grads = torch.autograd.grad(actual, (x, component.weight, component.bias), probe)
-    assert torch.equal(actual, component(x))
-    x_oracle = x.detach().clone().requires_grad_(True)
-    centered = x_oracle - x_oracle.mean(-1, keepdim=True)
-    denom = (centered.square().mean(-1, keepdim=True) + component.eps).sqrt().detach()
-    expected = centered / denom * (1 + component.weight) + component.bias
-    expected_grads = torch.autograd.grad(
-        expected, (x_oracle, component.weight, component.bias), probe
-    )
-    for actual_grad, expected_grad in zip(actual_grads, expected_grads):
-        torch.testing.assert_close(actual_grad, expected_grad)

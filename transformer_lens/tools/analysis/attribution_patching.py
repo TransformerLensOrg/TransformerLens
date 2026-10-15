@@ -551,24 +551,24 @@ def _non_additive_attention_error(detail: str) -> ValueError:
     )
 
 
-def _check_attention_write_structure(model: Any) -> None:
-    """Refuse blocks that declare a norm, scale or parallel mixer between head sum and residual."""
+def _attention_write_obstruction(
+    model: Any, layers: Optional[Collection[int]] = None
+) -> Optional[str]:
+    """Describe the first block declaring a norm, scale or parallel mixer after its head sum."""
     for layer, block in enumerate(getattr(model, "blocks", ())):
+        if layers is not None and layer not in layers:
+            continue
         submodules = getattr(block, "submodules", None)
         if not isinstance(submodules, dict) or "attn" not in submodules:
             continue
         scale = getattr(block, "residual_contribution_scale", 1.0)
         if scale != 1.0:
-            raise _non_additive_attention_error(
-                f"blocks.{layer} scales its attention output by {scale}"
-            )
+            return f"blocks.{layer} scales its attention output by {scale}"
         # Falcon-H1 scales attention and adds a parallel Mamba output inline, after
         # attn.hook_out, so the cached head-sum check cannot see either.
         mixers = [name for name in VARIANT_SUBMODULE_NAMES if name != "attn" and name in submodules]
         if mixers:
-            raise _non_additive_attention_error(
-                f"blocks.{layer} shares that add with a parallel {mixers[0]} mixer"
-            )
+            return f"blocks.{layer} shares that add with a parallel {mixers[0]} mixer"
         aliases = getattr(block, "hook_aliases", None)
         target = aliases.get("hook_attn_out") if isinstance(aliases, dict) else None
         candidates = [target] if isinstance(target, str) else list(target or [])
@@ -578,10 +578,16 @@ def _check_attention_write_structure(model: Any) -> None:
             if owner not in submodules:
                 continue
             if owner != "attn":
-                raise _non_additive_attention_error(
-                    f"blocks.{layer}.hook_attn_out reads {candidate}, after the head sum"
-                )
+                return f"blocks.{layer}.hook_attn_out reads {candidate}, after the head sum"
             break
+    return None
+
+
+def _check_attention_write_structure(model: Any) -> None:
+    """Refuse blocks that declare a norm, scale or parallel mixer between head sum and residual."""
+    detail = _attention_write_obstruction(model)
+    if detail is not None:
+        raise _non_additive_attention_error(detail)
 
 
 def _check_kv_heads_match_query_heads(model: Any) -> None:
@@ -1294,6 +1300,28 @@ def _ablate_edges(
     return logits
 
 
+def _validate_pair(
+    clean: torch.Tensor, corrupt: torch.Tensor, *, operation: str, method: str
+) -> None:
+    """Require 2D clean/corrupt token tensors holding equal numbers of equal-length pairs."""
+    if clean.ndim != 2 or corrupt.ndim != 2:
+        raise ValueError(
+            f"{operation} expects 2D [batch, seq] token tensors, got clean "
+            f"{tuple(clean.shape)} and corrupt {tuple(corrupt.shape)}"
+        )
+    if clean.shape[0] != corrupt.shape[0]:
+        raise ValueError(
+            "clean and corrupt must hold the same number of prompt pairs, got "
+            f"{clean.shape[0]} and {corrupt.shape[0]}"
+        )
+    if clean.shape[1] != corrupt.shape[1]:
+        raise ValueError(
+            "each clean/corrupt pair must tokenize to the same length; got clean "
+            f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
+            f"{method} aligns activations position-by-position."
+        )
+
+
 def attribution_patch(
     model: Any,
     clean: torch.Tensor,
@@ -1359,23 +1387,7 @@ def attribution_patch(
             a head's residual contribution, or if an attention layer's K/V head count
             differs from ``n_heads`` (GQA/MQA).
     """
-    if clean.ndim != 2 or corrupt.ndim != 2:
-        raise ValueError(
-            "attribution_patch expects 2D [batch, seq] token tensors, got clean "
-            f"{tuple(clean.shape)} and corrupt {tuple(corrupt.shape)}"
-        )
-    if clean.shape[0] != corrupt.shape[0]:
-        raise ValueError(
-            "clean and corrupt must hold the same number of prompt pairs, got "
-            f"{clean.shape[0]} and {corrupt.shape[0]}"
-        )
-    if clean.shape[1] != corrupt.shape[1]:
-        raise ValueError(
-            "each clean/corrupt pair must tokenize to the same length; got clean "
-            f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
-            "Attribution patching aligns activations position-by-position."
-        )
-
+    _validate_pair(clean, corrupt, operation="attribution_patch", method="Attribution patching")
     require_eval_mode(model, operation="attribution_patch()")
 
     batch = int(clean.shape[0])
@@ -1567,27 +1579,12 @@ def faithfulness(
             residual add (post-norm, scaled-residual or parallel-mixer blocks), or an
             attention layer's K/V head count differs from ``n_heads`` (GQA/MQA).
     """
-    if clean.ndim != 2 or corrupt.ndim != 2:
-        raise ValueError(
-            "faithfulness expects 2D [batch, seq] token tensors, got clean "
-            f"{tuple(clean.shape)} and corrupt {tuple(corrupt.shape)}"
-        )
-    if clean.shape[0] != corrupt.shape[0]:
-        raise ValueError(
-            "clean and corrupt must hold the same number of prompt pairs, got "
-            f"{clean.shape[0]} and {corrupt.shape[0]}"
-        )
+    _validate_pair(clean, corrupt, operation="faithfulness", method="Faithfulness")
     if clean.shape[0] != 1:
         raise ValueError(
             "faithfulness measures one clean/corrupt pair at a time, since the "
             f"metric reads a single example; got {clean.shape[0]} pairs. Loop over "
             "pairs and aggregate the recovered fractions yourself."
-        )
-    if clean.shape[1] != corrupt.shape[1]:
-        raise ValueError(
-            "each clean/corrupt pair must tokenize to the same length; got clean "
-            f"length {clean.shape[1]} and corrupt length {corrupt.shape[1]}. "
-            "Faithfulness aligns activations position-by-position."
         )
 
     if config.ablation == "mean":

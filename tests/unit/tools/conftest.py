@@ -22,6 +22,8 @@ CORPUS = "unit-test-corpus"
 
 
 class _ToyBlock(nn.Module):
+    hook_out_is_single_residual_stream = True
+
     def __init__(self, d_model: int, layer: int, dtype: torch.dtype):
         super().__init__()
         self.linear = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
@@ -35,6 +37,8 @@ class _ToyBlock(nn.Module):
 
 class _CausalSumBlock(nn.Module):
     """Causal cross-position mixing with an exact triangular Jacobian."""
+
+    hook_out_is_single_residual_stream = True
 
     def __init__(self, layer: int):
         super().__init__()
@@ -105,6 +109,10 @@ class _ToyBridge(TransformerBridge):
     @property
     def W_U(self) -> torch.Tensor:
         return self.unembed.weight.T
+
+    @property
+    def b_U(self) -> torch.Tensor:
+        return torch.zeros(D_VOCAB, dtype=self.unembed.weight.dtype)
 
     @property
     def hook_dict(self) -> dict[str, HookPoint]:

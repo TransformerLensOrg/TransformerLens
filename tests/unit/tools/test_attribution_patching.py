@@ -3048,6 +3048,34 @@ def test_faithfulness_raises_on_more_than_one_pair() -> None:
         faithfulness(model, batched_clean, batched_corrupt, metric, [])
 
 
+@pytest.mark.parametrize(
+    ("operation", "method"),
+    [("attribution_patch", "Attribution patching"), ("faithfulness", "Faithfulness")],
+)
+@pytest.mark.parametrize(
+    ("clean", "corrupt", "message"),
+    [
+        (torch.tensor([1, 2, 3]), torch.tensor([[3, 2, 1]]), r"{operation} expects 2D"),
+        (
+            torch.tensor([[1, 2, 3], [3, 2, 1]]),
+            torch.tensor([[3, 2, 1]]),
+            "same number of prompt pairs",
+        ),
+        (torch.tensor([[1, 2, 3]]), torch.tensor([[3, 2]]), "same length.*{method} aligns"),
+    ],
+)
+def test_both_entry_points_reject_malformed_pairs_in_their_own_words(
+    operation: str, method: str, clean: torch.Tensor, corrupt: torch.Tensor, message: str
+) -> None:
+    model, _, _, metric = _faithfulness_toy()
+    match = message.format(operation=operation, method=method)
+    with pytest.raises(ValueError, match=match):
+        if operation == "attribution_patch":
+            attribution_patch(model, clean, corrupt, metric)
+        else:
+            faithfulness(model, clean, corrupt, metric, [])
+
+
 def test_faithfulness_rejects_model_in_training_mode() -> None:
     model, clean, corrupt, metric = _faithfulness_toy()
     model.train()

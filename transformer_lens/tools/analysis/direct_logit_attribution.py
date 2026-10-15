@@ -45,7 +45,10 @@ import torch
 from jaxtyping import Float
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.tools.analysis._model_state import require_eval_mode
+from transformer_lens.tools.analysis._model_state import (
+    hybrid_block_types,
+    require_eval_mode,
+)
 from transformer_lens.tools.analysis.logit_lens import (
     _final_norm,
     _require_direct_readout,
@@ -55,21 +58,18 @@ from transformer_lens.utilities import Slice, SliceInput
 
 # Token-like inputs accepted for the correct/incorrect answers, mirroring
 # ActivationCache.logit_attrs.
-TokenInput = Union[
+AnswerTokens = Union[
     str,
     int,
     torch.Tensor,
 ]
+# Former name, kept so existing imports keep working.
+TokenInput = AnswerTokens
 
 # Which structural unit the residual stream is decomposed into.
 Unit = str  # one of: "component", "layer", "head"
 
 _VALID_UNITS = ("component", "layer", "head")
-
-# Block variants that lack the attn_out + mlp_out structure decompose_resid expects.
-# When TransformerBridge.layer_types() reports any of these we refuse early — the
-# downstream decompose_resid would otherwise raise a confusing KeyError.
-_HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
 
 
 @dataclass
@@ -181,8 +181,8 @@ def _validate_bridge_compatibility(model) -> bool:
                 "with fold_ln=True and no_processing=False."
             )
 
-    layer_types = model.layer_types()
-    hybrid = [lt for lt in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in lt.split("+"))]
+    # Refused up front: decompose_resid would otherwise fail with a confusing KeyError.
+    hybrid = hybrid_block_types(model)
     if hybrid:
         raise NotImplementedError(
             f"DLA does not yet support hybrid architectures (found block types {hybrid}). "
@@ -195,8 +195,8 @@ def _validate_bridge_compatibility(model) -> bool:
 def direct_logit_attribution(
     model,
     input: Union[str, List[str], torch.Tensor, None] = None,
-    answer_tokens: Optional[TokenInput] = None,
-    incorrect_tokens: Optional[TokenInput] = None,
+    answer_tokens: Optional[AnswerTokens] = None,
+    incorrect_tokens: Optional[AnswerTokens] = None,
     *,
     unit: Unit = "component",
     pos: SliceInput = -1,
