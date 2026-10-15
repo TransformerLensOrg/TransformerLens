@@ -594,7 +594,7 @@ def random_init_bridge(
         model_name: Model name or alias, as for ``TransformerBridge.boot_transformers``.
         seed: Seed for the initialisation.
         dtype: Parameter dtype.
-        device: Device to move the bridge to; the CPU by default.
+        device: Device for the bridge; by default the device ``boot_transformers`` would choose.
         **boot_kwargs: Passed on to ``TransformerBridge.boot_transformers``, e.g. ``revision``.
 
     Returns:
@@ -607,9 +607,9 @@ def random_init_bridge(
     with torch.random.fork_rng(devices=[]):
         torch.default_generator.manual_seed(seed)
         bridge = TransformerBridge.boot_transformers(
-            model_name, load_weights=False, dtype=dtype, **boot_kwargs
+            model_name, load_weights=False, dtype=dtype, device=device, **boot_kwargs
         )
-    # Building from a config follows the config's dtype, and HuggingFace leaves the model in
-    # training mode; the analyses require eval mode
+    # Building from a config follows the config's dtype and leaves the weights on the CPU,
+    # whatever device boot recorded; HuggingFace also leaves the model in training mode
     maybe_cast_floating_params(bridge.original_model, dtype)
-    return (bridge if device is None else bridge.to(device)).eval()
+    return bridge.to(bridge.cfg.device).eval()

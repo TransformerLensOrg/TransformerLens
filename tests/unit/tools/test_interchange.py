@@ -411,6 +411,20 @@ def test_reinitialized_resets_every_parameter_and_keeps_buffers():
     assert torch.equal(reinitialized(model, seed=0).inp.weight, fresh.inp.weight)
 
 
+def test_reinitialized_resets_a_root_that_resets_its_own_parameters():
+    class _SelfResetting(_Layers):  # the root owns a parameter and knows how to reset it
+        def __init__(self):
+            super().__init__()
+            self.scale = nn.Parameter(torch.full((D_MODEL,), 3.0))
+
+        def reset_parameters(self):
+            nn.init.normal_(self.scale)
+
+    model = _SelfResetting()
+    fresh = reinitialized(model, seed=0)
+    assert not torch.equal(fresh.scale, model.scale)
+
+
 def test_reinitialized_refuses_parameters_it_cannot_reset():
     with pytest.raises(ValueError, match="cannot reset scale"):
         reinitialized(_Planted(torch.randn(D_MODEL)), seed=0)  # a parameter on the root itself

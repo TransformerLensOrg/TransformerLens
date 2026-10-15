@@ -141,3 +141,21 @@ def test_random_init_bridge_matches_the_trained_architecture_without_the_trainin
     tokens = untrained.to_tokens(PROMPTS)
     with torch.no_grad():
         assert untrained(tokens).shape == trained(tokens).shape
+
+
+def test_random_init_bridge_casts_to_a_dtype_other_than_the_configs():
+    untrained = random_init_bridge(
+        "gpt2", seed=0, dtype=torch.bfloat16, device="cpu"
+    )  # config: float32
+    floating = [p for p in untrained.original_model.parameters() if p.is_floating_point()]
+    assert floating and all(p.dtype == torch.bfloat16 for p in floating)
+
+
+def test_random_init_bridge_puts_its_weights_on_the_device_it_records(monkeypatch):
+    # Stand in for a GPU machine, where boot's default device is not the CPU
+    import transformer_lens.model_bridge.sources.transformers.source as source
+
+    monkeypatch.setattr(source, "get_device", lambda: "meta")
+    untrained = random_init_bridge("gpt2", seed=0)
+    assert str(untrained.cfg.device) == "meta"
+    assert all(p.device.type == "meta" for p in untrained.original_model.parameters())

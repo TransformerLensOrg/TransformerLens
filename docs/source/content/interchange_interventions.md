@@ -166,8 +166,8 @@ print((logits.argmax(-1) == test_targets).float().mean())  # tensor(0.8125)
 Here the arbitrary labels reach 0.62 and the untrained model 0.81, against 1.0 for the real
 alignment: DAS finds a subspace that moves even an untrained model's output, which is why the real
 alignment's IIA has to be read against both. Report the real alignment's IIA minus each control's
-(its selectivity), with uncertainty over the evaluation pairs. A subspace that does not clearly beat both controls is not evidence that the
-model carries the variable there.
+(its selectivity), with uncertainty over the evaluation pairs. A subspace that does not clearly
+beat both controls is not evidence that the model carries the variable there.
 
 ## Placebo
 
