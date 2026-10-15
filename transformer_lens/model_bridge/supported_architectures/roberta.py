@@ -1,9 +1,4 @@
-"""RoBERTa architecture adapter.
-
-RoBERTa reuses BERT's encoder layer and only renames what surrounds it: the
-trunk lives under ``roberta.*`` instead of ``bert.*`` and the masked-LM head
-under ``lm_head.*`` instead of ``cls.predictions.*``.
-"""
+"""RoBERTa architecture adapter."""
 
 from typing import Any
 
@@ -23,39 +18,22 @@ from transformer_lens.model_bridge.supported_architectures.bert import (
 
 
 class RobertaArchitectureAdapter(BertArchitectureAdapter):
-    """Architecture adapter for ``RobertaForMaskedLM`` checkpoints.
+    """Architecture adapter for ``RobertaForMaskedLM``.
 
-    Everything BERT sets up carries over unchanged: the post-LN config flags
-    with ``supports_fold_ln = False``, the q/k/v/o rearrange conversions and
-    ``supports_generation = False``. Only the HF module paths and the context
-    length differ. Tokenizer policy is not set here: the boot path reads the
-    ``<s>`` / ``</s>`` behaviour from each checkpoint's tokenizer.
-
-    HF builds RoBERTa position ids inside ``RobertaEmbeddings`` starting at
-    ``padding_idx + 1 = 2`` (padding keeps id 1), so ``pos_embed.hook_out``
-    holds rows ``2 .. seq_len + 1`` of the table and is not row-aligned with
-    BERT's. ``W_pos`` drops the two reserved rows and is aligned.
-
-    ``BertArchitectureAdapter.prepare_model`` only reacts to ``bert.pooler``
-    and ``cls.*`` task heads, which ``RobertaForMaskedLM`` lacks, so the
-    inherited version is a no-op here.
+    BERT's encoder layer under ``roberta.*`` with the MLM head under ``lm_head.*``;
+    flags, weight conversions and ``prepare_model`` (a no-op here: no pooler, no
+    ``cls.*`` heads) are inherited. Position ids start at ``padding_idx + 1 = 2``,
+    so ``pos_embed.hook_out`` is offset by two rows from BERT's;
+    ``TransformerBridge.W_pos`` slices those rows off.
     """
 
     def __init__(self, cfg: Any) -> None:
-        """Initialize the RoBERTa architecture adapter.
-
-        Args:
-            cfg: The configuration object. ``n_ctx`` is expected to arrive as
-                HF's ``max_position_embeddings`` (the full table size).
-        """
+        """Initialize the RoBERTa architecture adapter."""
         super().__init__(cfg)
 
-        # Components are keyed by HF module path, so BERT's mapping cannot be
-        # renamed in place: rebuild it with RoBERTa's paths.
         self.component_mapping = {
             "embed": EmbeddingBridge(name="roberta.embeddings.word_embeddings"),
-            # A real [type_vocab_size, d_model] table that HF adds on every forward,
-            # even though type_vocab_size is 1 and the row is a constant.
+            # Real [1, d_model] table at type_vocab_size = 1; HF adds it on every forward.
             "token_type_embed": EmbeddingBridge(name="roberta.embeddings.token_type_embeddings"),
             "pos_embed": PosEmbedBridge(name="roberta.embeddings.position_embeddings"),
             "embed_ln": NormalizationBridge(
@@ -65,9 +43,7 @@ class RobertaArchitectureAdapter(BertArchitectureAdapter):
             ),
             "blocks": BlockBridge(
                 name="roberta.encoder.layer",
-                # RobertaLayer keeps BERT's layout: intermediate.dense and output.dense
-                # are siblings with no MLP module, so the MLP aliases point at the two
-                # Linear hooks exactly as in bert.py.
+                # Same split intermediate.dense / output.dense layout as BertLayer, see bert.py.
                 hook_alias_overrides={
                     "hook_mlp_out": "mlp.out.hook_out",
                     "hook_mlp_in": "mlp.in.hook_in",
@@ -112,8 +88,6 @@ class RobertaArchitectureAdapter(BertArchitectureAdapter):
             ),
         }
 
-        # HF's max_position_embeddings (514 for roberta-base) counts the two
-        # reserved rows, so the usable context is two shorter. Subtracting rather
-        # than pinning 512 keeps longer-table checkpoints right too, and W_pos
-        # only slices the reserved rows off when the table has n_ctx + 2 of them.
+        # max_position_embeddings counts the two reserved rows; a table of n_ctx + 2
+        # rows is what makes TransformerBridge.W_pos drop them.
         self.cfg.n_ctx -= 2
