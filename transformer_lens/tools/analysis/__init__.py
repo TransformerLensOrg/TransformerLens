@@ -20,8 +20,10 @@ Tools:
     - interchange: Interchange interventions on linear subspaces: set a base's
       activation inside a subspace to its value on a source input, with
       difference-of-means, probe and random bases, a norm-matched placebo,
-      batched gradient-free evaluation, and distributed alignment search (DAS)
-      to learn the subspace.
+      difference-of-means, probe and random bases, a norm-matched placebo,
+      batched gradient-free evaluation, distributed alignment search (DAS) to
+      learn the subspace, and DAS's trained controls (arbitrary labels and a
+      randomly initialised model).
     - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
@@ -83,12 +85,15 @@ from transformer_lens.tools.analysis.interchange import (
     LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
+    arbitrary_targets,
     collect_activations,
     fit_das,
     intervened_logits,
     mean_difference_basis,
     probe_basis,
     random_basis,
+    random_init_bridge,
+    reinitialized,
     run_with_intervention,
 )
 from transformer_lens.tools.analysis.jacobian_lens import (
@@ -209,6 +214,7 @@ __all__ = [
     "SubspaceInterchange",
     "VocabularyRanking",
     "WeightLayout",
+    "arbitrary_targets",
     "attention_head_subspace_affinity",
     "attribution_patch",
     "collect_activations",
@@ -233,7 +239,9 @@ __all__ = [
     "project_activations",
     "projection_kernel",
     "random_basis",
+    "random_init_bridge",
     "random_projection_kernel_moments",
+    "reinitialized",
     "run_causal_swap_benchmark",
     "run_with_intervention",
     "select_displacement_matched_control_token",

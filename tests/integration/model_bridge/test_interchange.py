@@ -1,7 +1,10 @@
 """Real-Bridge integration checks for interchange interventions."""
 
+import pytest
 import torch
 
+from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.interchange import (
     NormMatchedPlacebo,
     SubspaceInterchange,
@@ -9,6 +12,7 @@ from transformer_lens.tools.analysis.interchange import (
     fit_das,
     intervened_logits,
     random_basis,
+    random_init_bridge,
 )
 
 PROMPTS = ["The key near the cabinet", "The keys near the cabinet"]
@@ -119,3 +123,39 @@ def test_das_finds_subject_number_on_held_out_nouns(gpt2_bridge):
 
     assert accuracy(result.subspace) >= 0.9
     assert accuracy(random_basis(gpt2_bridge.cfg.d_model, 1, seed=0)) <= 0.2
+
+
+@pytest.mark.parametrize("name", ["gpt2", "tiny-stories-1M"])
+def test_random_init_bridge_matches_the_trained_architecture_without_the_training(name):
+    trained = TransformerBridge.boot_transformers(name, device="cpu")
+    before = torch.random.get_rng_state()
+    untrained = random_init_bridge(name, seed=0, device="cpu")
+    assert torch.equal(torch.random.get_rng_state(), before)  # the caller's stream is untouched
+    assert type(untrained.original_model) is type(trained.original_model)
+    assert untrained.cfg.n_layers == trained.cfg.n_layers
+    assert untrained.cfg.d_model == trained.cfg.d_model
+    assert untrained.W_E.dtype == torch.float32
+    assert not torch.allclose(untrained.W_E, trained.W_E)
+    assert torch.equal(untrained.W_E, random_init_bridge(name, seed=0, device="cpu").W_E)
+    require_eval_mode(untrained, operation="the random-init control")  # ready for fit_das
+    tokens = untrained.to_tokens(PROMPTS)
+    with torch.no_grad():
+        assert untrained(tokens).shape == trained(tokens).shape
+
+
+def test_random_init_bridge_casts_to_a_dtype_other_than_the_configs():
+    untrained = random_init_bridge(
+        "gpt2", seed=0, dtype=torch.bfloat16, device="cpu"
+    )  # config: float32
+    floating = [p for p in untrained.original_model.parameters() if p.is_floating_point()]
+    assert floating and all(p.dtype == torch.bfloat16 for p in floating)
+
+
+def test_random_init_bridge_puts_its_weights_on_the_device_it_records(monkeypatch):
+    # Stand in for a GPU machine, where boot's default device is not the CPU
+    import transformer_lens.model_bridge.sources.transformers.source as source
+
+    monkeypatch.setattr(source, "get_device", lambda: "meta")
+    untrained = random_init_bridge("gpt2", seed=0)
+    assert str(untrained.cfg.device) == "meta"
+    assert all(p.device.type == "meta" for p in untrained.original_model.parameters())
