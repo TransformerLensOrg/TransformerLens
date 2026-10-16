@@ -90,7 +90,9 @@ def test_statistics_support_floating_dtypes(dtype: torch.dtype):
     low, high = bootstrap_ci(torch.ones(8, dtype=dtype), n_resamples=32)
     assert low.dtype == high.dtype == dtype
     assert low.item() == high.item() == 1.0
-    assert sign_flip_permutation_pvalue(x).item() == 0.5
+    pvalue = sign_flip_permutation_pvalue(x)
+    assert pvalue.dtype == torch.promote_types(dtype, torch.float32)
+    assert pvalue.item() == 0.5
 
 
 @pytest.mark.parametrize("exact_max_n", [0, 12])
@@ -104,7 +106,49 @@ def test_sign_flip_float64_is_invariant_to_positive_scale(exact_max_n: int):
 
 def test_sign_flip_preserves_small_float64_effects():
     effects = torch.tensor([1.0, 1e-8], dtype=torch.float64)
-    assert sign_flip_permutation_pvalue(effects).item() == 0.5
+    p = sign_flip_permutation_pvalue(effects)
+    assert p.dtype == torch.float64
+    assert p.item() == 0.5
+
+
+def test_sign_flip_counts_float64_ties_after_rounding():
+    effects = torch.tensor([-1.0, 0.4, -0.5, 0.6], dtype=torch.float64)
+    p = sign_flip_permutation_pvalue(effects)
+    assert p.dtype == torch.float64
+    assert p.item() == 0.875
+
+    scaled_p = sign_flip_permutation_pvalue(effects * 1e-50)
+    assert scaled_p.dtype == torch.float64
+    assert scaled_p.item() == 0.875
+
+
+@pytest.mark.parametrize("alternative, expected", [("greater", 11 / 16), ("less", 7 / 16)])
+def test_sign_flip_counts_float64_ties_for_one_sided_alternatives(
+    alternative: str, expected: float
+):
+    effects = torch.tensor([-1.0, 0.4, -0.5, 0.6], dtype=torch.float64)
+    p = sign_flip_permutation_pvalue(effects, alternative=alternative)
+    assert p.dtype == torch.float64
+    assert p.item() == expected
+
+
+def test_sign_flip_does_not_count_distinct_means_as_ties_near_zero():
+    effects = torch.tensor([1.0, -1e-8], dtype=torch.float64)
+    for scale in (1.0, 1e-50):
+        scaled_effects = effects * scale
+        greater = sign_flip_permutation_pvalue(scaled_effects, alternative="greater")
+        less = sign_flip_permutation_pvalue(scaled_effects, alternative="less")
+        assert greater.dtype == less.dtype == torch.float64
+        assert greater.item() == 0.5
+        assert less.item() == 0.75
+
+
+def test_sign_flip_monte_carlo_preserves_float64_pvalue_dtype():
+    effects = torch.ones(13, dtype=torch.float64)
+    p = sign_flip_permutation_pvalue(
+        effects, n_permutations=64, generator=derive_generator(23), exact_max_n=12
+    )
+    assert p.dtype == torch.float64
 
 
 def test_sign_flip_exact_enumeration_matches_hand_count():

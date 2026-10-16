@@ -144,10 +144,12 @@ def sign_flip_permutation_pvalue(
 
 
 def _count_hits(null: torch.Tensor, observed: torch.Tensor, alternative: str) -> torch.Tensor:
+    # Relative to the observed statistic: tolerate reduction-order ties without an absolute floor.
+    tolerance = observed.abs() * (100 * torch.finfo(null.dtype).eps)
     if alternative == "two-sided":
-        hit = null.abs() >= observed.abs()
+        hit = null.abs() >= observed.abs() - tolerance
     elif alternative == "greater":
-        hit = null >= observed
+        hit = null >= observed - tolerance
     else:
-        hit = null <= observed
+        hit = null <= observed + tolerance
     return hit.sum(dim=-1).to(null.dtype)
