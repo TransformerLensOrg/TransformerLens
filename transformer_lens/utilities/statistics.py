@@ -88,7 +88,7 @@ def bootstrap_ci(
         idx = torch.randint(0, n, (count, n), generator=gen).to(moved.device)
         resampled = moved[..., idx]  # [..., count, n]
         stats.append(reduce(resampled, dim=-1))
-    draws = torch.cat(stats, dim=-1).float()  # [..., n_resamples]
+    draws = torch.cat(stats, dim=-1).to(torch.promote_types(x.dtype, torch.float32))
     alpha = (1.0 - confidence) / 2.0
     low = torch.quantile(draws, alpha, dim=-1)
     high = torch.quantile(draws, 1.0 - alpha, dim=-1)
@@ -118,7 +118,7 @@ def sign_flip_permutation_pvalue(
         raise ValueError(f"alternative must be one of {_ALTERNATIVES}, got {alternative!r}")
     if n_permutations < 1:
         raise ValueError("n_permutations must be >= 1")
-    moved = _to_last(effects, dim).float()
+    moved = _to_last(effects, dim).to(torch.promote_types(effects.dtype, torch.float32))
     n = moved.shape[-1]
     if n < 1:
         raise ValueError("cannot permute an empty axis")
@@ -144,12 +144,14 @@ def sign_flip_permutation_pvalue(
 
 
 def _count_hits(null: torch.Tensor, observed: torch.Tensor, alternative: str) -> torch.Tensor:
+    # Relative to the observed statistic: tolerate reduction-order ties without an absolute floor.
+    tolerance = observed.abs() * (100 * torch.finfo(null.dtype).eps)
     if alternative == "two-sided":
-        hit = null.abs() >= observed.abs()
+        hit = null.abs() >= observed.abs() - tolerance
     elif alternative == "greater":
-        hit = null >= observed
+        hit = null >= observed - tolerance
     else:
-        hit = null <= observed
+        hit = null <= observed + tolerance
     return hit.sum(dim=-1).to(null.dtype)
 
 
