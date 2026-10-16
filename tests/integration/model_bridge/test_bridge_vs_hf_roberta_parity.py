@@ -148,6 +148,22 @@ def test_padding_mask_logits_match_hf_eager(bridge, hf_eager) -> None:
     assert (bridge_logits - unmasked_logits).abs().max().item() > PARITY_ATOL
 
 
+def test_left_padding_mask_logits_match_hf_eager(bridge, hf_eager) -> None:
+    padded_tokens = torch.tensor(
+        [
+            [PAD_ID, PAD_ID, 0, 133, 812, 2],
+            [0, 133, 812, 16, 50264, 2],
+        ]
+    )
+    attention_mask = padded_tokens.ne(PAD_ID).long()
+
+    with torch.inference_mode():
+        bridge_logits = bridge(padded_tokens, attention_mask=attention_mask)
+        hf_logits = hf_eager(input_ids=padded_tokens, attention_mask=attention_mask).logits
+
+    torch.testing.assert_close(bridge_logits, hf_logits, rtol=0.0, atol=PARITY_ATOL)
+
+
 def test_live_hf_tree_uses_bridge_wrappers_and_preserves_tied_weights(bridge) -> None:
     hf_model = bridge.original_model
 

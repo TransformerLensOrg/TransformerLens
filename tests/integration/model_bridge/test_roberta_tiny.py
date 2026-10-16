@@ -10,6 +10,7 @@ from transformers import RobertaConfig, RobertaForMaskedLM
 
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.sources import build_bridge_from_module
+from transformer_lens.utilities.position_ids import accepts_mask_derived_position_ids
 
 D_MODEL = 16
 D_HEAD = 4
@@ -223,6 +224,26 @@ def test_tiny_roberta_padded_batch_matches_reference(
     pad_rows = cache["pos_embed.hook_out"][0, 4:]
     torch.testing.assert_close(pad_rows, table[PAD_ID].expand(2, -1), rtol=0.0, atol=0.0)
     torch.testing.assert_close(cache["pos_embed.hook_out"][0, :4], table[2:6], rtol=0.0, atol=0.0)
+
+
+def test_tiny_roberta_left_padded_batch_matches_reference(case: TinyRobertaCase) -> None:
+    left_padded = torch.tensor(
+        [
+            [PAD_ID, PAD_ID, 0, 5, 6, 2],
+            [0, 5, 6, 7, 8, 2],
+        ]
+    )
+    attention_mask = left_padded.ne(PAD_ID).long()
+    # HF derives pad-aware positions itself, so the bridge must not inject its own.
+    assert accepts_mask_derived_position_ids(case.bridge.original_model) is False
+
+    with torch.inference_mode():
+        bridge_logits = case.bridge(left_padded, attention_mask=attention_mask)
+        reference_logits = case.reference(left_padded, attention_mask=attention_mask).logits
+        unpadded_logits = case.reference(left_padded[:1, 2:]).logits
+
+    torch.testing.assert_close(bridge_logits, reference_logits, rtol=0.0, atol=PARITY_ATOL)
+    torch.testing.assert_close(bridge_logits[0, 2:], unpadded_logits[0], rtol=0.0, atol=PARITY_ATOL)
 
 
 def test_tiny_roberta_block_hook_intervenes(case: TinyRobertaCase, tokens: torch.Tensor) -> None:
