@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 0.1
   },
-  "total_architectures": 145,
-  "total_models": 15734,
-  "total_verified": 1196,
+  "total_architectures": 146,
+  "total_models": 15736,
+  "total_verified": 1198,
   "total_provisional": 7,
   "models": [
     {
@@ -221545,6 +221545,36 @@
       "phase4_score": null,
       "phase7_score": null,
       "phase8_score": null
+    },
+    {
+      "architecture_id": "RobertaForMaskedLM",
+      "model_id": "FacebookAI/roberta-base",
+      "status": 1,
+      "verified_date": "2026-10-10",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": null
+    },
+    {
+      "architecture_id": "RobertaForMaskedLM",
+      "model_id": "distilbert/distilroberta-base",
+      "status": 1,
+      "verified_date": "2026-10-10",
+      "metadata": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": null
     }
   ]
 }

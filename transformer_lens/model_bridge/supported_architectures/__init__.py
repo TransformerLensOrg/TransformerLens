@@ -273,6 +273,9 @@ from transformer_lens.model_bridge.supported_architectures.raven import (
 from transformer_lens.model_bridge.supported_architectures.recurrent_gemma import (
     RecurrentGemmaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.roberta import (
+    RobertaArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.rwkv7 import (
     RWKV7ArchitectureAdapter,
 )
@@ -449,6 +452,7 @@ __all__ = [
     "Qwen3_5MultimodalArchitectureAdapter",
     "RavenArchitectureAdapter",
     "RecurrentGemmaArchitectureAdapter",
+    "RobertaArchitectureAdapter",
     "RWKV7ArchitectureAdapter",
     "SeedOssArchitectureAdapter",
     "SmolLM3ArchitectureAdapter",
