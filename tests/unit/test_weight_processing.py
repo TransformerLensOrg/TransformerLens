@@ -10,8 +10,10 @@ from unittest.mock import Mock, patch
 import einops
 import pytest
 import torch
+from transformers import AutoConfig, AutoModelForCausalLM
 
 from transformer_lens.config.transformer_lens_config import TransformerLensConfig
+from transformer_lens.model_bridge.sources import build_bridge_from_module
 from transformer_lens.weight_processing import ProcessWeights
 
 
@@ -1101,3 +1103,46 @@ def test_resolve_state_dict_key_dense_mlp_fallback():
         ProcessWeights._resolve_state_dict_key(sd5, "blocks.0.mlp.shared_expert.in.weight", 0)
         == "blocks.0.mlp.shared_expert.in.weight"
     )
+
+
+BIAS_CREATING_CONFIGS = {
+    "GPTNeoForCausalLM": dict(
+        model_type="gpt_neo",
+        hidden_size=32,
+        num_layers=2,
+        num_heads=4,
+        attention_types=[[["global", "local"], 1]],
+    ),
+    "GPTJForCausalLM": dict(model_type="gptj", n_embd=32, n_layer=2, n_head=4, rotary_dim=4),
+    "Qwen2ForCausalLM": dict(
+        model_type="qwen2",
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+    ),
+    "StableLmForCausalLM": dict(
+        model_type="stablelm",
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+    ),
+}
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("architecture", sorted(BIAS_CREATING_CONFIGS))
+def test_process_weights_created_biases_keep_model_dtype(architecture, dtype):
+    """Biases created by folding take the dtype of the projection they are added to."""
+    hf_config = AutoConfig.for_model(vocab_size=64, **BIAS_CREATING_CONFIGS[architecture])
+    hf_config.architectures = [architecture]
+    hf_model = AutoModelForCausalLM.from_config(hf_config).to(dtype)
+    bridge = build_bridge_from_module(hf_model, architecture, hf_config=hf_config)
+
+    bridge.enable_compatibility_mode()
+
+    assert not [name for name, param in hf_model.named_parameters() if param.dtype != dtype]
+    bridge(torch.tensor([[1, 2, 3, 4]]))
