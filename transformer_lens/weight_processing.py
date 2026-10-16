@@ -1038,7 +1038,8 @@ class ProcessWeights:
         )
         if alternate_final_w_key != ln_final_w_key and alternate_final_w_key in state_dict:
             state_dict[alternate_final_w_key] = identity_val
-        if center_weights:
+        # RMSNorm outputs are not zero-mean, so centering would change predictions.
+        if center_weights and not getattr(cfg, "final_rms", False):
             unembed_weight_centered = ProcessWeights.convert_tensor_to_tl_format(
                 unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None
             )
@@ -1701,19 +1702,18 @@ class ProcessWeights:
                 UserWarning,
             )
             center_writing_weights = False
-        if center_writing_weights:
-            if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (
-                not getattr(cfg, "final_rms", False)
-            ):
-                state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
+        should_center_writing_weights = (
+            center_writing_weights
+            and getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]
+            and not getattr(cfg, "final_rms", False)
+        )
+        if should_center_writing_weights:
+            state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
             state_dict = ProcessWeights.center_unembed(state_dict, cfg=cfg, adapter=adapter)
         if fold_value_biases:
             state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
-            if center_writing_weights and getattr(cfg, "normalization_type", "LN") in [
-                "LN",
-                "LNPre",
-            ]:
+            if should_center_writing_weights:
                 for layer_idx in range(cfg.n_layers):
                     b_O_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.attn.b_O", adapter)
                     if b_O_key in state_dict:

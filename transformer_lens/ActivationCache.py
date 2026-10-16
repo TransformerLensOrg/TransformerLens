@@ -1179,6 +1179,13 @@ class ActivationCache:
             return neuron_acts * projected
         return neuron_acts[..., None] * projected
 
+    def _uses_ln_centering(self, layer: Optional[int]) -> bool:
+        """Use the target norm's semantics, not just the block normalization family."""
+        is_final = layer is None or layer in (-1, self.model.cfg.n_layers)
+        return self.model.cfg.normalization_type in ["LN", "LNPre"] and not (
+            is_final and getattr(self.model.cfg, "final_rms", False)
+        )
+
     def _get_cached_ln_scale(
         self,
         layer: Optional[int],
@@ -1238,7 +1245,7 @@ class ActivationCache:
         """
         scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
-        apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
+        apply_centering = self._uses_ln_centering(layer)
         sum_p = project_2d.sum(dim=0) if apply_centering else None  # [n_outs]
 
         components: list = []
@@ -1508,8 +1515,8 @@ class ActivationCache:
                 results.append(out.reshape(original_shape))
             return torch.stack(results, dim=0)
 
-        # Center the stack onlny if the model uses LayerNorm
-        if self.model.cfg.normalization_type in ["LN", "LNPre"]:
+        # Final RMSNorm must not inherit the block LayerNorm centering convention.
+        if self._uses_ln_centering(layer):
             residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         # Shape is [batch, position, 1] or [position, 1]; final dim is a dummy for broadcasting.
