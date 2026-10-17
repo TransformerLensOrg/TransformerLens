@@ -41,7 +41,9 @@ def test_coordinate_patch_hooks_warns_once_naming_layer_and_position_counts(
     )
     with pytest.warns(UserWarning, match=r"2 layer\(s\) x 2 position\(s\)") as record:
         lens.coordinate_patch_hooks(toy_model, 3, 5, layers=[0, 1], positions=[0, 1])
-    assert len(record) == 1
+    # Ensure test only fails due to the warning we are testing
+    cost_warnings = [w for w in record if "coordinate-patch hooks" in str(w.message)]
+    assert len(cost_warnings) == 1
 
 
 def test_coordinate_patch_hooks_rejects_unfitted_layer(toy_model: _ToyBridge) -> None:
