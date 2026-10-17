@@ -200,22 +200,56 @@ def test_scope_removes_only_owned_handles_at_its_level():
 
 
 @pytest.mark.parametrize("helper", ["run_with_hooks", "run_with_cache"])
-def test_stop_at_layer_preserves_retained_hook_without_leaking_stop_hook(helper):
+@pytest.mark.parametrize("reset_hooks_end", [False, True])
+def test_stop_at_layer_preserves_retained_hook_without_leaking_stop_hook(helper, reset_hooks_end):
     bridge = _build()
     tokens = torch.randint(0, 64, (1, 4))
+    baseline = bridge(tokens)
     name = "blocks.0.hook_out"
     hp = bridge.hook_dict[name]
     bridge.run_with_hooks(tokens, fwd_hooks=[(name, _noop)], reset_hooks_end=False)
     retained = hp.fwd_hooks[0]
     if helper == "run_with_hooks":
-        bridge.run_with_hooks(tokens, stop_at_layer=1)
+        stopped = bridge.run_with_hooks(tokens, stop_at_layer=1, reset_hooks_end=reset_hooks_end)
     else:
-        bridge.run_with_cache(tokens, names_filter=name, stop_at_layer=1)
-    assert hp.fwd_hooks == [retained]
+        stopped, _ = bridge.run_with_cache(
+            tokens, names_filter=name, stop_at_layer=1, reset_hooks_end=reset_hooks_end
+        )
+    assert stopped.shape == (1, 4, 16)
+    assert retained in hp.fwd_hooks
+    assert len(hp.fwd_hooks) == 1 + int(helper == "run_with_cache" and not reset_hooks_end)
     for point in bridge.hook_points():
         if point is not hp:
             assert not point.has_hooks()
     assert bridge.context_level == 0
+    torch.testing.assert_close(bridge(tokens), baseline)
+    subsequent, _ = bridge.run_with_cache(tokens, names_filter=name)
+    torch.testing.assert_close(subsequent, baseline)
+
+
+@pytest.mark.parametrize("helper", ["run_with_hooks", "run_with_cache"])
+def test_retained_mode_removes_stop_hook_after_forward_failure(helper):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    baseline = bridge(tokens)
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+
+    def fail(value, hook):
+        raise RuntimeError("forward failed before stop")
+
+    bridge.add_hook(name, fail)
+    retained = hp.fwd_hooks[0]
+    with pytest.raises(RuntimeError, match="forward failed before stop"):
+        if helper == "run_with_hooks":
+            bridge.run_with_hooks(tokens, stop_at_layer=1, reset_hooks_end=False)
+        else:
+            bridge.run_with_cache(tokens, names_filter=name, stop_at_layer=1, reset_hooks_end=False)
+    assert retained in hp.fwd_hooks
+    assert not bridge.hook_dict["blocks.1.hook_in"].has_hooks()
+    assert bridge.context_level == 0
+    bridge.reset_hooks()
+    torch.testing.assert_close(bridge(tokens), baseline)
 
 
 class TestResetHooks:

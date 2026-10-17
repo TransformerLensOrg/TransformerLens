@@ -1669,6 +1669,7 @@ class BridgeCore:
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
+        stop_handle: Optional[LensHandle] = None
         try:
             for hp, name in hooks:
                 hp.add_hook(make_cache_hook(name), level=context_level)
@@ -1678,7 +1679,8 @@ class BridgeCore:
                     added_hooks.append((hp, "bwd", hp.bwd_hooks[-1]))
             if stop_hook_point is not None and stop_hook_fn is not None:
                 stop_hook_point.add_hook(stop_hook_fn, level=context_level)
-                added_hooks.append((stop_hook_point, "fwd", stop_hook_point.fwd_hooks[-1]))
+                stop_handle = stop_hook_point.fwd_hooks[-1]
+                added_hooks.append((stop_hook_point, "fwd", stop_handle))
         except Exception:
             try:
                 for hp, direction, handle in added_hooks:
@@ -1737,8 +1739,9 @@ class BridgeCore:
             raise e
         finally:
             try:
-                if reset_hooks_end:
-                    for hp, direction, handle in added_hooks:
+                for hp, direction, handle in added_hooks:
+                    # Retain requested cache hooks, but never internal early-stop hooks.
+                    if reset_hooks_end or handle is stop_handle:
                         self._remove_temporary_hook(hp, direction, handle)
                 if clear_contexts:
                     for hp, _ in hooks:
