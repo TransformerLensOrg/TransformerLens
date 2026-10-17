@@ -246,6 +246,27 @@ def test_tiny_roberta_left_padded_batch_matches_reference(case: TinyRobertaCase)
     torch.testing.assert_close(bridge_logits[0, 2:], unpadded_logits[0], rtol=0.0, atol=PARITY_ATOL)
 
 
+def test_tiny_roberta_rebuilt_from_a_bridge_cfg_keeps_usable_context(
+    case: TinyRobertaCase,
+    tokens: torch.Tensor,
+) -> None:
+    rebuilt = build_bridge_from_module(
+        copy.deepcopy(case.reference).eval(),
+        "RobertaForMaskedLM",
+        tl_config=case.bridge.cfg,
+        tokenizer=None,
+        dtype=torch.float32,
+        device="cpu",
+    )
+
+    assert rebuilt.cfg.n_ctx == N_CTX
+    assert rebuilt.W_pos.shape == (N_CTX, D_MODEL)
+    with torch.inference_mode():
+        torch.testing.assert_close(
+            rebuilt(tokens), case.reference(tokens).logits, rtol=0.0, atol=PARITY_ATOL
+        )
+
+
 def test_tiny_roberta_block_hook_intervenes(case: TinyRobertaCase, tokens: torch.Tensor) -> None:
     fired: list[str] = []
 

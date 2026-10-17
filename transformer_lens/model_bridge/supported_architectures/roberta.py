@@ -21,9 +21,9 @@ class RobertaArchitectureAdapter(BertArchitectureAdapter):
     """Architecture adapter for ``RobertaForMaskedLM``.
 
     BERT's encoder layer under ``roberta.*`` with the MLM head under ``lm_head.*``;
-    flags, weight conversions and ``prepare_model`` (a no-op here: no pooler, no
-    ``cls.*`` heads) are inherited. Position ids start at ``padding_idx + 1 = 2``,
-    so ``pos_embed.hook_out`` is offset by two rows from BERT's;
+    flags and weight conversions are inherited. Position ids start at
+    ``padding_idx + 1 = 2``, so ``pos_embed.hook_out`` is offset by two rows from
+    BERT's; ``n_ctx`` is read off the loaded table in ``prepare_model`` and
     ``TransformerBridge.W_pos`` slices those rows off.
     """
 
@@ -88,6 +88,9 @@ class RobertaArchitectureAdapter(BertArchitectureAdapter):
             ),
         }
 
-        # max_position_embeddings counts the two reserved rows; a table of n_ctx + 2
-        # rows is what makes TransformerBridge.W_pos drop them.
-        self.cfg.n_ctx -= 2
+    def prepare_model(self, hf_model: Any) -> None:
+        """Read the usable context off the loaded position table."""
+        super().prepare_model(hf_model)
+        # Drop the padding_idx + 1 reserved rows; n_ctx + 2 rows is what makes W_pos slice.
+        table = hf_model.roberta.embeddings.position_embeddings
+        self.cfg.n_ctx = table.num_embeddings - ((table.padding_idx or 0) + 1)

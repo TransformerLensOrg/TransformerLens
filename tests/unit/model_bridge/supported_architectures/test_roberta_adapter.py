@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from torch import nn
 
 from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
@@ -49,6 +50,17 @@ def _layout(component: Any) -> dict[str, Any]:
         )
         for key, sub in component.submodules.items()
     }
+
+
+def _hf_model_with_table(rows: int) -> SimpleNamespace:
+    """Stand-in RobertaForMaskedLM tree: no pooler, no cls heads, a real position table."""
+    return SimpleNamespace(
+        roberta=SimpleNamespace(
+            pooler=None,
+            embeddings=SimpleNamespace(position_embeddings=nn.Embedding(rows, 8, padding_idx=1)),
+        ),
+        lm_head=SimpleNamespace(),
+    )
 
 
 @pytest.fixture(scope="module")
@@ -106,9 +118,15 @@ class TestRobertaComponentMapping:
 
 
 class TestRobertaAdapterConfig:
-    def test_context_length_drops_the_two_reserved_rows(self) -> None:
-        assert RobertaArchitectureAdapter(_make_cfg(n_ctx=514)).cfg.n_ctx == 512
-        assert RobertaArchitectureAdapter(_make_cfg(n_ctx=1026)).cfg.n_ctx == 1024
+    @pytest.mark.parametrize("rows", [514, 1026])
+    def test_context_length_is_read_off_the_position_table(self, rows: int) -> None:
+        adapter = RobertaArchitectureAdapter(_make_cfg(n_ctx=rows))
+        hf_model = _hf_model_with_table(rows)
+
+        adapter.prepare_model(hf_model)
+        adapter.prepare_model(hf_model)
+
+        assert adapter.cfg.n_ctx == rows - 2
 
     def test_inherits_bert_post_ln_behavior(self, adapter: RobertaArchitectureAdapter) -> None:
         assert adapter.cfg.normalization_type == "LN"
@@ -135,16 +153,12 @@ class TestRobertaAdapterConfig:
         assert RobertaArchitectureAdapter.supports_generation is False
 
 
-class TestRobertaInheritedPrepareModel:
-    def test_prepare_model_is_a_no_op(self) -> None:
+class TestRobertaPrepareModel:
+    def test_prepare_model_keeps_the_mapping(self) -> None:
         adapter = RobertaArchitectureAdapter(_make_cfg())
         mapping_before = dict(adapter.components)
-        hf_model = SimpleNamespace(
-            roberta=SimpleNamespace(pooler=None),
-            lm_head=SimpleNamespace(),
-        )
 
-        adapter.prepare_model(hf_model)
+        adapter.prepare_model(_hf_model_with_table(514))
 
         assert adapter.components == mapping_before
 
