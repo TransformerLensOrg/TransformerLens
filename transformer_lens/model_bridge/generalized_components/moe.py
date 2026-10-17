@@ -6,9 +6,12 @@ This module contains the bridge component for Mixture of Experts layers.
 from __future__ import annotations
 
 import logging
+import warnings
+from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import torch
+from packaging.version import Version
 from torch import nn
 
 from transformer_lens.hook_points import HookPoint
@@ -28,6 +31,59 @@ from transformer_lens.model_bridge.generalized_components.mlp import (
 _BATCHED_INPUT_PROJECTIONS = frozenset({"gate_up_proj", "gate_proj", "up_proj"})
 _BATCHED_OUTPUT_PROJECTIONS = frozenset({"down_proj"})
 _BATCHED_PROJECTIONS = _BATCHED_INPUT_PROJECTIONS | _BATCHED_OUTPUT_PROJECTIONS
+
+
+def _granite_mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
+    """Dispatch locally, without changing the config shared by other expert layers."""
+    hidden_states = args[0] if args else kwargs.get("hidden_states")
+    forward = type(experts).forward
+    config: Any = getattr(experts, "config", None)
+    if (
+        isinstance(hidden_states, torch.Tensor)
+        and hidden_states.device.type == "mps"
+        and getattr(config, "_experts_implementation", None) == "grouped_mm"
+    ):
+        warnings.warn(
+            "Using eager Granite MoE Hybrid experts on MPS to avoid incorrect grouped "
+            "matrix products in torch 2.11.0; expert execution may be slower.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return getattr(forward, "__wrapped__")(experts, *args, **kwargs)
+    return forward(experts, *args, **kwargs)
+
+
+def _guard_granite_mps_experts(component: nn.Module) -> None:
+    """Install instance-local dispatch only for the verified HF expert implementation.
+
+    The bound method preserves nn.Module hooks and deepcopy semantics. Configs and
+    global dispatch tables remain untouched, including during concurrent forwards.
+    """
+    experts = getattr(component, "experts", None)
+    if not isinstance(experts, nn.Module):
+        return
+    experts = unwrap_bridge(experts)
+    if type(experts).__module__ != (
+        "transformers.models.granitemoehybrid.modeling_granitemoehybrid"
+    ):
+        return
+    import transformers
+    from transformers.models.granitemoehybrid.modeling_granitemoehybrid import (
+        GraniteMoeHybridExperts,
+    )
+
+    if (
+        type(experts) is not GraniteMoeHybridExperts
+        or Version(torch.__version__).public != "2.11.0"
+        or Version(transformers.__version__).public != "5.13.0"
+    ):
+        return
+    # Respect custom instance forwards rather than silently replacing them.
+    if getattr(experts.forward, "__func__", None) is not GraniteMoeHybridExperts.forward:
+        return
+    if not callable(getattr(GraniteMoeHybridExperts.forward, "__wrapped__", None)):
+        raise RuntimeError("Granite eager expert forward is unavailable for the MPS workaround")
+    setattr(experts, "forward", MethodType(_granite_mps_experts_forward, experts))
 
 
 class UnfoldableMoEParameter(Exception):
@@ -431,6 +487,7 @@ class MoEBridge(GeneralizedComponent):
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
             kwargs = {**kwargs, "hidden_states": hooked}
+        _guard_granite_mps_experts(self.original_component)
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):
             if not output:
