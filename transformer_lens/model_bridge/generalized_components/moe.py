@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from functools import wraps
 from inspect import currentframe, getclosurevars
 from threading import Lock
 from types import CodeType, FunctionType, MethodType
@@ -45,32 +46,38 @@ def _warn_mps_experts_once() -> None:
     with _MPS_EXPERTS_WARNING_LOCK:
         if _MPS_EXPERTS_WARNED:
             return
+        _MPS_EXPERTS_WARNED = True
+    frame = None
+    emitted = False
+    try:
         frame = currentframe()
         stacklevel = 1
-        try:
-            while frame is not None:
-                module = frame.f_globals.get("__name__", "")
-                if not any(
-                    module == prefix or module.startswith(prefix + ".")
-                    for prefix in ("transformer_lens", "transformers", "torch", "jaxtyping", "beartype")
-                ):
-                    break
-                frame = frame.f_back
-                stacklevel += 1
-            warnings.warn(
-                "Using eager experts on MPS after detecting incorrect "
-                "matmul output-slice writes; expert execution may be slower.",
-                RuntimeWarning,
-                stacklevel=stacklevel,
-            )
-            _MPS_EXPERTS_WARNED = True
-        finally:
-            del frame
+        while frame is not None:
+            module = frame.f_globals.get("__name__", "")
+            if not any(
+                module == prefix or module.startswith(prefix + ".")
+                for prefix in ("transformer_lens", "transformers", "torch", "jaxtyping", "beartype")
+            ):
+                break
+            frame = frame.f_back
+            stacklevel += 1
+        warnings.warn(
+            "Using eager experts on MPS after detecting incorrect "
+            "matmul output-slice writes; expert execution may be slower.",
+            RuntimeWarning,
+            stacklevel=stacklevel,
+        )
+        emitted = True
+    finally:
+        del frame
+        if not emitted:
+            with _MPS_EXPERTS_WARNING_LOCK:
+                _MPS_EXPERTS_WARNED = False
 
 
 def _probe_mps_output_slice_writes(device: torch.device, dtype: torch.dtype) -> bool:
     """Check for incorrect nonzero-offset matmul output writes using isolated tensors."""
-    with torch.no_grad():
+    with torch.no_grad(), torch.autocast(device_type=device.type, enabled=False):
         generator = torch.Generator(device="cpu").manual_seed(0)
         inputs = torch.randn(10, 64, generator=generator).to(device=device, dtype=dtype)
         weights = torch.randn(4, 64, 32, generator=generator).to(device=device, dtype=dtype)
@@ -110,11 +117,17 @@ def _mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
         and getattr(config, "_experts_implementation", None) == "grouped_mm"
     ):
         eager = _hf_eager_experts_forward(forward)
-    if eager is not None and _mps_output_slice_writes_are_broken(
-        hidden_states.device, hidden_states.dtype
-    ):
-        _warn_mps_experts_once()
-        return eager(experts, *args, **kwargs)
+        if eager is not None:
+            dtypes = {
+                parameter.dtype
+                for parameter in experts.parameters(recurse=False)
+                if parameter.ndim == 3 and parameter.is_floating_point()
+            } or {hidden_states.dtype}
+            if any(
+                _mps_output_slice_writes_are_broken(hidden_states.device, dtype) for dtype in dtypes
+            ):
+                _warn_mps_experts_once()
+                return eager(experts, *args, **kwargs)
     return forward(experts, *args, **kwargs)
 
 
@@ -152,8 +165,9 @@ def _hf_eager_experts_forward(forward: Any) -> Optional[Callable[..., Any]]:
 def _guard_mps_experts(component: nn.Module) -> None:
     """Install instance-local dispatch only for HF's shared grouped expert implementation.
 
-    The bound method preserves nn.Module hooks and deepcopy semantics. Configs and
-    global dispatch tables remain untouched, including during concurrent forwards.
+    The bound method preserves the forward signature, nn.Module hooks, and deepcopy
+    semantics. Configs and global dispatch tables remain untouched, including during
+    concurrent forwards.
     """
     experts = getattr(component, "experts", None)
     if not isinstance(experts, nn.Module):
@@ -164,7 +178,12 @@ def _guard_mps_experts(component: nn.Module) -> None:
         return
     if _hf_eager_experts_forward(forward) is None:
         return
-    setattr(experts, "forward", MethodType(_mps_experts_forward, experts))
+
+    @wraps(forward)
+    def guarded_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
+        return _mps_experts_forward(experts, *args, **kwargs)
+
+    setattr(experts, "forward", MethodType(guarded_forward, experts))
 
 
 class UnfoldableMoEParameter(Exception):

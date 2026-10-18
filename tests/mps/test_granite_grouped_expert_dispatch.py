@@ -25,7 +25,9 @@ from transformer_lens.model_bridge.generalized_components.moe import (
 pytestmark = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")
 
 
-@pytest.fixture(params=[GraniteMoeHybridExperts, GraniteMoeExperts, MixtralExperts, Qwen3MoeExperts])
+@pytest.fixture(
+    params=[GraniteMoeHybridExperts, GraniteMoeExperts, MixtralExperts, Qwen3MoeExperts]
+)
 def expert_class(request):
     return request.param
 
@@ -276,7 +278,9 @@ def test_failed_expert_forward_leaves_policy_and_parameters_intact(expert_class)
 
 
 @pytest.mark.parametrize("broken", [False, True])
-def test_real_expert_dispatch_selects_grouped_or_eager_from_probe(monkeypatch, expert_class, broken):
+def test_real_expert_dispatch_selects_grouped_or_eager_from_probe(
+    monkeypatch, expert_class, broken
+):
     grouped_calls = []
 
     def safe_grouped(inputs, weights, offs):
@@ -301,9 +305,37 @@ def test_real_expert_dispatch_selects_grouped_or_eager_from_probe(monkeypatch, e
     with torch.no_grad(), warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         actual = bridge(layer_input=inputs.to("mps"))
-    assert block.experts.forward.__func__ is moe._mps_experts_forward
+    assert block.experts.forward.__wrapped__ is type(block.experts).forward
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-6)
     assert len(caught) == int(broken)
     assert grouped_calls == ([] if broken else [[2, 5, 5, 10]] * 2)
     assert block.experts.config._experts_implementation == "grouped_mm"
     assert dict(hf_moe.ALL_EXPERTS_FUNCTIONS) == registry
+
+
+@pytest.mark.parametrize("weight_dtype", [torch.float32, torch.float16])
+def test_autocast_cold_and_warm_dispatch_matches_raw_hf_policy(expert_class, weight_dtype):
+    block = _FixedRoutes(expert_class).to("mps")
+    block.experts.to(dtype=weight_dtype)
+    reference = copy.deepcopy(block)
+    bridge = MoEBridge("moe")
+    bridge.set_original_component(block)
+    inputs = torch.randn(10, 64, generator=torch.Generator().manual_seed(1)).to("mps")
+    assert not moe._MPS_OUTPUT_SLICE_RESULTS
+    with torch.no_grad(), warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with torch.autocast("mps", dtype=torch.float16):
+            first = bridge(inputs)
+            assert torch.is_autocast_enabled("mps")
+            key = (inputs.device, weight_dtype)
+            assert set(moe._MPS_OUTPUT_SLICE_RESULTS) == {key}
+            broken = moe._MPS_OUTPUT_SLICE_RESULTS[key]
+            reference.experts.config._experts_implementation = "eager" if broken else "grouped_mm"
+            expected = reference(inputs)
+            second = bridge(inputs)
+            assert torch.is_autocast_enabled("mps")
+    torch.testing.assert_close(first, expected, rtol=0, atol=0)
+    torch.testing.assert_close(second, first, rtol=0, atol=0)
+    assert len(caught) == int(broken)
+    assert set(moe._MPS_OUTPUT_SLICE_RESULTS) == {key}
+    assert block.experts.config._experts_implementation == "grouped_mm"
