@@ -90,10 +90,13 @@ def test_prompt(
         answers = [answer if answer.startswith(" ") else " " + answer for answer in answers]
     # GPT-2 often treats the first token weirdly, so lets give it a resting position
     prompt_tokens = model.to_tokens(prompt, prepend_bos=prepend_bos)
-    answer_tokens = model.to_tokens(answers, prepend_bos=False)
     # If we have multiple answers, we're only allowed a single token generation
     if using_multiple_answers:
-        answer_tokens = answer_tokens[:, :1]
+        answer_tokens = torch.cat(
+            [model.to_tokens(answer, prepend_bos=False)[:, :1] for answer in answers]
+        )
+    else:
+        answer_tokens = model.to_tokens(answers, prepend_bos=False)
     # Deal with case where answers is a list of strings
     prompt_tokens = prompt_tokens.repeat(answer_tokens.shape[0], 1)
     tokens = torch.cat((prompt_tokens, answer_tokens), dim=1)
