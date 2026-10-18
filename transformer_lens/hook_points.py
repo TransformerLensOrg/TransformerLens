@@ -343,12 +343,13 @@ class HookPoint(nn.Module):
         def _remove_hooks(handles: list[LensHandle]) -> list[LensHandle]:
             output_handles = []
             for handle in handles:
-                if including_permanent:
-                    handle.hook.remove()
-                elif (not handle.is_permanent) and (level is None or handle.context_level == level):
-                    handle.hook.remove()
-                else:
+                if not including_permanent and handle.is_permanent:
                     output_handles.append(handle)
+                    continue
+                if level is not None and handle.context_level != level:
+                    output_handles.append(handle)
+                    continue
+                handle.hook.remove()
             return output_handles
 
         if dir == "fwd" or dir == "both":

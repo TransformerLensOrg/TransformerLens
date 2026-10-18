@@ -2,6 +2,7 @@ from unittest import mock
 
 from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedRootModule import HookedRootModule
 
 
 def setup_hook_point_and_hook():
@@ -11,6 +12,41 @@ def setup_hook_point_and_hook():
         return activation
 
     return hook_point, hook
+
+
+def test_remove_permanent_hooks_respects_level_for_both_directions():
+    hook_point, hook = setup_hook_point_and_hook()
+    for direction in ("fwd", "bwd"):
+        hook_point.add_hook(hook, dir=direction, is_permanent=True, level=1)
+        hook_point.add_hook(hook, dir=direction, is_permanent=True, level=2)
+
+    hook_point.remove_hooks(dir="both", including_permanent=True, level=2)
+
+    assert [handle.context_level for handle in hook_point.fwd_hooks] == [1]
+    assert [handle.context_level for handle in hook_point.bwd_hooks] == [1]
+
+
+def test_remove_permanent_hooks_without_level_removes_all_levels():
+    hook_point, hook = setup_hook_point_and_hook()
+    hook_point.add_hook(hook, is_permanent=True, level=1)
+    hook_point.add_hook(hook, is_permanent=True, level=2)
+
+    hook_point.remove_hooks(including_permanent=True)
+
+    assert hook_point.fwd_hooks == []
+
+
+def test_hooked_root_module_permanent_reset_respects_level():
+    model = HookedRootModule()
+    model.hook = HookPoint()
+    model.setup()
+    _, hook = setup_hook_point_and_hook()
+    model.hook.add_hook(hook, is_permanent=True, level=1)
+    model.hook.add_hook(hook, is_permanent=True, level=2)
+
+    model.reset_hooks(including_permanent=True, level=2)
+
+    assert [handle.context_level for handle in model.hook.fwd_hooks] == [1]
 
 
 @mock.patch("torch.utils.hooks.RemovableHandle", autospec=True)
