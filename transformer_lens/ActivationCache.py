@@ -1078,10 +1078,12 @@ class ActivationCache:
             # stacked correctly. This uses the shape of hook_embed, which is pretty janky since it
             # assumes embed is in the cache. But it's hard to explicitly code the shape, since it
             # depends on the pos slice, whether we have a batch dim, etc. And it's pretty messy!
+            empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
             components = torch.zeros(
                 0,
-                *pos_slice.apply(self["hook_embed"], dim=-2).shape,
-                device=self.model.cfg.device,
+                *empty_src.shape,
+                dtype=empty_src.dtype,
+                device=empty_src.device,
             )
 
         if apply_ln:
@@ -1271,7 +1273,13 @@ class ActivationCache:
         if not components:
             empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
             return torch.zeros(
-                0, *empty_src.shape[:-1], project_2d.shape[-1], device=self.model.cfg.device
+                0,
+                *empty_src.shape[:-1],
+                project_2d.shape[-1],
+                dtype=torch.promote_types(
+                    torch.promote_types(empty_src.dtype, scale.dtype), project_2d.dtype
+                ),
+                device=empty_src.device,
             )
         stacked = torch.cat(components, dim=-2)
         return einops.rearrange(
@@ -1414,7 +1422,12 @@ class ActivationCache:
                 empty_shape_src = pos_slice.apply(self["hook_embed"], dim=-2)
                 if project_2d is not None:
                     empty_shape_src = empty_shape_src @ project_2d
-                components = torch.zeros(0, *empty_shape_src.shape, device=self.model.cfg.device)
+                components = torch.zeros(
+                    0,
+                    *empty_shape_src.shape,
+                    dtype=empty_shape_src.dtype,
+                    device=empty_shape_src.device,
+                )
 
             if apply_ln:
                 components = self.apply_ln_to_stack(

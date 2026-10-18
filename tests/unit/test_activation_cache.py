@@ -801,3 +801,26 @@ def test_logit_attrs_batch_slice_without_normalization(
     expected = cache.logit_attrs(residual, tokens=all_targets)[:, batch_slice]
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float64])
+def test_layer_zero_stacks_follow_the_cache_dtype(
+    activation_cache: ActivationCache, dtype: torch.dtype
+) -> None:
+    cache = ActivationCache(
+        {name: value.to(dtype) for name, value in activation_cache.cache_dict.items()},
+        activation_cache.model,
+    )
+    embed = cache["hook_embed"]
+    for stacked in (cache.stack_head_results(0), cache.stack_neuron_results(0)):
+        assert stacked.shape[0] == 0
+        assert stacked.dtype == embed.dtype
+        assert stacked.device == embed.device
+
+    direction = torch.randn(embed.shape[-1])
+    projected = [
+        cache.stack_neuron_results(layer, apply_ln=True, project_output_onto=direction)
+        for layer in (0, 1)
+    ]
+    assert projected[0].shape[0] == 0
+    assert projected[0].dtype == projected[1].dtype
