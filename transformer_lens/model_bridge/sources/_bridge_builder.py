@@ -183,9 +183,10 @@ def build_bridge_config_from_hf(
     """Translate an HF config into a :class:`TransformerBridgeConfig`."""
     tl_config = map_default_transformer_lens_config(hf_config)
     config_dict = dict(tl_config.__dict__)
-    # HF's attribute_map remaps num_experts → num_local_experts; restore the TL name.
-    if "num_local_experts" in config_dict and "num_experts" not in config_dict:
-        config_dict["num_experts"] = config_dict["num_local_experts"]
+    # HF's attribute_map can remap num_experts to an architecture-specific field
+    # (num_local_experts, moe_num_experts, n_routed_experts); restore the TL name.
+    if "num_experts" not in config_dict and getattr(tl_config, "num_experts", None) is not None:
+        config_dict["num_experts"] = tl_config.num_experts
     bridge_config = TransformerBridgeConfig.from_dict(config_dict)
     bridge_config.architecture = architecture
     bridge_config.model_name = model_name
