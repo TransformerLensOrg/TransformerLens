@@ -1657,6 +1657,7 @@ class ProcessWeights:
         # folding involve multiplications that accumulate rounding errors when
         # performed in low precision.
         original_dtypes: Dict[str, torch.dtype] = {}
+        original_keys = set(state_dict)
         for k, v in state_dict.items():
             if isinstance(v, torch.Tensor) and v.is_floating_point() and v.dtype != torch.float32:
                 original_dtypes[k] = v.dtype
@@ -1730,7 +1731,11 @@ class ProcessWeights:
                 state_dict, cfg, adapter=adapter
             )
 
-        # Downcast back to original dtypes
+        # Downcast back to original dtypes; biases created by folding take their weight's dtype
+        for k in state_dict.keys() - original_keys:
+            weight_dtype = original_dtypes.get(k.removesuffix(".bias") + ".weight")
+            if weight_dtype is not None:
+                original_dtypes[k] = weight_dtype
         for k, orig_dtype in original_dtypes.items():
             if k in state_dict and isinstance(state_dict[k], torch.Tensor):
                 state_dict[k] = state_dict[k].to(orig_dtype)
