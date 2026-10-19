@@ -6,7 +6,9 @@ SimpleNamespace HF-config stand-ins, no network access.
 
 from types import SimpleNamespace
 
+import pytest
 import torch
+from transformers import AutoConfig
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.sources._bridge_builder import (
@@ -312,3 +314,18 @@ def test_majority_value_counts_unhashables_by_equality() -> None:
     # Tie-break toward the earliest layer, as before for hashables.
     assert majority_value([full, sliding]) == full
     assert majority_value([3, 3, 7]) == 3
+
+
+@pytest.mark.parametrize(
+    "model_type, experts_field",
+    [
+        ("mixtral", "num_local_experts"),
+        ("ernie4_5_moe", "moe_num_experts"),
+        ("deepseek_v2", "n_routed_experts"),
+    ],
+)
+def test_num_experts_survives_attribute_map_alias(model_type: str, experts_field: str) -> None:
+    """HF configs alias num_experts to their own field through attribute_map."""
+    hf_config = AutoConfig.for_model(model_type, **{experts_field: 4})
+    bridge_cfg = build_bridge_config_from_hf(hf_config, "TestArch", "test", torch.float32)
+    assert bridge_cfg.num_experts == 4
