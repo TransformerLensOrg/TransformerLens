@@ -27,7 +27,7 @@ import torch
 from torch.nn import functional as F
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.hook_points import HookPoint
+from transformer_lens.hook_points import HookPoint, LensHandle
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.driver_protocol import to_torch
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
@@ -1138,6 +1138,17 @@ class BridgeCore:
             remove_batch_dim=remove_batch_dim,
         )
 
+    @staticmethod
+    def _remove_temporary_hook(
+        hook_point: HookPoint, direction: Literal["fwd", "bwd"], handle: LensHandle
+    ) -> None:
+        """Remove an invocation's handle, not retained hooks at a reused lexical level."""
+        if handle.is_permanent:
+            return
+        handle.hook.remove()
+        handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
+        handles[:] = [existing for existing in handles if existing is not handle]
+
     def hooks(
         self,
         fwd_hooks: List = [],
@@ -1158,7 +1169,7 @@ class BridgeCore:
 
         @contextmanager
         def _hooks_context() -> Iterator["BridgeCore"]:
-            added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
+            added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
             context_level = getattr(self, "context_level", 0) + 1
             self.context_level = context_level
 
@@ -1182,7 +1193,8 @@ class BridgeCore:
                     )
                 else:
                     hook_point.add_hook(hook_fn, dir=dir, level=context_level)
-                added_hooks.append((hook_point, dir))
+                handles = hook_point.fwd_hooks if dir == "fwd" else hook_point.bwd_hooks
+                added_hooks.append((hook_point, dir, handles[-1]))
 
             def apply_hooks(hook_list: List[Tuple[Any, Callable]], is_fwd: bool) -> None:
                 direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
@@ -1216,11 +1228,9 @@ class BridgeCore:
                 yield self
             finally:
                 try:
-                    for hook_point, direction in added_hooks:
+                    for hook_point, direction, handle in added_hooks:
                         if reset_hooks_end:
-                            # `level` keeps this to the hooks added above — hooks the
-                            # caller attached before the context survive.
-                            hook_point.remove_hooks(dir=direction, level=context_level)
+                            self._remove_temporary_hook(hook_point, direction, handle)
                         if clear_contexts:
                             hook_point.clear_context()
                 finally:
@@ -1263,7 +1273,7 @@ class BridgeCore:
                 "run_with_hooks() got an unexpected keyword argument 'names_filter'; "
                 "use run_with_cache(names_filter=...) to scope caching."
             )
-        added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"]]] = []
+        added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
             if stop_at_layer < 0:
@@ -1308,7 +1318,8 @@ class BridgeCore:
                 )
             else:
                 hook_point.add_hook(hook_fn, dir=dir, level=context_level)
-            added_hooks.append((hook_point, dir))
+            handles = hook_point.fwd_hooks if dir == "fwd" else hook_point.bwd_hooks
+            added_hooks.append((hook_point, dir, handles[-1]))
 
         def apply_hooks(
             hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool
@@ -1394,11 +1405,9 @@ class BridgeCore:
             return output
         finally:
             try:
-                for hook_point, direction in added_hooks:
+                for hook_point, direction, handle in added_hooks:
                     if reset_hooks_end:
-                        # `level` keeps this to the hooks added above — hooks the caller
-                        # attached before the call survive.
-                        hook_point.remove_hooks(dir=direction, level=context_level)
+                        self._remove_temporary_hook(hook_point, direction, handle)
                     if clear_contexts:
                         hook_point.clear_context()
             finally:
@@ -1659,16 +1668,23 @@ class BridgeCore:
             )
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
+        added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
+        stop_handle: Optional[LensHandle] = None
         try:
             for hp, name in hooks:
                 hp.add_hook(make_cache_hook(name), level=context_level)
+                added_hooks.append((hp, "fwd", hp.fwd_hooks[-1]))
                 if incl_bwd:
                     hp.add_hook(make_grad_cache_hook(name), dir="bwd", level=context_level)
+                    added_hooks.append((hp, "bwd", hp.bwd_hooks[-1]))
             if stop_hook_point is not None and stop_hook_fn is not None:
                 stop_hook_point.add_hook(stop_hook_fn, level=context_level)
+                stop_handle = stop_hook_point.fwd_hooks[-1]
+                added_hooks.append((stop_hook_point, "fwd", stop_handle))
         except Exception:
             try:
-                self.remove_all_hook_fns(level=context_level)
+                for hp, direction, handle in added_hooks:
+                    self._remove_temporary_hook(hp, direction, handle)
             finally:
                 self.context_level -= 1
             raise
@@ -1723,10 +1739,10 @@ class BridgeCore:
             raise e
         finally:
             try:
-                if reset_hooks_end:
-                    # `level` keeps this to the hooks added above — hooks the caller
-                    # attached before the call survive.
-                    self.remove_all_hook_fns(level=context_level)
+                for hp, direction, handle in added_hooks:
+                    # Retain requested cache hooks, but never internal early-stop hooks.
+                    if reset_hooks_end or handle is stop_handle:
+                        self._remove_temporary_hook(hp, direction, handle)
                 if clear_contexts:
                     for hp, _ in hooks:
                         hp.clear_context()
