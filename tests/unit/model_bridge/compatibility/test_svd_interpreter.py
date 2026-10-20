@@ -115,6 +115,7 @@ def test_svd_interpreter_compute_dtype(dtype):
             vector_type, layer_index=0, num_vectors=2, head_index=head_index
         )
         assert vectors.dtype == compute_dtype
+        assert not vectors.requires_grad
 
     V = torch.randn(2, 32, dtype=compute_dtype)
     W_U = svd_interpreter.params["unembed.W_U"]

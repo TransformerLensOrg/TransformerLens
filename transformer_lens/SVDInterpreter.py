@@ -33,6 +33,7 @@ class SVDInterpreter:
             assert isinstance(model, torch.nn.Module)  # named_parameters() fallback
             self.params = {name: param for name, param in model.named_parameters()}
 
+    @torch.no_grad()
     def get_singular_vectors(
         self,
         vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],
