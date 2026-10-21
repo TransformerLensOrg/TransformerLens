@@ -211,8 +211,7 @@ def test_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval(
 
 
 def test_success_rate_ci_pins_zero_of_six_upper_bound():
-    # The exact interval must widen for an all-failure sample. A percentile bootstrap returns
-    # [0, 0] here by construction, asserting a certainty the data does not support.
+    # A percentile bootstrap returns [0, 0] here; the exact interval must stay wide.
     result = success_rate_ci([False] * 6)
     assert result.ci_low == 0.0
     assert result.ci_high == pytest.approx(0.4592581, abs=1e-6)
@@ -225,16 +224,13 @@ def test_success_rate_ci_pins_all_success_lower_bound():
 
 
 def test_success_rate_ci_matches_closed_form_at_the_boundaries():
-    # At k=0 and k=n the Clopper-Pearson bounds reduce to closed forms, which pins the
-    # bisection direction independently of the interior values. Reversing it collapses every
-    # interval to [0, 1].
+    # Closed forms at k=0 and k=n pin the bisection direction; reversing it yields [0, 1].
     assert success_rate_ci([False] * 6).ci_high == pytest.approx(1 - 0.025 ** (1 / 6))
     assert success_rate_ci([True] * 6).ci_low == pytest.approx(0.025 ** (1 / 6))
 
 
 def test_success_rate_ci_narrows_as_the_trial_count_grows():
-    # The same observed rate carries less uncertainty with more trials; a degenerate interval
-    # would not move.
+    # A degenerate interval would not move with the trial count.
     small = success_rate_ci([False] * 6)
     large = success_rate_ci([False] * 600)
     assert large.ci_high < small.ci_high

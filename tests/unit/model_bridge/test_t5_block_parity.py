@@ -242,9 +242,8 @@ def _bridged_block_outputs(block, is_decoder: bool, hidden: torch.Tensor):
 
 @pytest.mark.parametrize("is_decoder", [False, True])
 def test_block_follows_fixed_tuple_layout_of_newer_transformers(is_decoder) -> None:
-    """Transformers 5.15 made the T5 sublayers return a fixed 3-tuple and the
-    stack unpack ``hidden, self_bias, cross_bias`` from every block; the
-    bridged attention and the patched block forward must keep that arity."""
+    """Transformers 5.15 sublayers return a fixed 3-tuple and the stack unpacks
+    ``hidden, self_bias, cross_bias`` from every block; the bridge must keep that arity."""
     hidden = torch.randn(2, 5, 16)
     outputs = _bridged_block_outputs(_FixedTupleBlock(is_decoder), is_decoder, hidden)
 
@@ -302,9 +301,8 @@ def _tiny_seq2seq(arch: str):
 
 @pytest.mark.parametrize("arch", ["T5ForConditionalGeneration", "LongT5ForConditionalGeneration"])
 def test_patched_block_fills_the_kv_cache(arch) -> None:
-    """The stack passes the Cache as ``past_key_values``; a patched forward that
-    drops it leaves the cache empty, so HF ``generate`` on the bridged model
-    decodes every step without context."""
+    """A patched forward that drops ``past_key_values`` leaves the cache empty, so HF
+    ``generate`` on the bridged model decodes every step without context."""
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         model, cfg = _tiny_seq2seq(arch)

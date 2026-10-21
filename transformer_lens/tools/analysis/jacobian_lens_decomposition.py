@@ -581,10 +581,8 @@ def estimate_occupancy(
     given ``seed`` on every device and needs no threshold. (Captured variance is a projection,
     hence scale-free, so the random control atoms are simply unit-norm.)
 
-    The control dictionaries are drawn on the CPU, which is what makes a seed reproduce the same
-    result on every device, and then copied to ``dictionary``'s device. That draw is serial CPU
-    work of ``num_control_dictionaries * num_atoms * d_model`` normals, so for a large
-    dictionary on an accelerator it dominates the run time; lower ``num_control_dictionaries``
+    Control dictionaries are drawn on the CPU (for cross-device reproducibility), so for a large
+    dictionary on an accelerator that draw dominates run time; lower ``num_control_dictionaries``
     to trade control precision for speed.
 
     Args:

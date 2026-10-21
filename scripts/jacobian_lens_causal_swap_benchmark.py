@@ -1,13 +1,11 @@
 """Causal-swap benchmark for ``JacobianLens.coordinate_patch_hooks`` on GPT-2-small.
 
-Reproduces the frozen artifact ``demos/data/jacobian_lens_causal_swap_benchmark_gpt2.json``,
-which ``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb`` loads without running a
-model. Each trial installs an anchored J-space coordinate edit toward a target concept at one
-layer and checks that the target's answer becomes the top-1 prediction, under three controls:
-only prompts the model already answers are intervened on, each real edit is paired with
-displacement-matched random-atom controls drawn under several seeds, and every rate carries an
-exact Clopper-Pearson interval. The lens and corpus revisions below are pinned because this
-script is the reproduction recipe.
+Regenerates ``demos/data/jacobian_lens_causal_swap_benchmark_gpt2.json``, which
+``demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb`` loads without running a model.
+Each trial edits one layer's J-space coordinates toward a target concept and checks that the
+target's answer becomes top-1. Only prompts the model already answers are used, each edit is
+paired with displacement-matched random-atom controls under several seeds, and every rate
+carries an exact Clopper-Pearson interval. Lens and corpus revisions are pinned for reproduction.
 
 Run:  uv run python scripts/jacobian_lens_causal_swap_benchmark.py
       (no HF_TOKEN needed, GPT-2 is not gated; ``--output`` redirects the artifact)
@@ -51,8 +49,7 @@ SCHEMA_VERSION = 2
 _GPT2_LENS_REPO = "neuronpedia/jacobian-lens"
 _GPT2_LENS_FILE = "gpt2-small/jlens/Salesforce-wikitext/gpt2_jacobian_lens.pt"
 _GPT2_LENS_REVISION = "a4114d7752d11eb546e6cf372213d7e75526d3a1"
-# Same repo/path/revision triple Jacobian_Lens_Demo.ipynb pins for its country config, so the
-# corpus has one provenance scheme rather than two.
+# Matches the triple Jacobian_Lens_Demo.ipynb pins for its country config.
 _CORPUS_REPO = "anthropics/jacobian-lens"
 _CORPUS_PATH = "data/experiments/flexible-generalization.json"
 _CORPUS_REVISION = "581d398613e5602a5af361e1c34d3a92ea82ba8e"
@@ -223,8 +220,7 @@ def filter_baseline_capable(
 
 def _control_generator(seed: int) -> torch.Generator:
     """Builds a CPU generator so the same seed picks the same control token on every device."""
-    # torch.randint allocates on CPU, so a device-local generator both changes the draw per
-    # device and raises on accelerators.
+    # torch.randint allocates on CPU, so a device-local generator would also raise on accelerators.
     return torch.Generator(device="cpu").manual_seed(seed)
 
 
@@ -242,9 +238,8 @@ def select_displacement_matched_control_token(
 
     Returns ``None`` when no candidate qualifies; the tolerance is never widened.
     """
-    # Matching ``||a_t - a_source||`` rather than ``||a_t||``: the real edit is
-    # ``c_src * (a_target - a_source)``, so equal-norm atoms at a different distance from the
-    # source would run the control at a different magnitude.
+    # Match ``||a_t - a_source||``, not ``||a_t||``: the real edit is ``c_src * (a_target -
+    # a_source)``, so a control at a different distance from the source runs at another magnitude.
     if dictionary.ndim != 2:
         raise ValueError(
             f"dictionary must be 2-D [num_atoms, d_model], got shape {tuple(dictionary.shape)}"
@@ -256,8 +251,7 @@ def select_displacement_matched_control_token(
     within_tolerance = (displacements - target_displacement).abs() <= (
         tolerance * target_displacement
     )
-    # Atoms already in the active support carry the source coordinate, so they are not clean
-    # controls.
+    # Atoms in the active support carry the source coordinate, so they are not clean controls.
     candidates = [
         token_id
         for token_id in range(dictionary.shape[0])
@@ -344,13 +338,11 @@ def run_causal_swap_trial(
 
     dictionary = lens.lens_vector_dictionary(model, layer)
     decomposition = lens.decompose(model, trial_spec.prompt, layer=layer, position=-1, k=k)
-    # Seed the shared cache under the hook's own key so its first firing is a cache hit and the
-    # vocabulary-scale solve is not repeated. The hook normalizes -1 against the sequence
-    # length, which is the tokenized prompt length for a single-example pass.
+    # Pre-seed the hook's key (it normalizes -1 to the prompt length) so the vocabulary-scale
+    # solve is not repeated on its first firing.
     decomposition_cache[(layer, 0, tokens.shape[1] - 1)] = decomposition
-    # Checked up front rather than inferred from a caught ValueError:
-    # ``coordinate_patch_hooks`` raises plain ValueError for unrelated protocol faults too, and
-    # filing those as skips would drop them from both denominators.
+    # Checked up front: ``coordinate_patch_hooks`` raises ValueError for unrelated faults too,
+    # and filing those as skips would drop them from both denominators.
     if source_id not in decomposition.support.tolist():
         return TrialResult(
             function=trial_spec.function,
@@ -450,7 +442,7 @@ def run_causal_swap_benchmark(
     require_eval_mode(model, operation="run_causal_swap_benchmark()")
     specs_by_prompt: Dict[Tuple[str, str], List[PromptTrialSpec]] = {}
     baselines: List[BaselineRecord] = []
-    # A prompt's baseline does not depend on the layer, so it is computed once per prompt.
+    # Baselines are layer-independent, so each prompt's is computed once.
     for spec in all_specs:
         prompt_key = (spec.function, spec.source)
         if prompt_key not in specs_by_prompt:
@@ -574,7 +566,6 @@ def _parse_seed_list(value: str) -> Tuple[int, ...]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Builds the argument parser."""
     parser = argparse.ArgumentParser(
         description="Generates the frozen GPT-2 causal-swap benchmark artifact."
     )

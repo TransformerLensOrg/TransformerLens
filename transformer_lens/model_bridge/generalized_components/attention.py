@@ -954,10 +954,7 @@ class AttentionBridge(GeneralizedComponent):
     def _output_attentions_is_optional(self) -> bool:
         """Whether the wrapped module only returns weights when asked to.
 
-        Transformers >= 5.15 dropped the explicit ``output_attentions``
-        parameter from the T5-family attention forward: it always returns
-        (attn_output, position_bias, attn_weights) and callers unpack exactly
-        three values, so the weights slot must stay in the output.
+        Transformers >= 5.15 T5 attention always returns three values, which callers unpack.
         """
         if self.original_component is None:
             return True

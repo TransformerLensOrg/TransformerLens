@@ -84,9 +84,8 @@ def _apply_rotary_complex(
         Tuple of rotated (q, k) tensors with same dtype and shape as inputs.
     """
     freqs = freqs_cis.unsqueeze(1)  # [batch, 1, seq, rope_dim // 2]
-    # torch.complex copies, so it has none of view_as_complex's storage-layout
-    # requirements: the rope slices start at an odd offset with odd strides
-    # whenever qk_nope_head_dim or kv_lora_rank is odd.
+    # torch.complex copies, dodging view_as_complex's stride requirements: the rope
+    # slices start at an odd offset whenever qk_nope_head_dim or kv_lora_rank is odd.
     q_pairs = q.float().reshape(*q.shape[:-1], -1, 2)
     k_pairs = k.float().reshape(*k.shape[:-1], -1, 2)
     q_c = torch.complex(q_pairs[..., 0], q_pairs[..., 1])

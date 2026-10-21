@@ -1,8 +1,4 @@
-"""Unit tests for the causal coordinate-swap benchmark's corpus schema and answer metrics.
-
-Model-free: these exercise the prompt-corpus cross product and the rank/margin metric
-directly on plain tensors, so no model is loaded.
-"""
+"""Model-free tests for the causal-swap benchmark's corpus, metrics, controls and artifact."""
 
 import dataclasses
 import hashlib
@@ -83,8 +79,7 @@ def test_compute_answer_metrics_rejects_non_finite_or_out_of_range_target() -> N
 
 
 def test_compute_answer_metrics_pins_deterministic_argmax_tie_semantics() -> None:
-    # A target tied for the global maximum: target_is_top1 follows argmax's own tie-break
-    # (first index), target_tied_for_top is true, and margin against itself is zero.
+    # argmax breaks the tie toward the first index, so a target tied for the max is not top-1.
     metrics = compute_answer_metrics(torch.tensor([3.0, 1.0, 3.0]), target_token_id=2)
     assert metrics.target_rank == 1
     assert metrics.target_is_top1 is False
@@ -120,8 +115,7 @@ def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> 
 
 
 def test_filter_baseline_capable_treats_tied_for_top_as_incapable() -> None:
-    # argmax returns the lowest index on an exact tie, so admitting a tied-for-top baseline
-    # would let token-id order decide whether a prompt enters the trial set.
+    # Otherwise argmax's lowest-index tie-break would decide whether a prompt enters the trial set.
     tied = BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, True, 0.0))
     capable, excluded = filter_baseline_capable([tied])
     assert capable == []
@@ -183,9 +177,8 @@ def test_select_displacement_matched_control_token_respects_tolerance_and_exclus
 
 
 def test_select_displacement_matched_control_token_matches_displacement_not_atom_norm() -> None:
-    # Atom 2 shares the target's atom norm but sits at a different distance from the source;
-    # atom 3 has a different norm but the target's exact displacement. A norm-matching
-    # selector would accept atom 2 and reject atom 3, so this pins the criterion change.
+    # Atom 2 matches the target's norm but not its displacement; atom 3 the reverse. A
+    # norm-matching selector would pick atom 2.
     dictionary = torch.zeros(4, 2)
     dictionary[0] = torch.tensor([1.0, 0.0])  # source
     dictionary[1] = torch.tensor([3.0, 0.0])  # target: norm 3, displacement 2.0
@@ -236,9 +229,8 @@ def test_select_displacement_matched_control_token_returns_none_on_empty_pool() 
 
 
 def test_select_displacement_matched_control_token_always_excludes_the_target_itself() -> None:
-    dictionary = torch.ones(
-        3, 2
-    )  # every atom has an identical displacement -- target would trivially "match" itself
+    # Every atom shares one displacement, so the target would trivially "match" itself.
+    dictionary = torch.ones(3, 2)
     chosen = select_displacement_matched_control_token(
         dictionary,
         source_token_id=0,
@@ -262,9 +254,7 @@ def test_select_displacement_matched_control_token_rejects_non_2d_dictionary() -
 
 
 def test_control_generator_is_always_cpu() -> None:
-    # The generator must not follow the dictionary's device: torch.randint infers its output
-    # device from the generator, so a device-local generator would select a different control
-    # token per device and break artifact reproducibility.
+    # torch.randint draws on CPU, so a generator following the dictionary's device would raise.
     assert _control_generator(0).device == torch.device("cpu")
 
 
@@ -278,9 +268,7 @@ def _accelerator_device() -> str:
 
 @pytest.mark.skipif(not _accelerator_device(), reason="no CUDA or MPS device available")
 def test_select_displacement_matched_control_token_is_device_independent() -> None:
-    # A device-local generator raises on accelerators (torch.randint allocates on CPU while
-    # the generator expects its own device), and drawing on the dictionary's device would
-    # make the same seed pick a different token per device. Selection must agree with CPU.
+    # The same seed must pick the same control token on an accelerator as on CPU.
     torch.manual_seed(0)
     dictionary = torch.randn(20, 4)
     cpu_choice = select_displacement_matched_control_token(
@@ -511,8 +499,7 @@ def test_serialize_artifact_records_executed_layers_and_status_counts() -> None:
 
 
 def test_serialize_artifact_counts_independent_prompts(tmp_path) -> None:
-    # Several trials can share one prompt, so the pooled rate rests on fewer independent
-    # prompts than trials. The count must travel with the rate.
+    # Trials can share a prompt, so the pooled rate rests on fewer independent prompts than trials.
     manifest = build_protocol_manifest(**_full_manifest_fields())
     trials = [
         _ok_trial(target=target, layer=layer)

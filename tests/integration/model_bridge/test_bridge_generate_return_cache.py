@@ -1,15 +1,7 @@
 """Tests for TransformerBridge.generate(return_cache=True).
 
-return_cache makes generate() also return an ActivationCache for the full prompt +
-generated sequence: run_with_cache(output) with the effective prompt attention mask
-(explicit, or inferred from padding_side) extended over the generated tokens, so an
-unmasked prompt matches plain run_with_cache(output). Supported only for single-sequence,
-decoder-only text generation; other paths raise NotImplementedError.
-
-The distilgpt2 (CI-cached) tests pass use_past_kv_cache=False so they stay robust on
-macOS-arm64 CI, where the cached-eager-attention path can NaN (issue #1322). return_cache
-recomputes run_with_cache on the output regardless of the KV-cache mode, so this does not
-change what is being tested. The attention-mask tests use an offline tiny GPT-2.
+distilgpt2 tests pass use_past_kv_cache=False: cached-eager attention can NaN on macOS-arm64
+CI (issue #1322), and return_cache recomputes run_with_cache on the output regardless.
 """
 
 import pytest

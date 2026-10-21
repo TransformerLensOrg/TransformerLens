@@ -32,13 +32,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 class _OlmoHybridBlockBridge(BlockBridge):
     """BlockBridge whose norm keys and hook aliases are chosen per layer type.
 
-    One HF attribute plays two roles: ``post_attention_layernorm`` is the pre-MLP
-    norm on GatedDeltaNet (linear-attention) layers but the post-attention norm on
-    OLMo2-style full-attention layers. The template declares it as ``ln2``;
-    full-attention layers re-key it to ``ln1_post`` at bind time so ``ln2`` always
-    means the norm feeding the MLP. Both layer types then expose the tensor added
-    to the residual stream as hook_attn_out / hook_mlp_out, and a hook_resid_mid
-    (``ln2.hook_in`` or ``mlp.hook_in``).
+    ``post_attention_layernorm`` is pre-MLP on linear-attention layers, so only those keep ``ln2``.
     """
 
     def __init__(self, *args: Any, **kwargs: Any):

@@ -945,7 +945,7 @@ def test_shared_fit_preparation_warns_without_running_half_precision_fit(
     with pytest.warns(UserWarning, match="transport gradients at reduced precision") as record:
         options = _prepare_toy_fit(dtype)
     assert options.fit_dtype == dtype
-    # Ensure test only fails due to the warning we are testing
+    # Ignore unrelated warnings the fit preparation may emit.
     precision_warnings = [
         w for w in record if "transport gradients at reduced precision" in str(w.message)
     ]

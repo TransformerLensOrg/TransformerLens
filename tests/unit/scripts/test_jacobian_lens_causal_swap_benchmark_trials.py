@@ -1,9 +1,4 @@
-"""Trial-runner tests for the causal coordinate-swap benchmark.
-
-Unlike the corpus/metrics/filter/control-token tests, these exercise real forward passes and
-real ``model.hooks(fwd_hooks=...)`` installs against the shared ``_ToyBridge`` fixture -- a real
-``TransformerBridge`` subclass, no Hugging Face download required.
-"""
+"""Trial-runner tests for the causal-swap benchmark: real forwards and hooks on ``_ToyBridge``."""
 
 from contextlib import contextmanager
 from typing import Dict, Iterator, Tuple
@@ -26,23 +21,17 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
 )
 
-# ``coordinate_patch_hooks`` always warns once per call, naming the layer/position counts that
-# will perform a live vocabulary-scale solve; this is expected and already covered by its own
-# tests (test_jacobian_lens_coordinate_patch_hooks.py), so it is not re-asserted here.
+# ``coordinate_patch_hooks`` warns once per call by design; its own tests assert that warning.
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
 PROMPT = "a toy prompt"
 SOLVE_K = 8
-# Generous on purpose: these tests exercise runner mechanics (cache sharing, skip recording,
-# baseline filtering, determinism), not tolerance-matching precision, which
-# test_jacobian_lens_causal_swap_benchmark.py already covers directly.
+# Generous on purpose: these tests pin runner mechanics, not tolerance matching.
 CONTROL_TOLERANCE = 4.0
 
 
 def _word_for_token_id(token_id: int) -> str:
-    """Builds a word that resolves back to ``token_id`` under the toy bridge's length-based
-    tokenizer (``to_single_token(s) == len(s) % D_VOCAB``, so a " "-prefixed word of length
-    ``token_id - 1`` (mod ``D_VOCAB``) resolves to ``token_id``)."""
+    """Word whose " "-prefixed form maps to ``token_id`` under the toy length-based tokenizer."""
     length = (token_id - 1) % D_VOCAB
     if length == 0:
         length = D_VOCAB
@@ -80,9 +69,7 @@ def _training_with_forwards_refused(model: _ToyBridge) -> Iterator[None]:
 
 
 def _spec_with_active_source(lens: JacobianLens, model: _ToyBridge, layer: int) -> PromptTrialSpec:
-    """Builds a spec whose source concept is a real active atom in ``layer``'s support for
-    ``PROMPT`` -- discovered via a real decomposition rather than guessed, since the toy model's
-    activations are not hand-computable in advance."""
+    """Spec whose source is in ``layer``'s active support, found by decomposing ``PROMPT``."""
     support = lens.decompose(model, PROMPT, layer=layer, position=-1, k=SOLVE_K).support
     source_id = int(support[0])
     target_id = (source_id + 1) % D_VOCAB
@@ -101,8 +88,7 @@ def _spec_with_active_source(lens: JacobianLens, model: _ToyBridge, layer: int) 
 def _spec_with_inactive_source(
     lens: JacobianLens, model: _ToyBridge, layer: int
 ) -> PromptTrialSpec:
-    """Builds a spec whose source concept is provably absent from ``layer``'s active support
-    for ``PROMPT`` -- ``k=SOLVE_K < D_VOCAB`` guarantees at least one token id is left out."""
+    """Spec whose source is outside ``layer``'s ``k=SOLVE_K`` support (``SOLVE_K < D_VOCAB``)."""
     support = {
         int(token)
         for token in lens.decompose(model, PROMPT, layer=layer, position=-1, k=SOLVE_K).support
@@ -137,9 +123,8 @@ def test_run_causal_swap_trial_shares_decomposition_cache_between_real_and_contr
     )
     assert result.status == "ok"
     assert len(cache) == 1  # one (layer, batch, position) key, reused by the control call
-    # The runner seeds the cache under the hook's own key before installing hooks, so the
-    # first firing is a hit rather than a second vocabulary-scale solve. Pin the key format:
-    # a mismatch would silently double the solve cost without failing any other assertion.
+    # The runner pre-seeds the hook's own key; a mismatched key format would silently double the
+    # solve cost without failing any other assertion.
     seq_len = toy_bridge.to_tokens(spec.prompt).shape[1]
     assert set(cache) == {(1, 0, seq_len - 1)}
 
@@ -147,10 +132,8 @@ def test_run_causal_swap_trial_shares_decomposition_cache_between_real_and_contr
 def test_run_causal_swap_trial_conditions_match_independently_patched_passes(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge
 ) -> None:
-    # Each condition must be exactly the pass its hooks produce when installed by hand.
-    # Comparing against the trial's baseline would catch neither a hardcoded alpha=0.0 nor
-    # swapped real/control assignments, because the baseline is scored on the source answer
-    # rather than the target's.
+    # Compare against hand-installed hooks: the baseline scores the source answer, so it would
+    # catch neither a hardcoded alpha=0.0 nor swapped real/control assignments.
     spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
     result = run_causal_swap_trial(
         toy_lens,
@@ -191,9 +174,7 @@ def test_run_causal_swap_trial_conditions_match_independently_patched_passes(
     control_metrics = _patched_metrics(result.control_token_id)
     assert result.real_target_metrics == real_metrics
     assert result.control_target_metrics == control_metrics
-    # A no-op patch would leave both conditions at the unpatched pass, so pin that each
-    # condition actually moves the target's metrics; otherwise the equalities above could
-    # hold vacuously.
+    # Otherwise a no-op patch would satisfy the equalities above vacuously.
     with torch.no_grad():
         unpatched = compute_answer_metrics(toy_bridge(tokens)[0, -1].float(), target_answer_id)
     assert real_metrics != unpatched
@@ -221,9 +202,8 @@ def test_run_causal_swap_trial_records_skip_without_raising_on_inactive_source(
 def test_run_causal_swap_trial_records_skip_when_no_control_token_matches(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge
 ) -> None:
-    # A zero tolerance admits only atoms at the target's exact displacement from the source,
-    # which the toy dictionary does not contain, so the pool is empty. The trial must record
-    # its own skip status rather than raising or falling back to the nearest atom.
+    # No toy atom sits at the target's exact displacement, so zero tolerance empties the pool;
+    # the trial must skip rather than raise or fall back to the nearest atom.
     spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
     result = run_causal_swap_trial(
         toy_lens,
@@ -252,18 +232,15 @@ def test_run_causal_swap_trial_populates_baseline_regardless_of_status(
         control_tolerance=CONTROL_TOLERANCE,
         k=SOLVE_K,
     )
-    # The baseline forward pass has no hooks installed, so it is unaffected by the source
-    # being inactive for the (unrelated) intervention conditions.
+    # The baseline pass is unhooked, so an inactive source cannot affect it.
     assert result.baseline is not None
 
 
 def test_run_causal_swap_trial_skips_before_installing_hooks(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Deciding the skip up front means the hooks are never built for an inactive source. If
-    # the status instead came from catching a ValueError raised inside the hooked forward
-    # pass, this stub would be reached and the test would fail. The cache is already seeded
-    # by the up-front check, so the early return leaves it populated.
+    # If the skip came from catching a ValueError inside the hooked pass, this stub would fire.
+    # The up-front check already seeded the cache, so the early return leaves it populated.
     def _boom(*args: object, **kwargs: object) -> None:
         raise AssertionError("coordinate_patch_hooks must not run for an inactive source")
 
@@ -287,8 +264,7 @@ def test_run_causal_swap_trial_skips_before_installing_hooks(
 def test_run_causal_swap_trial_propagates_same_id_source_and_target(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge
 ) -> None:
-    # A same-id source and target is a protocol error, not a per-trial skip. Filing it as a
-    # skip would drop it from both denominators and hide the mistake.
+    # A protocol error, not a skip: filing it as a skip would drop it from both denominators.
     spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
     same_id_spec = PromptTrialSpec(
         function=spec.function,
@@ -326,8 +302,7 @@ def test_run_causal_swap_trial_records_one_control_draw_per_seed(
     )
     assert result.status == "ok"
     assert [draw.seed for draw in result.control_draws] == [0, 1, 2]
-    # Every draw reuses the one seeded decomposition, so the extra draws add forward passes
-    # but no vocabulary-scale solves.
+    # Extra draws reuse the seeded decomposition: more forwards, no extra vocabulary-scale solves.
     assert len(cache) == 1
 
 
@@ -353,8 +328,7 @@ def test_run_causal_swap_trial_primary_control_mirrors_the_first_seed(
 def test_run_causal_swap_trial_control_draws_can_differ_across_seeds(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge
 ) -> None:
-    # The point of drawing several seeds is that the control arm has its own spread. If every
-    # seed collapsed to one token the spread would be unmeasurable and this test would fail.
+    # Several seeds exist to give the control arm a spread, which a single token cannot show.
     spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
     result = run_causal_swap_trial(
         toy_lens,
@@ -372,8 +346,7 @@ def test_run_causal_swap_trial_control_draws_can_differ_across_seeds(
 def test_run_causal_swap_trial_skips_when_a_seed_lacks_a_control(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge
 ) -> None:
-    # A zero tolerance empties the pool for every seed, so the trial skips rather than
-    # reporting a partial set of draws.
+    # Zero tolerance empties every seed's pool; skip rather than report a partial set of draws.
     spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
     result = run_causal_swap_trial(
         toy_lens,
@@ -391,8 +364,7 @@ def test_run_causal_swap_trial_skips_when_a_seed_lacks_a_control(
 def test_run_causal_swap_trial_rejects_an_empty_seed_list(
     toy_lens: JacobianLens, toy_bridge: _ToyBridge
 ) -> None:
-    # Without a seed there is no control arm at all, so the trial cannot report a
-    # real-vs-control gap. Fail loudly rather than indexing an empty draw list.
+    # No seed means no control arm, so fail loudly rather than index an empty draw list.
     spec = _spec_with_active_source(toy_lens, toy_bridge, layer=1)
     with pytest.raises(ValueError, match="at least one seed"):
         run_causal_swap_trial(
@@ -424,8 +396,7 @@ def test_run_causal_swap_trial_refuses_training_mode_before_any_forward(
 
 
 def _rigged_corpus(model: _ToyBridge) -> BenchmarkCorpus:
-    """One function, two concepts: "correct"'s own baseline answer is rigged to be the model's
-    actual top1 (baseline-capable); "wrong"'s is rigged to not be (baseline-incapable)."""
+    """One function, two concepts: only "correct"'s baseline answer is the model's top-1."""
     template = "prompt {arg} end"
     correct_concept = "AAAA"
     wrong_concept = "BBBBBB"

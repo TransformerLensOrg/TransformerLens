@@ -112,11 +112,10 @@ def sign_flip_permutation_pvalue(
     deterministic; otherwise ``n_permutations`` random patterns are drawn from
     the CPU ``generator`` and the p-value is ``(hits + 1) / (n_permutations + 1)``.
     ``alternative`` is ``"two-sided"`` (``|null| >= |observed|``), ``"greater"``
-    or ``"less"``. Each comparison counts a null mean within a relative
-    ``100 * eps`` of the observed one as a tie, so floating-point summation order
-    cannot make a tied pattern miss; there is no absolute floor, so near-zero
-    observed effects get essentially no tolerance. Returns a tensor with ``dim``
-    removed.
+    or ``"less"``. A null mean within a relative ``100 * eps`` of the observed one
+    counts as a tie, absorbing summation-order error; there is no absolute floor, so
+    near-zero observed effects get essentially no tolerance. Returns a tensor with
+    ``dim`` removed.
     """
     if alternative not in _ALTERNATIVES:
         raise ValueError(f"alternative must be one of {_ALTERNATIVES}, got {alternative!r}")
@@ -163,8 +162,7 @@ def _count_hits(null: torch.Tensor, observed: torch.Tensor, alternative: str) ->
 class SuccessRateInterval:
     """An exact Clopper-Pearson confidence interval around a success rate.
 
-    ``n_trials`` and ``n_successes`` are the counts the interval was computed from, so a
-    reader can see the denominator behind the bounds rather than inferring it.
+    ``n_trials`` and ``n_successes`` are the counts behind the bounds.
     """
 
     point_estimate: float
@@ -175,16 +173,14 @@ class SuccessRateInterval:
     confidence: float
 
 
-# Each bisection step halves the bracket, so 200 steps resolve the bound far below the
-# precision any reported rate needs.
+# 200 halvings resolve the bound far below the precision any reported rate needs.
 _CLOPPER_PEARSON_STEPS = 200
 
 
 def _binomial_cdf(k: int, n: int, p: float) -> float:
     """Exact ``P(X <= k)`` for ``X ~ Binomial(n, p)``.
 
-    Accumulates the pmf by recurrence (``term_{i} = term_{i-1} * (n - i + 1) / i * p / (1 - p)``)
-    rather than forming ``comb(n, i)`` and ``p ** i`` separately, which overflow at large ``n``.
+    Accumulates the pmf by recurrence because ``comb(n, i)`` and ``p ** i`` overflow at large ``n``.
     """
     if k < 0:
         return 0.0
@@ -204,11 +200,10 @@ def _binomial_cdf(k: int, n: int, p: float) -> float:
 
 
 def _clopper_pearson_bound(n_successes: int, n_trials: int, tail: float, *, upper: bool) -> float:
-    """Solves one Clopper-Pearson bound by bisecting the exact binomial CDF.
+    """Solve one Clopper-Pearson bound by bisecting the exact binomial CDF.
 
-    The lower bound solves ``P(X >= k) = tail`` and the upper bound solves ``P(X <= k) =
-    tail``. ``P(X >= k)`` rises with ``p`` while ``P(X <= k)`` falls, so the two bounds
-    bracket from opposite sides; reversing that collapses every interval to ``[0, 1]``.
+    Lower solves ``P(X >= k) = tail``, upper ``P(X <= k) = tail``; swapping their bracket
+    directions collapses every interval to ``[0, 1]``.
     """
     if upper and n_successes == n_trials:
         return 1.0
@@ -218,15 +213,13 @@ def _clopper_pearson_bound(n_successes: int, n_trials: int, tail: float, *, uppe
     for _ in range(_CLOPPER_PEARSON_STEPS):
         midpoint = (low + high) / 2.0
         if upper:
-            # P(X <= k) decreases in p, so a probability above the tail puts the bound below
-            # the midpoint.
+            # P(X <= k) decreases in p, so a CDF above the tail puts the bound above the midpoint.
             if _binomial_cdf(n_successes, n_trials, midpoint) > tail:
                 low = midpoint
             else:
                 high = midpoint
         else:
-            # P(X >= k) increases in p, so a probability above the tail puts the bound above
-            # the midpoint.
+            # P(X >= k) increases in p, so a value above the tail puts the bound below the midpoint.
             if 1.0 - _binomial_cdf(n_successes - 1, n_trials, midpoint) > tail:
                 high = midpoint
             else:
@@ -241,13 +234,9 @@ def success_rate_ci(
 ) -> SuccessRateInterval:
     """Computes an exact Clopper-Pearson confidence interval for a success rate.
 
-    A percentile bootstrap cannot express uncertainty about an all-failure or all-success
-    sample: every resample of an all-zero vector is all zeros, so the interval collapses to
-    ``[0, 0]`` and reports the same certainty for one trial as for a thousand. The exact
-    interval instead widens as the trial count shrinks, giving ``[0.0, 0.459]`` for zero
-    successes out of six.
-
-    Deterministic by construction: there is no resampling and no seed.
+    Unlike a percentile bootstrap, which collapses to ``[0, 0]`` on an all-failure sample
+    regardless of size, the interval widens as the trial count shrinks (``[0.0, 0.459]`` for
+    zero successes out of six). Deterministic: no resampling and no seed.
 
     Raises:
         ValueError: If ``successes`` is empty.

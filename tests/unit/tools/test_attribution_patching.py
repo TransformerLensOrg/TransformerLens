@@ -1,8 +1,4 @@
-"""Model-free unit tests for the attribution-patching substrate.
-
-These tests target the ``TransformerBridge`` API using tiny linear subclasses
-with closed-form gradients and exact first-order attribution identities.
-"""
+"""Model-free attribution-patching unit tests on tiny Bridge toys with closed-form gradients."""
 
 from __future__ import annotations
 
@@ -408,13 +404,7 @@ def test_top_edges_empty_when_no_edge_sweep_has_run() -> None:
 
 
 class _AttnMlpBlock(nn.Module):
-    """A block exposing the standard node-granularity hook points.
-
-    ``hook_z`` carries the per-head output ``[batch, seq, n_heads, d_head]`` and
-    ``hook_mlp_out`` the MLP write ``[batch, seq, d_model]`` -- the two per-layer
-    hook families ``enumerate_nodes`` reads. The block is linear; the test only
-    needs a real hook graph with gradients flowing to those points, not attention.
-    """
+    """A linear block exposing the ``hook_z`` and ``hook_mlp_out`` families nodes are read from."""
 
     def __init__(self, d_model: int, n_heads: int, d_head: int, layer: int, dtype: torch.dtype):
         super().__init__()
@@ -632,14 +622,8 @@ def test_attribution_patch_identical_inputs_are_exactly_zero_in_eval_mode() -> N
 # Linear-model reconstruction identity
 # ---------------------------------------------------------------------------
 #
-# ``_NodeGraphToyBridge`` is fully linear by construction -- the remaining
-# nonlinearities on the residual->metric path are neutralized without extra
-# freezing: ``ln_final`` is ``nn.Identity``, the
-# attention projection is a plain linear map with no softmax pattern, the MLP has
-# no activation, and ``_metric_fn`` is linear in the logits. The first-order
-# Taylor estimate each node score uses is therefore *exact*, so the reconstruction
-# and single-node identities below hold under equality (tight ``atol``) rather than
-# the ``atol``-slack approximation a stock nonlinear model would require.
+# ``_NodeGraphToyBridge`` is fully linear, so first-order node scores are exact and the
+# identities below hold at a tight ``atol``.
 
 
 def _metric_delta(
@@ -677,14 +661,7 @@ def _patch_node_toward_clean(
 def test_linear_reconstruction_identity_holds_on_a_complete_cut() -> None:
     """Node attribution reconstructs ``m(clean) - m(corrupt)`` exactly on a complete cut.
 
-    The identity holds over a **complete cut** of the graph, not the full node set.
-    Each residual write flows through the writes downstream of it (the MLP reads the
-    post-attention residual, which already contains the embed and attention writes),
-    so a node's full-model gradient re-counts the paths of every node upstream of
-    it: summing embed + attention + MLP scores overcounts. The embed layer is the
-    input-side complete cut -- every path to the metric passes through exactly one
-    embed position -- so its scores alone reconstruct the exact metric delta for a
-    linear model.
+    Summing every node overcounts (downstream writes contain upstream ones); embed alone is a cut.
     """
     model = _NodeGraphToyBridge()
     clean = torch.tensor([[1, 2, 3]])
@@ -791,11 +768,7 @@ class _NonlinearNodeGraphToyBridge(_NodeGraphToyBridge):
 def test_nonlinear_node_scores_read_the_corrupt_run_gradient() -> None:
     """On a nonlinear model the score reads the corrupt run's gradient, not the clean one.
 
-    With an input-dependent Jacobian the clean and corrupt caches hold *different*
-    gradients, so pairing the clean-activation delta with the clean gradient (the
-    reversed convention) yields different scores from the corrupt-gradient one the
-    docstring promises. This pins ``attribution_patch`` to the corrupt gradient -- a
-    guard the linear tests structurally cannot provide.
+    Linear toys share one Jacobian across both runs, so only a nonlinear model can pin this.
     """
     model = _NonlinearNodeGraphToyBridge()
     clean = torch.tensor([[1, 2, 3]])
@@ -1318,13 +1291,8 @@ def test_enumerate_edges_drops_same_layer_heads_from_mlp_reader_on_parallel_attn
 # Edge attribution scoring
 # ---------------------------------------------------------------------------
 #
-# Edge scoring needs every reader hook to actually participate in the forward
-# computation, unlike _GatedEdgeHookBlock's probes above, which fire but are
-# discarded: a reader with no forward-graph path to the metric would receive
-# no gradient, leaving nothing genuine for _edge_effects to score.
-# _EdgeScoringBlock wires every per-head QKV input and the MLP entry into the
-# actual computation, so a cache built from it carries real, distinguishable
-# per-edge gradients.
+# Unlike _GatedEdgeHookBlock's discarded probes, _EdgeScoringBlock feeds every reader hook into
+# the forward, so each edge gets a real, distinguishable gradient.
 
 
 class _EdgeScoringBlock(nn.Module):
@@ -1408,12 +1376,7 @@ class _EdgeScoringBlock(nn.Module):
         return self.hook_resid_post(residual + mlp_out)
 
     def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
-        """Transform the per-head attention output before it joins the residual.
-
-        Identity here. A subclass can make the block nonlinear, which is what
-        stops a circuit from reproducing the metric merely by containing every
-        edge into the logits reader.
-        """
+        """Transform the per-head attention output before the residual; identity here."""
         return per_head_out
 
     def _attention_write(self, summed: torch.Tensor) -> torch.Tensor:
@@ -1424,10 +1387,7 @@ class _EdgeScoringBlock(nn.Module):
 class _NonlinearEdgeScoringBlock(_EdgeScoringBlock):
     """``_EdgeScoringBlock`` with a GELU on the attention output path.
 
-    The nonlinearity breaks the linear relation between a writer's contribution
-    and the metric, so a circuit cannot recover the metric just by containing
-    every edge into the logits reader. That is what makes a random edge set of
-    the same size a meaningful baseline rather than a coin flip.
+    Without it, any circuit holding every edge into the logits reader recovers the metric outright.
     """
 
     def _attention_output(self, per_head_out: torch.Tensor) -> torch.Tensor:
@@ -1513,14 +1473,7 @@ class _EdgeScoringToyBridge(_LinearToyBridge):
 
 
 class _NonlinearEdgeScoringToyBridge(_EdgeScoringToyBridge):
-    """``_EdgeScoringToyBridge`` whose attention output passes through a GELU.
-
-    Reuses the parent's hook graph and ``hooks()`` plumbing but swaps in
-    :class:`_NonlinearEdgeScoringBlock`, so a writer's contribution reaches the
-    metric nonlinearly. On a linear toy any circuit holding every edge into the
-    logits reader recovers the metric outright, which makes a random baseline
-    meaningless; the nonlinearity is what gives the comparison teeth.
-    """
+    """``_EdgeScoringToyBridge`` whose attention output passes through a GELU."""
 
     def __init__(self, *, dtype: torch.dtype = torch.float32) -> None:
         super().__init__(dtype=dtype)
@@ -1720,11 +1673,8 @@ def test_attribution_patch_edge_sweep_restores_caller_hook_flags() -> None:
 # Exact-patch parity and mutation-checked reconstruction
 # ---------------------------------------------------------------------------
 #
-# Two guards on the edge-scoring identity: a genuine
-# activation patch of a single edge must match _edge_effects' estimate (sign
-# always; magnitude too on this linear toy model), and mutating one writer's
-# captured contribution must change only the edges that writer feeds, never a
-# different edge's score.
+# A single-edge activation patch must match _edge_effects' estimate, and mutating one writer's
+# captured contribution must move only that writer's edges.
 
 
 def _edge_writer_delta_vector(
@@ -1797,11 +1747,7 @@ def _assert_mutation_only_changes_the_perturbed_writers_edges(
     mutated_scores: dict[tuple[Node, Node], float],
     corrupt_cache: GradientCache,
 ) -> None:
-    """Assert a single-writer perturbation moved exactly that writer's edges.
-
-    The scorer indexes writer deltas and reader gradients independently.
-    Perturbing one head at one position must not change sibling writers' scores.
-    """
+    """Assert a single-writer perturbation moved exactly that writer's edges, never a sibling's."""
     changed = 0
     moved = 0
     for edge in edges:
@@ -2050,10 +1996,8 @@ def test_top_edges_can_surface_a_head_to_logits_edge() -> None:
 # Writer-output capture (forward-only)
 # ---------------------------------------------------------------------------
 #
-# Rewriting a reader's input during a live forward pass needs the writers'
-# current contributions rather than a gradient estimate. The capture is
-# therefore forward-only and names-filtered to the writer families, the
-# opposite contract from cache_activation_and_gradient.
+# Forward-only and filtered to the writer families: the opposite contract from
+# cache_activation_and_gradient.
 
 
 def test_writer_hook_names_cover_the_three_writer_families() -> None:
@@ -2063,7 +2007,6 @@ def test_writer_hook_names_cover_the_three_writer_families() -> None:
     for layer in range(N_LAYERS):
         assert f"blocks.{layer}.attn.hook_result" in names
         assert f"blocks.{layer}.hook_mlp_out" in names
-    # Writer families only: no reader inputs, and no pre-hook_result attn-z.
     assert not any("hook_q_input" in name for name in names)
     assert not any("hook_mlp_in" in name for name in names)
     assert not any(name.endswith("attn.hook_z") for name in names)
@@ -2076,7 +2019,6 @@ def test_reader_hook_names_cover_the_reader_input_families() -> None:
         for input_hook in ("hook_q_input", "hook_k_input", "hook_v_input"):
             assert f"blocks.{layer}.attn.{input_hook}" in names
         assert f"blocks.{layer}.hook_mlp_in" in names
-    # Reader inputs only: no writer outputs.
     assert not any("hook_result" in name for name in names)
     assert not any("hook_mlp_out" in name for name in names)
 
@@ -2089,7 +2031,6 @@ def test_capture_writer_outputs_populates_only_the_writer_family() -> None:
         captured = capture_writer_outputs(model, tokens)
 
     assert set(captured) == set(_writer_hook_names(N_LAYERS))
-    # The reader-input family and the pre-hook_result attn-z are not captured.
     assert "blocks.0.attn.hook_q_input" not in captured
     assert "blocks.0.hook_mlp_in" not in captured
     assert "blocks.0.attn.hook_z" not in captured
@@ -2130,12 +2071,7 @@ def test_capture_writer_outputs_raises_when_the_filter_matches_nothing() -> None
 
 
 def test_capture_writer_outputs_needs_no_grad() -> None:
-    """The capture runs with autograd off, where the gradient helper refuses.
-
-    The two helpers have opposite contracts: this one is forward-only and must
-    work under ``torch.no_grad()``, while ``cache_activation_and_gradient``
-    exists to retain gradients and raises without autograd.
-    """
+    """The capture runs with autograd off, where the gradient helper refuses."""
     model = _EdgeScoringToyBridge()
     tokens = model.to_tokens("prompt")
     metric = _metric_fn(answer=1, wrong=2)
@@ -2152,12 +2088,8 @@ def test_capture_writer_outputs_needs_no_grad() -> None:
 # Reader-input rewrite (edge ablation core)
 # ---------------------------------------------------------------------------
 #
-# The residual stream is a running sum, so a reader's input is exactly the sum
-# of its writers' contributions. Ablating an edge means subtracting that
-# writer's live contribution and adding its replacement at the reader's fork
-# hook, which fires before the layer norm -- an exact correction, not an
-# approximation. Partial circuits need independent reader and logit references;
-# boundary circuits alone cannot expose incorrect upstream corrections.
+# Partial circuits need independent reader and logit references; boundary circuits alone
+# cannot expose incorrect upstream corrections.
 
 
 def _ablation_replacement(
@@ -2180,10 +2112,8 @@ def test_excluded_writers_by_reader_groups_only_out_of_circuit_edges() -> None:
     )
     edges = enumerate_edges(model, corrupt_cache)
 
-    # Keeping the whole graph excludes nothing.
     assert _excluded_writers_by_reader(edges, edges) == {}
 
-    # Keeping nothing excludes every writer, grouped once per reader.
     excluded = _excluded_writers_by_reader(edges, [])
     readers = {reader for _writer, reader in edges}
     assert set(excluded) == readers
@@ -2191,9 +2121,7 @@ def test_excluded_writers_by_reader_groups_only_out_of_circuit_edges() -> None:
         expected = [writer for writer, edge_reader in edges if edge_reader == reader]
         assert writers == expected
 
-    # A single kept edge excludes exactly that edge's writer from its reader.
-    # Pick a reader with more than one incoming edge, so the exclusion is
-    # observable rather than emptying the reader's writer list.
+    # A reader with several incoming edges keeps the single exclusion observable.
     kept_edge = next(
         edge for edge in edges if len([writer for writer, reader in edges if reader == edge[1]]) > 1
     )
@@ -2227,20 +2155,12 @@ def test_ablating_the_full_circuit_reproduces_the_clean_metric() -> None:
 
     ablated = float(metric(ablated_logits))
     assert ablated == pytest.approx(float(clean_cache.metric), abs=1e-6)
-    # Discriminating: the clean and corrupt runs genuinely differ, so this
-    # cannot pass on a degenerate pair.
+    # The pair genuinely differs, so this cannot pass on a degenerate pair.
     assert ablated != pytest.approx(float(corrupt_cache.metric), abs=1e-6)
 
 
 def test_ablation_installs_one_hook_per_reader_node() -> None:
-    """Each reader node is corrected once, not once per incoming edge.
-
-    Several reader nodes share one hook point (one per head, one per position),
-    and each rewrites a disjoint slice of it. Installing one hook per excluded
-    edge would apply the correction repeatedly and overshoot, so the count of
-    hooks on each fork point must equal the number of reader nodes reading it --
-    not the number of edges into those nodes.
-    """
+    """Each reader node is corrected once, not once per incoming edge (which would overshoot)."""
     model = _EdgeScoringToyBridge()
     _ensure_edge_hook_flags(model)
     tokens = model.to_tokens("prompt")
@@ -2255,8 +2175,7 @@ def test_ablation_installs_one_hook_per_reader_node() -> None:
 
     readers = {reader for _writer, reader in edges}
     assert len(readers) > 0
-    # Some readers have several incoming edges, so a per-edge hook would
-    # register several hooks on the same point.
+    # Readers with several incoming edges would get several hooks under a per-edge scheme.
     crowded = {
         reader
         for reader in readers
@@ -2264,9 +2183,7 @@ def test_ablation_installs_one_hook_per_reader_node() -> None:
     }
     assert crowded
 
-    # The ablation's hooks live only for the duration of its forward, so count
-    # them from a pre-hook on the model root, which fires while they are
-    # registered.
+    # The ablation's hooks live only during its forward, so count them from a root pre-hook.
     counts: dict[str, int] = {}
 
     def snapshot(_module: nn.Module, _args: tuple) -> None:
@@ -2556,14 +2473,8 @@ def test_ablation_raises_when_a_writer_contribution_was_not_captured() -> None:
 # Faithfulness (public API)
 # ---------------------------------------------------------------------------
 #
-# faithfulness() ablates every edge outside a candidate circuit and reports how
-# much of the clean-to-corrupt metric gap the circuit recovers. Keeping every
-# edge must reproduce the clean run. Keeping nothing pins little: the logits
-# reader then drops every writer and is rebuilt wholly from the replacements,
-# and every head and MLP output equals its replacement, so the corrupt run
-# comes back even when an upstream reader is rebuilt wrongly or a writer is
-# sliced wrongly. Dropping writers' out-edges must instead match patching
-# those writers' own outputs.
+# Keeping nothing returns the corrupt run even when upstream rebuilds are wrong, so writer
+# drops are checked against patching those writers' own outputs instead.
 
 
 def _faithfulness_toy() -> tuple[_EdgeScoringToyBridge, torch.Tensor, torch.Tensor, Callable]:
@@ -2629,10 +2540,8 @@ def _summed_logit_diff(logits: torch.Tensor) -> torch.Tensor:
 
 
 _ALL = slice(None)
-# Writer kind, layer, heads and dropped positions, then the hook and index holding
-# those writers' own output. The embed dropped at every position is the corrupt
-# run itself, so it is dropped at one position. Both layer-0 heads write through
-# one hook, so each reader they feed combines two corrections.
+# (writer kind, layer, heads, dropped positions, output hook, index). Embed drops one position,
+# since all of them is the corrupt run; layer-0 heads share a hook, so their corrections combine.
 _WRITER_DROPS: dict[str, tuple[Any, ...]] = {
     "L0H1": ("attn_head_out", 0, [1], range(SEQ_LEN), "blocks.0.attn.hook_z", (0, _ALL, 1)),
     "L0_mlp": ("mlp_out", 0, [None], range(SEQ_LEN), "blocks.0.hook_mlp_out", (0, _ALL)),
@@ -2657,9 +2566,7 @@ def test_faithfulness_writer_drop_matches_patching_the_writer_output(
 ) -> None:
     """Dropping writers' out-edges recovers what patching those writers' own outputs does.
 
-    The toy is position-wise, so the pair differs at every position and the
-    metric reads every position: a writer's edges at an unread position could
-    otherwise be mishandled without moving the metric.
+    The metric reads every position, so a mishandled edge at any position moves it.
     """
     model = bridge()
     clean = torch.tensor([[1, 2, 3]])
@@ -3043,12 +2950,7 @@ def test_faithfulness_raises_on_token_length_mismatch() -> None:
 
 
 def test_faithfulness_raises_on_more_than_one_pair() -> None:
-    """Batched input is rejected rather than silently half-ablated.
-
-    The metric reads a single example, so a batch would need per-pair
-    aggregation the caller should own. Silently ablating only the first row
-    would return a plausible but wrong number.
-    """
+    """Batched input is rejected rather than silently half-ablated."""
     model, clean, corrupt, metric = _faithfulness_toy()
     batched_clean = torch.cat([clean, clean], dim=0)
     batched_corrupt = torch.cat([corrupt, corrupt], dim=0)
@@ -3121,9 +3023,7 @@ def test_faithfulness_restores_hook_flags_when_it_raises() -> None:
 def test_faithfulness_recovery_is_graded_not_binary() -> None:
     """A partial circuit lands strictly between the corrupt and clean metrics.
 
-    Only edges into the readout position can move this toy's metric, since it is
-    position-wise and the metric reads the last position. Keeping half of those
-    must therefore recover part of the gap rather than all or none of it.
+    Only edges into the readout position move this metric; keeping half of them recovers part.
     """
     model, clean, corrupt, metric = _faithfulness_toy()
     edges = _graph_edges(model, corrupt, metric)
@@ -3197,8 +3097,7 @@ def test_edge_class_recovered_reconciles_with_the_aggregate() -> None:
     for edge_class, recovered in report.edge_class_recovered.items():
         assert math.isfinite(recovered), f"non-finite recovery for {edge_class}"
         assert report.edge_class_counts[edge_class] > 0
-    # Keeping every edge is the aggregate, so the full-circuit report recovers
-    # the whole gap.
+    # Keeping every edge is the aggregate, so the full-circuit report recovers the whole gap.
     assert report.recovered == pytest.approx(1.0, abs=1e-6)
 
 
@@ -3345,10 +3244,7 @@ def test_faithfulness_duplicate_circuit_entries_are_equivalent(
 # Random-edge-set baseline
 # ---------------------------------------------------------------------------
 #
-# A ranked circuit is only meaningful if it beats an arbitrary edge set of the
-# same size. The toy is nonlinear here on purpose: on a linear model any circuit
-# holding every edge into the logits reader recovers the metric outright, so the
-# baseline could tie by accident.
+# Nonlinear on purpose: on a linear toy any circuit holding every logits edge recovers outright.
 
 
 def _random_edge_sets(
@@ -3363,12 +3259,7 @@ def _random_edge_sets(
 
 
 def test_random_edge_set_recovers_markedly_less_than_the_attribution_circuit() -> None:
-    """The ranked circuit beats random edge sets of the same size by a wide margin.
-
-    This is the honesty guard: a ranking that does no better than chance would
-    still produce a plausible-looking ``recovered`` number, so the comparison
-    against same-size random sets is what makes the number mean anything.
-    """
+    """The ranked circuit beats random edge sets of the same size by a wide margin."""
     model = _NonlinearEdgeScoringToyBridge()
     clean = torch.tensor([[1, 2, 3]])
     corrupt = torch.tensor([[3, 2, 1]])
@@ -3389,9 +3280,7 @@ def test_random_edge_set_recovers_markedly_less_than_the_attribution_circuit() -
     random_recovered = [report.recovered for report in random_reports]
     best_random = max(random_recovered)
 
-    # The baseline is not degenerate: if every random set recovered the whole
-    # gap, the toy would be too easy to discriminate and the comparison would be
-    # vacuous.
+    # If every random set recovered the whole gap, the comparison would be vacuous.
     assert all(value < 1.0 for value in random_recovered), random_recovered
     assert ranked_report.recovered > best_random + 0.2, (
         f"ranked recovered {ranked_report.recovered:.4f} vs random "

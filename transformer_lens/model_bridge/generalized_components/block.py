@@ -75,8 +75,7 @@ class BlockBridge(GeneralizedComponent):
                 itself. Implied for post-norm-only blocks (ln2_post without ln2).
         """
         has_ln2 = submodules is not None and "ln2" in submodules
-        # Post-norm-only blocks (OLMo 2 layout) declare ln2_post and no ln2: the
-        # MLP reads the mid-residual directly.
+        # OLMo 2 layout: ln2_post without ln2 means the MLP reads the mid-residual directly.
         post_norm_only_mlp = submodules is not None and "ln2_post" in submodules and not has_ln2
         # ln1_post/ln2_post redirect attn_out/mlp_out to match HookedTransformer's
         # placement (hook fires after the post-norm, not before).

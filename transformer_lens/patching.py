@@ -1310,20 +1310,13 @@ def get_act_patch_direct_path(
 ) -> Float[torch.Tensor, "n_layers n_heads"]:
     """Patch one source head's output into each later head's Q, K or V input alone.
 
-    Direct path patching (Wang et al. 2022) isolates the edge A -> B. Head A's residual write on
-    each run is ``z[..., src_head, :] @ W_O[src_head]``, read from the two caches. For every head B
-    in a later layer, the corrupted tokens are rerun with A's clean-minus-corrupted write added, at
-    every position, to B's own copy of the residual (``attn.hook_{component}_input``, taken before
-    ``ln1``). Every other reader still sees A's corrupted output, and ``ln1`` and B's projection are
-    recomputed on the patched copy, so the result is the exact edge intervention, folded LayerNorm
-    or not. Blocks that transform the head sum before the residual add are refused, since there
-    ``z @ W_O`` is not A's write.
+    Direct path patching (Wang et al. 2022) isolates the edge A -> B: A's clean-minus-corrupted
+    write (``z @ W_O``) is added at every position to B's own pre-``ln1`` copy of the residual,
+    while every other reader still sees A's corrupted output. The result is the exact edge
+    intervention, folded LayerNorm or not.
 
-    The per-head copies exist only under ``cfg.use_split_qkv_input``, which is switched on for the
-    sweep (``use_attn_in`` off, since the two are exclusive) and both restored on exit. While it
-    is on, every attention layer builds and normalises a ``[batch, pos, n_heads, d_model]``
-    residual copy for each of Q, K and V, about ``3 * n_heads`` times the usual ``ln1``
-    activation memory per forward.
+    The sweep temporarily enables ``cfg.use_split_qkv_input`` (restoring the caller's flags on
+    exit), which costs about ``3 * n_heads`` times the usual ``ln1`` activation memory per forward.
 
     Args:
         model: A ``TransformerBridge`` whose attention exposes the pre-Q/K/V fork.
@@ -1334,7 +1327,6 @@ def get_act_patch_direct_path(
         src_layer: Layer of the source head.
         src_head: Index of the source head.
         component: Destination input to patch: ``"q"`` (default), ``"k"`` or ``"v"``.
-        verbose: Show a progress bar.
 
     Returns:
         ``[n_layers, n_heads]``: ``results[l, h]`` is the metric with the path into head
@@ -1376,8 +1368,7 @@ def get_act_patch_direct_path(
                 corrupted_tokens,
                 fwd_hooks=[(hook_name, _make_direct_path_hook(delta, dst_head, fired))],
             )
-            # A layer whose attention cannot fork never fires the hook and would return the
-            # unpatched metric.
+            # Without a fork the hook never fires and the metric would silently be unpatched.
             if not fired:
                 raise NotImplementedError(
                     f"{hook_name} did not fire: blocks.{dst_layer}.attn has no pre-Q/K/V fork, so "

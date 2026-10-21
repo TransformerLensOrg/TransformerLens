@@ -59,8 +59,6 @@ def random_basis(d_model: int, rank: int, seed: int) -> Float[torch.Tensor, "d_m
     """A seeded random orthonormal basis: the baseline any aligned basis should beat.
 
     Args:
-        d_model: Dimension of the activation.
-        rank: Number of basis directions.
         seed: Seed for the Gaussian matrix the basis is drawn from.
 
     Returns:
@@ -155,7 +153,6 @@ def random_neuron_basis(
 
     Args:
         d_mlp: Number of neurons at the hook.
-        k: Number of neurons to draw.
         seed: Seed for the draw; the caller's random stream is untouched.
         exclude: Neurons the draw must avoid, usually the ones the placebo is compared with.
 
@@ -198,7 +195,6 @@ class LearnedSubspace(nn.Module):
     """A trainable rank-``rank`` subspace of ``d_model`` whose basis stays orthonormal.
 
     Args:
-        d_model: Dimension of the activation.
         rank: Number of basis directions, in ``[1, d_model]``.
     """
 
@@ -315,7 +311,6 @@ def collect_activations(
 
     Args:
         model: A model exposing the hook API.
-        hook_name: The hook point to read.
         inputs: Model inputs, one row per example.
         task_logits: Runs the model on a batch of inputs.
         positions: For ``[batch, pos, d_model]`` activations, the position to read per example.
@@ -364,10 +359,8 @@ def run_with_intervention(
 
     Args:
         model: A model exposing the hook API.
-        hook_name: The hook point to intervene on.
         intervention: Maps base and source activations to new base activations, e.g. a
             :class:`SubspaceInterchange`.
-        base_inputs: Model inputs to run.
         source_activations: Activations from the source inputs at the same hook point, one row per
             base, e.g. from :func:`collect_activations`.
         task_logits: Runs the model on a batch of inputs.
@@ -416,9 +409,7 @@ def intervened_logits(
 
     Args:
         model: A model exposing the hook API.
-        hook_name: The hook point to intervene on.
         intervention: Maps base and source activations to new base activations.
-        base_inputs: Model inputs to run.
         source_activations: Activations from the source inputs at the same hook point, one row per
             base.
         task_logits: Runs the model on a batch of inputs.
@@ -462,7 +453,6 @@ class DASResult:
         subspace: The learned subspace; pass it to :class:`SubspaceInterchange`.
         losses: Mean training loss per epoch.
         hook_name: The hook point it was trained at.
-        rank: Its rank.
     """
 
     subspace: LearnedSubspace
@@ -596,8 +586,6 @@ def arbitrary_targets(
 
     Args:
         keys: One key per pair identifying its source, e.g. the source text.
-        n_classes: Number of output classes.
-        seed: Seed for the mapping.
 
     Returns:
         A class in ``[0, n_classes)`` per key; equal keys always get equal classes.
@@ -620,7 +608,6 @@ def reinitialized(model: nn.Module, seed: int) -> nn.Module:
 
     Args:
         model: The trained model; it is not modified.
-        seed: Seed for the new parameters.
 
     Returns:
         The untrained copy, on the device of the model's parameters, in evaluation mode.
@@ -668,14 +655,11 @@ def random_init_bridge(
 
     The random-init control: train :func:`fit_das` on it with the same pairs, rank and budget as
     on the trained model. Effects DAS finds here come from the method and the architecture, not
-    from anything the model learned. The model is built by ``boot_transformers`` with
-    ``load_weights=False``, so it has the same model class and prepared configuration as the
-    trained bridge.
+    from anything the model learned. Built with ``load_weights=False``, so the model class and
+    prepared configuration match the trained bridge.
 
     Args:
         model_name: Model name or alias, as for ``TransformerBridge.boot_transformers``.
-        seed: Seed for the initialisation.
-        dtype: Parameter dtype.
         device: Device for the bridge; by default the device ``boot_transformers`` would choose.
         **boot_kwargs: Passed on to ``TransformerBridge.boot_transformers``, e.g. ``revision``.
 

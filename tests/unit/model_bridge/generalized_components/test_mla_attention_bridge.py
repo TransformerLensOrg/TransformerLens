@@ -469,12 +469,8 @@ class TestMLACompatibilityMaskSentinel:
 
 
 class TestMLAComplexRope:
-    """DeepSeek-V2 complex RoPE on rope slices that are not aligned in storage.
-
-    The rope portions are split off the end of wider tensors, so an odd
-    ``qk_nope_head_dim`` or ``kv_lora_rank`` (e.g. after structured pruning)
-    leaves them at an odd storage offset with odd strides.
-    """
+    """DeepSeek-V2 complex RoPE on rope slices that an odd ``qk_nope_head_dim`` or
+    ``kv_lora_rank`` (e.g. after pruning) leaves at odd storage offsets and strides."""
 
     ROPE_DIM = 4
 

@@ -368,8 +368,7 @@ class TestUseAttnResult:
         torch.testing.assert_close(patched, captured[0][:, :, 1, :], atol=1e-5, rtol=1e-5)
 
     def test_hook_z_edit_reaches_per_head_output(self) -> None:
-        """hook_z (o.hook_in) must fire ahead of the per-head fork, so a z edit moves both paths
-        alike."""
+        """hook_z (o.hook_in) fires ahead of the per-head fork, so z edits move both paths."""
         bridge, inputs = self._bridge_and_inputs()
         d_head = self.d_model // self.n_heads
 

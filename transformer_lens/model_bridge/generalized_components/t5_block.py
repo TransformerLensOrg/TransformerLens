@@ -94,10 +94,8 @@ class T5BlockBridge(GeneralizedComponent):
         if self.original_component is None:
             return
         self._original_block_forward = self.original_component.forward
-        # The stack reads block outputs the way the block's own forward lays
-        # them out. Transformers >= 5.15 dropped output_attentions from
-        # T5Block.forward, which now returns a fixed (hidden, self_bias,
-        # cross_bias); LongT5Block kept the parameter and the older layout.
+        # Transformers >= 5.15 T5Block.forward dropped output_attentions and returns a fixed
+        # (hidden, self_bias, cross_bias); LongT5Block keeps the older layout the stack expects.
         returns_optional_attentions = (
             "output_attentions" in inspect.signature(self._original_block_forward).parameters
         )
