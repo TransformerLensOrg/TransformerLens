@@ -105,6 +105,24 @@ SPECS: Dict[str, Dict[str, Any]] = {
             max_position_embeddings=64,
         ),
     ),
+    "ernie4_5_moe": dict(
+        architecture="Ernie4_5_MoeForCausalLM",
+        sparse_layers=[1],
+        config=dict(
+            model_type="ernie4_5_moe",
+            vocab_size=64,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            intermediate_size=48,
+            moe_intermediate_size=24,
+            moe_num_experts=4,
+            moe_k=2,
+            moe_layer_start_index=1,
+            max_position_embeddings=64,
+        ),
+    ),
 }
 
 

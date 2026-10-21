@@ -161,9 +161,7 @@ class _LinearToyBridge(TransformerBridge):
         for direction, specs in (("fwd", fwd_hooks), ("bwd", bwd_hooks)):
             for name, hook_fn in specs:
                 hook_point = self.hook_dict[name]
-                hook_point.add_hook(hook_fn, dir=direction)
-                handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                added.append((hook_point, direction, handles[-1]))
+                added.append((hook_point, direction, hook_point.add_hook(hook_fn, dir=direction)))
         try:
             yield self
         finally:
@@ -335,6 +333,17 @@ def test_config_defaults_are_the_supported_node_sweep() -> None:
 def test_config_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="ig_steps"):
         EdgeAttributionConfig(ig_steps=0)
+
+
+@pytest.mark.parametrize(
+    "config, field_name, bad_value",
+    [(EdgeAttributionConfig(), "granularity", "edges"), (FaithfulnessConfig(), "ablation", "zero")],
+)
+def test_config_rejects_unknown_modes(config: Any, field_name: str, bad_value: str) -> None:
+    # Set after construction: under pytest the type-check hook would reject it at __init__ first.
+    object.__setattr__(config, field_name, bad_value)
+    with pytest.raises(ValueError, match=field_name):
+        config.__post_init__()
 
 
 def test_config_accepts_edge_granularity() -> None:

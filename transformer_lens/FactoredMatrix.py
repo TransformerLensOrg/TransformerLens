@@ -17,6 +17,13 @@ import transformer_lens.utilities.tensors as tensor_utils
 from transformer_lens.utilities.slice import to_python_int
 
 
+def upcast_for_linalg(x: torch.Tensor) -> torch.Tensor:
+    """Upcast 16-bit floats to float32, since ``torch.linalg`` SVD/eig lack 16-bit kernels."""
+    if x.dtype in (torch.bfloat16, torch.float16):
+        return x.to(torch.float32)
+    return x
+
+
 @runtime_checkable
 class TensorLike(Protocol):
     """Minimal tensor protocol that FactoredMatrix accepts in place of torch.Tensor.
@@ -225,12 +232,7 @@ class FactoredMatrix:
         Float[torch.Tensor, "*leading_dims rdim mdim"],
     ]:
         # Cache on the instance (frees with it) rather than class-level — fixes the lru_cache leak.
-        A, B = self.A, self.B
-        # SVD is not implemented for 16-bit inputs.
-        if A.dtype in [torch.bfloat16, torch.float16]:
-            A = A.to(torch.float32)
-        if B.dtype in [torch.bfloat16, torch.float16]:
-            B = B.to(torch.float32)
+        A, B = upcast_for_linalg(self.A), upcast_for_linalg(self.B)
         Ua, Sa, Vha = torch.linalg.svd(A, full_matrices=False)
         Ub, Sb, Vhb = torch.linalg.svd(B, full_matrices=False)
         Va = tensor_utils.transpose(Vha)
@@ -283,11 +285,7 @@ class FactoredMatrix:
         Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv,
         so Av is an eigenvector of AB with eigenvalue k.
         """
-        input_matrix = self.BA
-        if input_matrix.dtype in [torch.bfloat16, torch.float16]:
-            # Cast to float32 because eig is not implemented for 16-bit on CPU/CUDA
-            input_matrix = input_matrix.to(torch.float32)
-        return torch.linalg.eig(input_matrix).eigenvalues
+        return torch.linalg.eig(upcast_for_linalg(self.BA)).eigenvalues
 
     def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
         """

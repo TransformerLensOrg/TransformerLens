@@ -112,7 +112,7 @@ class T5BlockBridge(GeneralizedComponent):
             encoder_decoder_position_bias=None,
             layer_head_mask=None,
             cross_attn_layer_head_mask=None,
-            past_key_value=None,
+            past_key_values=None,
             use_cache=False,
             output_attentions=False,
             return_dict=True,
@@ -126,24 +126,8 @@ class T5BlockBridge(GeneralizedComponent):
             layers = block_self.layer
             is_decoder_block = len(layers) == 3
 
-            # Check which parameters are accepted by the layer forward methods
-            # (Transformers v5 removed past_key_value, use_cache, layer_head_mask)
+            # Transformers v5 dropped use_cache and layer_head_mask from some sublayers.
             self_attn_params = set(inspect.signature(layers[0].forward).parameters.keys())
-
-            if "past_key_value" in self_attn_params and past_key_value is not None:
-                if not is_decoder_block:
-                    expected_num_past_key_values = 0
-                else:
-                    expected_num_past_key_values = 2
-                if len(past_key_value) != expected_num_past_key_values:
-                    raise ValueError(
-                        f"There should be {expected_num_past_key_values} past states. Got {len(past_key_value)}."
-                    )
-                self_attn_past_key_value = past_key_value[:2] if is_decoder_block else None
-                cross_attn_past_key_value = past_key_value[2:4] if is_decoder_block else None
-            else:
-                self_attn_past_key_value = None
-                cross_attn_past_key_value = None
             self_attn_kwargs = dict(
                 hidden_states=hidden_states,
                 attention_mask=attention_mask,
@@ -151,9 +135,10 @@ class T5BlockBridge(GeneralizedComponent):
                 output_attentions=output_attentions,
                 cache_position=cache_position,
             )
-            # Conditionally pass parameters removed in Transformers v5
-            if "past_key_value" in self_attn_params:
-                self_attn_kwargs["past_key_value"] = self_attn_past_key_value
+            # The stack passes the shared Cache as past_key_values; dropping it
+            # leaves the cache empty and breaks incremental decoding.
+            if "past_key_values" in self_attn_params:
+                self_attn_kwargs["past_key_values"] = past_key_values
             if "use_cache" in self_attn_params:
                 self_attn_kwargs["use_cache"] = use_cache
             if "layer_head_mask" in self_attn_params:
@@ -175,8 +160,8 @@ class T5BlockBridge(GeneralizedComponent):
                     output_attentions=output_attentions,
                     cache_position=cache_position,
                 )
-                if "past_key_value" in cross_attn_params:
-                    cross_attn_kwargs["past_key_value"] = cross_attn_past_key_value
+                if "past_key_values" in cross_attn_params:
+                    cross_attn_kwargs["past_key_values"] = past_key_values
                 if "use_cache" in cross_attn_params:
                     cross_attn_kwargs["use_cache"] = use_cache
                 if "layer_head_mask" in cross_attn_params:

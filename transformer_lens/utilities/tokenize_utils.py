@@ -247,12 +247,40 @@ def get_tokens_with_bos_removed(
         bos_removed_shape = list(tokens.shape)
         bos_removed_shape[-1] -= 1
 
-        if tokenizer.bos_token_id == tokenizer.pad_token_id:
+        if tokenizer.pad_token_id is None:
+            n_leading_pads = torch.zeros(tokens.shape[:-1], dtype=torch.long, device=tokens.device)
+        else:
             is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
             is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
-            real_bos_positions = is_leading_pad.sum(-1) - 1
+            n_leading_pads = is_leading_pad.sum(-1)
+
+        if tokenizer.bos_token_id == tokenizer.pad_token_id:
+            # The prepended BOS is the last of the leading pads.
+            real_bos_positions = n_leading_pads - 1
+            has_bos = n_leading_pads > 0
         else:
-            real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
+            # The prepended token is the first non-pad one; CLS counts as it does in
+            # detect_tokenizer_bos_eos, so BERT-style tokenizers drop [CLS] here too.
+            leading_ids = [tokenizer.bos_token_id]
+            cls_token_id = getattr(tokenizer, "cls_token_id", None)
+            if isinstance(cls_token_id, int):
+                leading_ids.append(cls_token_id)
+            real_bos_positions = n_leading_pads
+            has_bos = n_leading_pads < tokens.shape[-1]
+            if tokens.shape[-1] > 0:
+                first_real = tokens.gather(
+                    -1, n_leading_pads.clamp(max=tokens.shape[-1] - 1).unsqueeze(-1)
+                ).squeeze(-1)
+                has_bos &= torch.isin(first_real, torch.tensor(leading_ids, device=tokens.device))
+
+        if not bool(has_bos.all()):
+            # Dropping a column from such a row would remove a real token (or index
+            # out of bounds), and keeping it would leave the rows ragged.
+            raise ValueError(
+                f"Cannot remove BOS: {int((~has_bos).sum())} left-padded row(s) do not start "
+                f"with the BOS token (id {tokenizer.bos_token_id}) after their padding. "
+                "Rows passed here must each carry the BOS the tokenizer prepends."
+            )
 
         tokens = tokens.scatter(dim=-1, index=real_bos_positions.unsqueeze(-1), value=-100)
         return tokens[tokens != -100].view(*bos_removed_shape)

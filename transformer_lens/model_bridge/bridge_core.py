@@ -1185,16 +1185,15 @@ class BridgeCore:
                     if hook_point.name is not None:
                         alias_names_list.append(hook_point.name)
                     alias_names_list.append(name)
-                    hook_point.add_hook(
+                    handle = hook_point.add_hook(
                         hook_fn,
                         dir=dir,
                         level=context_level,
                         alias_names=alias_names_list,
                     )
                 else:
-                    hook_point.add_hook(hook_fn, dir=dir, level=context_level)
-                handles = hook_point.fwd_hooks if dir == "fwd" else hook_point.bwd_hooks
-                added_hooks.append((hook_point, dir, handles[-1]))
+                    handle = hook_point.add_hook(hook_fn, dir=dir, level=context_level)
+                added_hooks.append((hook_point, dir, handle))
 
             def apply_hooks(hook_list: List[Tuple[Any, Callable]], is_fwd: bool) -> None:
                 direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
@@ -1310,16 +1309,15 @@ class BridgeCore:
                 if hook_point.name is not None:
                     alias_names_list.append(hook_point.name)
                 alias_names_list.append(name)
-                hook_point.add_hook(
+                handle = hook_point.add_hook(
                     hook_fn,
                     dir=dir,
                     level=context_level,
                     alias_names=alias_names_list,
                 )
             else:
-                hook_point.add_hook(hook_fn, dir=dir, level=context_level)
-            handles = hook_point.fwd_hooks if dir == "fwd" else hook_point.bwd_hooks
-            added_hooks.append((hook_point, dir, handles[-1]))
+                handle = hook_point.add_hook(hook_fn, dir=dir, level=context_level)
+            added_hooks.append((hook_point, dir, handle))
 
         def apply_hooks(
             hook_list: List[Tuple[Union[str, Callable], Callable]], is_fwd: bool
@@ -1376,22 +1374,8 @@ class BridgeCore:
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
         try:
-            if stop_at_layer is not None and hasattr(self, "blocks"):
-                if stop_at_layer < 0:
-                    stop_at_layer = len(self.blocks) + stop_at_layer
-                if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
-
-                    def stop_hook(tensor: Any, *, hook: Any) -> Any:
-                        raise StopAtLayerException(tensor)
-
-                    # Stop at the beginning of the specified block, not at the end of the previous block
-                    block_hook_name = f"blocks.{stop_at_layer}.hook_in"
-                    hook_dict = self.hook_dict
-                    if block_hook_name in hook_dict:
-                        add_hook_to_point(
-                            hook_dict[block_hook_name], stop_hook, block_hook_name, "fwd"
-                        )
-
+            if effective_stop_layer is not None:
+                stop_at_layer = effective_stop_layer
             apply_hooks(fwd_hooks, True)
             apply_hooks(bwd_hooks, False)
             if start_at_layer is not None:
@@ -1672,14 +1656,15 @@ class BridgeCore:
         stop_handle: Optional[LensHandle] = None
         try:
             for hp, name in hooks:
-                hp.add_hook(make_cache_hook(name), level=context_level)
-                added_hooks.append((hp, "fwd", hp.fwd_hooks[-1]))
+                fwd_handle = hp.add_hook(make_cache_hook(name), level=context_level)
+                added_hooks.append((hp, "fwd", fwd_handle))
                 if incl_bwd:
-                    hp.add_hook(make_grad_cache_hook(name), dir="bwd", level=context_level)
-                    added_hooks.append((hp, "bwd", hp.bwd_hooks[-1]))
+                    bwd_handle = hp.add_hook(
+                        make_grad_cache_hook(name), dir="bwd", level=context_level
+                    )
+                    added_hooks.append((hp, "bwd", bwd_handle))
             if stop_hook_point is not None and stop_hook_fn is not None:
-                stop_hook_point.add_hook(stop_hook_fn, level=context_level)
-                stop_handle = stop_hook_point.fwd_hooks[-1]
+                stop_handle = stop_hook_point.add_hook(stop_hook_fn, level=context_level)
                 added_hooks.append((stop_hook_point, "fwd", stop_handle))
         except Exception:
             try:

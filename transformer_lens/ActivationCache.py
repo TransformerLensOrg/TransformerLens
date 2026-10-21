@@ -1183,7 +1183,7 @@ class ActivationCache:
 
     def _uses_ln_centering(self, layer: Optional[int]) -> bool:
         """Use the target norm's semantics, not just the block normalization family."""
-        is_final = layer is None or layer in (-1, self.model.cfg.n_layers)
+        is_final = layer is None or layer == self.model.cfg.n_layers
         return self.model.cfg.normalization_type in ["LN", "LNPre"] and not (
             is_final and getattr(self.model.cfg, "final_rms", False)
         )
@@ -1419,14 +1419,15 @@ class ActivationCache:
                 components = torch.cat([remainder_full[None]], dim=0)
                 labels.append("remainder")
             else:
-                empty_shape_src = pos_slice.apply(self["hook_embed"], dim=-2)
+                empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
+                empty_shape = tuple(empty_src.shape)
+                empty_dtype = empty_src.dtype
                 if project_2d is not None:
-                    empty_shape_src = empty_shape_src @ project_2d
+                    # Shape only: a real matmul would demand the cache and direction share a dtype.
+                    empty_shape = (*empty_shape[:-1], project_2d.shape[-1])
+                    empty_dtype = torch.promote_types(empty_dtype, project_2d.dtype)
                 components = torch.zeros(
-                    0,
-                    *empty_shape_src.shape,
-                    dtype=empty_shape_src.dtype,
-                    device=empty_shape_src.device,
+                    0, *empty_shape, dtype=empty_dtype, device=empty_src.device
                 )
 
             if apply_ln:

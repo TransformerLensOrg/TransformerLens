@@ -1,4 +1,4 @@
-"""Attribution patching -- linearized activation patching on ``TransformerBridge``.
+"""Attribution patching — linearized activation patching on ``TransformerBridge``.
 
 Attribution patching estimates the causal effect of every model component on a
 task metric with a *gradient-based linearization* of activation patching: rather
@@ -52,6 +52,7 @@ from typing import (
     Sequence,
     Union,
     cast,
+    get_args,
 )
 
 import torch
@@ -196,8 +197,9 @@ class EdgeAttributionConfig:
     This build implements node and edge granularity with plain attribution.
     ``ig_steps>1`` is accepted by the type but raises :class:`NotImplementedError`
     at construction, so downstream code can import and reference this API now
-    while the integrated-gradient path is not implemented. The default is the
-    only executable value, ``ig_steps=1``.
+    while the integrated-gradient path is not implemented. Once EAP-IG lands,
+    the default flips to ``ig_steps=5`` (EAP-IG is the faithful default); until
+    then the default is the only executable value, ``ig_steps=1``.
 
     Attributes:
         granularity: ``"node"`` or ``"edge"``. Defaults to ``"node"``.
@@ -208,6 +210,10 @@ class EdgeAttributionConfig:
     ig_steps: int = 1
 
     def __post_init__(self) -> None:
+        if self.granularity not in get_args(Granularity):
+            raise ValueError(
+                f"granularity must be one of {get_args(Granularity)}, got {self.granularity!r}"
+            )
         if self.ig_steps < 1:
             raise ValueError(f"ig_steps must be >= 1, got {self.ig_steps}")
         if self.ig_steps > 1:
@@ -242,8 +248,8 @@ class AttributionResult:
         """The ``k`` nodes with the largest effect magnitude, strongest first.
 
         Ranking is by absolute score: a node with a large negative effect is as
-        causally important as one with a large positive effect, so magnitude -- not
-        signed value -- orders the circuit. Ties keep enumeration order (stable
+        causally important as one with a large positive effect, so magnitude — not
+        signed value — orders the circuit. Ties keep enumeration order (stable
         sort). Requesting more than the available nodes returns all of them.
         """
         ranked = sorted(self.node_scores.items(), key=lambda item: abs(item[1]), reverse=True)
@@ -276,6 +282,12 @@ class FaithfulnessConfig:
     """
 
     ablation: AblationMode = "corrupt"
+
+    def __post_init__(self) -> None:
+        if self.ablation not in get_args(AblationMode):
+            raise ValueError(
+                f"ablation must be one of {get_args(AblationMode)}, got {self.ablation!r}"
+            )
 
 
 @dataclass
@@ -458,7 +470,7 @@ def enumerate_nodes(model: Any, cache: GradientCache) -> list[Node]:
         The node list, ordered embed-then-layerwise for deterministic ranking.
 
     Raises:
-        ValueError: if any required hook point is absent from ``cache`` -- the
+        ValueError: if any required hook point is absent from ``cache`` — the
             graph is never silently truncated.
     """
     n_layers = int(model.cfg.n_layers)
@@ -708,7 +720,7 @@ def enumerate_edges(model: Any, cache: GradientCache) -> list[tuple[Node, Node]]
         The edge list as ``(writer, reader)`` node pairs; no pair repeats.
 
     Raises:
-        ValueError: if any required hook point is absent from ``cache`` -- the
+        ValueError: if any required hook point is absent from ``cache`` — the
             graph is never silently truncated.
     """
     n_layers = int(model.cfg.n_layers)
@@ -806,7 +818,7 @@ def cache_activation_and_gradient(
     inert and its ``.grad`` stays ``None``. A backward hook goes through the same
     conversion and delivers the real gradient in canonical shape. Driving the
     backward with :func:`torch.autograd.grad` instead of ``metric.backward()``
-    keeps it off every parameter's ``.grad`` buffer -- no caller grads clobbered, no
+    keeps it off every parameter's ``.grad`` buffer — no caller grads clobbered, no
     model-sized buffer allocated.
 
     With ``compute_gradient=False`` the backward is skipped entirely: only forward
@@ -821,7 +833,7 @@ def cache_activation_and_gradient(
         tokens: Input token ids for a single forward pass.
         metric_fn: Maps the model logits to a scalar to differentiate.
         names_filter: Restricts which hook points are cached (and have gradients
-            retained). ``None`` (the default) caches the node-granularity hook set --
+            retained). ``None`` (the default) caches the node-granularity hook set —
             ``hook_embed`` plus each layer's ``attn.hook_z`` and ``hook_mlp_out``;
             pass an explicit filter to cache any hook point outside that set. On a
             real Bridge, ``None`` cannot mean "every hook point": the gated points
@@ -916,8 +928,8 @@ def cache_activation_and_gradient(
             else ()
         )
 
-    # The most-upstream cached point's own backward hook never fires -- nothing
-    # requested is upstream of it, so the backward stops at it -- but its cached
+    # The most-upstream cached point's own backward hook never fires — nothing
+    # requested is upstream of it, so the backward stops at it — but its cached
     # tensor is on-path and unconverted, so torch.autograd.grad returns that
     # gradient directly. Backfill any point the hooks missed from that return.
     for name, grad in zip(captured_names, returned):

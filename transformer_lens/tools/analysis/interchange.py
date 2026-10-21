@@ -248,7 +248,8 @@ class NormMatchedPlacebo:
     Attributes:
         reference: The intervention whose displacement is matched.
         basis: Orthonormal basis of the placebo subspace, usually from :func:`random_basis` with
-            the reference's rank.
+            the reference's rank, or from :func:`random_neuron_basis` for a reference built by
+            :func:`neuron_basis`.
     """
 
     reference: SubspaceInterchange

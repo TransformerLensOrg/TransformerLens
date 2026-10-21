@@ -112,7 +112,11 @@ def sign_flip_permutation_pvalue(
     deterministic; otherwise ``n_permutations`` random patterns are drawn from
     the CPU ``generator`` and the p-value is ``(hits + 1) / (n_permutations + 1)``.
     ``alternative`` is ``"two-sided"`` (``|null| >= |observed|``), ``"greater"``
-    or ``"less"``. Returns a tensor with ``dim`` removed.
+    or ``"less"``. Each comparison counts a null mean within a relative
+    ``100 * eps`` of the observed one as a tie, so floating-point summation order
+    cannot make a tied pattern miss; there is no absolute floor, so near-zero
+    observed effects get essentially no tolerance. Returns a tensor with ``dim``
+    removed.
     """
     if alternative not in _ALTERNATIVES:
         raise ValueError(f"alternative must be one of {_ALTERNATIVES}, got {alternative!r}")

@@ -83,8 +83,15 @@ def test_mean_difference_basis_spans_the_centred_class_means():
     cosine = torch.nn.functional.cosine_similarity(direction[:, 0], expected, dim=0)
     assert cosine.abs() > 1 - 1e-5
 
-    three = mean_difference_basis(torch.randn(90, D_MODEL), [i % 3 for i in range(90)])
+    labels3 = torch.tensor([0] * 20 + [1] * 30 + [2] * 50)
+    generator = torch.Generator().manual_seed(0)
+    acts3 = torch.randn(100, D_MODEL, generator=generator)
+    acts3 += 3.0 * torch.randn(3, D_MODEL, generator=generator)[labels3]
+    three = mean_difference_basis(acts3, labels3.tolist())
     assert three.shape == (D_MODEL, 2) and _orthonormal(three)
+    means = torch.stack([acts3[labels3 == c].mean(0) for c in range(3)])
+    centred = (means - means.mean(0)).T
+    assert (centred - three @ (three.T @ centred)).abs().max() < 1e-4
     with pytest.raises(ValueError, match="two classes"):
         mean_difference_basis(torch.randn(10, D_MODEL), [0] * 10)
 
@@ -293,6 +300,20 @@ def test_das_recovers_a_planted_direction():
     assert (logits.argmax(-1) == held_out_targets).float().mean() > 0.9
 
 
+def test_the_epoch_loss_is_the_mean_cross_entropy_per_pair():
+    model, base, source, targets = _planted_pairs(n=50)
+    # lr=0 keeps the basis at its initialisation; uneven batches of 16 and a last batch of 2
+    result = fit_das(
+        model, "hook_mid", base, source, targets, model, rank=1, epochs=2, batch_size=16, lr=0.0
+    )
+    acts = collect_activations(model, "hook_mid", source, model)
+    logits = intervened_logits(
+        model, "hook_mid", SubspaceInterchange(result.subspace), base, acts, model
+    )
+    expected = torch.nn.functional.cross_entropy(logits, targets).item()
+    assert result.losses == pytest.approx((expected, expected), rel=1e-5)
+
+
 def test_splitting_batches_trains_the_same_way():
     model, base, source, targets = _planted_pairs()
     kwargs = dict(rank=1, epochs=30, lr=5e-2, batch_size=64)
@@ -355,6 +376,25 @@ def test_the_subspace_defaults_to_the_models_device():
     result = fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=1)
     assert result.basis.device == model.scale.device
 
+    class _OffCpu(HookedRootModule):
+        """Stands in for a GPU model: its first parameter, which sets the default, is off the CPU."""
+
+        def __init__(self, direction):
+            super().__init__()
+            self.offload = nn.Parameter(torch.empty(1, device="meta"))
+            self.planted = _Planted(direction)
+            self.setup()
+            self.eval()
+
+        def forward(self, x):
+            return self.planted(x)
+
+    off_cpu = _OffCpu(model.direction)
+    assert _model_device(off_cpu) == torch.device("meta")
+    # No epochs, as a meta basis cannot train against CPU activations
+    result = fit_das(off_cpu, "planted.hook_mid", base, source, targets, off_cpu, rank=1, epochs=0)
+    assert result.basis.device == torch.device("meta")
+
 
 def test_models_in_training_mode_are_rejected():
     model, base, source, targets = _planted_pairs(n=8)
@@ -374,6 +414,7 @@ def test_das_leaves_the_model_untouched():
     before = model.scale.detach().clone()
     fit_das(model, "hook_mid", base, source, targets, model, rank=1, epochs=2)
     assert model.scale.requires_grad and torch.equal(model.scale.detach(), before)
+    assert model.scale.grad is None  # frozen while training, so no gradient reaches the model
     with pytest.raises(ValueError, match="same length"):
         fit_das(model, "hook_mid", base, source[:-1], targets, model, rank=1)
 

@@ -249,10 +249,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = position_embeddings
-                if self._rope_interleave:
-                    q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
-                else:
-                    q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         elif self._rotary_emb is not None:
             # Fallback: compute from rotary_emb if position_embeddings not passed
             position_ids = torch.arange(seq_length, device=hidden_states.device).unsqueeze(0)
@@ -264,10 +261,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = emb
-                if self._rope_interleave:
-                    q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
-                else:
-                    q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         else:
             raise ValueError(
                 "MLAAttentionBridge requires position_embeddings or set_rotary_emb() "

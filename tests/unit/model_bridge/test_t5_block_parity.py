@@ -12,6 +12,11 @@ import copy
 
 import pytest
 import torch
+from transformers import (
+    LongT5Config,
+    LongT5ForConditionalGeneration,
+    T5ForConditionalGeneration,
+)
 from transformers.models.t5.configuration_t5 import T5Config
 from transformers.models.t5.modeling_t5 import T5Block
 
@@ -19,6 +24,9 @@ from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.component_setup import setup_submodules
+from transformer_lens.model_bridge.sources._bridge_builder import (
+    build_bridge_from_module,
+)
 
 
 def _tiny_config() -> T5Config:
@@ -271,3 +279,56 @@ def test_decoder_gets_the_cross_attention_alias() -> None:
     assert decoder.hook_aliases["hook_attn_out"] == "self_attn.hook_out"
     assert decoder.hook_aliases["hook_cross_attn_out"] == "cross_attn.hook_out"
     assert decoder.hook_aliases["hook_mlp_out"] == "mlp.hook_out"
+
+
+def _tiny_seq2seq(arch: str):
+    common = dict(
+        vocab_size=32,
+        d_model=16,
+        d_kv=4,
+        d_ff=32,
+        num_layers=2,
+        num_decoder_layers=2,
+        num_heads=4,
+        dropout_rate=0.0,
+        decoder_start_token_id=0,
+    )
+    if arch == "LongT5ForConditionalGeneration":
+        cfg = LongT5Config(**common, encoder_attention_type="local", local_radius=2)
+        return LongT5ForConditionalGeneration(cfg).eval(), cfg
+    cfg = T5Config(**common)
+    return T5ForConditionalGeneration(cfg).eval(), cfg
+
+
+@pytest.mark.parametrize("arch", ["T5ForConditionalGeneration", "LongT5ForConditionalGeneration"])
+def test_patched_block_fills_the_kv_cache(arch) -> None:
+    """The stack passes the Cache as ``past_key_values``; a patched forward that
+    drops it leaves the cache empty, so HF ``generate`` on the bridged model
+    decodes every step without context."""
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model, cfg = _tiny_seq2seq(arch)
+        enc_ids = torch.randint(0, 32, (2, 5))
+        dec_ids = torch.randint(0, 32, (2, 4))
+    reference = copy.deepcopy(model)
+    build_bridge_from_module(model, arch, hf_config=copy.deepcopy(cfg), device="cpu")
+
+    with torch.no_grad():
+        full = model(input_ids=enc_ids, decoder_input_ids=dec_ids, use_cache=False).logits
+        prefix = model(input_ids=enc_ids, decoder_input_ids=dec_ids[:, :3], use_cache=True)
+        reference_prefix = reference(
+            input_ids=enc_ids, decoder_input_ids=dec_ids[:, :3], use_cache=True
+        )
+        cache, reference_cache = prefix.past_key_values, reference_prefix.past_key_values
+        assert cache.get_seq_length() == reference_cache.get_seq_length() == 3
+        # A dropped cross-attention cache only recomputes K/V, so logits alone cannot see it.
+        cross_len = cache.cross_attention_cache.get_seq_length()
+        assert cross_len == reference_cache.cross_attention_cache.get_seq_length() == 5
+        step = model(
+            encoder_outputs=(prefix.encoder_last_hidden_state,),
+            decoder_input_ids=dec_ids[:, 3:],
+            past_key_values=cache,
+            use_cache=True,
+        ).logits
+
+    torch.testing.assert_close(step[:, -1], full[:, -1], atol=1e-5, rtol=1e-4)

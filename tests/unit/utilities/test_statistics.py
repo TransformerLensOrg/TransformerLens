@@ -13,6 +13,7 @@ from transformer_lens.utilities import (
     standard_error,
     success_rate_ci,
 )
+from transformer_lens.utilities.statistics import _count_hits
 
 
 def test_derive_generator_is_keyed_and_stable():
@@ -131,6 +132,18 @@ def test_sign_flip_counts_float64_ties_for_one_sided_alternatives(
     p = sign_flip_permutation_pvalue(effects, alternative=alternative)
     assert p.dtype == torch.float64
     assert p.item() == expected
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("alternative", ["two-sided", "greater", "less"])
+def test_sign_flip_counts_a_one_ulp_tie_on_every_platform(dtype: torch.dtype, alternative: str):
+    # Built directly: whether a sign-flip mean lands an ulp off its tie depends on summation order.
+    observed = torch.tensor([0.3], dtype=dtype)
+    away = torch.tensor(math.inf if alternative == "less" else -math.inf, dtype=dtype)
+    tie = torch.nextafter(observed, away)
+    distinct = torch.tensor([1.0 if alternative == "less" else 0.0], dtype=dtype)
+    hits = _count_hits(torch.cat([tie, distinct]), observed, alternative)
+    assert hits.item() == 1
 
 
 def test_sign_flip_does_not_count_distinct_means_as_ties_near_zero():

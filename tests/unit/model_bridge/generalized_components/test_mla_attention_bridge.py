@@ -37,6 +37,9 @@ def tiny_config():
         topk_group=1,
         max_position_embeddings=128,
         moe_intermediate_size=256,
+        # The mask=None parity tests hold only under sdpa's is_causal; eager with
+        # mask=None is bidirectional and adds a boolean mask as 0/1.
+        attn_implementation="sdpa",
     )
 
 
@@ -519,6 +522,11 @@ class TestMLAComplexRope:
         assert torch.allclose(k_out, q_out)
 
     def test_bridge_forward_with_odd_nope_dim_and_kv_rank(self):
+        """Bridge output must match HF DeepseekV2Attention when the rope slices are misaligned."""
+        from unittest import mock
+
+        from transformers.models.deepseek_v2 import modeling_deepseek_v2
+
         config = DeepseekV2Config(
             vocab_size=100,
             hidden_size=32,
@@ -536,24 +544,43 @@ class TestMLAComplexRope:
             n_routed_experts=2,
             n_shared_experts=1,
             num_experts_per_tok=1,
+            # At the default 0.02 init, skipping RoPE moves the output by only ~5e-5.
+            initializer_range=0.5,
         )
-        model = DeepseekV2ForCausalLM(config)
-        bridge = MLAAttentionBridge(name="self_attn", config=config, submodules={})
-        bridge.set_original_component(model.model.layers[0].self_attn)
-
+        config._attn_implementation = "eager"
         batch, seq = 2, 6
-        hidden_states = torch.randn(batch, seq, config.hidden_size)
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = DeepseekV2ForCausalLM(config)
+            hidden_states = torch.randn(batch, seq, config.hidden_size)
+        hf_attn = model.model.layers[0].self_attn
+        bridge = MLAAttentionBridge(name="self_attn", config=config, submodules={})
+        bridge.set_original_component(hf_attn)
+
         position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
         freqs_cis = model.model.rotary_emb(hidden_states, position_ids)
         assert freqs_cis.is_complex()
+        # HF eager with mask=None is bidirectional; the bridge would apply a causal mask.
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = torch.zeros(batch, 1, seq, seq).masked_fill(
+            ~causal, torch.finfo(torch.float32).min
+        )
 
-        captured = {}
-        bridge.hook_pattern.add_hook(lambda t, hook: captured.update(pattern=t))
+        def hf_forward(rotary_fn) -> torch.Tensor:
+            # HF's own apply_rotary_emb raises on these slices via view_as_complex.
+            with mock.patch.object(modeling_deepseek_v2, "apply_rotary_emb", rotary_fn):
+                return hf_attn(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_embeddings=freqs_cis,
+                )[0]
+
         with torch.no_grad():
-            out = bridge(hidden_states, position_embeddings=freqs_cis, attention_mask=None)[0]
-        bridge.hook_pattern.remove_hooks()
+            hf_out = hf_forward(_apply_rotary_complex)
+            unrotated_out = hf_forward(lambda q, k, freqs_cis: (q, k))
+            bridge_out = bridge(
+                hidden_states, position_embeddings=freqs_cis, attention_mask=attention_mask
+            )[0]
 
-        assert out.shape == hidden_states.shape
-        assert torch.isfinite(out).all()
-        row_sums = captured["pattern"].sum(dim=-1)
-        assert torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-5)
+        torch.testing.assert_close(bridge_out, hf_out)
+        assert not torch.allclose(unrotated_out, hf_out, atol=1e-3)

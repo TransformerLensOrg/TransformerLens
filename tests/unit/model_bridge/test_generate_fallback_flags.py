@@ -1,4 +1,5 @@
-"""Stateful hf_generate fallback preserves stop flags and sampling penalties."""
+"""Stateful hf_generate fallback preserves stop flags and sampling penalties; the hooked
+loop rejects penalties it would otherwise ignore."""
 
 from types import SimpleNamespace
 
@@ -148,6 +149,34 @@ def test_stateful_fallback_rejects_frequency_penalty(monkeypatch, penalty):
     assert not captured
 
 
+@pytest.mark.parametrize(
+    "inputs, extra_kwargs, cause",
+    [
+        pytest.param(torch.tensor([[1, 2, 3]]), {"stray_kwarg": 1}, "multimodal", id="stray-kwarg"),
+        pytest.param(torch.randn(1, 3, 16), {}, "inputs_embeds", id="inputs-embeds"),
+    ],
+)
+def test_stateful_fallback_frequency_penalty_names_real_cause(
+    monkeypatch, inputs, extra_kwargs, cause
+):
+    """With use_past_kv_cache=True already set, the error must not advise setting it."""
+    bridge = _tiny_bridge()
+    bridge.cfg.is_stateful = True
+    captured = _capture_hf_generate(bridge, monkeypatch)
+    with pytest.raises(NotImplementedError) as excinfo:
+        bridge.generate(
+            inputs,
+            use_past_kv_cache=True,
+            freq_penalty=0.5,
+            verbose=False,
+            **extra_kwargs,
+        )
+    message = str(excinfo.value)
+    assert "use_past_kv_cache" not in message
+    assert cause in message and "hf_generate()" in message
+    assert not captured
+
+
 def test_stateful_fallback_repetition_penalty_matches_hf_generation():
     bridge = _tiny_bridge()
     bridge.cfg.is_stateful = True
@@ -165,3 +194,20 @@ def test_stateful_fallback_repetition_penalty_matches_hf_generation():
     )
     torch.testing.assert_close(actual, expected)
     assert not torch.equal(actual, unpenalized)
+
+
+@pytest.mark.parametrize("do_sample", [True, False])
+@pytest.mark.parametrize("method", ["generate", "generate_stream"])
+def test_hooked_loop_rejects_negative_frequency_penalty(method, do_sample):
+    bridge = _tiny_bridge()
+    with pytest.raises(ValueError, match="freq_penalty must be non-negative"):
+        result = getattr(bridge, method)(
+            torch.tensor([[1, 2, 3]]),
+            max_new_tokens=2,
+            do_sample=do_sample,
+            freq_penalty=-0.5,
+            stop_at_eos=False,
+            verbose=False,
+        )
+        if method == "generate_stream":
+            list(result)

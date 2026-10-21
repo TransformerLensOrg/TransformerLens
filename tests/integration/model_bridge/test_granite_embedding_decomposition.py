@@ -169,7 +169,8 @@ def test_live_and_reconstructed_head_results_have_same_scale(granite):
         bridge.reset_hooks()
 
 
-def test_neuron_projection_and_scaled_bias_reconstruct_residual(granite):
+@pytest.fixture
+def biased_granite(granite):
     _, reference, _ = granite
     model = copy.deepcopy(reference)
     # Bind the bias-bearing model before Bridge snapshots its parameter aliases.
@@ -179,17 +180,34 @@ def test_neuron_projection_and_scaled_bias_reconstruct_residual(granite):
     bridge = build_bridge_from_module(
         model, "GraniteForCausalLM", hf_config=model.config, device="cpu"
     )
-    try:
-        with torch.no_grad():
-            _, cache = bridge.run_with_cache(torch.tensor([[3, 4, 5]]))
-        full = cache.get_full_resid_decomposition(expand_neurons=True)
-        torch.testing.assert_close(full.sum(0), cache["blocks.1.hook_out"], rtol=1e-5, atol=1e-7)
-        directions = torch.randn(16, 2)
-        dense = cache.stack_neuron_results(2, apply_ln=True) @ directions
-        projected = cache.stack_neuron_results(2, apply_ln=True, project_output_onto=directions)
-        torch.testing.assert_close(projected, dense, rtol=1e-5, atol=1e-7)
-    finally:
-        bridge.close()
+    yield bridge
+    bridge.close()
+
+
+def test_neuron_projection_and_scaled_bias_reconstruct_residual(biased_granite):
+    bridge = biased_granite
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(torch.tensor([[3, 4, 5]]))
+    full = cache.get_full_resid_decomposition(expand_neurons=True)
+    torch.testing.assert_close(full.sum(0), cache["blocks.1.hook_out"], rtol=1e-5, atol=1e-7)
+    directions = torch.randn(16, 2)
+    dense = cache.stack_neuron_results(2, apply_ln=True) @ directions
+    projected = cache.stack_neuron_results(2, apply_ln=True, project_output_onto=directions)
+    torch.testing.assert_close(projected, dense, rtol=1e-5, atol=1e-7)
+
+
+@pytest.mark.parametrize("layer", [0, 1])
+@pytest.mark.parametrize("expand_neurons", [False, True])
+def test_mlp_input_decomposition_scales_target_layer_attention_bias(
+    biased_granite, layer, expand_neurons
+):
+    bridge = biased_granite
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(torch.tensor([[3, 4, 5]]))
+    full = cache.get_full_resid_decomposition(layer, mlp_input=True, expand_neurons=expand_neurons)
+    torch.testing.assert_close(
+        full.sum(0), cache[f"blocks.{layer}.hook_resid_mid"], rtol=1e-5, atol=1e-7
+    )
 
 
 @pytest.mark.parametrize("multiplier", [0.5, 2.0])

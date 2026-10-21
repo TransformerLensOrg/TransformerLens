@@ -190,8 +190,8 @@ The example selects the final sequence position, which is not appropriate for ev
 Choose the hook and position policy before interpreting selected coordinates. The API cannot detect
 leakage already introduced into caller-provided `features`. When several rows come from one source
 prompt, for example multiple positions of the same sequence, keep all of those rows on one side of
-the split; the row-level split is label-independent and can otherwise place rows of one prompt on
-both sides, inflating held-out accuracy on grouped data. Pass one integer group ID per row to split
+the split; the row-level split is stratified by label but blind to which prompt a row came from,
+and can otherwise place rows of one prompt on both sides, inflating held-out accuracy on grouped data. Pass one integer group ID per row to split
 those rows together:
 
 ```python
