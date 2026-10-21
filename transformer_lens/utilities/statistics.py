@@ -179,8 +179,10 @@ _CLOPPER_PEARSON_STEPS = 200
 def _binomial_cdf(k: int, n: int, p: float) -> float:
     """Exact ``P(X <= k)`` for ``X ~ Binomial(n, p)``.
 
-    Accumulates the pmf by recurrence (``term_{i} = term_{i-1} * (n - i + 1) / i * p / (1 - p)``)
-    rather than forming ``comb(n, i)`` and ``p ** i`` separately, which overflow at large ``n``.
+    Works with each term's logarithm (``log comb(n, i) + i log p + (n - i) log(1 - p)``) and
+    sums ``exp(log_term - peak)`` before scaling back by ``exp(peak)``. Forming ``comb(n, i)``
+    and ``p ** i`` directly overflows at large ``n``, and starting a pmf recurrence from
+    ``(1 - p) ** n`` underflows to ``0.0`` once ``n log(1 - p) < -745``.
     """
     if k < 0:
         return 0.0
@@ -190,13 +192,14 @@ def _binomial_cdf(k: int, n: int, p: float) -> float:
         return 1.0
     if p >= 1.0:
         return 0.0
-    term = (1.0 - p) ** n
-    total = term
-    odds = p / (1.0 - p)
-    for i in range(1, k + 1):
-        term *= (n - i + 1) / i * odds
-        total += term
-    return total
+    log_p, log_q = math.log(p), math.log1p(-p)
+    log_n_factorial = math.lgamma(n + 1)
+    log_terms = [
+        log_n_factorial - math.lgamma(i + 1) - math.lgamma(n - i + 1) + i * log_p + (n - i) * log_q
+        for i in range(k + 1)
+    ]
+    peak = max(log_terms)
+    return min(1.0, math.exp(peak) * math.fsum(math.exp(term - peak) for term in log_terms))
 
 
 def _clopper_pearson_bound(n_successes: int, n_trials: int, tail: float, *, upper: bool) -> float:
