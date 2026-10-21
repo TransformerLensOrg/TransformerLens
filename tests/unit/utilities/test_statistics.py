@@ -2,6 +2,7 @@
 
 import itertools
 import math
+from fractions import Fraction
 
 import pytest
 import torch
@@ -13,6 +14,7 @@ from transformer_lens.utilities import (
     standard_error,
     success_rate_ci,
 )
+from transformer_lens.utilities.statistics import _binomial_cdf
 
 
 def test_derive_generator_is_keyed_and_stable():
@@ -225,6 +227,42 @@ def test_success_rate_ci_narrows_as_the_trial_count_grows():
     small = success_rate_ci([False] * 6)
     large = success_rate_ci([False] * 600)
     assert large.ci_high < small.ci_high
+
+
+@pytest.mark.parametrize(
+    "k, n, p",
+    [(1000, 2000, 0.5), (190, 200, 0.97), (1995, 2000, 0.999), (5, 2000, 0.01)],
+)
+def test_binomial_cdf_matches_exact_rational_sum_at_large_n(k: int, n: int, p: float):
+    # The old recurrence started from (1 - p) ** n, which underflows to 0.0 here and made
+    # every term, and the CDF, 0.0. (1000, 2000, 0.5) is ~0.509.
+    q = Fraction(p)
+    exact = sum(math.comb(n, i) * q**i * (1 - q) ** (n - i) for i in range(k + 1))
+    assert _binomial_cdf(k, n, p) == pytest.approx(float(exact), rel=1e-9)
+
+
+@pytest.mark.parametrize(
+    "k, n, low, high",
+    [
+        # Reference bounds from scipy.stats.beta.ppf, rounded to four places.
+        (199, 200, 0.9725, 0.9999),
+        (297, 300, 0.9711, 0.9979),
+        (1000, 2000, 0.4779, 0.5221),
+        (1990, 2000, 0.9908, 0.9976),
+    ],
+)
+def test_success_rate_ci_matches_reference_bounds_at_large_n(
+    k: int, n: int, low: float, high: float
+):
+    result = success_rate_ci([True] * k + [False] * (n - k))
+    assert result.ci_low == pytest.approx(low, abs=1e-4)
+    assert result.ci_high == pytest.approx(high, abs=1e-4)
+    assert result.ci_low <= result.point_estimate <= result.ci_high
+
+
+@pytest.mark.parametrize("n", [200, 1000])
+def test_success_rate_ci_all_success_lower_bound_at_large_n(n: int):
+    assert success_rate_ci([True] * n).ci_low == pytest.approx(0.025 ** (1 / n))
 
 
 def test_success_rate_ci_records_trial_and_success_counts():
