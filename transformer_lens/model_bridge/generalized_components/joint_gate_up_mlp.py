@@ -175,14 +175,7 @@ class JointGateUpMLPBridge(GatedMLPBridge):
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         """Reconstructed gated MLP forward with individual hook access."""
-        # Delegate to GatedMLPBridge's processed-weights path only when ALL
-        # processed weights exist; its fallback bypasses intermediate hooks.
-        if (
-            hasattr(self, "_use_processed_weights")
-            and self._use_processed_weights
-            and hasattr(self, "_processed_W_gate")
-            and hasattr(self, "_processed_W_in")
-        ):
+        if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
             return super().forward(*args, **kwargs)
 
         hidden_states = self.hook_in(args[0])
