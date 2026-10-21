@@ -1,5 +1,6 @@
 """Unit tests for interchange interventions on linear subspaces."""
 
+import numpy as np
 import pytest
 import torch
 from torch import nn
@@ -7,6 +8,7 @@ from torch import nn
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.tools.analysis import SubspaceInterchange as exported_interchange
+from transformer_lens.tools.analysis import fit_sparse_probe
 from transformer_lens.tools.analysis.interchange import (
     LearnedSubspace,
     NormMatchedPlacebo,
@@ -17,8 +19,10 @@ from transformer_lens.tools.analysis.interchange import (
     fit_das,
     intervened_logits,
     mean_difference_basis,
+    neuron_basis,
     probe_basis,
     random_basis,
+    random_neuron_basis,
     reinitialized,
     run_with_intervention,
 )
@@ -495,3 +499,109 @@ def test_the_arbitrary_label_control_can_reject_a_subspace():
     control = _held_out_iia(model, fit, test, labels(fit[2]), labels(test[2]))
     assert control > 0.9
     assert _held_out_iia(model, fit, test, real(fit[1]), real(test[1])) - control < 0.1
+
+
+def test_neuron_basis_selects_exactly_the_given_neurons():
+    basis = neuron_basis(D_MODEL, [4, 1])
+    assert basis.shape == (D_MODEL, 2) and _orthonormal(basis)
+    assert basis[4, 0] == 1 and basis[1, 1] == 1 and basis.sum() == 2
+    base, source = torch.randn(3, D_MODEL), torch.randn(3, D_MODEL)
+    out = SubspaceInterchange(basis)(base, source)
+    chosen = torch.tensor([1, 4])
+    others = torch.tensor([0, 2, 3, 5])
+    assert torch.allclose(out[:, chosen], source[:, chosen])
+    assert torch.equal(out[:, others], base[:, others])
+
+
+def test_neuron_basis_accepts_lists_arrays_and_tensors():
+    expected = neuron_basis(D_MODEL, [0, 3])
+    for neurons in ([0, 3], np.array([0, 3]), torch.tensor([0, 3], dtype=torch.int32)):
+        assert torch.equal(neuron_basis(D_MODEL, neurons), expected)
+
+
+@pytest.mark.parametrize(
+    ("neurons", "message"),
+    [
+        ([], "at least one neuron"),
+        ([D_MODEL], "must be in"),
+        ([-1], "must be in"),
+        ([2, 2], "must not repeat"),
+        (torch.tensor([1.0]), "must be integers"),
+        (torch.tensor([True, False]), "must be integers"),
+        (torch.tensor([[0], [3]]), "one-dimensional"),
+    ],
+)
+def test_neuron_basis_refuses_invalid_indices(neurons, message):
+    with pytest.raises(ValueError, match=message):
+        neuron_basis(D_MODEL, neurons)
+
+
+def test_random_neuron_basis_is_seeded_and_avoids_excluded_neurons():
+    torch.manual_seed(123)
+    expected = torch.rand(3)
+    torch.manual_seed(123)
+    first = random_neuron_basis(100, 5, seed=0, exclude=[0, 1, 2])
+    assert torch.equal(torch.rand(3), expected)  # the caller's stream is untouched
+    assert torch.equal(first, random_neuron_basis(100, 5, seed=0, exclude=[0, 1, 2]))
+    assert not torch.equal(first, random_neuron_basis(100, 5, seed=1, exclude=[0, 1, 2]))
+    assert _orthonormal(first) and first[:3].sum() == 0
+    assert random_neuron_basis(100, 5, seed=0).shape == (100, 5)  # no exclusions
+    with pytest.raises(ValueError, match="k must be in"):
+        random_neuron_basis(D_MODEL, D_MODEL - 1, seed=0, exclude=[0, 1])
+
+
+def test_the_placebo_stays_within_random_neurons():
+    base, source = torch.randn(8, 100), torch.randn(8, 100)
+    reference = SubspaceInterchange(neuron_basis(100, [3, 7]))
+    placebo = NormMatchedPlacebo(reference, random_neuron_basis(100, 2, seed=0, exclude=[3, 7]))
+    moved = placebo(base, source) - base
+    assert torch.allclose(
+        moved.norm(dim=-1), (reference(base, source) - base).norm(dim=-1), atol=1e-5
+    )
+    assert (moved.abs() > 1e-6).sum(-1).max() <= 2 and moved[:, [3, 7]].abs().max() == 0
+
+
+class _OneNeuron(HookedRootModule):
+    """The output reads a single planted neuron of the hooked activation."""
+
+    def __init__(self, neuron: int):
+        super().__init__()
+        self.neuron = neuron
+        self.hook_post = HookPoint()
+        self.setup()
+        self.eval()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        score = 4.0 * self.hook_post(x)[:, self.neuron]
+        return torch.stack([-score, score], dim=-1)
+
+
+def test_the_neuron_a_sparse_probe_selects_carries_a_planted_variable():
+    d_mlp, planted = 64, 17
+    model = _OneNeuron(planted)
+    generator = torch.Generator().manual_seed(0)
+
+    def pairs(n):
+        base, source = torch.randn(n, d_mlp, generator=generator), torch.randn(
+            n, d_mlp, generator=generator
+        )
+        return base, source, (source[:, planted] > 0).long()
+
+    fit_base, fit_source, fit_targets = pairs(200)
+    test_base, test_source, test_targets = pairs(200)
+    probe = fit_sparse_probe(
+        collect_activations(model, "hook_post", fit_source, model), fit_targets, k=1
+    )
+    assert probe.selected_features.tolist() == [planted]
+
+    source_acts = collect_activations(model, "hook_post", test_source, model)
+    needed = (test_base[:, planted] > 0).long() != test_targets  # the output must change
+
+    def iia(basis):
+        logits = intervened_logits(
+            model, "hook_post", SubspaceInterchange(basis), test_base, source_acts, model
+        )
+        return (logits.argmax(-1) == test_targets)[needed].float().mean().item()
+
+    assert iia(neuron_basis(d_mlp, probe.selected_features)) == 1.0
+    assert iia(random_neuron_basis(d_mlp, 1, seed=0, exclude=probe.selected_features)) == 0.0
