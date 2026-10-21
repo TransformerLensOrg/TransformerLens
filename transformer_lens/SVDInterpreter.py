@@ -33,6 +33,7 @@ class SVDInterpreter:
             assert isinstance(model, torch.nn.Module)  # named_parameters() fallback
             self.params = {name: param for name, param in model.named_parameters()}
 
+    @torch.no_grad()
     def get_singular_vectors(
         self,
         vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],
@@ -102,10 +103,14 @@ class SVDInterpreter:
 
         elif vector_type == "w_in":
             matrix = self._get_w_in_matrix(layer_index)
+            if matrix.dtype in [torch.bfloat16, torch.float16]:
+                matrix = matrix.to(torch.float32)
             _, _, V = torch.linalg.svd(matrix)
 
         elif vector_type == "w_out":
             matrix = self._get_w_out_matrix(layer_index)
+            if matrix.dtype in [torch.bfloat16, torch.float16]:
+                matrix = matrix.to(torch.float32)
             _, _, V = torch.linalg.svd(matrix)
 
         else:
@@ -115,15 +120,16 @@ class SVDInterpreter:
 
     def _get_singular_vectors_from_matrix(
         self,
-        V: Union[torch.Tensor, FactoredMatrix],
+        V: torch.Tensor,
         embedding: torch.Tensor,
         num_vectors: int = 10,
     ) -> torch.Tensor:
         """Returns the top num_vectors singular vectors from a matrix."""
 
+        embedding = embedding.to(dtype=V.dtype)
         vectors_list = []
         for i in range(num_vectors):
-            activations = V[i, :].float() @ embedding  # type: ignore
+            activations = V[i, :] @ embedding
             vectors_list.append(activations)
 
         vectors = torch.stack(vectors_list, dim=1).unsqueeze(1)

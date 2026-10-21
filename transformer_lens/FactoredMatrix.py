@@ -225,8 +225,14 @@ class FactoredMatrix:
         Float[torch.Tensor, "*leading_dims rdim mdim"],
     ]:
         # Cache on the instance (frees with it) rather than class-level — fixes the lru_cache leak.
-        Ua, Sa, Vha = torch.linalg.svd(self.A, full_matrices=False)
-        Ub, Sb, Vhb = torch.linalg.svd(self.B, full_matrices=False)
+        A, B = self.A, self.B
+        # SVD is not implemented for 16-bit inputs.
+        if A.dtype in [torch.bfloat16, torch.float16]:
+            A = A.to(torch.float32)
+        if B.dtype in [torch.bfloat16, torch.float16]:
+            B = B.to(torch.float32)
+        Ua, Sa, Vha = torch.linalg.svd(A, full_matrices=False)
+        Ub, Sb, Vhb = torch.linalg.svd(B, full_matrices=False)
         Va = tensor_utils.transpose(Vha)
         Vb = tensor_utils.transpose(Vhb)
         middle = Sa[..., :, None] * tensor_utils.transpose(Va) @ Ub * Sb[..., None, :]
