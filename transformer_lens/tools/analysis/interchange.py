@@ -13,6 +13,8 @@ variable at that hook point (Geiger et al., 2021).
 
 The module provides the intervention, fixed-direction bases to intervene on (the difference of
 class means, a linear probe's weights, a random basis), and a norm-matched random-subspace placebo.
+:func:`neuron_basis` turns a set of MLP neurons, such as the features a sparse probe selects, into a
+basis, and :func:`random_neuron_basis` draws random neurons as its placebo.
 :func:`fit_das` learns the basis instead, by distributed alignment search (DAS; Geiger et al.,
 2024): it trains an orthonormal basis so that the interchange produces the high-level model's
 predicted outputs.
@@ -111,6 +113,85 @@ def probe_basis(
     if w.shape[0] == 1:
         return orthonormal_subspace(w.T, rank=1).basis
     return orthonormal_subspace((w - w.mean(0)).T, rank=w.shape[0] - 1).basis
+
+
+Neurons = Union[Sequence[int], np.ndarray, torch.Tensor]
+"""Integer neuron indices: a list, a NumPy array, or a tensor such as a sparse probe's
+``selected_features``."""
+
+
+def neuron_basis(d_mlp: int, neurons: Neurons) -> Float[torch.Tensor, "d_mlp k"]:
+    """The coordinate basis of a set of MLP neurons, e.g. the features a sparse probe selects.
+
+    Interchanging it sets exactly those neurons to the source's values, at a neuron hook such as
+    ``blocks.N.mlp.hook_post``. Compare it with :func:`random_neuron_basis` of the same size: a random
+    direction is the wrong placebo for a claim about neurons, because it spreads over every neuron.
+
+    Args:
+        d_mlp: Number of neurons at the hook.
+        neurons: Integer indices of the neurons, each in ``[0, d_mlp)`` and none repeated.
+
+    Returns:
+        Orthonormal basis of unit vectors, ``[d_mlp, k]``, in the order given.
+
+    Raises:
+        ValueError: If no neuron is given, or an index is not an integer, out of range or repeated.
+    """
+    index = _neuron_indices(d_mlp, neurons)
+    if index.numel() == 0:
+        raise ValueError("neuron_basis needs at least one neuron")
+    basis = torch.zeros(d_mlp, index.numel())
+    basis[index, torch.arange(index.numel())] = 1.0
+    return basis
+
+
+def random_neuron_basis(
+    d_mlp: int,
+    k: int,
+    seed: int,
+    exclude: Optional[Neurons] = None,
+) -> Float[torch.Tensor, "d_mlp k"]:
+    """The coordinate basis of ``k`` neurons drawn at random: the placebo for :func:`neuron_basis`.
+
+    Args:
+        d_mlp: Number of neurons at the hook.
+        k: Number of neurons to draw.
+        seed: Seed for the draw; the caller's random stream is untouched.
+        exclude: Neurons the draw must avoid, usually the ones the placebo is compared with.
+
+    Returns:
+        Orthonormal basis of unit vectors, ``[d_mlp, k]``.
+
+    Raises:
+        ValueError: If fewer than ``k`` neurons remain to draw from, or ``exclude`` holds an
+            invalid index.
+    """
+    excluded = _neuron_indices(d_mlp, exclude if exclude is not None else [])
+    allowed = torch.ones(d_mlp, dtype=torch.bool)
+    allowed[excluded] = False
+    pool = allowed.nonzero().flatten()
+    if not 0 < k <= len(pool):
+        raise ValueError(
+            f"k must be in [1, {len(pool)}] with {len(excluded)} neurons excluded, got {k}"
+        )
+    generator = torch.Generator().manual_seed(seed)
+    return neuron_basis(d_mlp, pool[torch.randperm(len(pool), generator=generator)[:k]])
+
+
+def _neuron_indices(d_mlp: int, neurons: Neurons) -> Int[torch.Tensor, "k"]:
+    index = torch.as_tensor(neurons)
+    if index.numel() == 0:  # an empty list arrives as a float tensor
+        return torch.empty(0, dtype=torch.long)
+    if index.dtype == torch.bool or index.is_floating_point() or index.is_complex():
+        raise ValueError(f"neuron indices must be integers, got dtype {index.dtype}")
+    if index.dim() != 1:
+        raise ValueError(f"neuron indices must be one-dimensional, got shape {tuple(index.shape)}")
+    index = index.long().cpu()
+    if ((index < 0) | (index >= d_mlp)).any():
+        raise ValueError(f"neuron indices must be in [0, {d_mlp}), got {index.tolist()}")
+    if index.unique().numel() != index.numel():
+        raise ValueError(f"neuron indices must not repeat, got {index.tolist()}")
+    return index
 
 
 class LearnedSubspace(nn.Module):

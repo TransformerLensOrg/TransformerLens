@@ -21,11 +21,10 @@ Tools:
       patching for head-to-head circuit analysis.
     - interchange: Interchange interventions on linear subspaces: set a base's
       activation inside a subspace to its value on a source input, with
-      difference-of-means, probe and random bases, a norm-matched placebo,
-      difference-of-means, probe and random bases, a norm-matched placebo,
-      batched gradient-free evaluation, distributed alignment search (DAS) to
-      learn the subspace, and DAS's trained controls (arbitrary labels and a
-      randomly initialised model).
+      difference-of-means, probe, random and neuron bases, a norm-matched
+      placebo, batched gradient-free evaluation, distributed alignment search
+      (DAS) to learn the subspace, and DAS's trained controls (arbitrary labels
+      and a randomly initialised model).
     - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
@@ -66,9 +65,11 @@ from transformer_lens.tools.analysis.interchange import (
     fit_das,
     intervened_logits,
     mean_difference_basis,
+    neuron_basis,
     probe_basis,
     random_basis,
     random_init_bridge,
+    random_neuron_basis,
     reinitialized,
     run_with_intervention,
 )
@@ -120,11 +121,13 @@ __all__ = [
     "logit_lens",
     "logit_readout",
     "mean_difference_basis",
+    "neuron_basis",
     "orthonormal_subspace",
     "probe_basis",
     "projection_kernel",
     "random_basis",
     "random_init_bridge",
+    "random_neuron_basis",
     "random_projection_kernel_moments",
     "reinitialized",
     "run_with_intervention",

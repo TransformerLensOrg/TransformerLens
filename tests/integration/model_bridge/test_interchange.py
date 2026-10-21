@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.tools.analysis import fit_sparse_probe
 from transformer_lens.tools.analysis._model_state import require_eval_mode
 from transformer_lens.tools.analysis.interchange import (
     NormMatchedPlacebo,
@@ -11,8 +12,10 @@ from transformer_lens.tools.analysis.interchange import (
     collect_activations,
     fit_das,
     intervened_logits,
+    neuron_basis,
     random_basis,
     random_init_bridge,
+    random_neuron_basis,
 )
 
 PROMPTS = ["The key near the cabinet", "The keys near the cabinet"]
@@ -159,3 +162,39 @@ def test_random_init_bridge_puts_its_weights_on_the_device_it_records(monkeypatc
     untrained = random_init_bridge("gpt2", seed=0)
     assert str(untrained.cfg.device) == "meta"
     assert all(p.device.type == "meta" for p in untrained.original_model.parameters())
+
+
+def test_the_neuron_a_sparse_probe_selects_carries_subject_number(gpt2_bridge):
+    answers = [gpt2_bridge.to_single_token(" is"), gpt2_bridge.to_single_token(" are")]
+    task_logits = lambda toks: gpt2_bridge(toks)[:, -1, answers]
+    hook = "blocks.0.mlp.hook_post"
+
+    def pairs(place):
+        singular = gpt2_bridge.to_tokens([f"The {n} {place}" for n in NOUNS])
+        plural = gpt2_bridge.to_tokens([f"The {n}s {place}" for n in NOUNS])
+        assert singular.shape[1] == plural.shape[1] == 6  # every word is one token
+        base, source = torch.cat([singular, plural]), torch.cat([plural, singular])
+        targets = (torch.arange(len(base)) < len(NOUNS)).long()  # " are" when the source is plural
+        return base, source, targets, torch.full((len(base),), 2)
+
+    fit, test = pairs("near the cabinet"), pairs("behind the table")
+    fit_acts = collect_activations(gpt2_bridge, hook, fit[1], task_logits, positions=fit[3])
+    test_acts = collect_activations(gpt2_bridge, hook, test[1], task_logits, positions=test[3])
+    probe = fit_sparse_probe(fit_acts, fit[2], k=1)
+    d_mlp = gpt2_bridge.cfg.d_mlp
+
+    def accuracy(basis):
+        logits = intervened_logits(
+            gpt2_bridge,
+            hook,
+            SubspaceInterchange(basis),
+            test[0],
+            test_acts,
+            task_logits,
+            positions=test[3],
+        )
+        return (logits.argmax(-1) == test[2]).float().mean().item()
+
+    assert accuracy(neuron_basis(d_mlp, probe.selected_features)) >= 0.9
+    placebo = random_neuron_basis(d_mlp, 1, seed=0, exclude=probe.selected_features)
+    assert accuracy(placebo) <= 0.2

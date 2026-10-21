@@ -86,6 +86,41 @@ parameters.
 Run every basis on the same pairs. A basis whose IIA does not clearly exceed a random basis of
 the same rank is not evidence that the subspace carries the variable.
 
+## Neuron bases
+
+`neuron_basis(d_mlp, neurons)` turns a set of MLP neurons into a basis: interchanging it sets
+exactly those neurons to the source's values, at a neuron hook such as `blocks.N.mlp.hook_post`.
+Its placebo is `random_neuron_basis(d_mlp, k, seed, exclude=...)`, the same number of neurons drawn
+at random. A random direction is the wrong placebo for a claim about neurons, because it spreads
+over every neuron.
+
+A sparse probe (`fit_sparse_probe`; Gurnee et al., 2023) finds the neurons that best separate a
+variable, but that is decodability, not use. Interchanging them is the causal test:
+
+```python
+from transformer_lens.tools.analysis import fit_sparse_probe, neuron_basis, random_neuron_basis
+
+mlp_hook = "blocks.0.mlp.hook_post"
+fit_neurons = collect_activations(bridge, mlp_hook, fit_source, task_logits, positions=fit_at)
+test_neurons = collect_activations(bridge, mlp_hook, test_source, task_logits, positions=test_at)
+probe = fit_sparse_probe(fit_neurons, fit_targets, k=1)
+
+d_mlp = bridge.cfg.d_mlp
+for basis in (
+    neuron_basis(d_mlp, probe.selected_features),
+    random_neuron_basis(d_mlp, 1, seed=0, exclude=probe.selected_features),
+):
+    logits = intervened_logits(
+        bridge, mlp_hook, SubspaceInterchange(basis), test_base, test_neurons, task_logits,
+        positions=test_at,
+    )
+    print((logits.argmax(-1) == test_targets).float().mean())  # tensor(1.), then tensor(0.)
+```
+
+Compare the selected neurons with random neurons of the same size, and with difference-in-means and
+DAS at the same hook. Where DAS succeeds but neither the model's own directions nor its neurons
+do, suspect the illusion Makelov et al. (2024) describe for subspace patching of MLP activations.
+
 ## Learn the subspace with DAS
 
 Distributed alignment search (DAS; Geiger et al., 2024) learns the basis instead of fixing it.
@@ -190,5 +225,7 @@ IIA beside the placebo and the baselines.
   linguistic tasks. ACL.
 - Geiger, Wu, Potts, Icard and Goodman (2024). Finding Alignments Between Interpretable Causal
   Variables and Distributed Neural Representations. CLeaR.
-- Makelov, Lange and Nanda (2024). Is This the Subspace You Are Looking for? An Interpretability
-  Illusion for Subspace Activation Patching. ICLR.
+- Gurnee, Nanda, Pauly, Harvey, Troitskii and Bertsimas (2023). Finding Neurons in a Haystack:
+  Case Studies with Sparse Probing. arXiv:2305.01610.
+- Makelov, Lange, Geiger and Nanda (2024). Is This the Subspace You Are Looking for? An
+  Interpretability Illusion for Subspace Activation Patching. ICLR.
