@@ -1146,3 +1146,36 @@ def test_process_weights_created_biases_keep_model_dtype(architecture, dtype):
 
     assert not [name for name, param in hf_model.named_parameters() if param.dtype != dtype]
     bridge(torch.tensor([[1, 2, 3, 4]]))
+
+
+GATED_MLP_CONFIGS = {
+    "Phi3ForCausalLM": dict(
+        model_type="phi3",
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=4,
+        pad_token_id=0,
+    ),
+    "Qwen2ForCausalLM": BIAS_CREATING_CONFIGS["Qwen2ForCausalLM"],
+    "StableLmForCausalLM": BIAS_CREATING_CONFIGS["StableLmForCausalLM"],
+}
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("architecture", sorted(GATED_MLP_CONFIGS))
+def test_compat_gated_mlp_follows_dtype_change(architecture, dtype):
+    """Gated MLPs keep their processed forward when a compat bridge changes dtype."""
+    hf_config = AutoConfig.for_model(vocab_size=64, **GATED_MLP_CONFIGS[architecture])
+    hf_config.architectures = [architecture]
+    hf_model = AutoModelForCausalLM.from_config(hf_config)
+    bridge = build_bridge_from_module(hf_model, architecture, hf_config=hf_config)
+    bridge.enable_compatibility_mode()
+
+    bridge.to(dtype)
+    logits, cache = bridge.run_with_cache(torch.tensor([[1, 2, 3, 4]]))
+
+    assert logits.dtype == dtype
+    # gate.hook_in fires only off the processed path.
+    assert "blocks.0.mlp.gate.hook_in" not in cache

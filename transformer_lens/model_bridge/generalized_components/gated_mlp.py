@@ -106,22 +106,15 @@ class GatedMLPBridge(MLPBridge):
             Output hidden states
         """
         if hasattr(self, "_use_processed_weights") and self._use_processed_weights:
-            assert hasattr(self, "_processed_W_gate") and hasattr(self, "_processed_W_in"), (
-                "Processed weights flag is set but weights are missing. "
-                "This indicates a bug in set_processed_weights()."
-            )
-            assert self._processed_W_in is not None
-            assert self._processed_W_out is not None
+            W_gate, b_gate = self._processed_projection("gate")
+            W_in, b_in = self._processed_projection("in")
+            W_out, b_out = self._processed_projection("out")
             hidden_states = args[0]
             hidden_states = self.hook_in(hidden_states)
-            gate_output = torch.nn.functional.linear(
-                hidden_states, self._processed_W_gate, self._processed_b_gate
-            )
+            gate_output = torch.nn.functional.linear(hidden_states, W_gate, b_gate)
             if hasattr(self, "gate") and hasattr(self.gate, "hook_out"):
                 gate_output = self.gate.hook_out(gate_output)
-            linear_output = torch.nn.functional.linear(
-                hidden_states, self._processed_W_in, self._processed_b_in
-            )
+            linear_output = torch.nn.functional.linear(hidden_states, W_in, b_in)
             in_module = getattr(self, "in", None)
             if in_module is not None and hasattr(in_module, "hook_out"):
                 linear_output = in_module.hook_out(linear_output)  # type: ignore[misc]
@@ -130,9 +123,7 @@ class GatedMLPBridge(MLPBridge):
             hidden = activated * linear_output
             if hasattr(self, "out") and hasattr(self.out, "hook_in"):
                 hidden = self.out.hook_in(hidden)
-            output = torch.nn.functional.linear(
-                hidden, self._processed_W_out, self._processed_b_out
-            )
+            output = torch.nn.functional.linear(hidden, W_out, b_out)
             # The functional path bypasses the wrapped `out` projection, so fire
             # its hook_out here — it is the down-projection output.
             if hasattr(self, "out") and hasattr(self.out, "hook_out"):
@@ -149,6 +140,12 @@ class GatedMLPBridge(MLPBridge):
         output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
         return output
+
+    def _processed_projection(self, name: str) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Current weight and bias of a projection, detached from autograd."""
+        projection = getattr(self, name)
+        bias = projection.bias
+        return projection.weight.detach(), None if bias is None else bias.detach()
 
     def set_processed_weights(
         self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False
@@ -191,12 +188,6 @@ class GatedMLPBridge(MLPBridge):
                 print(f"    Setting W_out with shape: {W_out.shape}")
 
         self._use_processed_weights = True
-        self._processed_W_gate = W_gate
-        self._processed_b_gate = b_gate
-        self._processed_W_in = W_in
-        self._processed_b_in = b_in
-        self._processed_W_out = W_out
-        self._processed_b_out = b_out
 
         # Distribute to submodules if they support it
         gate_module = getattr(self, "gate", None)
