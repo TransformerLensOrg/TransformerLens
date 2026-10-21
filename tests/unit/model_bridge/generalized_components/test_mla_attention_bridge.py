@@ -96,7 +96,7 @@ class TestMLAAttentionBridgeForward:
         return hidden_states, (cos, sin)
 
     def test_output_matches_hf(self, mla_bridge, hf_attn, sample_inputs, tiny_model):
-        """HF uses SDPA, bridge uses manual matmul — small float32 differences expected."""
+        """HF's SDPA path passes attention_mask=None and relies on is_causal."""
         hidden_states, position_embeddings = sample_inputs
 
         with torch.no_grad():
@@ -112,9 +112,31 @@ class TestMLAAttentionBridgeForward:
             )[0]
 
         max_diff = (hf_attn_out - bridge_attn_out).abs().max().item()
-        mean_diff = (hf_attn_out - bridge_attn_out).abs().mean().item()
-        assert max_diff < 0.15, f"Output too different: max diff = {max_diff}"
-        assert mean_diff < 0.02, f"Output too different: mean diff = {mean_diff}"
+        assert max_diff < 1e-5, f"Output too different: max diff = {max_diff}"
+
+    def test_boolean_padding_mask_matches_hf(self, mla_bridge, hf_attn, sample_inputs):
+        """With padding, HF's SDPA path passes a boolean 4D mask (True = attend)."""
+        hidden_states, position_embeddings = sample_inputs
+        seq = hidden_states.shape[1]
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = causal.expand(2, 1, seq, seq).clone()
+        attention_mask[0, :, :, :2] = False  # left padding on the first sequence
+
+        with torch.no_grad():
+            hf_attn_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            bridge_attn_out = mla_bridge(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+
+        # Padded query rows are fully masked (undefined output); compare real positions.
+        diff = (hf_attn_out - bridge_attn_out)[:, 2:].abs().max().item()
+        assert diff < 1e-5, f"Output too different: max diff = {diff}"
 
     def test_hooks_fire_and_have_correct_shapes(self, mla_bridge, sample_inputs, tiny_config):
         hidden_states, position_embeddings = sample_inputs

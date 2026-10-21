@@ -312,9 +312,11 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
             scaling = self._qk_head_dim ** (-0.5)
         attn_scores = torch.matmul(query_states, key_states.transpose(-2, -1)) * scaling
 
-        if attention_mask is not None:
-            attention_mask = self._normalize_compatibility_mask_sentinel(attention_mask)
-            attn_scores = attn_scores + attention_mask
+        # HF's sdpa path passes attention_mask=None and relies on is_causal, so the
+        # causal mask has to be synthesized here when no 4D mask is given.
+        attn_scores = self._apply_reconstruct_attention_mask(
+            attn_scores, attention_mask, seq_len=key_states.shape[-2], q_seq_len=seq_length
+        )
 
         attn_scores = self.hook_attn_scores(attn_scores)
         attn_weights = self._softmax_dropout_pattern(
