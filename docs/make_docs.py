@@ -45,6 +45,7 @@ def copy_demos(_app: Optional[Any] = None):
         "Jacobian_Lens_Decomposition_Demo.ipynb",
         "Main_Demo.ipynb",
         "SVD_Circuits_Demo.ipynb",
+        "SwiGLU_Gate_Sign_Demo.ipynb",
     ]
 
     if copy_to_dir.exists():

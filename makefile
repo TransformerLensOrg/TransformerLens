@@ -60,6 +60,7 @@ notebook-test:
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/stable_lm.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SVD_Circuits_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SVD_Interpreter_Demo.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SwiGLU_Gate_Sign_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Tracr_to_Transformer_Lens_Demo.ipynb $(RERUN_ARGS)
 
 	# Contains failing cells
