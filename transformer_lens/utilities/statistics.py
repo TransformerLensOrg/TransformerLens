@@ -173,14 +173,15 @@ class SuccessRateInterval:
     confidence: float
 
 
-# 200 halvings resolve the bound far below the precision any reported rate needs.
+# A cap: bisection exits once float midpoints stop moving, typically after 53-90 halvings.
 _CLOPPER_PEARSON_STEPS = 200
 
 
 def _binomial_cdf(k: int, n: int, p: float) -> float:
     """Exact ``P(X <= k)`` for ``X ~ Binomial(n, p)``.
 
-    Accumulates the pmf by recurrence because ``comb(n, i)`` and ``p ** i`` overflow at large ``n``.
+    Sums ``exp(log_term - peak)`` in log space: ``comb(n, i)`` and ``p ** i`` overflow at large
+    ``n``, and a recurrence from ``(1 - p) ** n`` underflows once ``n log(1 - p) < -745``.
     """
     if k < 0:
         return 0.0
@@ -190,13 +191,14 @@ def _binomial_cdf(k: int, n: int, p: float) -> float:
         return 1.0
     if p >= 1.0:
         return 0.0
-    term = (1.0 - p) ** n
-    total = term
-    odds = p / (1.0 - p)
-    for i in range(1, k + 1):
-        term *= (n - i + 1) / i * odds
-        total += term
-    return total
+    log_p, log_q = math.log(p), math.log1p(-p)
+    log_n_factorial = math.lgamma(n + 1)
+    log_terms = [
+        log_n_factorial - math.lgamma(i + 1) - math.lgamma(n - i + 1) + i * log_p + (n - i) * log_q
+        for i in range(k + 1)
+    ]
+    peak = max(log_terms)
+    return min(1.0, math.exp(peak) * math.fsum(math.exp(term - peak) for term in log_terms))
 
 
 def _clopper_pearson_bound(n_successes: int, n_trials: int, tail: float, *, upper: bool) -> float:
@@ -212,6 +214,9 @@ def _clopper_pearson_bound(n_successes: int, n_trials: int, tail: float, *, uppe
     low, high = 0.0, 1.0
     for _ in range(_CLOPPER_PEARSON_STEPS):
         midpoint = (low + high) / 2.0
+        # Every later step would re-test this same midpoint and leave the result unchanged.
+        if midpoint == low or midpoint == high:
+            break
         if upper:
             # P(X <= k) decreases in p, so a CDF above the tail puts the bound above the midpoint.
             if _binomial_cdf(n_successes, n_trials, midpoint) > tail:

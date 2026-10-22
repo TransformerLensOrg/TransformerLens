@@ -15,12 +15,19 @@ SOLVE_K = 8
 
 
 def _active_source_and_distinct_target(
-    lens: JacobianLens, model: _ToyBridge, prompt: str, layer: int, position: int
+    lens: JacobianLens,
+    model: _ToyBridge,
+    prompt: str,
+    layer: int,
+    position: int,
+    algorithm: str = "nonnegative_orthogonal_matching_pursuit",
 ) -> tuple[int, int]:
     """Discover a real active source at (layer, position) instead of guessing a token id --
     coordinate_patch_hooks requires the source to be active, and a toy model's real activations
     are not hand-computable in advance."""
-    decomposition = lens.decompose(model, prompt, layer=layer, position=position, k=SOLVE_K)
+    decomposition = lens.decompose(
+        model, prompt, layer=layer, position=position, k=SOLVE_K, algorithm=algorithm
+    )
     source_id = int(decomposition.support[0])
     target_id = (source_id + 1) % D_VOCAB
     return source_id, target_id
@@ -83,19 +90,31 @@ def test_coordinate_patch_hooks_changes_only_requested_positions(toy_model: _Toy
     torch.testing.assert_close(delta[:, :-1], torch.zeros_like(delta[:, :-1]))
 
 
+@pytest.mark.parametrize(
+    "algorithm", ["nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"]
+)
 def test_coordinate_patch_hooks_oracle_parity_with_offline_coordinate_patch(
     toy_model: _ToyBridge,
+    algorithm: str,
 ) -> None:
     lens = _lens()
     prompt = "a toy prompt"
     tokens = toy_model.to_tokens(prompt)
     _, baseline = toy_model.run_with_cache(tokens)
     pre_hook_activation = baseline["blocks.0.hook_out"][0, -1, :].float()
-    source_id, target_id = _active_source_and_distinct_target(lens, toy_model, prompt, 0, -1)
+    source_id, target_id = _active_source_and_distinct_target(
+        lens, toy_model, prompt, 0, -1, algorithm=algorithm
+    )
 
     with pytest.warns(UserWarning):
         hooks = lens.coordinate_patch_hooks(
-            toy_model, source_id, target_id, layers=[0], positions=[-1], k=SOLVE_K
+            toy_model,
+            source_id,
+            target_id,
+            layers=[0],
+            positions=[-1],
+            k=SOLVE_K,
+            algorithm=algorithm,
         )
     with toy_model.hooks(fwd_hooks=hooks):
         _, patched = toy_model.run_with_cache(tokens)
@@ -107,19 +126,27 @@ def test_coordinate_patch_hooks_oracle_parity_with_offline_coordinate_patch(
         source_token=source_id,
         target_token=target_id,
         k=SOLVE_K,
+        algorithm=algorithm,
     )
     torch.testing.assert_close(patched["blocks.0.hook_out"][0, -1, :].float(), expected.patched)
 
 
+@pytest.mark.parametrize(
+    "algorithm", ["nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"]
+)
 def test_decomposition_cache_hit_skips_resolve_across_hook_firings(
-    toy_model: _ToyBridge, monkeypatch: pytest.MonkeyPatch
+    toy_model: _ToyBridge,
+    monkeypatch: pytest.MonkeyPatch,
+    algorithm: str,
 ) -> None:
     import transformer_lens.tools.analysis.jacobian_lens_coordinate_patch as core_module
 
     lens = _lens()
     prompt = "a toy prompt"
     tokens = toy_model.to_tokens(prompt)
-    source_id, target_id = _active_source_and_distinct_target(lens, toy_model, prompt, 0, -1)
+    source_id, target_id = _active_source_and_distinct_target(
+        lens, toy_model, prompt, 0, -1, algorithm=algorithm
+    )
     cache: dict = {}
     calls = []
     original = core_module.get_sparse_decomposition
@@ -138,6 +165,7 @@ def test_decomposition_cache_hit_skips_resolve_across_hook_firings(
             positions=[-1],
             decomposition_cache=cache,
             k=SOLVE_K,
+            algorithm=algorithm,
         )
     with toy_model.hooks(fwd_hooks=hooks):
         toy_model(tokens)

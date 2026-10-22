@@ -2210,6 +2210,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     _resolved_padding_side == "left"
                     or is_encoder_decoder
                     or not self.adapter.supports_causal_loss
+                    or getattr(self.cfg, "attention_dir", "causal") != "causal"
                 )
             ):
                 attention_mask = utils.get_attention_mask(
