@@ -99,3 +99,17 @@ def test_contribution_hooks_are_post_norm_outputs(bridge):
 
     for key, expected in reference.items():
         torch.testing.assert_close(cache[key], expected, atol=1e-5, rtol=1e-5)
+
+
+def test_half_converts_unmapped_parameters():
+    bridge = TransformerBridge.boot_transformers(MODEL_NAME, device="cpu", dtype=torch.float32)
+    bridge.half()
+
+    unconverted = [
+        name
+        for name, parameter in bridge.original_model.named_parameters()
+        if parameter.dtype != torch.float16
+    ]
+    assert unconverted == []
+    with torch.no_grad():
+        assert bridge(IDS).dtype == torch.float16
