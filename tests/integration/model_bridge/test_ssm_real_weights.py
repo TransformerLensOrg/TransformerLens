@@ -34,9 +34,8 @@ class _Case:
     default: str  # canonical HF id, or "" for env-only (no small official checkpoint)
 
 
-# Families with no CI-sized official checkpoint are env-only ("" default): an
-# fp32 CPU boot of granite-4.0-tiny-preview (~7B) alone peaks over 40 GB RSS,
-# which OOM-kills the 16 GB + 8 GB-swap nightly runner mid-file.
+# Env-only ("" default) without a CI-sized checkpoint: an fp32 CPU boot of
+# granite-4.0-tiny-preview peaks over 40 GB RSS and OOM-kills the nightly runner.
 CASES = [
     _Case("mamba1", "TL_MAMBA1_MODEL", "state-spaces/mamba-130m-hf"),
     _Case("mamba2", "TL_MAMBA2_MODEL", "AntonV/mamba2-130m-hf"),

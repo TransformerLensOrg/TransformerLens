@@ -242,8 +242,7 @@ def test_success_rate_ci_narrows_as_the_trial_count_grows():
     [(1000, 2000, 0.5), (190, 200, 0.97), (1995, 2000, 0.999), (5, 2000, 0.01)],
 )
 def test_binomial_cdf_matches_exact_rational_sum_at_large_n(k: int, n: int, p: float):
-    # The old recurrence started from (1 - p) ** n, which underflows to 0.0 here and made
-    # every term, and the CDF, 0.0. (1000, 2000, 0.5) is ~0.509.
+    # At these n, (1 - p) ** n underflows to 0.0, so a pmf recurrence started from it returns 0.0.
     assert _binomial_cdf(k, n, p) == pytest.approx(float(_exact_binomial_cdf(k, n, p)), rel=1e-9)
 
 

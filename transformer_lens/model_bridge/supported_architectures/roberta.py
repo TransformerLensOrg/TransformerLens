@@ -18,13 +18,9 @@ from transformer_lens.model_bridge.supported_architectures.bert import (
 
 
 class RobertaArchitectureAdapter(BertArchitectureAdapter):
-    """Architecture adapter for ``RobertaForMaskedLM``.
+    """Architecture adapter for ``RobertaForMaskedLM``: BERT's layer, MLM head under ``lm_head.*``.
 
-    BERT's encoder layer under ``roberta.*`` with the MLM head under ``lm_head.*``;
-    flags and weight conversions are inherited. Position ids start at
-    ``padding_idx + 1 = 2``, so ``pos_embed.hook_out`` is offset by two rows from
-    BERT's; ``n_ctx`` is read off the loaded table in ``prepare_model`` and
-    ``TransformerBridge.W_pos`` slices those rows off.
+    Positions start at ``padding_idx + 1 = 2``, so ``W_pos`` drops the table's first two rows.
     """
 
     def __init__(self, cfg: Any) -> None:
