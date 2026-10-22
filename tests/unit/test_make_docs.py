@@ -44,4 +44,5 @@ def test_copy_demos_creates_generated_dir_when_absent(tmp_path, monkeypatch):
         "Jacobian_Lens_Decomposition_Demo.ipynb",
         "Main_Demo.ipynb",
         "SVD_Circuits_Demo.ipynb",
+        "SwiGLU_Gate_Sign_Demo.ipynb",
     ]

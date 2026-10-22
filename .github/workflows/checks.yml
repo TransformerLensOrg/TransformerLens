@@ -444,6 +444,7 @@ jobs:
           - "Santa_Coder"
           # - "stable_lm"
           - "SVD_Circuits_Demo"
+          - "SwiGLU_Gate_Sign_Demo"
           - "T5"
         requires_hf_token: [false]
         include:
