@@ -1013,7 +1013,8 @@ class JacobianLens:
             k: Sparse-solver upper bound when ``decomposition`` is not supplied.
             mode: ``"substitute"`` or ``"swap"``.
             alpha: Finite interpolation strength; zero is an exact no-op.
-            algorithm: Sparse coefficient-update rule when solving a fresh decomposition.
+            algorithm: Sparse coefficient-update rule, also used to validate a supplied
+                decomposition. Use the algorithm that produced its coordinates.
 
         Returns:
             A :class:`CoordinatePatch` containing the edited frame, diagnostics, and activation.
@@ -1558,7 +1559,8 @@ class JacobianLens:
             k: Sparse-solver upper bound on a cache miss.
             mode: ``"substitute"`` or ``"swap"``.
             alpha: Finite interpolation strength; zero is an exact no-op.
-            algorithm: Sparse coefficient-update rule on a cache miss.
+            algorithm: Sparse coefficient-update rule on a cache miss and validation rule on a
+                hit. Cached decompositions must use this algorithm.
 
         Returns:
             ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
