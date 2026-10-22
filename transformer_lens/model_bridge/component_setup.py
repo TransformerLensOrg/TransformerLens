@@ -135,11 +135,10 @@ def _register_unowned_container_state(bridge_module: nn.Module, original_model: 
     missing_buffers: list[tuple[str, nn.Module, str, Any]] = []
 
     for module_path, module in original_model.named_modules():
-        if any(child is not None for child in module._modules.values()):
-            for parameter_name, parameter in module._parameters.items():
-                if parameter is not None and id(parameter) not in registered_parameter_ids:
-                    missing_parameters.append((module_path, module, parameter_name, parameter))
-                    registered_parameter_ids.add(id(parameter))
+        for parameter_name, parameter in module._parameters.items():
+            if parameter is not None and id(parameter) not in registered_parameter_ids:
+                missing_parameters.append((module_path, module, parameter_name, parameter))
+                registered_parameter_ids.add(id(parameter))
         for buffer_name, buffer in module._buffers.items():
             if buffer is not None and id(buffer) not in registered_buffer_ids:
                 missing_buffers.append((module_path, module, buffer_name, buffer))
