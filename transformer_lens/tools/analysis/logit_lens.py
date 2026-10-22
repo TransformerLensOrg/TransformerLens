@@ -65,10 +65,8 @@ _FINAL_NORM_TYPES = ("LN", "LNPre", "RMS", "RMSPre")
 # fp32 and under 1e-2 in bf16; readouts that skip a model's transform measure 0.7-1.5.
 _READOUT_IDENTITY_RTOL = 0.1
 
-# Components between the last block and W_U that ln_final -> unembed would skip: BERT's
-# MLM transform, ModernBERT-decoder's prediction head, OPT-350m's project_out, DeepSeek-V4's
-# stream-collapsing hc_head, BD3LM's sigma_map (adaLN shift/scale on the final norm), and
-# AST's classifier LayerNorm.
+# Readout-path modules ln_final -> unembed would skip: BERT/ModernBERT-decoder heads, OPT-350m's
+# project_out, DeepSeek-V4's hc_head, BD3LM's adaLN sigma_map, AST's classifier LayerNorm.
 _READOUT_TRANSFORM_COMPONENTS = (
     "mlm_head",
     "prediction_head",

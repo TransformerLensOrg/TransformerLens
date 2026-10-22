@@ -58,7 +58,12 @@ def test_test_prompt_multiple_answers_ignore_tokenizer_padding_side(capsys):
 
     utilities.test_prompt(prompt, "road", model, print_details=False)
     single_answer_rank = re.search(r"\(' road', (\d+)\)", capsys.readouterr().out)
+    # A multi-token answer's first rank is read at the prompt's last position, the same
+    # position the multi-answer call ranks every answer's first token at.
+    utilities.test_prompt(prompt, "super highway", model, print_details=False)
+    first_token_rank = re.search(r"\(' super', (\d+)\)", capsys.readouterr().out)
 
-    assert single_answer_rank is not None
+    assert single_answer_rank is not None and first_token_rank is not None
     assert outputs["left"] == outputs["right"]
     assert f"(' road', {single_answer_rank.group(1)})" in outputs["left"]
+    assert f"(' super', {first_token_rank.group(1)})" in outputs["left"]

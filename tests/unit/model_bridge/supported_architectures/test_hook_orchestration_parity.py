@@ -571,3 +571,25 @@ class TestTemporaryHookScopes:
 
         assert events == ["temporary"]
         assert not hook_point.has_hooks()
+
+
+@pytest.mark.parametrize("helper", ["hooks", "run_with_hooks", "run_with_cache", "stop"])
+def test_cleanup_removes_registered_handle_not_list_tail(helper, monkeypatch):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    name = "blocks.1.hook_in" if helper == "stop" else "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    retained = hp.add_hook(_noop)
+    original = hp.add_hook
+    # A registration that lands ahead of existing handles leaves the retained one at the tail.
+    monkeypatch.setattr(hp, "add_hook", lambda *a, **k: original(*a, prepend=True, **k))
+    if helper == "hooks":
+        with bridge.hooks(fwd_hooks=[(name, _noop)]):
+            bridge(tokens)
+    elif helper == "run_with_hooks":
+        bridge.run_with_hooks(tokens, fwd_hooks=[(name, _noop)])
+    elif helper == "run_with_cache":
+        bridge.run_with_cache(tokens, names_filter=name)
+    else:
+        bridge.run_with_cache(tokens, names_filter="blocks.0.hook_out", stop_at_layer=1)
+    assert hp.fwd_hooks == [retained]

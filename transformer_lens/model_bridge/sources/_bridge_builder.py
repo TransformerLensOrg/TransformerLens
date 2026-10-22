@@ -293,7 +293,9 @@ def build_bridge_from_module(
 ) -> TransformerBridge:
     """Build a :class:`TransformerBridge` around a pre-loaded model.
 
-    The bridge never moves, casts, or mutates the supplied model.
+    The bridge never moves or casts the supplied model, but modifies it in place:
+    bridge components replace its submodules, and ``adapter.prepare_model`` may
+    switch it to eager attention or patch forwards and buffers.
 
     Args:
         model: Any ``nn.Module`` whose submodule tree matches the adapter's

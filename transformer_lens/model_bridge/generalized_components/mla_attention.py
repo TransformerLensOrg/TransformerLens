@@ -84,9 +84,8 @@ def _apply_rotary_complex(
         Tuple of rotated (q, k) tensors with same dtype and shape as inputs.
     """
     freqs = freqs_cis.unsqueeze(1)  # [batch, 1, seq, rope_dim // 2]
-    # torch.complex copies, so it has none of view_as_complex's storage-layout
-    # requirements: the rope slices start at an odd offset with odd strides
-    # whenever qk_nope_head_dim or kv_lora_rank is odd.
+    # torch.complex copies, dodging view_as_complex's stride requirements: the rope
+    # slices start at an odd offset whenever qk_nope_head_dim or kv_lora_rank is odd.
     q_pairs = q.float().reshape(*q.shape[:-1], -1, 2)
     k_pairs = k.float().reshape(*k.shape[:-1], -1, 2)
     q_c = torch.complex(q_pairs[..., 0], q_pairs[..., 1])
@@ -249,10 +248,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = position_embeddings
-                if self._rope_interleave:
-                    q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
-                else:
-                    q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         elif self._rotary_emb is not None:
             # Fallback: compute from rotary_emb if position_embeddings not passed
             position_ids = torch.arange(seq_length, device=hidden_states.device).unsqueeze(0)
@@ -264,10 +260,7 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
                 q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
             else:
                 cos, sin = emb
-                if self._rope_interleave:
-                    q_rot, k_rot = _apply_rotary_pos_emb_interleave(q_rot, k_rot, cos, sin)
-                else:
-                    q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
+                q_rot, k_rot = _apply_rotary_pos_emb(q_rot, k_rot, cos, sin)
         else:
             raise ValueError(
                 "MLAAttentionBridge requires position_embeddings or set_rotary_emb() "

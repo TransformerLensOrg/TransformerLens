@@ -221,10 +221,11 @@ class TestGatedMLPProcessedPathWeights:
             clone.out.original_component.bias.zero_()
             assert torch.count_nonzero(clone(x)) == 0
 
-    def test_projections_get_no_gradient(self) -> None:
-        """The processed path reads the projections detached from autograd."""
+    def test_projections_receive_gradients(self) -> None:
+        """Training through the processed path updates every gate/up/down weight and bias."""
         bridge, x = _processed_gated_mlp()
-        x.requires_grad_()
         bridge(x).sum().backward()
-        assert x.grad is not None
-        assert all(param.grad is None for param in bridge.parameters())
+        grads = {name: param.grad for name, param in bridge.named_parameters()}
+        assert len(grads) == 6
+        missing = [name for name, grad in grads.items() if grad is None or not grad.any()]
+        assert not missing, f"no gradient reached {missing}"

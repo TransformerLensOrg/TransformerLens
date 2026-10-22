@@ -1,7 +1,4 @@
-"""Unit tests for the causal-swap benchmark script's argument parser.
-
-Model-free: only the parser and seed-list parsing run, so no model is loaded.
-"""
+"""Model-free tests for the causal-swap benchmark script's argument parser."""
 
 import pytest
 

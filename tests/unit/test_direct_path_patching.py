@@ -1,7 +1,4 @@
-"""Tests for direct path patching in transformer_lens/patching.py.
-
-The models are tiny randomly initialised bridges built in memory, so the tests download nothing.
-"""
+"""Tests for direct path patching on tiny randomly initialised in-memory bridges."""
 
 import contextlib
 

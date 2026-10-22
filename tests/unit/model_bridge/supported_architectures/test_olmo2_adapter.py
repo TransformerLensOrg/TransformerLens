@@ -7,8 +7,7 @@ Covered:
   key set is asserted at the adapter layer.
 - Component-mapping structure, bridge types, and HF module paths.
 - Post-norm block wiring: ln1_post maps to post_attention_layernorm and ln2_post
-  to post_feedforward_layernorm, with no ln1/ln2. This is the central
-  arch-specific decision.
+  to post_feedforward_layernorm, with no ln1/ln2.
 - Q/K-norm submodules under attention with the correct HF names.
 - Derived hook aliases: hook_resid_mid points at mlp.hook_in (the true post-attn
   pre-mlp residual under post-norm), not BlockBridge's default ln2.hook_in.
@@ -228,11 +227,8 @@ class TestOlmo2ComponentTypes:
 
 
 class TestOlmo2PostNormBlockWiring:
-    """OLMo 2 is post-norm only: RMSNorm applies AFTER attention and AFTER MLP, so
-    the norms sit in the ln1_post/ln2_post slots and ln1/ln2 (pre-sublayer norms)
-    are absent. Tools that read ln1/ln2 as the norm feeding a sublayer must not
-    find these. The HF name `post_attention_layernorm` is the pre-MLP norm in the
-    Llama family, which is the porting trap this guards."""
+    """OLMo 2 is post-norm only, so its norms sit in ln1_post/ln2_post with no ln1/ln2;
+    Llama's `post_attention_layernorm` is the pre-MLP norm, the porting trap this guards."""
 
     def test_ln1_post_maps_to_post_attention_layernorm(
         self, adapter: Olmo2ArchitectureAdapter
@@ -279,8 +275,7 @@ class TestOlmo2QKNormStructure:
 
 
 class TestOlmo2HookAliasOverrides:
-    """With no pre-MLP norm, the post-attn pre-mlp residual is at `mlp.hook_in`.
-    BlockBridge derives that from the post-norm-only layout; its default
+    """With no pre-MLP norm, the post-attn pre-mlp residual is `mlp.hook_in`; the default
     `ln2.hook_in` would not resolve."""
 
     def test_hook_resid_mid_points_at_mlp_hook_in(self, adapter: Olmo2ArchitectureAdapter) -> None:

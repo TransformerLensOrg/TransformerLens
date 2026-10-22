@@ -83,7 +83,11 @@ def boot(
             with ``device_map``.
         dtype: The dtype to use for the model.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
-        load_weights: If False, load model without weights (on meta device) for config inspection only.
+        load_weights: If False, build the model with ``from_config`` instead of loading the
+            checkpoint: real parameters with the architecture's random initialisation, on the CPU,
+            in the config's dtype and in training mode. ``device`` is recorded in ``cfg.device``
+            but not applied, and neither are ``dtype`` nor ``device_map``; move, cast and
+            ``eval()`` the model before running it on another device or in another dtype.
         model_class: Optional HuggingFace model class to use instead of the default auto-detected
             class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
             adapter is selected automatically (e.g., BertForNextSentencePrediction).

@@ -162,6 +162,9 @@ def test_random_init_bridge_puts_its_weights_on_the_device_it_records(monkeypatc
     untrained = random_init_bridge("gpt2", seed=0)
     assert str(untrained.cfg.device) == "meta"
     assert all(p.device.type == "meta" for p in untrained.original_model.parameters())
+    requested = random_init_bridge("gpt2", seed=0, device="cpu")  # wins over boot's default
+    assert str(requested.cfg.device) == "cpu"
+    assert all(p.device.type == "cpu" for p in requested.original_model.parameters())
 
 
 def test_the_neuron_a_sparse_probe_selects_carries_subject_number(gpt2_bridge):

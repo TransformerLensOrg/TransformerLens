@@ -14,7 +14,7 @@ from transformer_lens.utilities import (
     standard_error,
     success_rate_ci,
 )
-from transformer_lens.utilities.statistics import _binomial_cdf
+from transformer_lens.utilities.statistics import _binomial_cdf, _count_hits
 
 
 def test_derive_generator_is_keyed_and_stable():
@@ -135,6 +135,18 @@ def test_sign_flip_counts_float64_ties_for_one_sided_alternatives(
     assert p.item() == expected
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("alternative", ["two-sided", "greater", "less"])
+def test_sign_flip_counts_a_one_ulp_tie_on_every_platform(dtype: torch.dtype, alternative: str):
+    # Built directly: whether a sign-flip mean lands an ulp off its tie depends on summation order.
+    observed = torch.tensor([0.3], dtype=dtype)
+    away = torch.tensor(math.inf if alternative == "less" else -math.inf, dtype=dtype)
+    tie = torch.nextafter(observed, away)
+    distinct = torch.tensor([1.0 if alternative == "less" else 0.0], dtype=dtype)
+    hits = _count_hits(torch.cat([tie, distinct]), observed, alternative)
+    assert hits.item() == 1
+
+
 def test_sign_flip_does_not_count_distinct_means_as_ties_near_zero():
     effects = torch.tensor([1.0, -1e-8], dtype=torch.float64)
     for scale in (1.0, 1e-50):
@@ -200,8 +212,7 @@ def test_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval(
 
 
 def test_success_rate_ci_pins_zero_of_six_upper_bound():
-    # The exact interval must widen for an all-failure sample. A percentile bootstrap returns
-    # [0, 0] here by construction, asserting a certainty the data does not support.
+    # A percentile bootstrap returns [0, 0] here; the exact interval must stay wide.
     result = success_rate_ci([False] * 6)
     assert result.ci_low == 0.0
     assert result.ci_high == pytest.approx(0.4592581, abs=1e-6)
@@ -214,16 +225,13 @@ def test_success_rate_ci_pins_all_success_lower_bound():
 
 
 def test_success_rate_ci_matches_closed_form_at_the_boundaries():
-    # At k=0 and k=n the Clopper-Pearson bounds reduce to closed forms, which pins the
-    # bisection direction independently of the interior values. Reversing it collapses every
-    # interval to [0, 1].
+    # Closed forms at k=0 and k=n pin the bisection direction; reversing it yields [0, 1].
     assert success_rate_ci([False] * 6).ci_high == pytest.approx(1 - 0.025 ** (1 / 6))
     assert success_rate_ci([True] * 6).ci_low == pytest.approx(0.025 ** (1 / 6))
 
 
 def test_success_rate_ci_narrows_as_the_trial_count_grows():
-    # The same observed rate carries less uncertainty with more trials; a degenerate interval
-    # would not move.
+    # A degenerate interval would not move with the trial count.
     small = success_rate_ci([False] * 6)
     large = success_rate_ci([False] * 600)
     assert large.ci_high < small.ci_high
@@ -234,11 +242,21 @@ def test_success_rate_ci_narrows_as_the_trial_count_grows():
     [(1000, 2000, 0.5), (190, 200, 0.97), (1995, 2000, 0.999), (5, 2000, 0.01)],
 )
 def test_binomial_cdf_matches_exact_rational_sum_at_large_n(k: int, n: int, p: float):
-    # The old recurrence started from (1 - p) ** n, which underflows to 0.0 here and made
-    # every term, and the CDF, 0.0. (1000, 2000, 0.5) is ~0.509.
-    q = Fraction(p)
-    exact = sum(math.comb(n, i) * q**i * (1 - q) ** (n - i) for i in range(k + 1))
-    assert _binomial_cdf(k, n, p) == pytest.approx(float(exact), rel=1e-9)
+    # At these n, (1 - p) ** n underflows to 0.0, so a pmf recurrence started from it returns 0.0.
+    assert _binomial_cdf(k, n, p) == pytest.approx(float(_exact_binomial_cdf(k, n, p)), rel=1e-9)
+
+
+def _exact_binomial_cdf(k: int, n: int, p: float) -> Fraction:
+    """Exact ``P(X <= k)`` over integers, summing the shorter of the two tails."""
+    # Per-term Fraction arithmetic re-reduces ~n-bit denominators and took ~18 s at n=2000.
+    a, b = Fraction(p).as_integer_ratio()
+
+    def numerator(indices: range) -> int:
+        return sum(math.comb(n, i) * a**i * (b - a) ** (n - i) for i in indices)
+
+    if k < n - k:
+        return Fraction(numerator(range(k + 1)), b**n)
+    return 1 - Fraction(numerator(range(k + 1, n + 1)), b**n)
 
 
 @pytest.mark.parametrize(

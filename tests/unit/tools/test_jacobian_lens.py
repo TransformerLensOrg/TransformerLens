@@ -945,8 +945,12 @@ def test_shared_fit_preparation_warns_without_running_half_precision_fit(
     with pytest.warns(UserWarning, match="transport gradients at reduced precision") as record:
         options = _prepare_toy_fit(dtype)
     assert options.fit_dtype == dtype
-    assert len(record) == 1
-    assert "float32 TransformerBridge" in str(record[0].message)
+    # Ignore unrelated warnings the fit preparation may emit.
+    precision_warnings = [
+        w for w in record if "transport gradients at reduced precision" in str(w.message)
+    ]
+    assert len(precision_warnings) == 1
+    assert "float32 TransformerBridge" in str(precision_warnings[0].message)
 
 
 def test_shared_dtype_warning_accounts_for_the_preparation_frame(

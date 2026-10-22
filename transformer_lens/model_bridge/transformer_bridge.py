@@ -114,6 +114,20 @@ def _storage_group_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
     return {key for keys in by_storage.values() if len(keys) > 1 for key in keys}
 
 
+def _extend_prompt_attention_mask(prompt_mask: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+    """Extend a prompt mask over ``tokens``' generated tail; shared by the loop and cache replay."""
+    n_generated = tokens.shape[1] - prompt_mask.shape[1]
+    return torch.cat(
+        [
+            prompt_mask.to(tokens.device),
+            torch.ones(
+                (tokens.shape[0], n_generated), dtype=prompt_mask.dtype, device=tokens.device
+            ),
+        ],
+        dim=1,
+    )
+
+
 class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     """Torch-backed bridge: HF, vLLM-via-torch, anything that wraps an ``nn.Module``.
 
@@ -2196,6 +2210,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     _resolved_padding_side == "left"
                     or is_encoder_decoder
                     or not self.adapter.supports_causal_loss
+                    or getattr(self.cfg, "attention_dir", "causal") != "causal"
                 )
             ):
                 attention_mask = utils.get_attention_mask(
@@ -2680,17 +2695,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     # models that can take them.
                     running_attention_mask: Optional[torch.Tensor] = None
                     if initial_attention_mask is not None:
-                        n_generated = current_tokens.shape[1] - initial_attention_mask.shape[1]
-                        running_attention_mask = torch.cat(
-                            [
-                                initial_attention_mask.to(current_tokens.device),
-                                torch.ones(
-                                    (current_tokens.shape[0], n_generated),
-                                    dtype=initial_attention_mask.dtype,
-                                    device=current_tokens.device,
-                                ),
-                            ],
-                            dim=1,
+                        running_attention_mask = _extend_prompt_attention_mask(
+                            initial_attention_mask, current_tokens
                         )
                         forward_kwargs["attention_mask"] = running_attention_mask
                     # Compute attention mask and position_ids for batched
@@ -2858,6 +2864,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
+                        # Greedy ignores the penalty but still validates it.
+                        freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
                         tokens=(
                             penalty_tokens
@@ -3000,9 +3008,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             top_k: Number of tokens to sample from. If None, sample from all tokens
             top_p: Probability mass to sample from. If 1.0, sample from all tokens
             temperature: Temperature for sampling. Higher values will make the model more random
-            freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens.
-                Nonzero values require the hooked generation loop; the stateful/SSM
-                HF fallback with use_past_kv_cache=False raises NotImplementedError.
+            freq_penalty: Non-negative frequency penalty for sampling - how much to penalise
+                previous tokens (applied only when do_sample=True; negative values raise
+                ValueError). Nonzero values require the hooked generation loop; a
+                stateful/SSM model that falls back to hf_generate() raises
+                NotImplementedError.
             repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
@@ -3374,6 +3384,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         if is_stateful_model and not use_stateful_cache:
             if freq_penalty != 0.0:
+                # Only use_past_kv_cache=False is fixable by the caller; the other
+                # fallback triggers persist with the flag already set.
+                if is_encoder_decoder:
+                    _fallback_cause = "encoder-decoder models"
+                elif _generate_from_embeds:
+                    _fallback_cause = "inputs_embeds generation"
+                elif pixel_values is not None or multimodal_kwargs:
+                    _fallback_cause = "multimodal (pixel_values or extra model kwargs) generation"
+                else:
+                    _fallback_cause = None
+                if _fallback_cause is not None:
+                    raise NotImplementedError(
+                        f"freq_penalty is not supported for {_fallback_cause} on a "
+                        "stateful/SSM model: generate() falls back to hf_generate(), which "
+                        "has no equivalent frequency penalty. Drop freq_penalty or use "
+                        "repetition_penalty, which the fallback forwards."
+                    )
                 raise NotImplementedError(
                     "freq_penalty requires use_past_kv_cache=True for stateful/SSM models. "
                     "The HF generation fallback has no equivalent frequency penalty."
@@ -3535,18 +3562,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return result
 
         if return_cache:
-            # Preserve generation's context and positions during the clean cache recomputation.
-            cache_kwargs: Dict[str, Any] = {}
-            if initial_attention_mask is not None:
-                cache_kwargs["attention_mask"] = torch.cat(
-                    [
-                        initial_attention_mask,
-                        initial_attention_mask.new_ones((batch_size, sampled_tokens.shape[1])),
-                    ],
-                    dim=1,
-                )
+            # Replay the loop's final mask so the cache sees the context and positions
+            # generation did.
             _, cache = self.run_with_cache(
-                output_tokens, names_filter=names_filter, device=device, **cache_kwargs
+                output_tokens,
+                names_filter=names_filter,
+                device=device,
+                attention_mask=(
+                    _extend_prompt_attention_mask(initial_attention_mask, output_tokens)
+                    if initial_attention_mask is not None
+                    else None
+                ),
             )
             if return_input_tokens:
                 return result, cache, input_tokens
@@ -3662,7 +3688,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             top_k: Top-k sampling. None means no filtering.
             top_p: Nucleus sampling threshold.
             temperature: Sampling temperature.
-            freq_penalty: Frequency penalty for previous tokens.
+            freq_penalty: Non-negative frequency penalty for previous tokens (applied only
+                when do_sample=True; negative values raise ValueError).
             repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
             use_past_kv_cache: Use KV caching for faster generation.
             prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.

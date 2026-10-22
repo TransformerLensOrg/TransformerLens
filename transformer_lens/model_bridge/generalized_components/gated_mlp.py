@@ -142,10 +142,9 @@ class GatedMLPBridge(MLPBridge):
         return output
 
     def _processed_projection(self, name: str) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Current weight and bias of a projection, detached from autograd."""
+        """Current weight and bias of a projection, still attached to autograd so they train."""
         projection = getattr(self, name)
-        bias = projection.bias
-        return projection.weight.detach(), None if bias is None else bias.detach()
+        return projection.weight, projection.bias
 
     def set_processed_weights(
         self, weights: Mapping[str, torch.Tensor | None], verbose: bool = False

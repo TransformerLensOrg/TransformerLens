@@ -381,6 +381,79 @@ def test_gradient_pursuit_reuse_with_multiple_correlated_atoms(scale: float) -> 
         )
 
 
+@pytest.mark.parametrize(
+    "produced_by, solve_algorithm",
+    [
+        ("nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"),
+        ("gradient_pursuit", "nonnegative_orthogonal_matching_pursuit"),
+    ],
+)
+def test_reuse_accepts_a_decomposition_from_either_algorithm(
+    produced_by: str, solve_algorithm: str
+) -> None:
+    """``algorithm`` governs fresh solves only; a cache shared across solvers stays reusable."""
+    dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.7, 0.7, 0.0], [0.0, 0.0, 1.0]])
+    activation = torch.tensor([1.0, 0.3, 0.0])
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2, algorithm=produced_by)
+    other = get_sparse_decomposition(activation, dictionary, k=2, algorithm=solve_algorithm)
+    # The solvers must disagree here, or reuse under the other algorithm proves nothing.
+    assert not torch.allclose(decomposition.coordinates, other.coordinates)
+
+    reused = solve_coordinate_patch(
+        activation, dictionary, 0, 2, decomposition=decomposition, algorithm=solve_algorithm
+    )
+
+    fresh = solve_coordinate_patch(activation, dictionary, 0, 2, k=2, algorithm=produced_by)
+    torch.testing.assert_close(reused.patched, fresh.patched)
+    scaled = replace(
+        decomposition,
+        coordinates=decomposition.coordinates * 2,
+        reconstruction=decomposition.reconstruction * 2,
+    )
+    with pytest.raises(ValueError, match="NNLS fit .* or as a gradient-pursuit replay"):
+        solve_coordinate_patch(
+            activation, dictionary, 0, 2, decomposition=scaled, algorithm=solve_algorithm
+        )
+
+
+def test_gradient_pursuit_reuse_validates_a_pruned_selected_atom() -> None:
+    """A selected atom the final step zeroes is pruned on replay; claiming it active is rejected."""
+    dictionary = torch.tensor(
+        [
+            [0.0, -3.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [1.0, -3.0, -3.0, 0.0],
+            [-1.0, -1.0, -1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    activation = torch.tensor([-1.0, -4.0, -4.0, 0.0])
+    decomposition = get_sparse_decomposition(
+        activation, dictionary, k=4, algorithm="gradient_pursuit"
+    )
+    # Atom 1 enters third with a positive coordinate and the fourth step clamps it to zero.
+    assert decomposition.selected_support.tolist() == [2, 3, 1, 0]
+    assert decomposition.support.tolist() == [2, 3, 0]
+
+    reused = solve_coordinate_patch(
+        activation, dictionary, 2, 4, decomposition=decomposition, algorithm="gradient_pursuit"
+    )
+
+    fresh = solve_coordinate_patch(activation, dictionary, 2, 4, k=4, algorithm="gradient_pursuit")
+    torch.testing.assert_close(reused.patched, fresh.patched)
+    # Relabel the pruned atom as active in atom 0's slot, keeping the reconstruction consistent.
+    relabelled = torch.tensor([2, 3, 1])
+    tampered = replace(
+        decomposition,
+        support=relabelled,
+        reconstruction=dictionary[relabelled].T @ decomposition.coordinates,
+    )
+    with pytest.raises(ValueError, match="gradient-pursuit replay"):
+        solve_coordinate_patch(
+            activation, dictionary, 2, 4, decomposition=tampered, algorithm="gradient_pursuit"
+        )
+
+
 def test_gradient_pursuit_empty_support_reports_missing_source() -> None:
     dictionary = torch.eye(3)
     activation = torch.zeros(3)

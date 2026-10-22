@@ -42,6 +42,8 @@ class BertArchitectureAdapter(ArchitectureAdapter):
         self.cfg.final_rms = False
         self.cfg.gated_mlp = False
         self.cfg.attn_only = False
+        # Encoder self-attention sees every position, so right padding must be masked.
+        self.cfg.attention_dir = "bidirectional"
 
         # BERT uses post-LN (LayerNorm after residual, not before sublayer).
         # fold_ln assumes pre-LN (LN before sublayer) and folds ln1 into attention

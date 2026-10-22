@@ -12,11 +12,11 @@ import torch
 
 from transformer_lens.tools.analysis._model_state import require_int
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
-    _ACTIVE_RELATIVE_TOLERANCE,
     _SWAP_WARN_COSINE,
     DEFAULT_K,
     JSpaceDecomposition,
-    _gradient_pursuit_step,
+    _active_mask,
+    _gradient_pursuit_extend,
     _linalg_on_cpu_if_mps,
     _validate_nnls_kkt,
     get_sparse_decomposition,
@@ -166,12 +166,51 @@ def _condition_number(atoms: torch.Tensor) -> float:
     return float(singular_values.max().item()) / smallest
 
 
+def _nnls_fit_error(
+    support_atoms: torch.Tensor, target: torch.Tensor, coordinates: torch.Tensor
+) -> Optional[str]:
+    """The NNLS KKT violation of ``coordinates`` over the active atoms, or ``None`` if they fit."""
+    # Couples the coordinates to the activation, catching self-consistently rescaled inputs.
+    active_atoms = support_atoms.T
+    tiny = torch.finfo(target.dtype).tiny
+    relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
+    atom_norms = active_atoms.norm(dim=0).clamp_min(tiny)
+    scale = (target.norm() + (active_atoms.abs() @ coordinates.abs()).norm()).clamp_min(tiny)
+    dual_tol = relative_tolerance * atom_norms * scale
+    coefficient_tol = relative_tolerance * scale / atom_norms
+    try:
+        _validate_nnls_kkt(active_atoms, target, coordinates, dual_tol, coefficient_tol)
+    except RuntimeError as error:
+        return str(error)
+    return None
+
+
+def _replays_gradient_pursuit(
+    selected_atoms: Optional[torch.Tensor],
+    target: torch.Tensor,
+    support: torch.Tensor,
+    selected: torch.Tensor,
+    coordinates: torch.Tensor,
+) -> bool:
+    """Whether replaying gradient pursuit over ``selected`` in order yields this support and fit."""
+    # Gradient-pursuit coefficients are approximate and need not satisfy the NNLS KKT conditions.
+    replay = target.new_zeros(0)
+    if selected_atoms is not None:
+        for count in range(1, selected.numel() + 1):
+            replay = _gradient_pursuit_extend(selected_atoms[:, :count], target, replay)
+        active = _active_mask(replay, selected_atoms, float(torch.linalg.vector_norm(target)))
+    else:
+        active = torch.zeros(0, dtype=torch.bool, device=target.device)
+    if not torch.equal(support, selected[active.cpu()]):
+        return False
+    return not coordinates.numel() or _close(coordinates, replay[active])
+
+
 def _validate_decomposition(
     decomposition: JSpaceDecomposition,
     target: torch.Tensor,
     dictionary: torch.Tensor,
     target_idx: int,
-    algorithm: str,
 ) -> None:
     num_atoms, d_model = dictionary.shape
     support = decomposition.support
@@ -226,36 +265,16 @@ def _validate_decomposition(
     expected_reconstruction = support_atoms.T @ coordinates
     if not _close(local_vectors[0], expected_reconstruction, span_condition):
         raise ValueError("precomputed decomposition reconstruction is incompatible with dictionary")
-    if algorithm == "gradient_pursuit":
-        # Replay only the selected-set updates; approximate coefficients need not satisfy NNLS KKT.
-        replay = target.new_zeros(0)
-        selected_rows = dictionary[selected_cpu].float()
-        for count in range(1, selected_cpu.numel() + 1):
-            replay = _gradient_pursuit_step(
-                selected_rows[:count].T, target, torch.cat([replay, replay.new_zeros(1)])
-            )
-        active = replay * selected_rows.norm(dim=1) > (
-            _ACTIVE_RELATIVE_TOLERANCE * float(target.norm().detach())
+    # Either solver's output is accepted whatever ``algorithm`` a fresh solve would use, so a
+    # decomposition cache shared across algorithms stays valid.
+    nnls_error = _nnls_fit_error(support_atoms, target, coordinates)
+    if nnls_error is not None and not _replays_gradient_pursuit(
+        selected_atoms, target, support_cpu, selected_cpu, coordinates
+    ):
+        raise ValueError(
+            "precomputed decomposition coordinates do not fit the activation as an NNLS fit "
+            f"({nnls_error}) or as a gradient-pursuit replay of selected_support"
         )
-        if not torch.equal(support_cpu, selected_cpu[active.cpu()]) or (
-            coordinates.numel() and not _close(coordinates, replay[active])
-        ):
-            raise ValueError("precomputed decomposition coordinates do not fit the activation")
-    else:
-        # Couple the coordinates to the activation, including self-consistently rescaled inputs.
-        active_atoms = support_atoms.T
-        tiny = torch.finfo(target.dtype).tiny
-        relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
-        atom_norms = active_atoms.norm(dim=0).clamp_min(tiny)
-        scale = (target.norm() + (active_atoms.abs() @ coordinates.abs()).norm()).clamp_min(tiny)
-        dual_tol = relative_tolerance * atom_norms * scale
-        coefficient_tol = relative_tolerance * scale / atom_norms
-        try:
-            _validate_nnls_kkt(active_atoms, target, coordinates, dual_tol, coefficient_tol)
-        except RuntimeError as error:
-            raise ValueError(
-                f"precomputed decomposition coordinates do not fit the activation ({error})"
-            ) from error
     if not _close(local_vectors[1] + local_vectors[2], target, span_condition):
         raise ValueError("precomputed decomposition is incompatible with activation")
     if selected_atoms is not None:
@@ -374,8 +393,8 @@ def solve_coordinate_patch(
         k: Sparse-solver upper bound when no decomposition is supplied.
         mode: ``"substitute"`` to overwrite the target, or ``"swap"`` to exchange coordinates.
         alpha: Finite interpolation strength. Zero returns an unchanged float32 clone.
-        algorithm: Sparse coefficient-update rule, also used to validate supplied coordinates.
-            Set this to the algorithm that produced a supplied decomposition.
+        algorithm: Sparse coefficient-update rule when no decomposition is supplied. A supplied
+            decomposition is accepted if it fits as either algorithm's output.
 
     Returns:
         A :class:`CoordinatePatch` with the anchored edit and numerical diagnostics.
@@ -412,7 +431,7 @@ def solve_coordinate_patch(
     elif not isinstance(decomposition, JSpaceDecomposition):
         raise ValueError("decomposition must be a JSpaceDecomposition")
     else:
-        _validate_decomposition(decomposition, target, dictionary, target_idx, algorithm)
+        _validate_decomposition(decomposition, target, dictionary, target_idx)
 
     support_before = decomposition.support.detach().cpu().clone()
     support_ids = support_before.tolist()
@@ -542,8 +561,8 @@ def solve_coordinate_patch_positions(
         k: Sparse-solver upper bound on a cache miss.
         mode: ``"substitute"`` or ``"swap"``, forwarded to :func:`solve_coordinate_patch`.
         alpha: Finite interpolation strength, forwarded to :func:`solve_coordinate_patch`.
-        algorithm: Sparse coefficient-update rule on a cache miss and validation rule on a hit.
-            Cached decompositions must use this algorithm.
+        algorithm: Sparse coefficient-update rule on a cache miss. A cache hit is accepted if it
+            fits as either algorithm's output.
 
     Returns:
         A tuple ``(patched, patches)``: ``patched`` has the same shape as ``activations``, with

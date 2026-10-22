@@ -23,9 +23,8 @@ def accepts_mask_derived_position_ids(model: nn.Module) -> bool:
         scaling = getattr(candidate, "rope_scaling", None)
         if isinstance(scaling, dict) and "mrope_section" in scaling:
             return False
-    # fairseq-style embeddings (RoBERTa family) build pad-aware positions from the
-    # input ids at padding_idx + 1 onwards; an injected 0-based arange would land
-    # content tokens on the reserved rows.
+    # fairseq-style (RoBERTa) embeddings start positions at padding_idx + 1; an injected
+    # 0-based arange would put content tokens on the reserved rows.
     for module in model.modules():
         if callable(getattr(module, "create_position_ids_from_input_ids", None)):
             return False

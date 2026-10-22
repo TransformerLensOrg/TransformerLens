@@ -23,9 +23,21 @@ def deterministic_rng(seed: int = 42) -> Iterator[None]:
     Benchmarks that sample need reproducible verdicts, but a bare manual_seed
     rewrites the process-global stream for every benchmark that follows.
     """
-    with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(seed)
-        yield
+    # Sampling draws from the logits' device, so seed CUDA and MPS too; only the
+    # generators snapshotted here are seeded, so each one is restored afterwards.
+    cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+    mps_state = torch.mps.get_rng_state() if torch.backends.mps.is_available() else None
+    with torch.random.fork_rng(devices=cuda_devices):
+        try:
+            torch.default_generator.manual_seed(seed)
+            if cuda_devices:
+                torch.cuda.manual_seed_all(seed)
+            if mps_state is not None:
+                torch.mps.manual_seed(seed)
+            yield
+        finally:
+            if mps_state is not None:
+                torch.mps.set_rng_state(mps_state)
 
 
 def is_tiny_test_model(model_name: str) -> bool:

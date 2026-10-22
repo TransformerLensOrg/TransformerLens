@@ -1,8 +1,4 @@
-"""Attribution patching and faithfulness on a raw GPT-2 Bridge.
-
-Covers converted gradient caches, gated reader forks, independent partial
-intervention references, and circuit-relative class removal.
-"""
+"""Attribution patching and faithfulness on real Bridges, against explicit hook overrides."""
 
 from __future__ import annotations
 
@@ -385,18 +381,7 @@ def test_attribution_patch_scores_every_node_finite_on_real_bridge(gpt2_bridge) 
 def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> None:
     """A ranked edge circuit recovers far more of the gap than a random one.
 
-    The ablation rewrites each reader's input at its pre-LN fork hook, so this
-    only works if the real Bridge's split-QKV and MLP-entry hooks sit where the
-    rewrite assumes. A circuit built from the top-ranked edges should recover a
-    large share of the clean-to-corrupt gap; a random edge set of the same size
-    should recover essentially none, which is what makes the number meaningful
-    rather than an artifact of ablating almost nothing.
-
-    Thresholds are set from measured values on this exact model and prompt pair
-    (gpt2-small, fp32, CPU): the top 200 edges recover about 0.62 of the gap,
-    while a random 200 of the 194,946 edges recover about 0.00. Recovery grows
-    with the budget -- roughly 0.29 at 50 edges and 0.997 at 1000 -- so the
-    budget is fixed here rather than left to drift.
+    Measured (fp32, CPU): top 200 edges recover ~0.62, a random 200 ~0.00; recovery grows with k.
     """
     clean = gpt2_bridge.to_tokens(CLEAN_PROMPT)
     corrupt = gpt2_bridge.to_tokens(CORRUPT_PROMPT)
@@ -425,9 +410,7 @@ def test_faithfulness_recovers_most_of_the_metric_on_gpt2_small(gpt2_bridge) -> 
     assert report.full_metric != pytest.approx(report.corrupt_metric)
     assert report.recovered > 0.5
 
-    # A random edge set of the same size recovers essentially nothing, so the
-    # ranking is doing real work rather than the number being an artifact of the
-    # circuit's size.
+    # A same-size random set shows the ranking, not the circuit size, earns the recovery.
     all_edges = list(result.edge_scores)
     generator = torch.Generator().manual_seed(0)
     sampled = torch.randperm(len(all_edges), generator=generator)[:budget].tolist()
@@ -581,9 +564,7 @@ def _assert_layer0_writer_drops_match_output_patches(
 def test_gpt2_writer_drop_matches_patching_the_writer_output(gpt2_bridge) -> None:
     """Dropping a layer-0 writer's out-edges recovers what patching its own output does.
 
-    Head 4 moves this pair's metric most among layer-0 heads (reference 0.956,
-    against 0.9995 for head 0), keeping the check well clear of the no-op value 1.
-    Measured fp32 error: 2.0e-6 for the head, 2.8e-6 for the MLP.
+    Head 4 (reference 0.956) keeps clear of the no-op value 1; measured fp32 error <= 2.8e-6.
     """
     _assert_layer0_writer_drops_match_output_patches(gpt2_bridge, head=4, abs_tol=1e-4)
 
@@ -599,9 +580,7 @@ def parallel_bridge():
 def test_parallel_attn_mlp_writer_drop_matches_patching_the_writer_output(parallel_bridge) -> None:
     """The writer-drop identity on blocks whose MLP reads the layer input, not its heads.
 
-    Measured error 1.1e-5 (head 2) and 9.0e-5 (MLP) in fp32, against 2.1e-13 and
-    4.2e-13 in fp64, so the fp32 residual is rounding; the tolerance is 10x the
-    larger fp32 error. Head 2 moves this pair's metric most among layer-0 heads.
+    fp32 error <= 9.0e-5 vs <= 4.2e-13 in fp64, so it is rounding; tolerance is 10x the fp32 error.
     """
     assert parallel_bridge.cfg.parallel_attn_mlp
     _assert_layer0_writer_drops_match_output_patches(parallel_bridge, head=2, abs_tol=9e-4)

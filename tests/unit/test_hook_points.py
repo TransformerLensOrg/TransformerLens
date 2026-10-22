@@ -1,5 +1,7 @@
 from unittest import mock
 
+from torch.utils.hooks import RemovableHandle
+
 from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedRootModule import HookedRootModule
@@ -81,9 +83,8 @@ def test_add_hook_with_level(mock_handle):
     assert hook_point.fwd_hooks[0].context_level == 5
 
 
-@mock.patch("transformer_lens.hook_points.LensHandle")
 @mock.patch("torch.utils.hooks.RemovableHandle")
-def test_add_hook_prepend(mock_handle, mock_lens_handle):
+def test_add_hook_prepend(mock_handle):
     mock_handle.id = 0
     mock_handle.next_id = 1
 
@@ -95,21 +96,11 @@ def test_add_hook_prepend(mock_handle, mock_lens_handle):
     def hook2(activation, hook):
         return activation
 
-    # Make LensHandle constructor return a simple container capturing the pt_handle ('hook')
-    class _LensHandleBox:
-        def __init__(self, handle, is_permanent, context_level, user_hook=None):
-            self.hook = handle
-            self.is_permanent = is_permanent
-            self.context_level = context_level
-            self.user_hook = user_hook
-
-    mock_lens_handle.side_effect = _LensHandleBox
-
     # Override register_forward_hook to return mocked handles with incremental ids
     next_id = {"val": 1}
 
     def fake_register_forward_hook(fn, prepend=False):
-        handle = mock.MagicMock()
+        handle = mock.MagicMock(spec=RemovableHandle)
         handle.id = next_id["val"]
         next_id["val"] += 1
         return handle
@@ -584,3 +575,13 @@ class TestHookPointHasHooks:
         output = self.hook_point(test_input)
         expected = torch.tensor([2.0, 4.0])
         assert torch.allclose(output, expected)
+
+
+def test_add_hook_returns_its_registered_handle():
+    hook_point, hook = setup_hook_point_and_hook()
+    first = hook_point.add_hook(hook)
+    prepended = hook_point.add_hook(hook, prepend=True, level=3)
+    bwd = hook_point.add_hook(hook, dir="bwd")
+    assert hook_point.fwd_hooks == [prepended, first]
+    assert prepended.context_level == 3
+    assert hook_point.bwd_hooks == [bwd]

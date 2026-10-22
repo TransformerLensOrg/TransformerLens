@@ -168,9 +168,7 @@ def _registry_revision() -> str:
 DEFAULT_SKIP_FIRST_POSITIONS = 16
 DEFAULT_TOP_K = 10
 
-# Estimator identity recorded on every fitted lens. The transport matrices of two
-# lenses are only comparable when their estimators agree, so merge() compares this
-# value alongside the rest of the provenance.
+# Recorded on every fitted lens; merge() refuses shards whose estimators differ.
 ESTIMATOR_JACOBIAN = "jacobian_lens"
 
 # Keys written by fit() that must not appear in converted-lens metadata so that
@@ -1013,8 +1011,8 @@ class JacobianLens:
             k: Sparse-solver upper bound when ``decomposition`` is not supplied.
             mode: ``"substitute"`` or ``"swap"``.
             alpha: Finite interpolation strength; zero is an exact no-op.
-            algorithm: Sparse coefficient-update rule, also used to validate a supplied
-                decomposition. Use the algorithm that produced its coordinates.
+            algorithm: Sparse coefficient-update rule when ``decomposition`` is not supplied. A
+                supplied decomposition is accepted if it fits as either algorithm's output.
 
         Returns:
             A :class:`CoordinatePatch` containing the edited frame, diagnostics, and activation.
@@ -1050,8 +1048,8 @@ class JacobianLens:
 
         Returns ``(activation, resolved_layer)``. Shared by :meth:`decompose`,
         :meth:`coordinate_patch`, and :meth:`occupancy` so all accept the same input forms with
-        identical validation. ``operation`` is the calling method's name, used in the
-        training-mode refusal; a raw activation needs no forward and so is never refused.
+        identical validation. ``operation`` names the caller in the training-mode refusal,
+        which a raw activation (no forward) never triggers.
         """
         self.validate_model(model)
         resolved_layer = _normalize_layer(layer, model.cfg.n_layers)
@@ -1113,10 +1111,8 @@ class JacobianLens:
         ``position``) exactly as :meth:`decompose`, builds the cached full-vocabulary dictionary
         via :meth:`lens_vector_dictionary`, and calls :func:`estimate_occupancy`.
 
-        Each control dictionary is a ``[d_vocab, d_model]`` draw made on the CPU so a seed gives
-        the same result on every device. On an accelerator those draws dominate the run time
-        (seconds per control for a large vocabulary), so lower ``num_control_dictionaries`` when
-        speed matters more than control precision.
+        Control dictionaries are ``[d_vocab, d_model]`` CPU draws (for cross-device reproducibility)
+        that dominate run time on an accelerator; lower ``num_control_dictionaries`` for speed.
 
         Args:
             model: A raw ``TransformerBridge``.
@@ -1559,8 +1555,8 @@ class JacobianLens:
             k: Sparse-solver upper bound on a cache miss.
             mode: ``"substitute"`` or ``"swap"``.
             alpha: Finite interpolation strength; zero is an exact no-op.
-            algorithm: Sparse coefficient-update rule on a cache miss and validation rule on a
-                hit. Cached decompositions must use this algorithm.
+            algorithm: Sparse coefficient-update rule on a cache miss. A cache hit is accepted
+                if it fits as either algorithm's output.
 
         Returns:
             ``[(hook_name, fn), ...]`` for ``model.hooks(fwd_hooks=...)``.
@@ -1849,10 +1845,7 @@ def _get_model_revision(model: Any) -> Optional[str]:
 
 
 def _require_raw_bridge(model: Any, *, estimator: str) -> None:
-    """Require the causal raw-Bridge contract used by fit and readout.
-
-    ``estimator`` names the calling class or operation in diagnostics.
-    """
+    """Require the causal raw-Bridge fit/readout contract; ``estimator`` names the caller."""
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):

@@ -168,9 +168,7 @@ class _ToyBridge(TransformerBridge):
         for direction, hook_specs in (("fwd", fwd_hooks), ("bwd", bwd_hooks)):
             for name, hook_fn in hook_specs:
                 hook_point = self.hook_dict[name]
-                hook_point.add_hook(hook_fn, dir=direction)
-                handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                added.append((hook_point, direction, handles[-1]))
+                added.append((hook_point, direction, hook_point.add_hook(hook_fn, dir=direction)))
         try:
             yield self
         finally:

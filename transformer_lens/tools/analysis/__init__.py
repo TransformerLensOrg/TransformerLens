@@ -25,7 +25,7 @@ Tools:
       placebo, batched gradient-free evaluation, distributed alignment search
       (DAS) to learn the subspace, and DAS's trained controls (arbitrary labels
       and a randomly initialised model).
-    - jacobian_lens: The Jacobian lens (J-lens) -- per-layer causal transport to
+    - jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
       anchored coordinate patching (offline and dynamic/hooked).

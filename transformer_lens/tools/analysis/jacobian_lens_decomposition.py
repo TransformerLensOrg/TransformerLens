@@ -370,6 +370,23 @@ def _gradient_pursuit_step(
     return feasible
 
 
+def _gradient_pursuit_extend(
+    selected_atoms: torch.Tensor, target: torch.Tensor, coordinates: torch.Tensor
+) -> torch.Tensor:
+    """Gradient-pursuit update after the newest column of ``selected_atoms`` joins at zero."""
+    return _gradient_pursuit_step(
+        selected_atoms, target, torch.cat([coordinates, coordinates.new_zeros(1)])
+    )
+
+
+def _active_mask(
+    coordinates: torch.Tensor, selected_atoms: torch.Tensor, target_norm: float
+) -> torch.Tensor:
+    """Selected atoms whose contribution ``c_i * ||v_i||`` is a material fraction of ``||x||``."""
+    contribution = coordinates * torch.linalg.vector_norm(selected_atoms, dim=0)
+    return contribution > _ACTIVE_RELATIVE_TOLERANCE * target_norm
+
+
 def get_sparse_decomposition(
     x: torch.Tensor,
     dictionary: torch.Tensor,
@@ -461,9 +478,7 @@ def get_sparse_decomposition(
         else:
             # Carry the coefficients forward, initialising the new atom at zero, and take a
             # single projected-gradient step over the selected set.
-            coordinates = _gradient_pursuit_step(
-                selected_atoms, target, torch.cat([coordinates, coordinates.new_zeros(1)])
-            )
+            coordinates = _gradient_pursuit_extend(selected_atoms, target, coordinates)
         residual = target - selected_atoms @ coordinates
 
     # ``selected_support`` stays on CPU for token decoding; the vector-valued outputs stay on
@@ -475,8 +490,7 @@ def get_sparse_decomposition(
     # materially nonzero fraction of ``||x||``. For the NNLS re-solve this is exactly the
     # strictly-positive coordinate set (its coefficient-zeroing uses the same scale); for
     # gradient pursuit it prunes atoms left at (near-)zero by the final projected step.
-    contribution = coordinates * torch.linalg.vector_norm(selected_atoms, dim=0)
-    active = contribution > _ACTIVE_RELATIVE_TOLERANCE * x_norm  # on the computation device
+    active = _active_mask(coordinates, selected_atoms, x_norm)  # on the computation device
     support = selected_support[active.cpu()]  # CPU, aligned with the token-decoding tensors
     active_coordinates = coordinates[active]
     active_atoms = selected_atoms[:, active]  # [d_model, num_active] on atoms.device
@@ -581,10 +595,8 @@ def estimate_occupancy(
     given ``seed`` on every device and needs no threshold. (Captured variance is a projection,
     hence scale-free, so the random control atoms are simply unit-norm.)
 
-    The control dictionaries are drawn on the CPU, which is what makes a seed reproduce the same
-    result on every device, and then copied to ``dictionary``'s device. That draw is serial CPU
-    work of ``num_control_dictionaries * num_atoms * d_model`` normals, so for a large
-    dictionary on an accelerator it dominates the run time; lower ``num_control_dictionaries``
+    Control dictionaries are drawn on the CPU (for cross-device reproducibility), so for a large
+    dictionary on an accelerator that draw dominates run time; lower ``num_control_dictionaries``
     to trade control precision for speed.
 
     Args:

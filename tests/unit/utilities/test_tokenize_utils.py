@@ -15,11 +15,13 @@ def _tokenizer(
     bos_token_id: int | None,
     pad_token_id: int | None,
     padding_side: str,
+    cls_token_id: int | None = None,
 ) -> PreTrainedTokenizerBase:
     tokenizer = Mock(spec=PreTrainedTokenizerBase)
     tokenizer.bos_token_id = bos_token_id
     tokenizer.pad_token_id = pad_token_id
     tokenizer.padding_side = padding_side
+    tokenizer.cls_token_id = cls_token_id
     return cast(PreTrainedTokenizerBase, tokenizer)
 
 
@@ -109,3 +111,34 @@ def test_bos_removal_uses_last_axis(
     )
 
     assert torch.equal(result, torch.tensor(expected, dtype=torch.long))
+
+
+@pytest.mark.parametrize(
+    "tokens, bos_token_id, pad_token_id",
+    [
+        # A BOS-free row has no BOS to drop; column 0 is the real token 21.
+        pytest.param([[1, 11, 12], [21, 22, 23]], 1, 0, id="row-without-bos"),
+        # The only BOS sits mid-row, so removing it would delete a real in-text token.
+        pytest.param([[0, 5, 1, 6]], 1, 0, id="bos-not-leading"),
+        # bos == pad with no leading pad, so the second row has no prepended BOS.
+        pytest.param([[0, 11, 12], [5, 21, 22]], 0, 0, id="bos-is-pad-no-leading-pad"),
+        pytest.param([[0, 0, 0]], 1, 0, id="all-pad-row"),
+    ],
+)
+def test_bos_removal_rejects_left_padded_rows_without_bos(
+    tokens: list, bos_token_id: int, pad_token_id: int
+) -> None:
+    with pytest.raises(ValueError, match="do not start with the BOS token"):
+        utils.get_tokens_with_bos_removed(
+            _tokenizer(bos_token_id, pad_token_id, "left"), torch.tensor(tokens)
+        )
+
+
+def test_bos_removal_left_padding_drops_leading_cls() -> None:
+    """A CLS-prepending tokenizer loses [CLS] under left padding, as it does under right."""
+    tokenizer = _tokenizer(bos_token_id=1, pad_token_id=0, padding_side="left", cls_token_id=101)
+    tokens = torch.tensor([[0, 101, 11], [101, 21, 22]])
+
+    result = utils.get_tokens_with_bos_removed(tokenizer, tokens)
+
+    assert torch.equal(result, torch.tensor([[0, 11], [21, 22]]))

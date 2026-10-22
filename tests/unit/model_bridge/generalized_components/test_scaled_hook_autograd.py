@@ -124,3 +124,16 @@ def test_equal_value_edit_supports_functional_differentiation():
     primal, tangent = torch.func.jvp(objective, (delta,), (torch.ones_like(delta),))
     torch.testing.assert_close(primal, torch.tensor(3.0))
     torch.testing.assert_close(tangent, torch.tensor(1.5))
+
+
+def test_equal_value_edit_supports_forward_mode_jacobian():
+    component = GeneralizedComponent("scaled")
+
+    def outputs(delta):
+        point = HookPoint()
+        point.add_hook(lambda value, hook: value + delta)
+        return component._hook_scaled_output(torch.ones_like(delta), point, 2.0)
+
+    delta = torch.zeros(3)
+    # jacfwd vmaps the Function over basis tangents; jacrev of a scalar never does.
+    torch.testing.assert_close(torch.func.jacfwd(outputs)(delta), 0.5 * torch.eye(3))
