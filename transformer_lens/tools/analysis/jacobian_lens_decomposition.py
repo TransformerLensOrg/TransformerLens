@@ -120,6 +120,26 @@ def _linalg_on_cpu_if_mps(op: Callable[..., torch.Tensor], *tensors: torch.Tenso
     return op(*tensors)
 
 
+def _project_onto_span(atoms: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Project onto atom columns using a scale- and ambient-dimension-independent rank policy.
+
+    Unit columns are decomposed in float64, retaining singular values above the NNLS relative
+    rank tolerance. Exactly dependent and numerically indistinguishable directions are removed.
+    MPS performs this small selected-set decomposition on CPU, restoring dtype and device.
+    """
+    if atoms.shape[1] == 0:
+        return torch.zeros_like(target)
+
+    def project(local_atoms: torch.Tensor, local_target: torch.Tensor) -> torch.Tensor:
+        work = local_atoms.double()
+        norms = torch.linalg.vector_norm(work, dim=0).clamp_min(torch.finfo(torch.float64).tiny)
+        left, singular_values, _ = torch.linalg.svd(work / norms, full_matrices=False)
+        basis = left[:, singular_values > _NNLS_RANK_RTOL * singular_values.max()]
+        return (basis @ (basis.T @ local_target.double())).to(local_target.dtype)
+
+    return _linalg_on_cpu_if_mps(project, atoms, target)
+
+
 def _diagnose_intervention_pair(
     unit_vectors: torch.Tensor, *, description: str, stacklevel: int
 ) -> float:
@@ -167,6 +187,8 @@ class JSpaceDecomposition:
             ``selected_support`` (the paper's "J-space component"). For the exact NNLS
             re-solve it equals ``reconstruction`` unless a selected atom has a zero
             coordinate, in which case the projection uses a larger span.
+            Numerical rank is measured on unit atom columns in float64 with relative
+            tolerance ``sqrt(eps64)``, independently of ambient dimension and atom norms.
         non_j_space_component: The residual ``target - j_space_component`` (the
             "non-J-space component"), orthogonal to the selected span.
     """
@@ -498,15 +520,10 @@ def get_sparse_decomposition(
     # Reconstruction is the nonnegative combination over the active support (empty -> zeros).
     reconstruction = active_atoms @ active_coordinates
     # The J-space component is the orthogonal projection of the target onto the span of every
-    # selected atom (paper appendix), computed with the same pseudoinverse construction as
-    # swap_hooks. That span can be larger than the active support when a selected coordinate is
+    # selected atom (paper appendix). That span can exceed the active support when a coordinate is
     # zero, so the projection differs from the nonnegative reconstruction in that case.
     if selected:
-        j_space_component = _linalg_on_cpu_if_mps(
-            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
-            selected_atoms,
-            target,
-        )
+        j_space_component = _project_onto_span(selected_atoms, target)
     else:
         j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
@@ -548,8 +565,8 @@ def _greedy_captured_variance_gains(
 
     At each step, add the unused atom with the greatest signed, norm-normalized correlation with
     the current residual. Project ``target`` orthogonally onto the full selected span using a
-    pseudoinverse, then set the next residual to ``target - projection``. The captured variance is
-    ``||Pi_S target||^2 / ||target||^2``; the returned values are its per-step increments.
+    rank-revealing unit-column SVD, then set the next residual to ``target - projection``.
+    Captured variance is ``||Pi_S target||^2 / ||target||^2``; the returned values are its increments.
 
     This shares the per-step correlation rule with :func:`get_sparse_decomposition`, but not its
     residual recurrence: sparse decomposition uses a nonnegative coefficient-fit residual and may
@@ -566,7 +583,7 @@ def _greedy_captured_variance_gains(
             correlation[chosen] = float("-inf")
         support.append(int(torch.argmax(correlation).item()))
         active_atoms = atoms[support].T
-        projection = active_atoms @ (torch.linalg.pinv(active_atoms) @ target)
+        projection = _project_onto_span(active_atoms, target)
         captured_variance = float((projection @ projection) / total_variance)
         captured_variance_gains.append(captured_variance - previous_captured_variance)
         previous_captured_variance = captured_variance
