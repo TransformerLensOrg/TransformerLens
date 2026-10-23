@@ -216,3 +216,58 @@ def test_default_path_emits_no_fallback_warnings():
         warnings.simplefilter("error")
         bridge(x)
     bridge.hook_normalized.remove_hooks()
+
+
+@pytest.mark.parametrize("hook_name", ["hook_scale", "hook_normalized"])
+@pytest.mark.parametrize("direction", ["fwd", "bwd"])
+def test_layernorm_ignores_shared_rms_offset_with_hooks(hook_name, direction):
+    """A vision LayerNorm must not inherit its language model's RMS affine convention."""
+    bridge = _make_bridge(native=True)
+    bridge.config.uses_rms_norm = True
+    bridge.config.rmsnorm_uses_offset = True
+    assert not bridge.uses_rms_norm
+    x = torch.randn(2, 5, 16, requires_grad=True)
+    expected = bridge.original_component(x)
+    probe = torch.randn_like(expected)
+    parameters = (x, bridge.original_component.weight, bridge.original_component.bias)
+    expected_grads = torch.autograd.grad(expected, parameters, probe)
+    fired = []
+
+    def identity(value, hook):
+        fired.append(True)
+        return value.clone()
+
+    hook_point = getattr(bridge, hook_name)
+    hook_point.add_hook(identity, dir=direction)
+    message = "Backward hooks" if direction == "bwd" else "reconstructed from the hooked values"
+    with pytest.warns(UserWarning, match=message):
+        actual = bridge(x)
+    actual_grads = torch.autograd.grad(actual, parameters, probe)
+    hook_point.remove_hooks()
+    assert fired
+    torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
+    for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+        torch.testing.assert_close(actual_grad, expected_grad, atol=1e-6, rtol=1e-5)
+
+
+def test_python_layernorm_ignores_shared_rms_offset():
+    bridge = _make_bridge(native=False)
+    bridge.config.uses_rms_norm = True
+    bridge.config.rmsnorm_uses_offset = True
+    x = torch.randn(2, 5, 16)
+    torch.testing.assert_close(bridge(x), bridge.original_component(x), atol=1e-6, rtol=1e-5)
+
+
+def test_layernorm_edit_uses_weight_and_bias_despite_shared_rms_offset():
+    bridge = _make_bridge(native=True)
+    bridge.config.uses_rms_norm = True
+    bridge.config.rmsnorm_uses_offset = True
+    x = torch.randn(2, 5, 16)
+    bridge.hook_normalized.add_hook(lambda value, hook: torch.ones_like(value))
+    with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+        actual = bridge(x)
+    bridge.hook_normalized.remove_hooks()
+    expected = (
+        torch.ones_like(x) * bridge.original_component.weight + bridge.original_component.bias
+    )
+    torch.testing.assert_close(actual, expected)

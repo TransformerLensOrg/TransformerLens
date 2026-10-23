@@ -1,5 +1,6 @@
 {
-  "_comment": "Artifact registry for pre-fitted Jacobian Lens checkpoints hosted on neuronpedia/jacobian-lens (https://huggingface.co/neuronpedia/jacobian-lens). Keys are short model names accepted by JacobianLens.from_pretrained(); aliases lists the canonical Hugging Face model IDs that also resolve to the same entry. Generated from the repository's sibling list on 2026-07-23.",
+  "_comment": "Artifact registry for pre-fitted Jacobian Lens checkpoints hosted on neuronpedia/jacobian-lens (https://huggingface.co/neuronpedia/jacobian-lens). Keys are short model names accepted by JacobianLens.from_pretrained(); aliases lists the canonical Hugging Face model IDs that also resolve to the same entry. Generated from the repository's sibling list on 2026-07-23. revision is the repository commit every entry is downloaded at unless from_pretrained() is given another.",
+  "revision": "a4114d7752d11eb546e6cf372213d7e75526d3a1",
   "gemma-2-2b": {
     "aliases": ["google/gemma-2-2b"],
     "repo_id": "neuronpedia/jacobian-lens",

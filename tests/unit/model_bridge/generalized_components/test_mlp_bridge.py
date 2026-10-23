@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 
+import pytest
 import torch
 import torch.nn as nn
 
@@ -144,32 +145,43 @@ class TestMLPBridgeSingleFire:
         torch.testing.assert_close(seen[0], out - residual)
 
 
+def _processed_gated_mlp() -> tuple[GatedMLPBridge, torch.Tensor]:
+    """A GatedMLPBridge on its processed path over biased nn.Linear projections, and an input."""
+    d_model, d_mlp = 8, 16
+    bridge = GatedMLPBridge(
+        name="mlp",
+        config=SimpleNamespace(hidden_act="silu"),
+        submodules={
+            "gate": LinearBridge(name="gate_proj"),
+            "in": LinearBridge(name="up_proj"),
+            "out": LinearBridge(name="down_proj"),
+        },
+    )
+    shapes = {"gate": (d_mlp, d_model), "in": (d_mlp, d_model), "out": (d_model, d_mlp)}
+    weights = {}
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        for key, (d_out, d_in) in shapes.items():
+            bridge.submodules[key].set_original_component(nn.Linear(d_in, d_out))
+            bridge.add_module(key, bridge.submodules[key])
+            weights[f"{key}.weight"] = torch.randn(d_out, d_in)
+            weights[f"{key}.bias"] = torch.randn(d_out)
+        x = torch.randn(2, 3, d_model)
+    bridge.set_processed_weights(weights)
+    return bridge, x
+
+
+def _gated_reference(bridge: GatedMLPBridge, x: torch.Tensor) -> torch.Tensor:
+    """down(silu(gate(x)) * up(x)) through the wrapped nn.Linear projections."""
+    gate, up, down = (bridge.submodules[key].original_component for key in ("gate", "in", "out"))
+    return down(torch.nn.functional.silu(gate(x)) * up(x))
+
+
 class TestGatedMLPProcessedPathHooks:
     def test_processed_path_fires_out_hook_out(self) -> None:
         """The functional processed-weights path bypasses the wrapped projections;
         out.hook_out must still fire with the down-projection output."""
-        d_model, d_mlp = 8, 16
-        bridge = GatedMLPBridge(
-            name="mlp",
-            config=SimpleNamespace(hidden_act="silu"),
-            submodules={
-                "gate": LinearBridge(name="gate_proj"),
-                "in": LinearBridge(name="up_proj"),
-                "out": LinearBridge(name="down_proj"),
-            },
-        )
-        for key, sub in bridge.submodules.items():
-            bridge.add_module(key, sub)
-        with torch.random.fork_rng(devices=[]):
-            torch.manual_seed(0)
-            bridge._use_processed_weights = True
-            bridge._processed_W_gate = torch.randn(d_mlp, d_model)
-            bridge._processed_b_gate = None
-            bridge._processed_W_in = torch.randn(d_mlp, d_model)
-            bridge._processed_b_in = None
-            bridge._processed_W_out = torch.randn(d_model, d_mlp)
-            bridge._processed_b_out = None
-            x = torch.randn(2, 3, d_model)
+        bridge, x = _processed_gated_mlp()
 
         out_bridge = bridge.submodules["out"]
         seen: list[torch.Tensor] = []
@@ -181,10 +193,39 @@ class TestGatedMLPProcessedPathHooks:
             out_bridge.hook_out.remove_hooks()
 
         assert len(seen) == 1
-        expected = torch.nn.functional.linear(
-            torch.nn.functional.silu(torch.nn.functional.linear(x, bridge._processed_W_gate))
-            * torch.nn.functional.linear(x, bridge._processed_W_in),
-            bridge._processed_W_out,
-        )
+        with torch.no_grad():
+            expected = _gated_reference(bridge, x)
         torch.testing.assert_close(seen[0], expected)
         torch.testing.assert_close(out, expected)
+
+
+class TestGatedMLPProcessedPathWeights:
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float64])
+    def test_follows_dtype_change(self, dtype: torch.dtype) -> None:
+        """After .to(dtype), the processed path computes with the converted projections."""
+        bridge, x = _processed_gated_mlp()
+        bridge.to(dtype)
+        x = x.to(dtype)
+        with torch.no_grad():
+            out = bridge(x)
+            expected = _gated_reference(bridge, x)
+        assert out.dtype == dtype
+        torch.testing.assert_close(out, expected)
+
+    def test_deepcopy_reads_its_own_projections(self) -> None:
+        """In-place edits to a deep copy's projections reach the copy's processed path."""
+        bridge, x = _processed_gated_mlp()
+        clone = copy.deepcopy(bridge)
+        with torch.no_grad():
+            clone.out.original_component.weight.zero_()
+            clone.out.original_component.bias.zero_()
+            assert torch.count_nonzero(clone(x)) == 0
+
+    def test_projections_receive_gradients(self) -> None:
+        """Training through the processed path updates every gate/up/down weight and bias."""
+        bridge, x = _processed_gated_mlp()
+        bridge(x).sum().backward()
+        grads = {name: param.grad for name, param in bridge.named_parameters()}
+        assert len(grads) == 6
+        missing = [name for name, grad in grads.items() if grad is None or not grad.any()]
+        assert not missing, f"no gradient reached {missing}"

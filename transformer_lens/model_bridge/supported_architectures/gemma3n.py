@@ -78,16 +78,12 @@ class Gemma3nArchitectureAdapter(ArchitectureAdapter):
                 name="model.language_model.layers",
                 config=self.cfg,
                 submodules={
-                    "input_layernorm": GeneralizedComponent(name="input_layernorm"),
-                    "post_attention_layernorm": GeneralizedComponent(
-                        name="post_attention_layernorm"
-                    ),
-                    "pre_feedforward_layernorm": GeneralizedComponent(
-                        name="pre_feedforward_layernorm"
-                    ),
-                    "post_feedforward_layernorm": GeneralizedComponent(
-                        name="post_feedforward_layernorm"
-                    ),
+                    # Sandwich norms under the canonical keys (Gemma 2/3 layout), so
+                    # hook_attn_out / hook_mlp_out resolve to the post-norm outputs.
+                    "ln1": GeneralizedComponent(name="input_layernorm"),
+                    "ln1_post": GeneralizedComponent(name="post_attention_layernorm"),
+                    "ln2": GeneralizedComponent(name="pre_feedforward_layernorm"),
+                    "ln2_post": GeneralizedComponent(name="post_feedforward_layernorm"),
                     "post_per_layer_input_norm": GeneralizedComponent(
                         name="post_per_layer_input_norm"
                     ),

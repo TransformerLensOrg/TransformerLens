@@ -46,6 +46,13 @@ class LensHandle:
     """The original hook callable, before ``add_hook`` wraps it."""
 
 
+def _handle_matches(handle: LensHandle, including_permanent: bool, level: Optional[int]) -> bool:
+    """Whether a handle is in scope for a ``has_hooks``/``remove_hooks``/``list_hooks`` call."""
+    if not including_permanent and handle.is_permanent:
+        return False
+    return level is None or handle.context_level == level
+
+
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str], str]]
 
@@ -189,7 +196,7 @@ class HookPoint(nn.Module):
         level: Optional[int] = None,
         prepend: bool = False,
         alias_names: Optional[list[str]] = None,
-    ) -> None:
+    ) -> LensHandle:
         """
         Hook format is fn(activation, hook_name)
         Change it into PyTorch hook format (this includes input and output,
@@ -198,6 +205,7 @@ class HookPoint(nn.Module):
         If alias_names is provided, the hook will be called once for each alias name,
         receiving a temporary HookPoint-like object with that name instead of self
         (useful for compatibility mode aliases)
+        Returns the LensHandle registered for this hook.
         """
 
         def full_hook(
@@ -295,6 +303,7 @@ class HookPoint(nn.Module):
 
         else:
             visible_hooks.append(handle)
+        return handle
 
     def has_hooks(
         self,
@@ -314,14 +323,7 @@ class HookPoint(nn.Module):
         """
 
         def _has_hooks_in_direction(handles: list[LensHandle]) -> bool:
-            for handle in handles:
-                # Check if this hook matches our criteria
-                if not including_permanent and handle.is_permanent:
-                    continue
-                if level is not None and handle.context_level != level:
-                    continue
-                return True
-            return False
+            return any(_handle_matches(h, including_permanent, level) for h in handles)
 
         if dir == "fwd":
             return _has_hooks_in_direction(self.fwd_hooks)
@@ -343,12 +345,10 @@ class HookPoint(nn.Module):
         def _remove_hooks(handles: list[LensHandle]) -> list[LensHandle]:
             output_handles = []
             for handle in handles:
-                if including_permanent:
-                    handle.hook.remove()
-                elif (not handle.is_permanent) and (level is None or handle.context_level == level):
-                    handle.hook.remove()
-                else:
+                if not _handle_matches(handle, including_permanent, level):
                     output_handles.append(handle)
+                    continue
+                handle.hook.remove()
             return output_handles
 
         if dir == "fwd" or dir == "both":
@@ -431,8 +431,7 @@ class HookIntrospectionMixin:
                 handles.extend(hp.fwd_hooks)
             if dir in ("bwd", "both"):
                 handles.extend(hp.bwd_hooks)
-            if not including_permanent:
-                handles = [h for h in handles if not h.is_permanent]
+            handles = [h for h in handles if _handle_matches(h, including_permanent, None)]
             if handles:
                 out[name] = handles
         return out

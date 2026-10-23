@@ -34,13 +34,14 @@ class _Case:
     default: str  # canonical HF id, or "" for env-only (no small official checkpoint)
 
 
-# Ordered by how likely the checkpoint is small enough to actually run in CI.
+# Env-only ("" default) without a CI-sized checkpoint: an fp32 CPU boot of
+# granite-4.0-tiny-preview peaks over 40 GB RSS and OOM-kills the nightly runner.
 CASES = [
     _Case("mamba1", "TL_MAMBA1_MODEL", "state-spaces/mamba-130m-hf"),
     _Case("mamba2", "TL_MAMBA2_MODEL", "AntonV/mamba2-130m-hf"),
-    _Case("granite", "TL_GRANITE_MODEL", "ibm-granite/granite-4.0-tiny-preview"),
-    _Case("nemotron_h", "TL_NEMOTRON_H_MODEL", "nvidia/NVIDIA-Nemotron-Nano-9B-v2"),
-    _Case("qwen3_next", "TL_QWEN3_NEXT_MODEL", "Qwen/Qwen3-Next-80B-A3B-Instruct"),
+    _Case("granite", "TL_GRANITE_MODEL", ""),
+    _Case("nemotron_h", "TL_NEMOTRON_H_MODEL", ""),
+    _Case("qwen3_next", "TL_QWEN3_NEXT_MODEL", ""),
     _Case("qwen3_5", "TL_QWEN3_5_MODEL", ""),
 ]
 

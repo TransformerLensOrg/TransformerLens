@@ -23,6 +23,11 @@ def accepts_mask_derived_position_ids(model: nn.Module) -> bool:
         scaling = getattr(candidate, "rope_scaling", None)
         if isinstance(scaling, dict) and "mrope_section" in scaling:
             return False
+    # fairseq-style (RoBERTa) embeddings start positions at padding_idx + 1; an injected
+    # 0-based arange would put content tokens on the reserved rows.
+    for module in model.modules():
+        if callable(getattr(module, "create_position_ids_from_input_ids", None)):
+            return False
     # A positional embedding that takes the mask derives positions for itself; only
     # embeddings that override nn.Embedding.forward are worth inspecting.
     for module in model.modules():

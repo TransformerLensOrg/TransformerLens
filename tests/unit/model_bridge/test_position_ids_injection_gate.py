@@ -74,6 +74,17 @@ class _MaskConsumingEmbedding(nn.Embedding):
         return super().forward(position_ids)
 
 
+class _DerivesFromInputIds(nn.Module):
+    """Mirrors ``RobertaEmbeddings``: positions come from the input ids, pad-aware."""
+
+    @staticmethod
+    def create_position_ids_from_input_ids(
+        input_ids: torch.Tensor, padding_idx: int
+    ) -> torch.Tensor:
+        mask = input_ids.ne(padding_idx).int()
+        return (torch.cumsum(mask, dim=1) * mask).long() + padding_idx
+
+
 class _OwnsPositions(_AcceptsPositionIds):
     """mRoPE models compute a 3-D index here, but only while position_ids is None."""
 
@@ -109,6 +120,12 @@ class TestOwnsPositionsGate:
     def test_refuses_wrapper_whose_language_model_owns_positions(self) -> None:
         wrapper = _AcceptsPositionIds()
         wrapper.language_model = _OwnsPositions()
+        assert gate(_bridge_over(wrapper)) is False
+
+    def test_refuses_model_deriving_positions_from_input_ids(self) -> None:
+        """RoBERTa-style embeddings derive only while position_ids is None."""
+        wrapper = _AcceptsPositionIds()
+        wrapper.embeddings = _DerivesFromInputIds()
         assert gate(_bridge_over(wrapper)) is False
 
     def test_refuses_mrope_section_in_config(self) -> None:

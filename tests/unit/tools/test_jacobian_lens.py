@@ -1,6 +1,8 @@
 """Unit tests for the TransformerBridge-only Jacobian lens implementation."""
 
 import gc
+import re
+from dataclasses import FrozenInstanceError
 from enum import IntEnum
 from inspect import Parameter, signature
 from types import SimpleNamespace
@@ -32,13 +34,17 @@ from transformer_lens.model_bridge.supported_architectures.deepseek_v4 import (
     DeepseekV4BlockBridge,
 )
 from transformer_lens.tools.analysis import (
-    CoordinatePatch,
     JacobianLens,
     JSpaceDecomposition,
-    JSpaceOccupancy,
-    JSpaceVarianceProfile,
     get_sparse_decomposition,
     solve_coordinate_patch,
+)
+from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
+    CoordinatePatch,
+)
+from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
+    JSpaceOccupancy,
+    JSpaceVarianceProfile,
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.parameter_swap import temporarily_swap_parameter
@@ -131,6 +137,73 @@ def test_fit_rejects_hidden_original_model_submodule_in_training_mode() -> None:
         )
     assert original_model.training is False
     assert original_model[0].training is True
+
+
+def _forbid_forward(model: _ToyBridge) -> None:
+    def refuse(module: nn.Module, args: Any) -> None:
+        raise AssertionError("training mode must be refused before any forward pass")
+
+    model.register_forward_pre_hook(refuse)
+
+
+_PROMPT_CALLS = {
+    "readout": lambda lens, model: lens.readout(model, "a toy prompt"),
+    "decompose": lambda lens, model: lens.decompose(model, "a toy prompt", 0, position=-1, k=3),
+    "coordinate_patch": lambda lens, model: lens.coordinate_patch(
+        model, "a toy prompt", 0, 3, 5, position=-1, k=1
+    ),
+    "occupancy": lambda lens, model: lens.occupancy(
+        model, "a toy prompt", 0, position=-1, max_atoms=3
+    ),
+    "fraction_of_variance": lambda lens, model: lens.fraction_of_variance(
+        model, ["a toy prompt", "another toy prompt"], k=3, skip_first=0
+    ),
+}
+
+
+@pytest.mark.parametrize("method", list(_PROMPT_CALLS))
+def test_forward_running_methods_refuse_training_mode_before_any_forward(method: str) -> None:
+    model = _ToyBridge()
+    model.train()
+    _forbid_forward(model)
+
+    with pytest.raises(ValueError, match=r"model\.eval\(\)") as excinfo:
+        _PROMPT_CALLS[method](_lens(), model)
+    assert f"JacobianLens.{method}()" in str(excinfo.value)
+    assert model.training is True
+
+
+def test_readout_refuses_nested_submodule_in_training_mode() -> None:
+    model = _ToyBridge()
+    model.blocks[2].train()
+    _forbid_forward(model)
+
+    with pytest.raises(ValueError, match=r"found training mode at blocks\.2"):
+        _lens().readout(model, "a toy prompt")
+    assert model.training is False
+
+
+_RAW_ACTIVATION_CALLS = {
+    "decompose": lambda lens, model, activation: lens.decompose(model, activation, 0, k=1).support,
+    "coordinate_patch": lambda lens, model, activation: lens.coordinate_patch(
+        model, activation, 0, 3, 5, k=1
+    ).patched,
+    "occupancy": lambda lens, model, activation: lens.occupancy(
+        model, activation, 0, max_atoms=3
+    ).marginal_captured_variance,
+}
+
+
+@pytest.mark.parametrize("method", list(_RAW_ACTIVATION_CALLS))
+def test_raw_activation_runs_no_forward_so_training_mode_is_accepted(method: str) -> None:
+    model = _ToyBridge()
+    lens = _lens()
+    activation = 2.0 * lens.lens_vector_dictionary(model, 0)[3]
+    expected = _RAW_ACTIVATION_CALLS[method](lens, model, activation)
+    model.train()
+    _forbid_forward(model)
+
+    assert torch.equal(_RAW_ACTIVATION_CALLS[method](lens, model, activation), expected)
 
 
 def test_fit_recovers_closed_form_jacobians(
@@ -237,13 +310,22 @@ def test_readout_final_layer_reuses_model_outputs(
     assert torch.equal(result.lens_topk_indices[final_layer], result.model_topk_indices)
 
 
-def test_unembed_rows_applies_softcap_before_fp32_conversion() -> None:
+def _identity_readout_logits(model: _ToyBridge) -> tuple[torch.Tensor, torch.Tensor]:
+    """Identity-lens layer-0 readout logits and the raw logits of the residual they read."""
+    prompt = "a toy prompt"
+    result = _lens().readout(model, prompt, layers=[0], return_full_logits=True)
+    assert result.lens_logits is not None
+    _, cache = model.run_with_cache(model.to_tokens(prompt))
+    residual = cache["blocks.0.hook_out"][0]
+    return result.lens_logits[0], model.ln_final(residual) @ model.W_U + model.b_U
+
+
+def test_readout_applies_softcap_before_fp32_conversion() -> None:
     model = _ToyBridge(dtype=torch.bfloat16)
     model.cfg.output_logits_soft_cap = 0.75
-    residual = 4 * torch.randn(3, D_MODEL)
 
-    actual = jacobian_lens_module._unembed(model, residual)
-    raw_logits = model.unembed(model.ln_final(residual.to(torch.bfloat16).unsqueeze(0))).squeeze(0)
+    actual, raw_logits = _identity_readout_logits(model)
+    assert raw_logits.dtype == torch.bfloat16
     expected = (
         model.cfg.output_logits_soft_cap * torch.tanh(raw_logits / model.cfg.output_logits_soft_cap)
     ).float()
@@ -255,17 +337,15 @@ def test_unembed_rows_applies_softcap_before_fp32_conversion() -> None:
     assert not torch.equal(actual, fp32_first)
 
 
-def test_unembed_rows_applies_architecture_logit_scale_before_softcap() -> None:
+def test_readout_applies_architecture_logit_scale_before_softcap() -> None:
     model = _ToyBridge()
     model.cfg.logit_scale = 0.125
     model.cfg.output_logits_soft_cap = 0.75
     model.adapter.apply_output_logits_transform = lambda logits: apply_softcap(
         logits * model.cfg.logit_scale, model.cfg.output_logits_soft_cap
     )
-    residual = 4 * torch.randn(3, D_MODEL)
 
-    actual = jacobian_lens_module._unembed(model, residual)
-    raw_logits = model.unembed(model.ln_final(residual.unsqueeze(0))).squeeze(0)
+    actual, raw_logits = _identity_readout_logits(model)
     scaled_logits = raw_logits * model.cfg.logit_scale
     expected = model.cfg.output_logits_soft_cap * torch.tanh(
         scaled_logits / model.cfg.output_logits_soft_cap
@@ -280,15 +360,13 @@ def test_unembed_rows_applies_architecture_logit_scale_before_softcap() -> None:
     assert not torch.allclose(actual, wrong_order)
 
 
-def test_unembed_rows_ignores_unowned_logit_scale_config() -> None:
+def test_readout_ignores_unowned_logit_scale_config() -> None:
     model = _ToyBridge()
     model.cfg.logit_scale = "inv_sqrt_d_model"
-    residual = torch.randn(2, D_MODEL)
 
-    actual = jacobian_lens_module._unembed(model, residual)
-    expected = model.unembed(model.ln_final(residual.unsqueeze(0))).squeeze(0).float()
+    actual, raw_logits = _identity_readout_logits(model)
 
-    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(actual, raw_logits)
 
 
 def test_transported_readout_matches_linear_model(
@@ -728,6 +806,167 @@ def test_fit_rejects_negative_skip_first_positions(toy_model: _ToyBridge) -> Non
         )
 
 
+def _forbid_fit_work(*args: Any, **kwargs: Any) -> Any:
+    raise AssertionError("invalid fit options reached the transport-matrix fit")
+
+
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"corpus": ""}, "corpus"),
+        ({"corpus": " "}, "corpus"),
+        ({"source_layers": []}, "source_layers"),
+        ({"source_layers": [N_LAYERS - 1]}, "target_layer"),
+        ({"source_layers": [N_LAYERS]}, "out of range"),
+        ({"dim_batch": 0}, "dim_batch"),
+        ({"skip_first_positions": -1}, "skip_first_positions"),
+    ],
+)
+def test_fit_rejects_invalid_options_before_fit_work(
+    options: dict[str, Any], message: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jacobian_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+    with pytest.raises(ValueError, match=message):
+        JacobianLens.fit(_ToyBridge(), ["a toy prompt"], **{"corpus": CORPUS, **options})
+
+
+@pytest.mark.parametrize(
+    "state, message",
+    [("compatibility", "compatibility mode"), ("processed", "process_weights")],
+)
+def test_fit_rejects_compatibility_or_processed_bridge(state: str, message: str) -> None:
+    model = _ToyBridge()
+    if state == "compatibility":
+        model.compatibility_mode = True
+    else:
+        model._weights_processed = True
+    with pytest.raises(ValueError, match=message):
+        JacobianLens.fit(model, ["a toy prompt"], corpus=CORPUS, show_progress=False)
+
+
+def test_fit_rejects_non_bridge() -> None:
+    with pytest.raises(TypeError, match="TransformerBridge"):
+        JacobianLens.fit(object(), ["a toy prompt"], corpus=CORPUS)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "model_name",
+        "model_revision",
+        "transformer_lens_version",
+        "model_system",
+        "estimator",
+        "processing",
+        "hook_convention",
+        "corpus",
+        "n_prompts",
+        "fit_dtype",
+        "target_layer",
+        "dim_batch",
+        "max_seq_len",
+        "skip_first_positions",
+        "transformer_lens_fit",
+    ],
+)
+def test_fit_reserves_provenance_keys_before_fit_work(
+    key: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jacobian_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+    with pytest.raises(ValueError, match="cannot override fit provenance"):
+        JacobianLens.fit(_ToyBridge(), ["a toy prompt"], corpus=CORPUS, metadata={key: None})
+
+
+@pytest.mark.parametrize("value", [torch.tensor(1), {"unsafe"}, object()])
+def test_fit_rejects_unsafe_user_metadata_before_fit_work(
+    value: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jacobian_lens_module, "_fit_transport_matrices", _forbid_fit_work)
+    with pytest.raises(ValueError, match="metadata"):
+        JacobianLens.fit(_ToyBridge(), ["a toy prompt"], corpus=CORPUS, metadata={"run": value})
+
+
+def test_fit_preserves_custom_metadata_without_mutating_it() -> None:
+    metadata = {"run": {"seed": 0, "tags": ["offline", "fit"]}}
+    lens = JacobianLens.fit(
+        _ToyBridge(),
+        ["a toy prompt"],
+        corpus=CORPUS,
+        skip_first_positions=SKIP_FIRST,
+        show_progress=False,
+        metadata=metadata,
+    )
+    assert lens.metadata["run"] == metadata["run"]
+    assert set(metadata) == {"run"}
+    assert lens.metadata["n_prompts"] == lens.n_prompts == 1
+
+
+def test_artifact_without_estimator_provenance_loads_as_jacobian_lens(tmp_path: Any) -> None:
+    path = tmp_path / "legacy.pt"
+    JacobianLens({0: torch.eye(D_MODEL)}, n_prompts=1, d_model=D_MODEL).save(str(path))
+
+    loaded = JacobianLens.load(str(path))
+    assert loaded.estimator == "jacobian_lens"
+    assert loaded.metadata == {}
+
+
+def _prepare_toy_fit(dtype: torch.dtype = torch.float32) -> Any:
+    return jacobian_lens_module._prepare_fit(
+        _ToyBridge(dtype=dtype),
+        operation="JacobianLens",
+        estimator="jacobian_lens",
+        corpus=CORPUS,
+        source_layers=[-2, -3, -2],
+        dim_batch=4,
+        max_seq_len=64,
+        skip_first_positions=SKIP_FIRST,
+        metadata=None,
+    )
+
+
+def test_shared_fit_preparation_resolves_immutable_options() -> None:
+    options = _prepare_toy_fit()
+    assert options.source_layers == (N_LAYERS - 3, N_LAYERS - 2)
+    assert options.target_layer == N_LAYERS - 1
+    assert options.d_model == D_MODEL
+    assert options.fit_dtype == torch.float32
+    assert options.corpus == CORPUS
+    assert options.dim_batch == 4
+    assert options.max_seq_len == 64
+    assert options.skip_first_positions == SKIP_FIRST
+    with pytest.raises(FrozenInstanceError):
+        setattr(options, "target_layer", 0)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_shared_fit_preparation_warns_without_running_half_precision_fit(
+    dtype: torch.dtype,
+) -> None:
+    with pytest.warns(UserWarning, match="transport gradients at reduced precision") as record:
+        options = _prepare_toy_fit(dtype)
+    assert options.fit_dtype == dtype
+    # Ignore unrelated warnings the fit preparation may emit.
+    precision_warnings = [
+        w for w in record if "transport gradients at reduced precision" in str(w.message)
+    ]
+    assert len(precision_warnings) == 1
+    assert "float32 TransformerBridge" in str(precision_warnings[0].message)
+
+
+def test_shared_dtype_warning_accounts_for_the_preparation_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    def warn(message: str, category: Any, *, stacklevel: int) -> None:
+        calls.append((message, category, stacklevel))
+
+    monkeypatch.setattr(jacobian_lens_module.warnings, "warn", warn)
+    _prepare_toy_fit(torch.bfloat16)
+    assert len(calls) == 1
+    assert calls[0][1:] == (UserWarning, 3)
+
+
 def test_fit_signature_requires_corpus_and_has_no_target_layer() -> None:
     parameters = signature(JacobianLens.fit).parameters
     assert parameters["corpus"].default is Parameter.empty
@@ -781,11 +1020,11 @@ def test_lens_vectors_rejects_empty_or_out_of_range_tokens(tokens: list[int]) ->
 
 
 @pytest.mark.parametrize("token", [True, False])
-def test_to_token_ids_rejects_bool(token: bool) -> None:
+def test_lens_vectors_rejects_bool_token(token: bool) -> None:
     """A bool token must not silently coerce to id 1/0 via int(token)."""
     model = _ToyBridge()
     with pytest.raises(ValueError, match="bool"):
-        jacobian_lens_module._to_token_ids(model, [token])
+        _lens().lens_vectors(model, [token], 0)
 
 
 def _intervention_hooks(
@@ -822,6 +1061,28 @@ def test_intervention_hooks_use_bridge_names_and_run(
         assert intervened.shape == baseline.shape
         assert torch.isfinite(intervened).all()
         assert not torch.allclose(intervened, baseline)
+
+
+def test_ablation_hooks_remove_every_direction_of_non_orthogonal_tokens(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    tokens = [3, 5, 7]
+    layer = 1
+    vectors = fitted_lens.lens_vectors(toy_model, tokens, layer)
+    units = vectors / vectors.norm(dim=-1, keepdim=True)
+    off_diagonal = (units @ units.T)[~torch.eye(len(tokens), dtype=torch.bool)]
+    assert off_diagonal.abs().max() > 0.1  # one-at-a-time removal would leave a component
+
+    [(_, hook)] = fitted_lens.ablation_hooks(toy_model, tokens, layers=[layer])
+    activation = torch.randn(2, SEQ_LEN, D_MODEL, generator=torch.Generator().manual_seed(0))
+    ablated = hook(activation.clone(), SimpleNamespace(name=f"blocks.{layer}.hook_out"))
+
+    torch.testing.assert_close(
+        ablated @ vectors.T, torch.zeros(2, SEQ_LEN, len(tokens)), atol=1e-4, rtol=0
+    )
+    # Only the span of the vectors changes
+    projector = vectors.T @ torch.linalg.pinv(vectors.T)
+    torch.testing.assert_close(ablated, activation - activation @ projector, atol=1e-5, rtol=0)
 
 
 @pytest.mark.parametrize("intervention", ["steering", "ablation", "swap"])
@@ -884,9 +1145,14 @@ def test_intervention_tensors_follow_each_activation_device(
     assert calls == [activation.device] * expected_transfers
 
 
-def test_swap_rejects_identical_tokens(toy_model: _ToyBridge) -> None:
-    with pytest.raises(ValueError, match="same token|identical|distinct"):
-        _lens().swap_hooks(toy_model, 3, 3, layers=[0])
+# The toy tokenizer maps a string to its length, so " ab" spells id 3.
+_SAME_ID_SPELLINGS = pytest.mark.parametrize("source", [3, " ab"], ids=["id", "string"])
+
+
+@_SAME_ID_SPELLINGS
+def test_swap_rejects_identical_tokens(toy_model: _ToyBridge, source: Any) -> None:
+    with pytest.raises(ValueError, match="same token id; a coordinate swap would be"):
+        _lens().swap_hooks(toy_model, source, 3, layers=[0])
 
 
 def test_swap_warns_for_near_parallel_vectors() -> None:
@@ -937,7 +1203,7 @@ def test_swap_clamp_holds_each_layer_at_exchanged_clean_coordinates(
     tokens = toy_model.to_tokens("a toy prompt")
     _, clean_cache_dict = toy_model.run_with_cache(tokens)
     clean_cache = ActivationCache(clean_cache_dict, toy_model)
-    hooks = fitted_lens.swap_clamp_hooks(toy_model, 3, 5, layers, clean_cache)
+    hooks = fitted_lens.swap_hooks(toy_model, 3, 5, layers, clamp_to=clean_cache)
 
     with toy_model.hooks(fwd_hooks=hooks):
         _, clamped_cache = toy_model.run_with_cache(tokens)
@@ -958,7 +1224,7 @@ def test_swap_clamp_accepts_plain_cache_dict(
     tokens = toy_model.to_tokens("a toy prompt")
     _, clean_cache_dict = toy_model.run_with_cache(tokens, return_cache_object=False)
     assert isinstance(clean_cache_dict, dict)
-    hooks = fitted_lens.swap_clamp_hooks(toy_model, 3, 5, [layer], clean_cache_dict)
+    hooks = fitted_lens.swap_hooks(toy_model, 3, 5, [layer], clamp_to=clean_cache_dict)
 
     with toy_model.hooks(fwd_hooks=hooks):
         _, clamped_cache = toy_model.run_with_cache(tokens)
@@ -971,19 +1237,56 @@ def test_swap_clamp_accepts_plain_cache_dict(
     torch.testing.assert_close(clamped_coords, clean_coords[..., [1, 0]], atol=1e-5, rtol=1e-5)
 
 
+def test_deprecated_swap_clamp_hooks_builds_the_clamp_to_hooks(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache = toy_model.run_with_cache(toy_model.to_tokens("another toy prompt"))
+    with pytest.warns(DeprecationWarning, match=r"swap_hooks\(.*clamp_to=clean_cache\)"):
+        old = fitted_lens.swap_clamp_hooks(toy_model, 3, 5, [1, 2], clean_cache, positions=[0, -1])
+    new = fitted_lens.swap_hooks(toy_model, 3, 5, [1, 2], positions=[0, -1], clamp_to=clean_cache)
+
+    with toy_model.hooks(fwd_hooks=old):
+        old_logits = toy_model(tokens)
+    with toy_model.hooks(fwd_hooks=new):
+        new_logits = toy_model(tokens)
+
+    assert torch.equal(old_logits, new_logits)
+    assert not torch.equal(new_logits, toy_model(tokens))
+
+
+def test_swap_clamp_alpha_moves_that_fraction_toward_the_clean_exchange(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    layer = 1
+    name = f"blocks.{layer}.hook_out"
+    tokens = toy_model.to_tokens("a toy prompt")
+    _, clean_cache = toy_model.run_with_cache(toy_model.to_tokens("another toy prompt"))
+    _, live_cache = toy_model.run_with_cache(tokens)
+    hooks = fitted_lens.swap_hooks(toy_model, 3, 5, [layer], alpha=0.25, clamp_to=clean_cache)
+
+    with toy_model.hooks(fwd_hooks=hooks):
+        _, clamped_cache = toy_model.run_with_cache(tokens)
+
+    pinv = torch.linalg.pinv(fitted_lens.lens_vectors(toy_model, [3, 5], layer).T)
+    clean_coords = clean_cache[name].float() @ pinv.T
+    live_coords = live_cache[name].float() @ pinv.T
+    expected = live_coords + 0.25 * (clean_coords[..., [1, 0]] - live_coords)
+    torch.testing.assert_close(clamped_cache[name].float() @ pinv.T, expected)
+
+
 def test_swap_clamp_requires_each_clean_activation(toy_model: _ToyBridge) -> None:
-    with pytest.raises(ValueError, match="clean_cache is missing"):
-        _lens().swap_clamp_hooks(
-            toy_model, 3, 5, layers=[0], clean_cache=ActivationCache({}, toy_model)
-        )
+    with pytest.raises(ValueError, match="clamp_to is missing"):
+        _lens().swap_hooks(toy_model, 3, 5, layers=[0], clamp_to=ActivationCache({}, toy_model))
 
 
-def test_swap_clamp_rejects_identical_tokens(toy_model: _ToyBridge) -> None:
+@_SAME_ID_SPELLINGS
+def test_swap_clamp_rejects_identical_tokens(toy_model: _ToyBridge, source: Any) -> None:
     tokens = toy_model.to_tokens("a toy prompt")
     _, clean_cache_dict = toy_model.run_with_cache(tokens)
     clean_cache = ActivationCache(clean_cache_dict, toy_model)
-    with pytest.raises(ValueError, match="same token|identical|distinct"):
-        _lens().swap_clamp_hooks(toy_model, 3, 3, layers=[0], clean_cache=clean_cache)
+    with pytest.raises(ValueError, match="same token id; a coordinate clamp would be"):
+        _lens().swap_hooks(toy_model, source, 3, layers=[0], clamp_to=clean_cache)
 
 
 def test_swap_clamp_warns_for_near_parallel_vectors() -> None:
@@ -998,7 +1301,7 @@ def test_swap_clamp_warns_for_near_parallel_vectors() -> None:
     _, clean_cache_dict = model.run_with_cache(tokens)
     clean_cache = ActivationCache(clean_cache_dict, model)
     with pytest.warns(UserWarning, match="parallel|ill-conditioned|poorly conditioned"):
-        hooks = _lens().swap_clamp_hooks(model, 3, 5, layers=[0], clean_cache=clean_cache)
+        hooks = _lens().swap_hooks(model, 3, 5, layers=[0], clamp_to=clean_cache)
     assert hooks[0][0] == "blocks.0.hook_out"
 
 
@@ -1009,7 +1312,7 @@ def test_swap_clamp_validates_clean_activation_shape(toy_model: _ToyBridge) -> N
     name = "blocks.0.hook_out"
     clean_cache.cache_dict[name] = clean_cache[name][..., :-1]
     with pytest.raises(ValueError, match="d_model|shape"):
-        _lens().swap_clamp_hooks(toy_model, 3, 5, layers=[0], clean_cache=clean_cache)
+        _lens().swap_hooks(toy_model, 3, 5, layers=[0], clamp_to=clean_cache)
 
 
 def test_swap_clamp_validates_clean_live_batch_shape(toy_model: _ToyBridge) -> None:
@@ -1018,7 +1321,7 @@ def test_swap_clamp_validates_clean_live_batch_shape(toy_model: _ToyBridge) -> N
     clean_cache = ActivationCache(clean_cache_dict, toy_model)
     name = "blocks.0.hook_out"
     clean_cache.cache_dict[name] = clean_cache[name].repeat(2, 1, 1)
-    hooks = _lens().swap_clamp_hooks(toy_model, 3, 5, layers=[0], clean_cache=clean_cache)
+    hooks = _lens().swap_hooks(toy_model, 3, 5, layers=[0], clamp_to=clean_cache)
     with pytest.raises(ValueError, match="incompatible with the live activation"):
         with toy_model.hooks(fwd_hooks=hooks):
             toy_model(tokens)
@@ -1033,8 +1336,8 @@ def test_swap_clamp_positions_and_orthogonal_complement(
     tokens = toy_model.to_tokens("a toy prompt")
     _, clean_cache_dict = toy_model.run_with_cache(tokens)
     clean_cache = ActivationCache(clean_cache_dict, toy_model)
-    hooks = fitted_lens.swap_clamp_hooks(
-        toy_model, 3, 5, layers=[layer], clean_cache=clean_cache, positions=positions
+    hooks = fitted_lens.swap_hooks(
+        toy_model, 3, 5, layers=[layer], clamp_to=clean_cache, positions=positions
     )
     with toy_model.hooks(fwd_hooks=hooks):
         _, clamped_cache = toy_model.run_with_cache(tokens)
@@ -1061,8 +1364,6 @@ def test_exports() -> None:
     from transformer_lens.tools import analysis
 
     assert analysis.JacobianLens is JacobianLens
-    assert hasattr(analysis, "JacobianLensReadout")
-    assert analysis.CoordinatePatch is CoordinatePatch
     assert analysis.solve_coordinate_patch is solve_coordinate_patch
 
 
@@ -1088,8 +1389,9 @@ class TestRegistry:
         assert path.is_file(), f"Registry not found at {path}"
         with path.open() as fh:
             registry = json.load(fh)
-        model_entries = {k: v for k, v in registry.items() if not k.startswith("_")}
+        model_entries = {k: v for k, v in registry.items() if isinstance(v, dict)}
         assert len(model_entries) >= 30, "Expected at least 30 model entries"
+        assert re.fullmatch(r"[0-9a-f]{40}", registry["revision"])
 
     def test_registry_entries_have_required_fields(self) -> None:
         import json
@@ -1105,7 +1407,7 @@ class TestRegistry:
         with path.open() as fh:
             registry = json.load(fh)
         for key, entry in registry.items():
-            if key.startswith("_"):
+            if key.startswith("_") or key == "revision":
                 continue
             assert "repo_id" in entry, f"Missing repo_id in entry '{key}'"
             assert "filename" in entry, f"Missing filename in entry '{key}'"
@@ -1144,6 +1446,40 @@ class TestRegistry:
 
         assert _resolve_registry_entry("not-a-real-model") is None
         assert _resolve_registry_entry("some/unknown-repo") is None
+        assert _resolve_registry_entry("revision") is None
+
+    @pytest.mark.parametrize(
+        ("name", "revision", "expected"),
+        [
+            ("gemma-2-2b", None, "registry"),
+            ("google/gemma-2-2b", None, "registry"),
+            ("gemma-2-2b", "refs/pr/1", "refs/pr/1"),
+            ("my-org/my-repo", None, None),
+        ],
+    )
+    def test_from_pretrained_pins_registry_names_to_the_registry_revision(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        name: str,
+        revision: Optional[str],
+        expected: Optional[str],
+    ) -> None:
+        """Registry names load the registry's commit unless the caller pins one."""
+        path = tmp_path / "lens.pt"
+        _lens().save(str(path))
+        calls: dict[str, Any] = {}
+
+        def fake_retry(function: Any, **kwargs: Any) -> str:
+            calls.update(kwargs)
+            return str(path)
+
+        monkeypatch.setattr(jacobian_lens_module, "call_hf_with_retry", fake_retry)
+        JacobianLens.from_pretrained(name, revision=revision)
+
+        pinned = jacobian_lens_module._load_registry()["revision"]
+        assert re.fullmatch(r"[0-9a-f]{40}", pinned)
+        assert calls["revision"] == (pinned if expected == "registry" else expected)
 
     def test_from_pretrained_resolves_short_name_via_registry(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any

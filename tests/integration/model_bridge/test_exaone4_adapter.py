@@ -61,9 +61,9 @@ class TestExaone4Hooks:
 
         hooks = [
             "blocks.0.attn.hook_out",
-            "blocks.0.ln1.hook_out",
+            "blocks.0.ln1_post.hook_out",
             "blocks.0.mlp.hook_out",
-            "blocks.0.ln2.hook_out",
+            "blocks.0.ln2_post.hook_out",
         ]
         with torch.no_grad():
             bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])

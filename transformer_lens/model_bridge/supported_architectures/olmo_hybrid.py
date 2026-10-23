@@ -30,46 +30,33 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 
 class _OlmoHybridBlockBridge(BlockBridge):
-    """BlockBridge with per-layer-type hook aliases and no hook_resid_mid.
+    """BlockBridge whose norm keys and hook aliases are chosen per layer type.
 
-    hook_resid_mid: no single target fits both layer types (ln2.hook_in is the
-    mid-point on linear-attention layers but the raw attn-branch output on
-    full-attention layers); dropped type-visibly, as on ParallelBlockBridge.
-
-    hook_attn_out / hook_mlp_out must expose the tensor added to the residual
-    stream, which also differs by layer type: full-attention layers are OLMo2
-    post-norm (contribution = norm output), linear-attention layers are pre-norm
-    (contribution = raw sublayer output). Both candidate targets exist on both
-    layer types, so alias fallback lists cannot discriminate; instead the
-    aliases are selected per layer at bind time in set_original_component.
+    ``post_attention_layernorm`` is pre-MLP on linear-attention layers, so only those keep ``ln2``.
     """
 
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
-        self.hook_aliases.pop("hook_resid_mid", None)
-        # Full-attention (OLMo2 post-norm) layers route the MLP output through
-        # post_feedforward_layernorm, so the residual-facing MLP output is
-        # ln2_post.hook_out there; linear-attention layers have no ln2_post and
-        # fall back to the raw mlp.hook_out.
+        # Per-layer targets are set at bind time; this fallback covers the
+        # template, which has both ln2 and ln2_post declared.
         self.hook_aliases["hook_mlp_out"] = ["ln2_post.hook_out", "mlp.hook_out"]
 
     def set_original_component(self, original_component: nn.Module) -> None:
         super().set_original_component(original_component)
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
+        # Runs before setup_submodules binds the norms, so re-keying is safe.
         if getattr(original_component, "post_feedforward_layernorm", None) is not None:
-            # Full-attention (post-norm) layer: ln2 = post_attention_layernorm
-            # applied after attention, ln2_post = post_feedforward_layernorm.
-            # The MLP consumes the mid-residual directly, so the hook_mlp_in
-            # capture must sit on the MLP, not on ln2 (whose input here is the
-            # raw attention output).
-            self.hook_aliases["hook_attn_out"] = "ln2.hook_out"
+            if "ln2" in self.submodules:
+                self.submodules["ln1_post"] = self.submodules.pop("ln2")
+            self.hook_aliases["hook_resid_mid"] = "mlp.hook_in"
+            self.hook_aliases["hook_attn_out"] = "ln1_post.hook_out"
             self.hook_aliases["hook_mlp_out"] = "ln2_post.hook_out"
             self.mlp_reads_resid_directly = True
         else:
-            # Linear-attention (pre-norm) layer.
+            self.hook_aliases["hook_resid_mid"] = "ln2.hook_in"
             self.hook_aliases["hook_attn_out"] = "linear_attn.hook_out"
             self.hook_aliases["hook_mlp_out"] = "mlp.hook_out"
             self.mlp_reads_resid_directly = False

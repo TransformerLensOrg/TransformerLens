@@ -120,6 +120,26 @@ def _linalg_on_cpu_if_mps(op: Callable[..., torch.Tensor], *tensors: torch.Tenso
     return op(*tensors)
 
 
+def _project_onto_span(atoms: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Project onto atom columns using a scale- and ambient-dimension-independent rank policy.
+
+    Unit columns are decomposed in float64, retaining singular values above the NNLS relative
+    rank tolerance. Exactly dependent and numerically indistinguishable directions are removed.
+    MPS performs this small selected-set decomposition on CPU, restoring dtype and device.
+    """
+    if atoms.shape[1] == 0:
+        return torch.zeros_like(target)
+
+    def project(local_atoms: torch.Tensor, local_target: torch.Tensor) -> torch.Tensor:
+        work = local_atoms.double()
+        norms = torch.linalg.vector_norm(work, dim=0).clamp_min(torch.finfo(torch.float64).tiny)
+        left, singular_values, _ = torch.linalg.svd(work / norms, full_matrices=False)
+        basis = left[:, singular_values > _NNLS_RANK_RTOL * singular_values.max()]
+        return (basis @ (basis.T @ local_target.double())).to(local_target.dtype)
+
+    return _linalg_on_cpu_if_mps(project, atoms, target)
+
+
 def _diagnose_intervention_pair(
     unit_vectors: torch.Tensor, *, description: str, stacklevel: int
 ) -> float:
@@ -167,6 +187,8 @@ class JSpaceDecomposition:
             ``selected_support`` (the paper's "J-space component"). For the exact NNLS
             re-solve it equals ``reconstruction`` unless a selected atom has a zero
             coordinate, in which case the projection uses a larger span.
+            Numerical rank is measured on unit atom columns in float64 with relative
+            tolerance ``sqrt(eps64)``, independently of ambient dimension and atom norms.
         non_j_space_component: The residual ``target - j_space_component`` (the
             "non-J-space component"), orthogonal to the selected span.
     """
@@ -370,6 +392,23 @@ def _gradient_pursuit_step(
     return feasible
 
 
+def _gradient_pursuit_extend(
+    selected_atoms: torch.Tensor, target: torch.Tensor, coordinates: torch.Tensor
+) -> torch.Tensor:
+    """Gradient-pursuit update after the newest column of ``selected_atoms`` joins at zero."""
+    return _gradient_pursuit_step(
+        selected_atoms, target, torch.cat([coordinates, coordinates.new_zeros(1)])
+    )
+
+
+def _active_mask(
+    coordinates: torch.Tensor, selected_atoms: torch.Tensor, target_norm: float
+) -> torch.Tensor:
+    """Selected atoms whose contribution ``c_i * ||v_i||`` is a material fraction of ``||x||``."""
+    contribution = coordinates * torch.linalg.vector_norm(selected_atoms, dim=0)
+    return contribution > _ACTIVE_RELATIVE_TOLERANCE * target_norm
+
+
 def get_sparse_decomposition(
     x: torch.Tensor,
     dictionary: torch.Tensor,
@@ -461,9 +500,7 @@ def get_sparse_decomposition(
         else:
             # Carry the coefficients forward, initialising the new atom at zero, and take a
             # single projected-gradient step over the selected set.
-            coordinates = _gradient_pursuit_step(
-                selected_atoms, target, torch.cat([coordinates, coordinates.new_zeros(1)])
-            )
+            coordinates = _gradient_pursuit_extend(selected_atoms, target, coordinates)
         residual = target - selected_atoms @ coordinates
 
     # ``selected_support`` stays on CPU for token decoding; the vector-valued outputs stay on
@@ -475,8 +512,7 @@ def get_sparse_decomposition(
     # materially nonzero fraction of ``||x||``. For the NNLS re-solve this is exactly the
     # strictly-positive coordinate set (its coefficient-zeroing uses the same scale); for
     # gradient pursuit it prunes atoms left at (near-)zero by the final projected step.
-    contribution = coordinates * torch.linalg.vector_norm(selected_atoms, dim=0)
-    active = contribution > _ACTIVE_RELATIVE_TOLERANCE * x_norm  # on the computation device
+    active = _active_mask(coordinates, selected_atoms, x_norm)  # on the computation device
     support = selected_support[active.cpu()]  # CPU, aligned with the token-decoding tensors
     active_coordinates = coordinates[active]
     active_atoms = selected_atoms[:, active]  # [d_model, num_active] on atoms.device
@@ -484,15 +520,10 @@ def get_sparse_decomposition(
     # Reconstruction is the nonnegative combination over the active support (empty -> zeros).
     reconstruction = active_atoms @ active_coordinates
     # The J-space component is the orthogonal projection of the target onto the span of every
-    # selected atom (paper appendix), computed with the same pseudoinverse construction as
-    # swap_hooks. That span can be larger than the active support when a selected coordinate is
+    # selected atom (paper appendix). That span can exceed the active support when a coordinate is
     # zero, so the projection differs from the nonnegative reconstruction in that case.
     if selected:
-        j_space_component = _linalg_on_cpu_if_mps(
-            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
-            selected_atoms,
-            target,
-        )
+        j_space_component = _project_onto_span(selected_atoms, target)
     else:
         j_space_component = target.new_zeros(d_model)
     non_j_space_component = target - j_space_component
@@ -534,8 +565,8 @@ def _greedy_captured_variance_gains(
 
     At each step, add the unused atom with the greatest signed, norm-normalized correlation with
     the current residual. Project ``target`` orthogonally onto the full selected span using a
-    pseudoinverse, then set the next residual to ``target - projection``. The captured variance is
-    ``||Pi_S target||^2 / ||target||^2``; the returned values are its per-step increments.
+    rank-revealing unit-column SVD, then set the next residual to ``target - projection``.
+    Captured variance is ``||Pi_S target||^2 / ||target||^2``; the returned values are its increments.
 
     This shares the per-step correlation rule with :func:`get_sparse_decomposition`, but not its
     residual recurrence: sparse decomposition uses a nonnegative coefficient-fit residual and may
@@ -552,7 +583,7 @@ def _greedy_captured_variance_gains(
             correlation[chosen] = float("-inf")
         support.append(int(torch.argmax(correlation).item()))
         active_atoms = atoms[support].T
-        projection = active_atoms @ (torch.linalg.pinv(active_atoms) @ target)
+        projection = _project_onto_span(active_atoms, target)
         captured_variance = float((projection @ projection) / total_variance)
         captured_variance_gains.append(captured_variance - previous_captured_variance)
         previous_captured_variance = captured_variance
@@ -578,14 +609,19 @@ def estimate_occupancy(
     coefficient-fit residual, so their supports need not match. The occupancy is the step of
     maximum separation between the real and (averaged) control *cumulative* captured variance --
     the point past which further atoms add no more than random directions would. Deterministic
-    given ``seed`` and needs no threshold. (Captured variance is a projection, hence scale-free,
-    so the random control atoms are simply unit-norm.)
+    given ``seed`` on every device and needs no threshold. (Captured variance is a projection,
+    hence scale-free, so the random control atoms are simply unit-norm.)
+
+    Control dictionaries are drawn on the CPU (for cross-device reproducibility), so for a large
+    dictionary on an accelerator that draw dominates run time; lower ``num_control_dictionaries``
+    to trade control precision for speed.
 
     Args:
         x: Target vector, shape ``[d_model]``.
         dictionary: Atom matrix, shape ``[num_atoms, d_model]`` (rows are atoms).
         max_atoms: Number of atoms to select in the real and control recurrences.
-        num_control_dictionaries: Number of random control dictionaries to average over.
+        num_control_dictionaries: Number of random control dictionaries to average over; each
+            is a CPU draw the size of ``dictionary``.
         seed: Seed for the random control dictionaries (reproducibility).
 
     Returns:
@@ -632,13 +668,13 @@ def estimate_occupancy(
         atoms, atom_norms, target, max_atoms
     )
 
-    generator = torch.Generator(device=atoms.device).manual_seed(seed)
+    # Drawn on CPU so a seed gives the same control dictionaries on every device.
+    generator = torch.Generator(device="cpu").manual_seed(seed)
     control_atom_norms = torch.ones(num_atoms, device=atoms.device)
     control_variance_runs: List[torch.Tensor] = []
     for _ in range(num_control_dictionaries):
-        random_atoms = torch.randn(
-            num_atoms, d_model, generator=generator, device=atoms.device, dtype=atoms.dtype
-        )
+        random_atoms = torch.randn(num_atoms, d_model, generator=generator, dtype=atoms.dtype)
+        random_atoms = random_atoms.to(atoms.device)
         random_atoms = random_atoms / (random_atoms * random_atoms).sum(dim=1, keepdim=True).sqrt()
         control_run_variance, _ = _greedy_captured_variance_gains(
             random_atoms, control_atom_norms, target, max_atoms

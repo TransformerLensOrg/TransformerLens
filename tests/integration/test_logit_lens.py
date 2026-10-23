@@ -241,3 +241,32 @@ def test_qwen2_5_rmsnorm_gqa_is_exact():
     result = logit_lens(model, tokens, targets=ANSWER)
     torch.testing.assert_close(logit_lens(model, tokens).values[-1], ref[:, -1], **TOL)
     assert result.rank_trajectory(ANSWER).shape[0] == model.cfg.n_layers + 1
+
+
+_OTHER_READOUT_BRIDGES = [
+    ("hf-internal-testing/tiny-random-BertForMaskedLM", r"mounts \['mlm_head'\]"),
+    (
+        "onnx-internal-testing/tiny-random-Gemma3nForConditionalGeneration",
+        r"blocks.0 \(AltUpBlockBridge\) carries a stack",
+    ),
+    ("MIT/ast-finetuned-speech-commands-v2", r"mounts \['classifier_ln'\]"),
+]
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("model_name, reason", _OTHER_READOUT_BRIDGES)
+def test_bridges_with_another_readout_are_refused_before_any_forward(
+    model_name, reason, monkeypatch
+):
+    from transformer_lens.model_bridge import TransformerBridge
+
+    model = TransformerBridge.boot_transformers(model_name, device="cpu", dtype=torch.float32)
+
+    def forward_ran(*args, **kwargs):
+        raise AssertionError("the model was run before the readout-path check")
+
+    monkeypatch.setattr(model, "run_with_cache", forward_ran)
+    with pytest.raises(ValueError, match=reason):
+        logit_lens(model, PROMPT)
+    with pytest.raises(ValueError, match=reason):
+        logit_readout(model, torch.zeros(2, model.cfg.d_model))

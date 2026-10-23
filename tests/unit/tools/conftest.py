@@ -22,6 +22,8 @@ CORPUS = "unit-test-corpus"
 
 
 class _ToyBlock(nn.Module):
+    hook_out_is_single_residual_stream = True
+
     def __init__(self, d_model: int, layer: int, dtype: torch.dtype):
         super().__init__()
         self.linear = nn.Linear(d_model, d_model, bias=False, dtype=dtype)
@@ -35,6 +37,8 @@ class _ToyBlock(nn.Module):
 
 class _CausalSumBlock(nn.Module):
     """Causal cross-position mixing with an exact triangular Jacobian."""
+
+    hook_out_is_single_residual_stream = True
 
     def __init__(self, layer: int):
         super().__init__()
@@ -107,6 +111,10 @@ class _ToyBridge(TransformerBridge):
         return self.unembed.weight.T
 
     @property
+    def b_U(self) -> torch.Tensor:
+        return torch.zeros(D_VOCAB, dtype=self.unembed.weight.dtype)
+
+    @property
     def hook_dict(self) -> dict[str, HookPoint]:
         return {
             f"blocks.{layer}.hook_out": block.hook_out for layer, block in enumerate(self.blocks)
@@ -160,9 +168,7 @@ class _ToyBridge(TransformerBridge):
         for direction, hook_specs in (("fwd", fwd_hooks), ("bwd", bwd_hooks)):
             for name, hook_fn in hook_specs:
                 hook_point = self.hook_dict[name]
-                hook_point.add_hook(hook_fn, dir=direction)
-                handles = hook_point.fwd_hooks if direction == "fwd" else hook_point.bwd_hooks
-                added.append((hook_point, direction, handles[-1]))
+                added.append((hook_point, direction, hook_point.add_hook(hook_fn, dir=direction)))
         try:
             yield self
         finally:

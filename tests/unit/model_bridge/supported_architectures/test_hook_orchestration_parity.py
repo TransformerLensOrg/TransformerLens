@@ -39,6 +39,219 @@ def _record(events, label):
     return hook
 
 
+@pytest.mark.parametrize("installer", ["hooks", "run_with_hooks", "run_with_cache"])
+@pytest.mark.parametrize("helper", ["hooks", "run_with_hooks", "run_with_cache"])
+@pytest.mark.parametrize("direction", ["fwd", "bwd"])
+@pytest.mark.parametrize("same_point", [False, True])
+def test_retained_hooks_survive_next_helper(installer, helper, direction, same_point):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    events = []
+    callback = _record(events, "retained")
+    install_kwargs = {f"{direction}_hooks": [(name, callback)], "reset_hooks_end": False}
+    if installer == "hooks":
+        with bridge.hooks(**install_kwargs):
+            bridge(tokens).sum().backward()
+    elif installer == "run_with_hooks":
+        bridge.run_with_hooks(tokens, **install_kwargs).sum().backward()
+    else:
+        bridge.run_with_cache(
+            tokens,
+            names_filter=name,
+            incl_bwd=direction == "bwd",
+            return_type="loss" if direction == "bwd" else "logits",
+            reset_hooks_end=False,
+        )
+    retained_fwd = list(hp.fwd_hooks)
+    retained_bwd = list(hp.bwd_hooks)
+    assert retained_fwd or retained_bwd
+    assert bridge.context_level == 0
+    target = name if same_point else "blocks.1.hook_out"
+    temporary = dict(fwd_hooks=[(target, _noop)], bwd_hooks=[(target, _noop)])
+    if helper == "hooks":
+        with bridge.hooks(**temporary):
+            bridge(tokens).sum().backward()
+    elif helper == "run_with_hooks":
+        bridge.run_with_hooks(tokens, **temporary).sum().backward()
+    else:
+        bridge.run_with_cache(tokens, names_filter=target, incl_bwd=True, return_type="loss")
+    assert hp.fwd_hooks == retained_fwd
+    assert hp.bwd_hooks == retained_bwd
+    count = len(events)
+    bridge(tokens).sum().backward()
+    if installer != "run_with_cache":
+        assert len(events) > count
+    assert bridge.context_level == 0
+    bridge.reset_hooks()
+    assert not hp.has_hooks()
+
+
+def test_retained_inner_scope_survives_outer_cleanup_and_next_scope():
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    with bridge.hooks(fwd_hooks=[(name, _noop)]):
+        with bridge.hooks(fwd_hooks=[(name, _noop)], reset_hooks_end=False):
+            pass
+        retained = hp.fwd_hooks[-1]
+    assert hp.fwd_hooks == [retained]
+    with bridge.hooks(fwd_hooks=[(name, _noop)]):
+        with bridge.hooks(fwd_hooks=[(name, _noop)]):
+            bridge(tokens)
+    assert hp.fwd_hooks == [retained]
+
+
+@pytest.mark.parametrize("helper", ["hooks", "run_with_hooks", "run_with_cache"])
+def test_retained_hook_survives_later_helper_exception(helper):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    bridge.run_with_hooks(tokens, fwd_hooks=[(name, _noop)], reset_hooks_end=False)
+    retained = hp.fwd_hooks[0]
+
+    def fail(value, hook):
+        raise RuntimeError("temporary failure")
+
+    with pytest.raises(RuntimeError, match="temporary failure"):
+        if helper == "hooks":
+            with bridge.hooks(fwd_hooks=[(name, fail)]):
+                bridge(tokens)
+        elif helper == "run_with_hooks":
+            bridge.run_with_hooks(tokens, fwd_hooks=[(name, fail)])
+        else:
+            with bridge.hooks(fwd_hooks=[(name, fail)], reset_hooks_end=False):
+                bridge.run_with_cache(tokens, names_filter=name)
+    assert retained in hp.fwd_hooks
+    assert bridge.context_level == 0
+
+
+def test_cache_setup_failure_removes_only_new_handles(monkeypatch):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    bridge.run_with_hooks(tokens, fwd_hooks=[(name, _noop)], reset_hooks_end=False)
+    retained = hp.fwd_hooks[0]
+    other = bridge.hook_dict["blocks.1.hook_out"]
+    original = other.add_hook
+
+    def reject_backward(*args, **kwargs):
+        if kwargs.get("dir") == "bwd":
+            raise RuntimeError("registration failed")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(other, "add_hook", reject_backward)
+    with pytest.raises(RuntimeError, match="registration failed"):
+        bridge.run_with_cache(
+            tokens, names_filter=[name, "blocks.1.hook_out"], incl_bwd=True, return_type="loss"
+        )
+    assert hp.fwd_hooks == [retained]
+    assert not hp.bwd_hooks
+    assert not other.has_hooks()
+    assert bridge.context_level == 0
+
+
+def test_retained_native_intervention_survives_unrelated_cache():
+    from transformer_lens.config import TransformerBridgeConfig
+    from transformer_lens.model_bridge import TransformerBridge
+
+    cfg = TransformerBridgeConfig(
+        d_model=16,
+        d_head=8,
+        n_heads=2,
+        n_layers=1,
+        n_ctx=8,
+        d_vocab=32,
+        d_mlp=32,
+        act_fn="gelu",
+        seed=2,
+    )
+    bridge = TransformerBridge.boot_native(cfg).eval()
+    tokens = torch.tensor([[2, 3, 4]])
+    with torch.no_grad():
+        baseline = bridge(tokens)
+        controlled = bridge.run_with_hooks(
+            tokens,
+            fwd_hooks=[("hook_embed", lambda value, hook: torch.zeros_like(value))],
+            reset_hooks_end=False,
+        )
+        during, _ = bridge.run_with_cache(tokens, names_filter="unembed.hook_out")
+        after = bridge(tokens)
+    assert (controlled - baseline).abs().max() > 1e-4
+    torch.testing.assert_close(during, controlled)
+    torch.testing.assert_close(after, controlled)
+    bridge.reset_hooks()
+    with torch.no_grad():
+        torch.testing.assert_close(bridge(tokens), baseline)
+
+
+def test_scope_removes_only_owned_handles_at_its_level():
+    bridge = _build()
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    with bridge.hooks(fwd_hooks=[(name, _noop)]):
+        hp.add_hook(_noop, level=bridge.context_level)
+        caller_handle = hp.fwd_hooks[-1]
+    assert hp.fwd_hooks == [caller_handle]
+
+
+@pytest.mark.parametrize("helper", ["run_with_hooks", "run_with_cache"])
+@pytest.mark.parametrize("reset_hooks_end", [False, True])
+def test_stop_at_layer_preserves_retained_hook_without_leaking_stop_hook(helper, reset_hooks_end):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    baseline = bridge(tokens)
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    bridge.run_with_hooks(tokens, fwd_hooks=[(name, _noop)], reset_hooks_end=False)
+    retained = hp.fwd_hooks[0]
+    if helper == "run_with_hooks":
+        stopped = bridge.run_with_hooks(tokens, stop_at_layer=1, reset_hooks_end=reset_hooks_end)
+    else:
+        stopped, _ = bridge.run_with_cache(
+            tokens, names_filter=name, stop_at_layer=1, reset_hooks_end=reset_hooks_end
+        )
+    assert stopped.shape == (1, 4, 16)
+    assert retained in hp.fwd_hooks
+    assert len(hp.fwd_hooks) == 1 + int(helper == "run_with_cache" and not reset_hooks_end)
+    for point in bridge.hook_points():
+        if point is not hp:
+            assert not point.has_hooks()
+    assert bridge.context_level == 0
+    torch.testing.assert_close(bridge(tokens), baseline)
+    subsequent, _ = bridge.run_with_cache(tokens, names_filter=name)
+    torch.testing.assert_close(subsequent, baseline)
+
+
+@pytest.mark.parametrize("helper", ["run_with_hooks", "run_with_cache"])
+def test_retained_mode_removes_stop_hook_after_forward_failure(helper):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    baseline = bridge(tokens)
+    name = "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+
+    def fail(value, hook):
+        raise RuntimeError("forward failed before stop")
+
+    bridge.add_hook(name, fail)
+    retained = hp.fwd_hooks[0]
+    with pytest.raises(RuntimeError, match="forward failed before stop"):
+        if helper == "run_with_hooks":
+            bridge.run_with_hooks(tokens, stop_at_layer=1, reset_hooks_end=False)
+        else:
+            bridge.run_with_cache(tokens, names_filter=name, stop_at_layer=1, reset_hooks_end=False)
+    assert retained in hp.fwd_hooks
+    assert not bridge.hook_dict["blocks.1.hook_in"].has_hooks()
+    assert bridge.context_level == 0
+    bridge.reset_hooks()
+    torch.testing.assert_close(bridge(tokens), baseline)
+
+
 class TestResetHooks:
     def test_removes_forward_and_backward_from_every_point(self):
         """Default direction='both' clears bwd hooks even on non-io points
@@ -358,3 +571,25 @@ class TestTemporaryHookScopes:
 
         assert events == ["temporary"]
         assert not hook_point.has_hooks()
+
+
+@pytest.mark.parametrize("helper", ["hooks", "run_with_hooks", "run_with_cache", "stop"])
+def test_cleanup_removes_registered_handle_not_list_tail(helper, monkeypatch):
+    bridge = _build()
+    tokens = torch.randint(0, 64, (1, 4))
+    name = "blocks.1.hook_in" if helper == "stop" else "blocks.0.hook_out"
+    hp = bridge.hook_dict[name]
+    retained = hp.add_hook(_noop)
+    original = hp.add_hook
+    # A registration that lands ahead of existing handles leaves the retained one at the tail.
+    monkeypatch.setattr(hp, "add_hook", lambda *a, **k: original(*a, prepend=True, **k))
+    if helper == "hooks":
+        with bridge.hooks(fwd_hooks=[(name, _noop)]):
+            bridge(tokens)
+    elif helper == "run_with_hooks":
+        bridge.run_with_hooks(tokens, fwd_hooks=[(name, _noop)])
+    elif helper == "run_with_cache":
+        bridge.run_with_cache(tokens, names_filter=name)
+    else:
+        bridge.run_with_cache(tokens, names_filter="blocks.0.hook_out", stop_at_layer=1)
+    assert hp.fwd_hooks == [retained]

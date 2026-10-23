@@ -16,12 +16,11 @@ the [4.0 migration guide](migrating_to_v4.md) for existing `HookedTransformer` c
 | Which components contribute to an answer's logit? | **Direct Logit Attribution (DLA)** | A prompt or activation cache, answer token, and optional comparison token → labeled logit contributions. | A decomposition of the residual-stream readout for that run. |
 | Which activation, if restored from the clean run, recovers the answer, and how sure am I per cell? | **Activation Patching** | Corrupted tokens, a clean cache and a metric → a grid of patched-metric values; with `reduce="none"` the per-example values plus mean, standard error, bootstrap interval and permutation p-value per cell. | The measured effect of one causal intervention per cell, with its uncertainty across the prompt batch. |
 | Which activations or paths should I investigate with patching? | **Attribution Patching** | Aligned clean/corrupt token pairs and a differentiable scalar metric → signed node or edge scores. | A first-order estimate of the effect of replacing corrupt activations with clean ones. |
-| Does a particular head-to-head route affect my metric? | **Direct Path Patching** | Clean/corrupt caches, a source head, and a metric → destination-head patch scores. | The measured effect of the implemented path intervention, subject to its LayerNorm approximation. |
+| Does a particular head-to-head route affect my metric? | **Direct Path Patching** | Clean/corrupt caches, a source head, and a metric → destination-head patch scores. | The measured effect of patching that one path, with every other reader of the source head left on its corrupted output. |
 | What does each layer "predict", and where does a token's rank change? | **Logit Lens** | A prompt or activation cache, optional target tokens, top-k or a vocabulary subset → per-layer logits, log-probabilities, ranks and entropy. | What the residual stream reads as through the real final norm and unembedding; the final entry reproduces the model's own logits. |
-| What vocabulary directions appear in an MLP's gradient factors? | **Backward Lens** | A prompt, one target token, and selected layers → gradient factors and vocabulary rankings. | A diagnostic of the forward inputs and backward signals composing a weight gradient. |
 | How can I read or edit residuals through a fitted transport map? | **Jacobian Lens** | A matching lens artifact and model, plus prompts or activations → vocabulary readouts, decompositions, or interventions. | Readouts under the fitted map; causal effects require running and measuring an intervention. |
+| Does a subspace at one hook point carry a variable the output depends on? | **Interchange Interventions** | A hook point, base and source inputs, a basis (fixed, a set of MLP neurons, or learned by DAS from pairs labelled by a high-level model), and a task readout → task logits with the base's subspace coordinates set to the source's. | The effect of that intervention on the chosen pairs; compare a learned subspace with its trained controls (arbitrary labels, an untrained model), a norm-matched placebo and random bases before reading it as use. |
 | How much do two subspaces overlap? | **Projection Kernel** | Two subspace bases, or Bridge attention-head weight spaces → overlap scores and principal-angle information. | Shared geometric support, independent of the choice of basis within each subspace. |
-| What are a head's QK/OV singular directions? | **SVD Circuits: head decomposition** | Model weights and a layer/head index → singular values, vectors, and degeneracy reports. | The linear structure of the head's weight maps. |
 
 These are starting points, not a required pipeline. For example, a weight-space
 comparison can motivate a patching experiment, but a large overlap score alone does
@@ -35,15 +34,14 @@ available hooks, and the meaning of the selected tensor axes.
 
 | Tool | Requirements to check | Main compute or memory cost |
 |---|---|---|
-| DLA | Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
+| DLA | Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected, as are bridges whose readout is not `ln_final -> unembed` on the last block (multi-stream AltUp blocks, a head transform such as BERT's `mlm_head`). When DLA runs the prompt, the model and all submodules must be in evaluation mode, or it raises `ValueError` before the forward; a supplied cache is accepted as is. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
 | Activation Patching | Any bridge whose activation names resolve (`resid_pre`, `attn_out`, `mlp_out`, `z`, `q`/`k`/`v`, `pattern`). The metric returns a scalar by default and a `[batch]` tensor under `reduce="mean"` or `"none"`; several metrics can be passed as a mapping and share one sweep. Run the model in evaluation mode. | One forward of the corrupted batch per swept cell (plus one for `baseline=True`); per-example storage is `cells × batch` floats per metric. Statistics are computed afterwards from the stored values and add no forwards. |
-| Attribution Patching | Targets TransformerBridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork, with `n_key_value_heads == n_heads`; GQA/MQA is not yet supported. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller's hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as `O(seq_len × (n_layers × n_heads)²)`, while the cache also gains per-head `[batch, seq, n_heads, d_model]` tensors. Pair scores are averaged across the batch. |
-| Direct Path Patching | Requires a TransformerBridge exposing the expected attention weights, Q/K/V hook aliases, source `hook_z`, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` currently require `n_key_value_heads == n_heads`; per-query-head K/V semantics are not yet defined. | Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension. |
-| Logit Lens | Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an `ln_final` component (or no final norm) and `W_U`; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings. Hybrid SSM stacks work with `incl_mid=False`. Run the model in evaluation mode. | One cached forward pass over the residual hooks, or reuse of a cache. Logits are produced in chunks of `chunk_size` rows; full-vocabulary output is materialized only when no `targets`, `top_k` or `vocab` selector is given. |
-| Backward Lens | Requires a raw decoder-only TransformerBridge with dense, non-gated MLPs and without compatibility mode, such as GPT-2 or Pythia/GPT-NeoX. Use one target token and check the restrictions in the [tool guide](backward_lens.md). | Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory. |
-| Jacobian Lens | Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Fitting additionally requires all modules in evaluation mode. | Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and `ceil(d_model / dim_batch)` backwards per prompt; larger batches increase memory. |
+| Attribution Patching | Targets TransformerBridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork. On GQA/MQA models, where any attention layer's K/V head count (`per_layer_num_key_value_heads` where set, else `n_key_value_heads`) differs from `n_heads`, edge granularity and faithfulness raise `ValueError` before any forward; node granularity remains available. Edge granularity and faithfulness are unsupported on post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1), where per-head outputs are normalized, scaled or joined by an unmodeled mixer before the residual add; both raise there, and node granularity remains available. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller's hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as `O(seq_len × (n_layers × n_heads)²)`, while the cache also gains per-head `[batch, seq, n_heads, d_model]` tensors. Pair scores are averaged across the batch. |
+| Direct Path Patching | Requires a TransformerBridge whose attention layers have the pre-Q/K/V residual fork that `use_split_qkv_input` enables (the joint-QKV and position-embedding attention bridges, e.g. GPT-2, Pythia, Llama, Mistral, Qwen2); attention without it, such as GPT-J, GPT-Neo, OPT, BERT or a bridge built with `TransformerBridge.boot_native`, raises `NotImplementedError`. The supplied caches must hold the source layer's `hook_z`. The function turns the fork flag on for the sweep and restores the caller's `use_split_qkv_input` and `use_attn_in`; LayerNorm need not be folded. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` require `n_key_value_heads == n_heads` and raise `ValueError` otherwise, since K/V inputs are per K/V head rather than per query head. Every block from the source layer on must have an `attn` component; SSM, mixer, linear-attention and AltUp blocks raise `ValueError` before any forward. Source blocks must add the head outputs to the residual unchanged: post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1) raise `ValueError` before any forward, since a head's residual write there is not `hook_z @ W_O`. Run the model and all submodules in evaluation mode; both entry points raise `ValueError` before any forward otherwise. | Clean/corrupt caching, then one forward of the corrupted batch per later destination head. While the fork is on, every attention layer normalizes a `[batch, pos, n_heads, d_model]` residual copy for each of Q, K and V, about `3 × n_heads` times the usual attention-input activation memory. Sweeping all source heads adds another sweep dimension. |
+| Logit Lens | Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an `ln_final` component (or no final norm) and `W_U`; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings and bridges whose readout is not `ln_final -> unembed` on the last block (multi-stream AltUp blocks, a head transform such as BERT's `mlm_head`; a prompt run with `apply_ln=True` is also checked against the model's own output, a supplied cache only structurally). Hybrid SSM stacks work with `incl_mid=False`. Run the model in evaluation mode. | One cached forward pass over the residual hooks, or reuse of a cache. Logits are produced in chunks of `chunk_size` rows; full-vocabulary output is materialized only when no `targets`, `top_k` or `vocab` selector is given. |
+| Jacobian Lens | Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Run the model and all submodules in evaluation mode; fitting and every call that runs the model raise `ValueError` otherwise. | Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and `ceil(d_model / dim_batch)` backwards per prompt; larger batches increase memory. |
+| Interchange Interventions | Any model with the hook API (TransformerBridge or `HookedRootModule`). Activations at the hook must be `[batch, d_model]`, or `[batch, pos, d_model]` with one position index per example; base and source rows are paired. | One forward pass per `batch_size` sources to collect activations, then one per `batch_size` bases per intervention with `intervened_logits`; both run without gradients, so memory is bounded by `batch_size`. `run_with_intervention` is a single differentiable pass over all the bases it is given. DAS adds a forward and backward pass per batch per epoch; `micro_batch_size` bounds its memory. |
 | Projection Kernel | The numerical API accepts finite, real floating-point matrices via orthonormal bases. The attention-head wrapper requires Bridge weights with compatible dimensions and ranks. | Basis extraction uses SVD. All-head comparisons allocate basis stacks and a pairwise score grid; they can be large despite requiring no forward pass. |
-| SVD head decomposition | Uses Bridge per-block weight accessors; requires accessible, compatible `W_Q`, `W_K`, `W_V`, and `W_O` for the selected head. No compatibility mode or activation cache is needed. | Factored QK/OV SVD, with rank bounded by `d_head`; the dense `d_model × d_model` product is not materialized. |
 
 **Compatibility mode is a method-specific choice.** DLA needs it on Bridge, whereas
 Jacobian Lens requires raw weights. Use separately loaded models when comparing these
@@ -109,20 +107,129 @@ Both node and edge granularity use plain attribution with `ig_steps=1`.
 
 API: {func}`~transformer_lens.tools.analysis.attribution_patching.attribution_patch`.
 
-### Direct Path Patching: state the path and its approximation
+#### Faithfulness: check that a circuit actually explains the behavior
 
-`get_act_patch_direct_path` fixes a source head and sweeps later destination heads,
-patching into their Q, K, or V inputs. It reconstructs the source head's output from
-cached `hook_z` and `W_O`, so caching `hook_result` is unnecessary. The calculation
-projects the source-output change using cached LayerNorm scaling; it does not
-recompute the full nonlinear normalization response to that change. Folded
-parameters do not remove this fixed-scale assumption.
+A ranked edge list is a hypothesis, not a result. `faithfulness()` tests one aligned
+clean/corrupt pair at a time by ablating every edge *outside* the candidate circuit
+and reporting how much of the clean-to-corrupt metric gap the circuit recovers:
+
+```python
+from transformer_lens.tools.analysis import (
+    EdgeAttributionConfig,
+    attribution_patch,
+    faithfulness,
+)
+
+ranked = attribution_patch(
+    model, clean, corrupt, metric_fn, config=EdgeAttributionConfig(granularity="edge")
+)
+report = faithfulness(model, clean, corrupt, metric_fn, ranked.top_edges(k=50))
+print(report.recovered, report.circuit_size, report.total_edges)
+```
+
+`recovered` is a fraction, not a percentage: `1.0` means the circuit reproduces
+the clean metric, `0.0` means it reproduces the corrupt metric. Values outside
+`[0, 1]` are possible and meaningful, since a circuit can overshoot.
+
+The residual stream is a running sum, so each reader's input is rebuilt exactly
+by subtracting the excluded writers' live contributions and adding their
+replacements. This is a forward-only measurement: it takes no gradient, so it is
+independent of the linearization that ranked the edges in the first place.
+
+`FaithfulnessConfig(ablation=...)` selects the replacement. The default,
+`"corrupt"`, substitutes the corrupt run's own contribution, which is the
+evaluation the external EAP-IG reference reports. `"mean"` requires an explicit,
+held-out calibration batch through the keyword-only `mean_tokens` argument:
+
+```python
+from transformer_lens.tools.analysis import FaithfulnessConfig
+
+calibration_tokens = model.to_tokens([
+    "The capital of Spain is",
+    "The capital of Italy is",
+]).to(clean.device)
+mean_report = faithfulness(
+    model, clean, corrupt, metric_fn, ranked.top_edges(k=50),
+    config=FaithfulnessConfig(ablation="mean"),
+    mean_tokens=calibration_tokens,
+)
+```
+
+Calibration must be a nonempty `[n_calibration, seq]` batch of `torch.int32` or
+`torch.int64` token ids, with the evaluated sequence length and the same device
+as the clean/corrupt token tensors. Align the sequence positions before averaging;
+the helper averages examples only, preserving each position and attention head.
+It captures calibration activations with the same model, hook configuration, and
+weight-processing mode used for evaluation.
+
+Mean-mode calls without calibration now raise `ValueError`; there is no fallback
+to the evaluated pair. Exact calibration rows equal to either endpoint are also
+rejected. This check cannot establish dataset independence: callers must choose
+held-out examples and avoid semantically equivalent leakage. Passing `mean_tokens`
+in corrupt mode is rejected rather than silently ignored.
+
+Recovery is still `(circuit_metric - corrupt_metric) / (clean_metric - corrupt_metric)`.
+An empty mean-ablated circuit can have nonzero recovery because its calibration
+baseline need not reproduce the corrupt run. A full circuit still reproduces the
+clean metric. Compare against a random edge set of the same size, using the same
+calibration batch, before claiming a circuit is meaningful.
+
+`report.edge_class_recovered` is circuit-relative leave-one-out recovery. For a
+candidate `C` and graph class `E_t`, each entry evaluates `C` with its retained
+edges in `E_t` removed, not the full graph with the class removed. Edges originally
+outside `C` stay ablated. Every diagnostic uses the aggregate's replacements,
+clean/corrupt endpoints, and normalization:
+
+```text
+edge_class_recovered[t] = recovered(C minus E_t)
+```
+
+An absent class leaves the candidate unchanged, so its entry equals
+`report.recovered`. For an empty circuit every class entry equals aggregate
+empty-circuit recovery, including with mean replacements. Duplicate circuit
+entries count once; `report.circuit_size` is the number of unique retained edges.
+`report.edge_class_counts` remains the full-graph count per class, not the number
+retained in `C`.
+
+The difference `report.recovered - report.edge_class_recovered[t]` measures
+conditional dependence on that class's retained edges. Interactions and inhibitory
+edges can increase recovery after removal; contributions are not additive or
+necessarily positive. This is not a measurement of attribution ranking error.
+Q/K inputs feed attention scores, but that alone does not establish which class
+is ranked most accurately. LayerNorm, MLPs, and downstream attention can introduce
+nonlinearity for the other classes too. The breakout costs one extra forward per
+class present in the candidate; absent classes reuse aggregate recovery.
+
+API: {func}`~transformer_lens.tools.analysis.attribution_patching.faithfulness`.
+
+### Direct Path Patching: patch one edge exactly
+
+`get_act_patch_direct_path` (in `transformer_lens.patching`, also importable from
+`transformer_lens.tools.analysis`) fixes a source head and sweeps every later head,
+patching only the path from the source into that head's Q, K, or V input. The source
+head's residual write on each run is its cached `hook_z` times `W_O`. For each
+destination, the corrupted prompt is rerun with the clean-minus-corrupted write added,
+at every position, to the destination head's own copy of the residual, before its
+LayerNorm. The norm and projection are recomputed on that copy and every other reader
+still sees the corrupted output, so on pre-norm blocks the score is the exact edge
+intervention, with LayerNorm folded or not. It equals ablating the same per-position
+edges with the edge-ablation hook behind `faithfulness()`. A source block that
+normalizes, scales or joins its attention output before the residual add (post-norm,
+scaled-residual or parallel-mixer blocks) is refused, since the head's write there is
+not `hook_z @ W_O`.
+
+That per-head copy is the `hook_q_input`/`hook_k_input`/`hook_v_input` fork, which
+fires only while `use_split_qkv_input` is on. The function turns the flag on for the
+sweep (and `use_attn_in` off, since the two are exclusive) and restores both on
+return or error, so you set neither. While it is on, each attention layer normalizes a
+separate residual copy per head for each of Q, K and V; budget activation memory for
+long prompts or many heads accordingly.
 
 Interpret a score relative to the unpatched corrupt metric. Entries at or before the
 source layer are zero placeholders, not measured interventions. State the source head,
 destination input, prompt pair, and normalization convention when reporting a path.
 
-API: {func}`~transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path`.
+API: {func}`~transformer_lens.patching.get_act_patch_direct_path`.
 
 ### Logit Lens: read the stream through the real norm
 
@@ -142,7 +249,11 @@ without materializing the full vocabulary; `top_k=` keeps the leading tokens wit
 their ids; `vocab=` keeps a subset. Ranks, entropy and log-probabilities are always
 computed over the full vocabulary, whatever was selected. `logit_readout` is the
 same kernel for any `d_model` vector: a head output, a steering direction, a
-sparse-coder decoder column.
+sparse-coder decoder column. The
+[SVD Circuits demo](../generated/demos/SVD_Circuits_Demo.ipynb) reads attention-head
+singular directions through it, and the
+[Backward Lens demo](../generated/demos/Backward_Lens_Demo.ipynb) reads MLP
+weight-gradient factors.
 
 Intermediate-layer readouts are observations, not interventions. A token ranked
 first at layer 6 is what the unembedding would say *if the model stopped there*; it
@@ -150,17 +261,6 @@ does not establish that later layers are inert, and the recomputed norm can magn
 small early residual. Pair a lens trajectory with patching or DLA before making a
 causal claim. For a fitted per-layer map instead of the identity, see
 [Jacobian Lens](#jacobian-lens-distinguish-readout-reconstruction-and-intervention).
-
-### Backward Lens: preserve the gradient sign
-
-Vocabulary rankings describe factors of `d(loss) / d(weight)`. Gradient descent
-**subtracts** this gradient. The highest raw-gradient token is therefore not
-automatically the token favored by an update. Use the documented bottom rankings
-and gradient-descent target ranks where appropriate. Align positions using
-`result.prompt_token_ids`, which records the actual tokenization.
-
-See [Backward Lens](backward_lens.md) for the example, sign conventions, and result
-structure.
 
 ### Jacobian Lens: distinguish readout, reconstruction, and intervention
 
@@ -184,13 +284,6 @@ Projection Kernel compares subspaces, without measuring weight magnitude or mode
 behavior on a prompt. In attention-head results, use `valid_mask` when interpreting
 scores: invalid pairs are stored as zeros. See [Projection Kernel](projection_kernel.md)
 for rank selection, normalization, and all-head memory costs.
-
-For SVD head decomposition, inspect the rank report before assigning meaning to an
-individual direction. Near-equal singular values define a subspace whose basis can
-rotate; numerically null directions are also unsuitable for individual attribution.
-The weight decomposition alone is not a causal validation of a proposed subfunction.
-
-API: {func}`~transformer_lens.tools.analysis.svd_circuits.decompose_head`.
 
 ## Try a geometry question without downloading a model
 

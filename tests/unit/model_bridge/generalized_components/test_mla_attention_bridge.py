@@ -2,10 +2,16 @@
 
 import pytest
 import torch
-from transformers import DeepseekV3Config, DeepseekV3ForCausalLM
+from transformers import (
+    DeepseekV2Config,
+    DeepseekV2ForCausalLM,
+    DeepseekV3Config,
+    DeepseekV3ForCausalLM,
+)
 
 from transformer_lens.model_bridge.generalized_components.mla_attention import (
     MLAAttentionBridge,
+    _apply_rotary_complex,
 )
 
 
@@ -31,6 +37,9 @@ def tiny_config():
         topk_group=1,
         max_position_embeddings=128,
         moe_intermediate_size=256,
+        # The mask=None parity tests hold only under sdpa's is_causal; eager with
+        # mask=None is bidirectional and adds a boolean mask as 0/1.
+        attn_implementation="sdpa",
     )
 
 
@@ -90,7 +99,7 @@ class TestMLAAttentionBridgeForward:
         return hidden_states, (cos, sin)
 
     def test_output_matches_hf(self, mla_bridge, hf_attn, sample_inputs, tiny_model):
-        """HF uses SDPA, bridge uses manual matmul — small float32 differences expected."""
+        """HF's SDPA path passes attention_mask=None and relies on is_causal."""
         hidden_states, position_embeddings = sample_inputs
 
         with torch.no_grad():
@@ -106,9 +115,31 @@ class TestMLAAttentionBridgeForward:
             )[0]
 
         max_diff = (hf_attn_out - bridge_attn_out).abs().max().item()
-        mean_diff = (hf_attn_out - bridge_attn_out).abs().mean().item()
-        assert max_diff < 0.15, f"Output too different: max diff = {max_diff}"
-        assert mean_diff < 0.02, f"Output too different: mean diff = {mean_diff}"
+        assert max_diff < 1e-5, f"Output too different: max diff = {max_diff}"
+
+    def test_boolean_padding_mask_matches_hf(self, mla_bridge, hf_attn, sample_inputs):
+        """With padding, HF's SDPA path passes a boolean 4D mask (True = attend)."""
+        hidden_states, position_embeddings = sample_inputs
+        seq = hidden_states.shape[1]
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = causal.expand(2, 1, seq, seq).clone()
+        attention_mask[0, :, :, :2] = False  # left padding on the first sequence
+
+        with torch.no_grad():
+            hf_attn_out = hf_attn(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+            bridge_attn_out = mla_bridge(
+                hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=attention_mask,
+            )[0]
+
+        # Padded query rows are fully masked (undefined output); compare real positions.
+        diff = (hf_attn_out - bridge_attn_out)[:, 2:].abs().max().item()
+        assert diff < 1e-5, f"Output too different: max diff = {diff}"
 
     def test_hooks_fire_and_have_correct_shapes(self, mla_bridge, sample_inputs, tiny_config):
         hidden_states, position_embeddings = sample_inputs
@@ -435,3 +466,117 @@ class TestMLACompatibilityMaskSentinel:
         seq = scores.shape[-1]
         masked = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1).expand_as(scores)
         assert torch.isfinite(scores[masked]).all()
+
+
+class TestMLAComplexRope:
+    """DeepSeek-V2 complex RoPE on rope slices that an odd ``qk_nope_head_dim`` or
+    ``kv_lora_rank`` (e.g. after pruning) leaves at odd storage offsets and strides."""
+
+    ROPE_DIM = 4
+
+    @staticmethod
+    def _rotate(x: torch.Tensor, angles: torch.Tensor) -> torch.Tensor:
+        """Reference rotation of adjacent pairs, written without complex numbers."""
+        cos, sin = angles.cos()[:, None], angles.sin()[:, None]
+        even, odd = x[..., 0::2], x[..., 1::2]
+        return torch.stack((even * cos - odd * sin, even * sin + odd * cos), dim=-1).flatten(3)
+
+    @pytest.mark.parametrize(
+        "nope_dim, kv_lora_rank",
+        [(4, 8), (3, 8), (4, 7), (3, 7)],
+        ids=["aligned", "odd-nope", "odd-kv-rank", "odd-both"],
+    )
+    def test_rotation_does_not_depend_on_storage_layout(self, nope_dim, kv_lora_rank):
+        batch, heads, seq = 2, 2, 5
+        torch.manual_seed(0)
+        angles = torch.randn(batch, seq, self.ROPE_DIM // 2)
+        freqs_cis = torch.polar(torch.ones_like(angles), angles)
+
+        # Same view/transpose/split sequence as MLAAttentionBridge.forward
+        q_states = torch.randn(batch, seq, heads * (nope_dim + self.ROPE_DIM))
+        q_states = q_states.view(batch, seq, heads, -1).transpose(1, 2)
+        _, q_rot = torch.split(q_states, [nope_dim, self.ROPE_DIM], dim=-1)
+        compressed_kv = torch.randn(batch, seq, kv_lora_rank + self.ROPE_DIM)
+        _, k_rot = torch.split(compressed_kv, [kv_lora_rank, self.ROPE_DIM], dim=-1)
+        k_rot = k_rot.view(batch, 1, seq, self.ROPE_DIM)
+
+        q_out, k_out = _apply_rotary_complex(q_rot, k_rot, freqs_cis)
+
+        assert torch.allclose(q_out, self._rotate(q_rot, angles), atol=1e-6)
+        assert torch.allclose(k_out, self._rotate(k_rot, angles), atol=1e-6)
+
+    def test_contiguous_slice_at_odd_offset(self):
+        """A slice can be contiguous and still start at an odd storage offset."""
+        angles = torch.randn(1, 1, self.ROPE_DIM // 2)
+        freqs_cis = torch.polar(torch.ones_like(angles), angles)
+        q_rot = torch.randn(3 + self.ROPE_DIM)[3:].view(1, 1, 1, self.ROPE_DIM)
+        assert q_rot.is_contiguous() and q_rot.storage_offset() % 2 == 1
+
+        q_out, k_out = _apply_rotary_complex(q_rot, q_rot, freqs_cis)
+
+        assert torch.allclose(q_out, self._rotate(q_rot, angles), atol=1e-6)
+        assert torch.allclose(k_out, q_out)
+
+    def test_bridge_forward_with_odd_nope_dim_and_kv_rank(self):
+        """Bridge output must match HF DeepseekV2Attention when the rope slices are misaligned."""
+        from unittest import mock
+
+        from transformers.models.deepseek_v2 import modeling_deepseek_v2
+
+        config = DeepseekV2Config(
+            vocab_size=100,
+            hidden_size=32,
+            intermediate_size=64,
+            moe_intermediate_size=16,
+            num_hidden_layers=1,
+            num_attention_heads=2,
+            num_key_value_heads=2,
+            q_lora_rank=8,
+            kv_lora_rank=7,
+            qk_nope_head_dim=3,
+            qk_rope_head_dim=self.ROPE_DIM,
+            v_head_dim=8,
+            first_k_dense_replace=1,
+            n_routed_experts=2,
+            n_shared_experts=1,
+            num_experts_per_tok=1,
+            # At the default 0.02 init, skipping RoPE moves the output by only ~5e-5.
+            initializer_range=0.5,
+        )
+        config._attn_implementation = "eager"
+        batch, seq = 2, 6
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = DeepseekV2ForCausalLM(config)
+            hidden_states = torch.randn(batch, seq, config.hidden_size)
+        hf_attn = model.model.layers[0].self_attn
+        bridge = MLAAttentionBridge(name="self_attn", config=config, submodules={})
+        bridge.set_original_component(hf_attn)
+
+        position_ids = torch.arange(seq).unsqueeze(0).expand(batch, -1)
+        freqs_cis = model.model.rotary_emb(hidden_states, position_ids)
+        assert freqs_cis.is_complex()
+        # HF eager with mask=None is bidirectional; the bridge would apply a causal mask.
+        causal = torch.tril(torch.ones(seq, seq, dtype=torch.bool))
+        attention_mask = torch.zeros(batch, 1, seq, seq).masked_fill(
+            ~causal, torch.finfo(torch.float32).min
+        )
+
+        def hf_forward(rotary_fn) -> torch.Tensor:
+            # HF's own apply_rotary_emb raises on these slices via view_as_complex.
+            with mock.patch.object(modeling_deepseek_v2, "apply_rotary_emb", rotary_fn):
+                return hf_attn(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_embeddings=freqs_cis,
+                )[0]
+
+        with torch.no_grad():
+            hf_out = hf_forward(_apply_rotary_complex)
+            unrotated_out = hf_forward(lambda q, k, freqs_cis: (q, k))
+            bridge_out = bridge(
+                hidden_states, position_embeddings=freqs_cis, attention_mask=attention_mask
+            )[0]
+
+        torch.testing.assert_close(bridge_out, hf_out)
+        assert not torch.allclose(unrotated_out, hf_out, atol=1e-3)

@@ -70,11 +70,13 @@ class BlockBridge(GeneralizedComponent):
             hook_alias_overrides: Optional dictionary to override default hook aliases.
                 For example, {"hook_attn_out": "ln1_post.hook_out"} will make hook_attn_out
                 point to ln1_post.hook_out instead of the default attn.hook_out.
-            mlp_reads_resid_directly: True for post-norm blocks where the MLP consumes
-                the mid-residual with no pre-MLP norm (OLMo 2 layout). Moves the
-                hook_mlp_in capture from ln2 (whose input there is the raw MLP output)
-                to the MLP itself.
+            mlp_reads_resid_directly: True when the MLP consumes the mid-residual with
+                no pre-MLP norm. Moves the hook_mlp_in capture from ln2 to the MLP
+                itself. Implied for post-norm-only blocks (ln2_post without ln2).
         """
+        has_ln2 = submodules is not None and "ln2" in submodules
+        # OLMo 2 layout: ln2_post without ln2 means the MLP reads the mid-residual directly.
+        post_norm_only_mlp = submodules is not None and "ln2_post" in submodules and not has_ln2
         # ln1_post/ln2_post redirect attn_out/mlp_out to match HookedTransformer's
         # placement (hook fires after the post-norm, not before).
         auto_overrides = {}
@@ -83,22 +85,29 @@ class BlockBridge(GeneralizedComponent):
                 auto_overrides["hook_attn_out"] = "ln1_post.hook_out"
             if "ln2_post" in submodules:
                 auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
+            if post_norm_only_mlp:
+                auto_overrides["hook_resid_mid"] = "mlp.hook_in"
         merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
 
-        # Guard against the bug where a sequential block (attn + mlp) with no ln2
-        # silently points hook_resid_mid at the wrong tensor. Use
+        # Guard against the bug where a sequential block (attn + mlp) with no MLP-side
+        # norm silently points hook_resid_mid at the wrong tensor. Use
         # ParallelBlockBridge for parallel-residual architectures.
         # Skip the check on generic-container / attn-only uses (no mlp).
         has_attn_like = submodules is not None and any(
             k in submodules for k in _VARIANT_SUBMODULE_SET
         )
         has_mlp = submodules is not None and "mlp" in submodules
-        has_ln2 = submodules is not None and "ln2" in submodules
-        if has_attn_like and has_mlp and not has_ln2 and type(self) is BlockBridge:
+        if (
+            has_attn_like
+            and has_mlp
+            and not has_ln2
+            and not post_norm_only_mlp
+            and type(self) is BlockBridge
+        ):
             raise ValueError(
-                f"BlockBridge at '{name}': 'ln2' submodule not declared. "
-                f"Either declare ln2, or use ParallelBlockBridge for a "
-                f"parallel-residual architecture."
+                f"BlockBridge at '{name}': neither 'ln2' nor 'ln2_post' declared. "
+                f"Declare ln2 (pre-MLP norm) or ln2_post (post-MLP norm), or use "
+                f"ParallelBlockBridge for a parallel-residual architecture."
             )
 
         super().__init__(
@@ -113,7 +122,7 @@ class BlockBridge(GeneralizedComponent):
         self._capture_hook_handles: list[torch.utils.hooks.RemovableHandle] = []
         # Fallback for _read_use_hook_mlp_in when block.config is None.
         self._use_hook_mlp_in: bool = False
-        self.mlp_reads_resid_directly = mlp_reads_resid_directly
+        self.mlp_reads_resid_directly = mlp_reads_resid_directly or post_norm_only_mlp
         # Fires on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
         # blocks) when use_hook_mlp_in is set. See #1317.
         self.hook_mlp_in = HookPoint()
@@ -525,6 +534,9 @@ class ScaledResidualBlockBridge(BlockBridge):
         self.residual_contribution_scale = scale
         self.scaled_attn_submodule = scaled_attn_submodule
         self.scaled_mlp_submodule = scaled_mlp_submodule
+        attn = self.submodules.get(scaled_attn_submodule) if self.submodules else None
+        if attn is not None:
+            attn._result_contribution_scale = scale
         if self.hook_aliases is BlockBridge.hook_aliases:
             self.hook_aliases = dict(self.hook_aliases)
         for alias in ("hook_attn_out", "hook_mlp_out"):
@@ -595,13 +607,9 @@ class ScaledResidualBlockBridge(BlockBridge):
             out = output[0] if is_tuple else output
             if not isinstance(out, torch.Tensor):
                 return None
-            scaled = out * scale
-            hooked = hook_point(scaled)
-            # Compare against a freshly computed reference: an in-place mutation
-            # alters `scaled` itself, so an identity check would miss it.
-            if not hook_point.has_hooks(dir="bwd") and torch.equal(hooked, out * scale):
+            new = self._hook_scaled_output(out, hook_point, scale)
+            if new is out:
                 return None
-            new = hooked / scale
             return ((new,) + output[1:]) if is_tuple else new
 
         return _hook

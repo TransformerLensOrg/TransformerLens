@@ -5,16 +5,20 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from numbers import Integral, Real
+from numbers import Real
 from typing import Dict, MutableMapping, Optional, Sequence, Tuple
 
 import torch
 
+from transformer_lens.tools.analysis._model_state import require_int
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     _SWAP_WARN_COSINE,
     DEFAULT_K,
     JSpaceDecomposition,
+    _active_mask,
+    _gradient_pursuit_extend,
     _linalg_on_cpu_if_mps,
+    _project_onto_span,
     _validate_nnls_kkt,
     get_sparse_decomposition,
 )
@@ -139,15 +143,6 @@ def _validate_atom_rows(
     return atoms
 
 
-def _validate_index(name: str, value: int, num_atoms: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        raise ValueError(f"{name} must be an integer atom index")
-    index = int(value)
-    if not 0 <= index < num_atoms:
-        raise ValueError(f"{name}={index} out of range for dictionary with {num_atoms} atoms")
-    return index
-
-
 def _close(actual: torch.Tensor, expected: torch.Tensor, condition_number: float = 1.0) -> bool:
     # The base tolerance certifies a well-conditioned comparison. When ``expected`` is recomputed
     # through an ill-conditioned span (a pinv projection), the float32 recompute error grows with
@@ -170,6 +165,46 @@ def _condition_number(atoms: torch.Tensor) -> float:
     if smallest <= 0.0:
         return math.inf
     return float(singular_values.max().item()) / smallest
+
+
+def _nnls_fit_error(
+    support_atoms: torch.Tensor, target: torch.Tensor, coordinates: torch.Tensor
+) -> Optional[str]:
+    """The NNLS KKT violation of ``coordinates`` over the active atoms, or ``None`` if they fit."""
+    # Couples the coordinates to the activation, catching self-consistently rescaled inputs.
+    active_atoms = support_atoms.T
+    tiny = torch.finfo(target.dtype).tiny
+    relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
+    atom_norms = active_atoms.norm(dim=0).clamp_min(tiny)
+    scale = (target.norm() + (active_atoms.abs() @ coordinates.abs()).norm()).clamp_min(tiny)
+    dual_tol = relative_tolerance * atom_norms * scale
+    coefficient_tol = relative_tolerance * scale / atom_norms
+    try:
+        _validate_nnls_kkt(active_atoms, target, coordinates, dual_tol, coefficient_tol)
+    except RuntimeError as error:
+        return str(error)
+    return None
+
+
+def _replays_gradient_pursuit(
+    selected_atoms: Optional[torch.Tensor],
+    target: torch.Tensor,
+    support: torch.Tensor,
+    selected: torch.Tensor,
+    coordinates: torch.Tensor,
+) -> bool:
+    """Whether replaying gradient pursuit over ``selected`` in order yields this support and fit."""
+    # Gradient-pursuit coefficients are approximate and need not satisfy the NNLS KKT conditions.
+    replay = target.new_zeros(0)
+    if selected_atoms is not None:
+        for count in range(1, selected.numel() + 1):
+            replay = _gradient_pursuit_extend(selected_atoms[:, :count], target, replay)
+        active = _active_mask(replay, selected_atoms, float(torch.linalg.vector_norm(target)))
+    else:
+        active = torch.zeros(0, dtype=torch.bool, device=target.device)
+    if not torch.equal(support, selected[active.cpu()]):
+        return False
+    return not coordinates.numel() or _close(coordinates, replay[active])
 
 
 def _validate_decomposition(
@@ -231,35 +266,20 @@ def _validate_decomposition(
     expected_reconstruction = support_atoms.T @ coordinates
     if not _close(local_vectors[0], expected_reconstruction, span_condition):
         raise ValueError("precomputed decomposition reconstruction is incompatible with dictionary")
-    # Couple the coordinates to ``target`` (the activation), not just to the dictionary: the
-    # reconstruction/dictionary check above passes for any self-consistently scaled pair, so a
-    # wrongly-scaled decomposition would slip through and silently anchor the edit to a bogus
-    # residual. Reuse the solver's NNLS KKT stationarity test -- the active coordinates are all
-    # strictly positive (validated above), so stationarity ``A^T (target - A c) == 0`` is the
-    # exact condition for ``c`` being the nonnegative fit of ``target`` over the active support.
-    # Tolerances mirror the solver's result-dtype certification (sqrt(eps) of the float32
-    # coordinates) so genuine float32-rounded decompositions are not falsely rejected.
-    active_atoms = support_atoms.T
-    tiny = torch.finfo(target.dtype).tiny
-    relative_tolerance = math.sqrt(torch.finfo(target.dtype).eps)
-    atom_norms = active_atoms.norm(dim=0).clamp_min(tiny)
-    scale = (target.norm() + (active_atoms.abs() @ coordinates.abs()).norm()).clamp_min(tiny)
-    dual_tol = relative_tolerance * atom_norms * scale
-    coefficient_tol = relative_tolerance * scale / atom_norms
-    try:
-        _validate_nnls_kkt(active_atoms, target, coordinates, dual_tol, coefficient_tol)
-    except RuntimeError as error:
+    # Either solver's output is accepted whatever ``algorithm`` a fresh solve would use, so a
+    # decomposition cache shared across algorithms stays valid.
+    nnls_error = _nnls_fit_error(support_atoms, target, coordinates)
+    if nnls_error is not None and not _replays_gradient_pursuit(
+        selected_atoms, target, support_cpu, selected_cpu, coordinates
+    ):
         raise ValueError(
-            f"precomputed decomposition coordinates do not fit the activation ({error})"
-        ) from error
+            "precomputed decomposition coordinates do not fit the activation as an NNLS fit "
+            f"({nnls_error}) or as a gradient-pursuit replay of selected_support"
+        )
     if not _close(local_vectors[1] + local_vectors[2], target, span_condition):
         raise ValueError("precomputed decomposition is incompatible with activation")
     if selected_atoms is not None:
-        expected_component = _linalg_on_cpu_if_mps(
-            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
-            selected_atoms,
-            target,
-        )
+        expected_component = _project_onto_span(selected_atoms, target)
     else:
         expected_component = torch.zeros_like(target)
     if not _close(local_vectors[1], expected_component, span_condition):
@@ -370,7 +390,8 @@ def solve_coordinate_patch(
         k: Sparse-solver upper bound when no decomposition is supplied.
         mode: ``"substitute"`` to overwrite the target, or ``"swap"`` to exchange coordinates.
         alpha: Finite interpolation strength. Zero returns an unchanged float32 clone.
-        algorithm: Sparse coefficient-update rule when no decomposition is supplied.
+        algorithm: Sparse coefficient-update rule when no decomposition is supplied. A supplied
+            decomposition is accepted if it fits as either algorithm's output.
 
     Returns:
         A :class:`CoordinatePatch` with the anchored edit and numerical diagnostics.
@@ -387,14 +408,20 @@ def solve_coordinate_patch(
             outside the nonnegative pursuit frame. All three are non-fatal.
     """
     target, dictionary = _validate_inputs(x, dictionary)
-    source_idx = _validate_index("source_idx", source_idx, dictionary.shape[0])
-    target_idx = _validate_index("target_idx", target_idx, dictionary.shape[0])
+    last_atom = dictionary.shape[0] - 1
+    source_idx = require_int(source_idx, "source_idx", minimum=0, maximum=last_atom)
+    target_idx = require_int(target_idx, "target_idx", minimum=0, maximum=last_atom)
     if source_idx == target_idx:
         raise ValueError("source_idx and target_idx must be distinct")
     if mode not in ("substitute", "swap"):
         raise ValueError(f"mode must be 'substitute' or 'swap', got {mode!r}")
     if isinstance(alpha, bool) or not isinstance(alpha, Real) or not math.isfinite(float(alpha)):
         raise ValueError("alpha must be a finite real number")
+    if algorithm not in ("nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"):
+        raise ValueError(
+            "algorithm must be 'nonnegative_orthogonal_matching_pursuit' or "
+            f"'gradient_pursuit', got {algorithm!r}"
+        )
 
     if decomposition is None:
         decomposition = get_sparse_decomposition(target, dictionary, k, algorithm=algorithm)
@@ -531,7 +558,8 @@ def solve_coordinate_patch_positions(
         k: Sparse-solver upper bound on a cache miss.
         mode: ``"substitute"`` or ``"swap"``, forwarded to :func:`solve_coordinate_patch`.
         alpha: Finite interpolation strength, forwarded to :func:`solve_coordinate_patch`.
-        algorithm: Sparse coefficient-update rule on a cache miss.
+        algorithm: Sparse coefficient-update rule on a cache miss. A cache hit is accepted if it
+            fits as either algorithm's output.
 
     Returns:
         A tuple ``(patched, patches)``: ``patched`` has the same shape as ``activations``, with

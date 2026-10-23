@@ -17,6 +17,12 @@ from transformers import (
     BertForPreTraining,
     BloomConfig,
     BloomForCausalLM,
+    Gemma4AudioConfig,
+    Gemma4Config,
+    Gemma4ForCausalLM,
+    Gemma4ForConditionalGeneration,
+    Gemma4TextConfig,
+    Gemma4VisionConfig,
     GPT2Config,
     GPT2LMHeadModel,
     GPTNeoXConfig,
@@ -36,6 +42,7 @@ from transformers import (
     ViTModel,
 )
 
+from tests.integration.model_bridge.helpers import make_tiny_pair
 from transformer_lens.model_bridge.sources import build_bridge_from_module
 
 
@@ -97,6 +104,42 @@ def _hubert_config() -> HubertConfig:
         conv_kernel=(3,),
         num_conv_pos_embeddings=4,
         num_conv_pos_embedding_groups=2,
+    )
+
+
+def _gemma4_text_config() -> Gemma4TextConfig:
+    return Gemma4TextConfig(
+        vocab_size=32,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=4,
+        max_position_embeddings=16,
+        vocab_size_per_layer_input=32,
+        hidden_size_per_layer_input=4,
+    )
+
+
+def _gemma4_config() -> Gemma4Config:
+    return Gemma4Config(
+        text_config=_gemma4_text_config(),
+        vision_config=Gemma4VisionConfig(
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            num_key_value_heads=4,
+            head_dim=4,
+        ),
+        audio_config=Gemma4AudioConfig(
+            hidden_size=16,
+            num_attention_heads=4,
+            num_hidden_layers=1,
+            output_proj_dims=16,
+            subsampling_conv_channels=[8, 8],
+        ),
     )
 
 
@@ -240,6 +283,18 @@ ARCHITECTURE_CASES = (
         ),
         "ASTForAudioClassification",
     ),
+    ArchitectureCase(
+        "gemma4-per-layer-embeddings",
+        Gemma4ForCausalLM,
+        _gemma4_text_config,
+        "Gemma4ForCausalLM",
+    ),
+    ArchitectureCase(
+        "gemma4-audio-vision",
+        Gemma4ForConditionalGeneration,
+        _gemma4_config,
+        "Gemma4ForConditionalGeneration",
+    ),
 )
 
 ARCHITECTURE_CASE_BY_NAME = {case.name: case for case in ARCHITECTURE_CASES}
@@ -302,6 +357,28 @@ def test_parent_dtype_conversion_updates_container_owned_state() -> None:
     assert id(bridge.original_model.final_logits_bias) in {
         id(buffer) for buffer in parent.buffers()
     }
+
+
+@pytest.mark.parametrize("through_parent", (False, True), ids=("bridge-half", "parent-to"))
+def test_dtype_conversion_updates_unmapped_leaf_parameters(through_parent: bool) -> None:
+    bridge, reference = make_tiny_pair(
+        _gemma4_text_config(), "Gemma4ForCausalLM", loader=Gemma4ForCausalLM
+    )
+    if through_parent:
+        parent = nn.Module()
+        parent.add_module("bridge", bridge)
+        parent.to(torch.float16)
+    else:
+        bridge.half()
+    reference.half()
+    tokens = torch.tensor([[2, 5, 7, 9, 11]])
+
+    with torch.no_grad():
+        logits = bridge(tokens)
+        expected = reference(input_ids=tokens).logits
+
+    assert logits.dtype == torch.float16
+    assert torch.equal(logits, expected)
 
 
 def test_parent_assign_load_updates_container_owned_state() -> None:

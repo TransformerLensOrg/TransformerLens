@@ -85,6 +85,16 @@ class TestFactoredMatrixProperties:
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(V.T @ V, torch.eye(V.shape[-1]), atol=1e-5)
 
+    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+    def test_svd_16bit_support(self, random_matrices_bf16, dtype):
+        """SVD computes in float32 for 16-bit factors, as eigenvalues does."""
+        for a, b in random_matrices_bf16:
+            factored_matrix = FactoredMatrix(a.to(dtype), b.to(dtype))
+            U, S, V = factored_matrix.svd()
+            assert S.dtype == torch.float32
+            expected = factored_matrix.A.float() @ factored_matrix.B.float()
+            assert torch.allclose(U @ torch.diag_embed(S) @ V.T, expected, atol=1e-4)
+
     def test_svd_property_leading_ones(self, factored_matrices_leading_ones):
         for factored_matrix in factored_matrices_leading_ones:
             U, S, V = factored_matrix.svd()

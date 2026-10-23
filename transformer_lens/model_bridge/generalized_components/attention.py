@@ -2,6 +2,7 @@
 
 This module contains the bridge component for attention layers.
 """
+import inspect
 import logging
 import warnings
 from typing import Any, Dict, Optional, Tuple
@@ -809,7 +810,12 @@ class AttentionBridge(GeneralizedComponent):
                 d_head=d_head,
             )
         per_head = torch.einsum("bshd,hdm->bshm", z_4d, w_per_head)
-        per_head = self.hook_result(per_head)
+        scale = getattr(self, "_result_contribution_scale", 1.0)
+        if scale == 1.0:
+            # Keep callable hook replacements on the original unscaled path.
+            per_head = self.hook_result(per_head)
+        else:
+            per_head = self._hook_scaled_output(per_head, self.hook_result, scale)
         summed = per_head.sum(dim=-2)
         if bias is not None:
             summed = summed + bias
@@ -941,9 +947,22 @@ class AttentionBridge(GeneralizedComponent):
         if scores is not None:
             self._fire_post_hoc_hook(self.hook_attn_scores, scores, "hook_attn_scores")
         weights = self._fire_post_hoc_hook(self.hook_pattern, weights, "hook_pattern")
-        if caller_output_attentions:
+        if caller_output_attentions or not self._output_attentions_is_optional():
             return (position_bias, weights) + rest[2:]
         return (position_bias,) + rest[2:]
+
+    def _output_attentions_is_optional(self) -> bool:
+        """Whether the wrapped module only returns weights when asked to.
+
+        Transformers >= 5.15 T5 attention always returns three values, which callers unpack.
+        """
+        if self.original_component is None:
+            return True
+        try:
+            params = inspect.signature(self.original_component.forward).parameters
+        except (TypeError, ValueError):
+            return True
+        return "output_attentions" in params
 
     def _reconstruct_bias_scores(
         self,

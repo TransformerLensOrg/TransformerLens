@@ -45,25 +45,31 @@ import torch
 from jaxtyping import Float
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.utilities import SliceInput
+from transformer_lens.tools.analysis._model_state import (
+    hybrid_block_types,
+    require_eval_mode,
+)
+from transformer_lens.tools.analysis.logit_lens import (
+    _final_norm,
+    _require_direct_readout,
+    _require_readout_identity,
+)
+from transformer_lens.utilities import Slice, SliceInput
 
 # Token-like inputs accepted for the correct/incorrect answers, mirroring
 # ActivationCache.logit_attrs.
-TokenInput = Union[
+AnswerTokens = Union[
     str,
     int,
     torch.Tensor,
 ]
+# Former name, kept so existing imports keep working.
+TokenInput = AnswerTokens
 
 # Which structural unit the residual stream is decomposed into.
 Unit = str  # one of: "component", "layer", "head"
 
 _VALID_UNITS = ("component", "layer", "head")
-
-# Block variants that lack the attn_out + mlp_out structure decompose_resid expects.
-# When TransformerBridge.layer_types() reports any of these we refuse early — the
-# downstream decompose_resid would otherwise raise a confusing KeyError.
-_HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
 
 
 @dataclass
@@ -129,8 +135,8 @@ def _residual_stack_and_labels(
     raise ValueError(f"unit must be one of {_VALID_UNITS}, got {unit!r}")
 
 
-def _validate_bridge_compatibility(model) -> None:
-    """Reject Bridge inputs that DLA can't produce correct numbers for.
+def _validate_bridge_compatibility(model) -> bool:
+    """Reject Bridges DLA can't produce correct numbers for; return whether ``model`` is one.
 
     Compatibility mode alone does not guarantee the final norm is folded:
     ``fold_ln=False`` and ``no_processing=True`` leave its affine parameters
@@ -140,7 +146,10 @@ def _validate_bridge_compatibility(model) -> None:
     from transformer_lens.model_bridge import TransformerBridge
 
     if not isinstance(model, TransformerBridge):
-        return
+        return False
+
+    # Ahead of the compatibility check: these bridges stay wrong in compatibility mode.
+    _require_direct_readout(model, operation="DLA")
 
     if not getattr(model, "compatibility_mode", False):
         raise ValueError(
@@ -172,21 +181,22 @@ def _validate_bridge_compatibility(model) -> None:
                 "with fold_ln=True and no_processing=False."
             )
 
-    layer_types = model.layer_types()
-    hybrid = [lt for lt in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in lt.split("+"))]
+    # Refused up front: decompose_resid would otherwise fail with a confusing KeyError.
+    hybrid = hybrid_block_types(model)
     if hybrid:
         raise NotImplementedError(
             f"DLA does not yet support hybrid architectures (found block types {hybrid}). "
             f"Only standard attention + MLP transformers (e.g. GPT-2, LLaMA, Pythia) are "
             f"supported; hybrid support requires extending ActivationCache.decompose_resid."
         )
+    return True
 
 
 def direct_logit_attribution(
     model,
     input: Union[str, List[str], torch.Tensor, None] = None,
-    answer_tokens: Optional[TokenInput] = None,
-    incorrect_tokens: Optional[TokenInput] = None,
+    answer_tokens: Optional[AnswerTokens] = None,
+    incorrect_tokens: Optional[AnswerTokens] = None,
     *,
     unit: Unit = "component",
     pos: SliceInput = -1,
@@ -214,7 +224,10 @@ def direct_logit_attribution(
     incorrect numbers. Hybrid architectures
     (Mamba/SSM/Mixer/LinearAttention) are not yet supported because
     ``decompose_resid`` only understands the ``attn_out + mlp_out`` block layout;
-    both conditions raise an explicit error at call time.
+    both conditions raise an explicit error at call time, as does a Bridge whose
+    readout is not ``ln_final -> unembed`` on the last block's output; a prompt run
+    here is also checked against the model's own output, a precomputed ``cache``
+    only structurally.
 
     Args:
         model:
@@ -254,8 +267,10 @@ def direct_logit_attribution(
     Raises:
         ValueError: If ``unit`` is invalid, ``answer_tokens`` is ``None``,
             neither ``input`` nor ``cache`` is provided, or a
-            ``TransformerBridge`` is passed without compatibility mode enabled
-            or with an active learned final-norm weight or bias.
+            ``TransformerBridge`` is passed without compatibility mode enabled,
+            with an active learned final-norm weight or bias, or with a readout
+            that is not ``ln_final -> unembed``; also if the model must run while
+            any module is in training mode (a supplied ``cache`` is not checked).
         NotImplementedError: If a ``TransformerBridge`` reports a hybrid block
             layout (Mamba/SSM/Mixer/LinearAttention).
     """
@@ -264,12 +279,18 @@ def direct_logit_attribution(
     if answer_tokens is None:
         raise ValueError("answer_tokens is required")
 
-    _validate_bridge_compatibility(model)
+    is_bridge = _validate_bridge_compatibility(model)
 
     if cache is None:
         if input is None:
             raise ValueError("provide either `input` to run the model, or a precomputed `cache`")
-        _, cache = model.run_with_cache(input)
+        require_eval_mode(model, operation="direct_logit_attribution()")
+        logits, cache = model.run_with_cache(input)
+        if is_bridge:
+            positions = pos if isinstance(pos, Slice) else Slice(pos)
+            _require_readout_identity(
+                model, cache, logits, _final_norm(model), positions, operation="DLA"
+            )
 
     residual_stack, labels = _residual_stack_and_labels(cache, unit, pos)
 

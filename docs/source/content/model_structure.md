@@ -42,6 +42,8 @@ Each `blocks.{i}` is a `BlockBridge` with subcomponents:
 - `ln2`: normalization before MLP
 - `mlp`: MLP module
 
+Normalizations applied to a sublayer's output, before the residual add, use `ln1_post` (after attention) and `ln2_post` (after the MLP). Keys follow the norm's position, not its Hugging Face name: Gemma 2/3 have all four, while OLMo 2-style post-norm blocks have only `ln1_post` and `ln2_post`.
+
 ## Canonical Hook Names
 
 Use these canonical names when adding hooks or reading from the cache. Every name below exists on every `TransformerBridge` from boot, and the legacy `HookedTransformer` names in the [alias table](#legacy-alias-table) resolve to the same `HookPoint` objects whether or not compatibility mode is enabled.
@@ -108,7 +110,7 @@ Each row is checked against a tiny GPT-2 bridge and a tiny Gemma 3 bridge by `te
 | `hook_pos_embed` | `pos_embed.hook_out` | `rotary_emb.hook_out` on rotary models, where it never fires |
 | `hook_unembed` | `unembed.hook_out` | |
 | `blocks.{i}.hook_resid_pre` | `blocks.{i}.hook_in` | |
-| `blocks.{i}.hook_resid_mid` | `blocks.{i}.ln2.hook_in` | the residual sum, not `blocks.{i}.attn.hook_out` |
+| `blocks.{i}.hook_resid_mid` | `blocks.{i}.ln2.hook_in` | the residual sum, not `blocks.{i}.attn.hook_out`; `blocks.{i}.mlp.hook_in` when there is no `ln2` |
 | `blocks.{i}.hook_resid_post` | `blocks.{i}.hook_out` | |
 | `blocks.{i}.hook_attn_out` | `blocks.{i}.attn.hook_out` | `blocks.{i}.ln1_post.hook_out` when a post-attention norm exists |
 | `blocks.{i}.hook_mlp_out` | `blocks.{i}.mlp.hook_out` | `blocks.{i}.ln2_post.hook_out` when a post-MLP norm exists |

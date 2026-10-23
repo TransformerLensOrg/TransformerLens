@@ -10,6 +10,10 @@ from transformer_lens.tools.analysis import JacobianLens
 lens = JacobianLens.from_pretrained("gemma-2-2b")
 ```
 
+Registry names load the artifact at the Hub commit recorded under `revision` in
+`jacobian_lens_registry.json`, so a TransformerLens release always loads the same lens
+for a name; pass `revision=` to load a different commit.
+
 Fit a new lens when your model is not in the artifact registry or when you need a
 different prompt distribution. Fitting is deterministic for a fixed model, prompt
 manifest, and set of estimator options.
@@ -225,13 +229,19 @@ Consumers can then load and validate it directly:
 lens = JacobianLens.from_pretrained(
     "your-org/your-jacobian-lenses",
     filename="gpt2_jacobian_lens.pt",
+    revision="YOUR_LENS_COMMIT_SHA",
     model=model,
 )
 ```
 
+An explicit repo id follows the repository's default branch unless `revision` pins a
+commit.
+
 To propose a short-name entry in TransformerLens, open a pull request that adds the
 published file to `transformer_lens/tools/analysis/jacobian_lens_registry.json` and
-include the fitting provenance and validation results.
+include the fitting provenance and validation results. Every entry is downloaded at the
+registry's single `revision`, so a file published after that commit also needs
+`revision` moved to a commit that still contains every other entry.
 
 ## Sparse decomposition (J-space coordinates)
 
@@ -406,41 +416,38 @@ per pair, exactly as they would from an offline `coordinate_patch` call on that 
 
 ### Causal-swap benchmark
 
-`transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark` measures whether
-`coordinate_patch_hooks` causes a directional change in model output, under baseline-capability
-filtering, a displacement-matched random-atom control, and exact Clopper-Pearson confidence
-intervals on every reported rate. The control matches the real edit's magnitude: the
-perturbation is `c_src * (a_target - a_source)`, so a candidate atom qualifies when its
-distance from `a_source` matches the target's within a fixed relative tolerance. Each trial
-draws the control arm under several seeds and records every draw, because a single draw leaves
-the control arm's own variance unmeasured. Each trial installs the hook at exactly one layer
-and the final prompt position; a trial whose source concept is not active in that layer's
-support, or whose layer admits no displacement-matched control, is recorded as skipped, not
-silently dropped.
+`scripts/jacobian_lens_causal_swap_benchmark.py` measures whether `coordinate_patch_hooks`
+causes a directional change in model output on GPT-2-small. It is a standalone script, not a
+package API:
 
-The interval is exact rather than bootstrapped: a percentile bootstrap cannot express
-uncertainty about an all-failure sample, collapsing to `[0, 0]` whether the run had one trial
-or a thousand. The artifact also records how many independent prompts the pooled rate rests on,
-since several trials can share one prompt.
+```bash
+uv run python scripts/jacobian_lens_causal_swap_benchmark.py
+```
 
-The artifact separates the layers that were swept from the layers that actually executed, and
-carries a per-status trial count, so a sweep where most layers contribute nothing is visible
-rather than implied. It also fingerprints the result blocks (trials, excluded baselines, and
-both interval blocks) alongside the protocol manifest, and embeds the full corpus definition
-with the repo/path/revision it was taken from, so the prompts and answers that decide
-capability and scoring enter the fingerprint instead of a bare corpus name.
+It needs no `HF_TOKEN` and pins the published lens and the prompt corpus by revision, so a run
+reproduces the frozen artifact
+`demos/data/jacobian_lens_causal_swap_benchmark_gpt2.json`.
 
-A generation script (`python -m
-transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli`, no `HF_TOKEN`
-required) produces a versioned, fingerprinted JSON artifact against the published GPT-2-small
-lens. The
+- **Baseline filtering.** Only prompts the unperturbed model already answers correctly enter
+  the trials.
+- **Displacement-matched control.** The real edit is `c_src * (a_target - a_source)`, so a
+  control atom qualifies when its distance from `a_source` matches the target's within a fixed
+  relative tolerance. The control arm is drawn under several seeds and every draw is recorded.
+- **Exact intervals.** Every rate carries a Clopper-Pearson interval from
+  `transformer_lens.utilities.statistics.success_rate_ci`; a percentile bootstrap collapses to
+  `[0, 0]` on an all-failure sample whether the run had one trial or a thousand. The artifact
+  also records how many independent prompts the pooled rate rests on.
+- **Skips are visible.** Each trial patches one layer at the final prompt position. A trial whose
+  source concept is inactive in that layer's support, or whose layer admits no matched control,
+  is recorded as skipped, and the artifact separates swept layers from executed layers.
+
+The
 [coordinate-patch benchmark demo](../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo)
-loads that frozen artifact and renders it; it never calls the model itself. Because the
-artifact lives under `demos/data/`, which the published wheel does not ship, the demo requires
-a repository checkout and fails with that requirement spelled out when the artifact is absent.
-A successful swap in that artifact shows a directional causal effect under the stated controls
-on GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result
-that transfers to closed-weight models.
+loads the frozen artifact and renders it without calling the model. The artifact lives under
+`demos/data/`, which the published wheel does not ship, so the demo requires a repository
+checkout. A successful swap there shows a directional causal effect under the stated controls on
+GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result that
+transfers to closed-weight models.
 
 ### Interpreting the numbers honestly
 
@@ -476,7 +483,12 @@ Occupancy records the per-step captured variance `||Pi_S x||^2 / ||x||^2` and co
 against the same occupancy recurrence on `num_control_dictionaries` random unit-norm dictionaries.
 The occupancy is the step of **maximum separation** between the real and averaged-control
 *cumulative* captured variance — the point past which further vectors add no more than random
-directions would. It is deterministic given `seed` and needs no threshold.
+directions would. It is deterministic given `seed`, on any device, and needs no threshold.
+That cross-device determinism comes from drawing every control dictionary on the CPU, and each
+draw is the size of the full-vocabulary dictionary, so on an accelerator the draws dominate the
+run time. On an Apple-silicon laptop one draw takes about 0.25 s at GPT-2 size (50257 x 768) and
+about 4 s at Gemma-2-2B size (256000 x 2304), against under 0.1 s on its GPU, so the default 32
+controls cost roughly 8 s and 2 minutes. Lower `num_control_dictionaries` when that matters.
 
 ```python
 occ = lens.occupancy(model, "The Eiffel Tower is in the city of", layer=6, position=-1)

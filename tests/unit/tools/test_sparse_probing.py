@@ -1190,3 +1190,145 @@ def test_control_generator_rejects_arm_names_outside_the_literal():
     for bad_arm in ("random", "shuffle"):
         with pytest.raises(TYPECHECK_ERRORS):
             _control_generator(0, 1, bad_arm, 0)
+
+
+def _grouped_identity_data(
+    *, n_groups: int = 40, rows_per_group: int = 8, n_features: int = 64, seed: int = 0
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    generator = torch.Generator().manual_seed(seed)
+    identities = torch.randn(n_groups, n_features, generator=generator) * 3.0
+    groups = torch.arange(n_groups).repeat_interleave(rows_per_group)
+    features = identities.repeat_interleave(rows_per_group, 0) + torch.randn(
+        n_groups * rows_per_group, n_features, generator=generator
+    )
+    labels = (
+        (torch.rand(n_groups, generator=generator) < 0.5).long().repeat_interleave(rows_per_group)
+    )
+    return features, labels, groups
+
+
+def test_fit_sparse_probe_splits_whole_groups_and_reduces_identity_leakage():
+    f1_scores = []
+    for seed in range(5):
+        features, labels, groups = _grouped_identity_data(seed=seed)
+        result = fit_sparse_probe(features, labels, groups=groups, k=8, seed=seed)
+        train_groups = groups[result.train_indices].unique()
+        test_groups = groups[result.test_indices].unique()
+        assert not bool(torch.isin(train_groups, test_groups).any())
+        f1_scores.append(result.metrics.f1)
+
+    # Labels are random per group, so only identity leakage lifts F1; the row split averages ~0.73.
+    assert sum(f1_scores) / len(f1_scores) < 0.6
+
+
+def test_sweep_sparse_probe_reuses_a_group_disjoint_split():
+    features, labels, groups = _grouped_identity_data(n_groups=12, n_features=12)
+
+    sweep = sweep_sparse_probe(features, labels, groups=groups, ks=[1, 2], seed=7)
+
+    for result in sweep.results:
+        train_groups = groups[result.train_indices].unique()
+        test_groups = groups[result.test_indices].unique()
+        assert not bool(torch.isin(train_groups, test_groups).any())
+    assert torch.equal(sweep.results[0].train_indices, sweep.results[1].train_indices)
+    assert torch.equal(sweep.results[0].test_indices, sweep.results[1].test_indices)
+
+
+@pytest.mark.parametrize(
+    ("labels", "groups"),
+    [
+        (torch.tensor([0, 0, 0, 0, 0, 0, 1, 1]), torch.tensor([0, 0, 1, 1, 2, 2, 3, 3])),
+        (torch.tensor([0, 0, 1, 1, 0, 0, 0, 0]), torch.tensor([0, 0, 0, 0, 1, 1, 1, 1])),
+    ],
+)
+def test_grouped_split_requires_two_groups_per_class(labels, groups):
+    features = torch.randn(8, 3)
+
+    with pytest.raises(ValueError, match="at least two groups per class"):
+        fit_sparse_probe(features, labels, groups=groups, k=1)
+
+
+def test_grouped_split_accepts_mixed_label_groups():
+    features = torch.randn(200, 16, generator=torch.Generator().manual_seed(0))
+    groups = torch.arange(20).repeat_interleave(10)
+    labels = (torch.arange(200) % 10 >= 5).long()
+
+    result = fit_sparse_probe(features, labels, groups=groups, k=2, seed=0)
+
+    train_groups = groups[result.train_indices].unique()
+    test_groups = groups[result.test_indices].unique()
+    assert not bool(torch.isin(train_groups, test_groups).any())
+    assert min(result.train_positive_count, result.train_negative_count) > 0
+    assert min(result.test_positive_count, result.test_negative_count) > 0
+
+
+def test_grouped_split_keeps_both_classes_on_both_sides_when_balancing_would_not():
+    # At test_fraction=0.1 either group overshoots the held-out target, so balancing alone
+    # leaves the test side empty.
+    features = torch.randn(20, 4, generator=torch.Generator().manual_seed(0))
+    groups = torch.tensor([0] * 10 + [1] * 10)
+    labels = torch.tensor(([0] * 5 + [1] * 5) * 2)
+
+    result = fit_sparse_probe(features, labels, groups=groups, k=1, test_fraction=0.1, seed=0)
+
+    assert groups[result.train_indices].unique().numel() == 1
+    assert groups[result.test_indices].unique().numel() == 1
+    assert result.test_positive_count == result.test_negative_count == 5
+
+
+def test_grouped_split_repair_keeps_the_donor_side_complete():
+    # Restoring the missing class here is cheapest by moving train's only other negative-holding
+    # group, which would empty train of negatives and leave the repair cycling.
+    counts = [(0, 23), (8, 2), (1, 0)]
+    groups = torch.cat([torch.full((neg + pos,), i) for i, (neg, pos) in enumerate(counts)])
+    labels = torch.cat([torch.tensor([0] * neg + [1] * pos) for neg, pos in counts])
+    features = torch.randn(groups.numel(), 4, generator=torch.Generator().manual_seed(0))
+
+    result = fit_sparse_probe(features, labels, groups=groups, k=1, test_fraction=0.224, seed=29907)
+
+    assert min(result.train_positive_count, result.train_negative_count) > 0
+    assert min(result.test_positive_count, result.test_negative_count) > 0
+
+
+def test_grouped_split_repair_moves_the_group_nearest_the_target():
+    # Several groups could restore the missing class; moving the first one rather than the
+    # cheapest one sends ~90% of a class to the held-out side here.
+    counts = [(1, 0), (0, 23), (1, 29), (0, 29), (32, 17)]
+    groups = torch.cat([torch.full((neg + pos,), i) for i, (neg, pos) in enumerate(counts)])
+    labels = torch.cat([torch.tensor([0] * neg + [1] * pos) for neg, pos in counts])
+    features = torch.randn(groups.numel(), 4, generator=torch.Generator().manual_seed(0))
+
+    result = fit_sparse_probe(features, labels, groups=groups, k=1, test_fraction=0.06, seed=18539)
+
+    for held_out, kept in (
+        (result.test_positive_count, result.train_positive_count),
+        (result.test_negative_count, result.train_negative_count),
+    ):
+        assert 0 < held_out / (held_out + kept) < 0.3
+
+
+def test_grouped_split_targets_held_out_rows_per_class():
+    generator = torch.Generator().manual_seed(0)
+    lengths = torch.randint(4, 200, (40,), generator=generator)
+    groups = torch.arange(40).repeat_interleave(lengths)
+    labels = torch.tensor([0, 0, 0, 1] * 10).repeat_interleave(lengths)
+    features = torch.randn(groups.numel(), 8, generator=generator)
+
+    for seed in range(10):
+        result = fit_sparse_probe(features, labels, groups=groups, k=2, seed=seed)
+        for held_out, kept in (
+            (result.test_positive_count, result.train_positive_count),
+            (result.test_negative_count, result.train_negative_count),
+        ):
+            assert abs(held_out / (held_out + kept) - 0.3) < 0.1
+
+
+def test_omitting_groups_preserves_row_level_split():
+    features, labels, groups = _grouped_identity_data()
+
+    first = fit_sparse_probe(features, labels, k=8, seed=0)
+    second = fit_sparse_probe(features, labels, k=8, seed=0)
+
+    assert torch.equal(first.train_indices, second.train_indices)
+    assert torch.equal(first.test_indices, second.test_indices)
+    assert bool(torch.isin(groups[first.train_indices], groups[second.test_indices]).any())

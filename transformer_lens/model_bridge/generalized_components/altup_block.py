@@ -36,11 +36,20 @@ class AltUpBlockBridge(GeneralizedComponent):
         submodules: Optional[Dict[str, GeneralizedComponent]] = None,
         hook_alias_overrides: Optional[Dict[str, str]] = None,
     ):
+        # Same post-norm redirect as BlockBridge: the residual contribution is the
+        # post-sublayer norm's output, not the raw sublayer output.
+        auto_overrides = {}
+        if submodules is not None:
+            if "ln1_post" in submodules:
+                auto_overrides["hook_attn_out"] = "ln1_post.hook_out"
+            if "ln2_post" in submodules:
+                auto_overrides["hook_mlp_out"] = "ln2_post.hook_out"
+        merged_overrides = {**auto_overrides, **(hook_alias_overrides or {})}
         super().__init__(
             name,
             config,
             submodules=submodules if submodules is not None else {},
-            hook_alias_overrides=hook_alias_overrides,
+            hook_alias_overrides=merged_overrides if merged_overrides else None,
         )
         self.altup_active_idx = int(getattr(config, "altup_active_idx", 0) or 0)
         # Active AltUp stream as a conventional residual (patchable).

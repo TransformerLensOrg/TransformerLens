@@ -1,7 +1,9 @@
-"""generate()'s stateful hf_generate fallback must forward its stop flags."""
+"""Stateful hf_generate fallback preserves stop flags and sampling penalties; the hooked
+loop rejects penalties it would otherwise ignore."""
 
 from types import SimpleNamespace
 
+import pytest
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
@@ -108,3 +110,104 @@ def test_hf_generate_normalizes_eos_sequence_to_list(monkeypatch):
     )
     # HF takes int or list; any other sequence must arrive normalized.
     assert captured["eos_token_id"] == [5, 7]
+
+
+@pytest.mark.parametrize("penalty", [0.8, 1.0, 1.5])
+def test_stateful_fallback_forwards_repetition_penalty(monkeypatch, penalty):
+    bridge = _tiny_bridge()
+    bridge.cfg.is_stateful = True
+    bridge.tokenizer = SimpleNamespace(eos_token_id=0)
+    captured: dict = {}
+
+    def spy(input_ids, **kwargs):
+        captured.update(kwargs)
+        return input_ids
+
+    monkeypatch.setattr(bridge.original_model, "generate", spy)
+    bridge.generate(
+        torch.tensor([[1, 2, 3]]),
+        use_past_kv_cache=False,
+        repetition_penalty=penalty,
+        do_sample=False,
+        verbose=False,
+    )
+    assert captured["repetition_penalty"] == penalty
+
+
+@pytest.mark.parametrize("penalty", [-0.5, 0.5])
+def test_stateful_fallback_rejects_frequency_penalty(monkeypatch, penalty):
+    bridge = _tiny_bridge()
+    bridge.cfg.is_stateful = True
+    captured = _capture_hf_generate(bridge, monkeypatch)
+    with pytest.raises(NotImplementedError, match="freq_penalty.*use_past_kv_cache=True"):
+        bridge.generate(
+            torch.tensor([[1, 2, 3]]),
+            use_past_kv_cache=False,
+            freq_penalty=penalty,
+            verbose=False,
+        )
+    assert not captured
+
+
+@pytest.mark.parametrize(
+    "inputs, extra_kwargs, cause",
+    [
+        pytest.param(torch.tensor([[1, 2, 3]]), {"stray_kwarg": 1}, "multimodal", id="stray-kwarg"),
+        pytest.param(torch.randn(1, 3, 16), {}, "inputs_embeds", id="inputs-embeds"),
+    ],
+)
+def test_stateful_fallback_frequency_penalty_names_real_cause(
+    monkeypatch, inputs, extra_kwargs, cause
+):
+    """With use_past_kv_cache=True already set, the error must not advise setting it."""
+    bridge = _tiny_bridge()
+    bridge.cfg.is_stateful = True
+    captured = _capture_hf_generate(bridge, monkeypatch)
+    with pytest.raises(NotImplementedError) as excinfo:
+        bridge.generate(
+            inputs,
+            use_past_kv_cache=True,
+            freq_penalty=0.5,
+            verbose=False,
+            **extra_kwargs,
+        )
+    message = str(excinfo.value)
+    assert "use_past_kv_cache" not in message
+    assert cause in message and "hf_generate()" in message
+    assert not captured
+
+
+def test_stateful_fallback_repetition_penalty_matches_hf_generation():
+    bridge = _tiny_bridge()
+    bridge.cfg.is_stateful = True
+    bridge.tokenizer = SimpleNamespace(eos_token_id=0)
+    tokens = torch.tensor([[1, 2, 3]])
+    kwargs = dict(max_new_tokens=4, do_sample=False, stop_at_eos=False)
+    expected = bridge.hf_generate(tokens, repetition_penalty=2.0, **kwargs)
+    unpenalized = bridge.hf_generate(tokens, repetition_penalty=1.0, **kwargs)
+    actual = bridge.generate(
+        tokens,
+        repetition_penalty=2.0,
+        use_past_kv_cache=False,
+        verbose=False,
+        **kwargs,
+    )
+    torch.testing.assert_close(actual, expected)
+    assert not torch.equal(actual, unpenalized)
+
+
+@pytest.mark.parametrize("do_sample", [True, False])
+@pytest.mark.parametrize("method", ["generate", "generate_stream"])
+def test_hooked_loop_rejects_negative_frequency_penalty(method, do_sample):
+    bridge = _tiny_bridge()
+    with pytest.raises(ValueError, match="freq_penalty must be non-negative"):
+        result = getattr(bridge, method)(
+            torch.tensor([[1, 2, 3]]),
+            max_new_tokens=2,
+            do_sample=do_sample,
+            freq_penalty=-0.5,
+            stop_at_eos=False,
+            verbose=False,
+        )
+        if method == "generate_stream":
+            list(result)

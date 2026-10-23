@@ -801,3 +801,46 @@ def test_logit_attrs_batch_slice_without_normalization(
     expected = cache.logit_attrs(residual, tokens=all_targets)[:, batch_slice]
     assert actual.shape == expected.shape
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float64])
+def test_layer_zero_stacks_follow_the_cache_dtype(
+    activation_cache: ActivationCache, dtype: torch.dtype, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = ActivationCache(
+        {name: value.to(dtype) for name, value in activation_cache.cache_dict.items()},
+        activation_cache.model,
+    )
+    embed = cache["hook_embed"]
+    # A device that no cached tensor lives on, so taking the device from the config is caught.
+    monkeypatch.setattr(cache.model.cfg, "device", "meta")
+    for stacked in (cache.stack_head_results(0), cache.stack_neuron_results(0)):
+        assert stacked.shape[0] == 0
+        assert stacked.dtype == embed.dtype
+        assert stacked.device == embed.device
+
+    for direction in (torch.randn(embed.shape[-1]), torch.randn(embed.shape[-1], 3)):
+        for apply_ln in (True, False):
+            projected = [
+                cache.stack_neuron_results(layer, apply_ln=apply_ln, project_output_onto=direction)
+                for layer in (0, 1)
+            ]
+            assert projected[0].shape == (0, *projected[1].shape[1:])
+            assert projected[0].dtype == projected[1].dtype
+            assert projected[0].device == embed.device
+
+
+def test_layer_zero_ln_projected_stack_follows_float32_scales_of_a_bf16_model(
+    activation_cache: ActivationCache,
+) -> None:
+    model = TransformerBridge.boot_native(activation_cache.model.cfg, dtype=torch.bfloat16)
+    _, cache = model.run_with_cache(torch.tensor([[1, 2, 3, 4]]))
+    # bf16 models still cache their norm scales in float32, which promotes the stack.
+    assert cache["blocks.1.ln1.hook_scale"].dtype == torch.float32
+    direction = torch.randn(model.cfg.d_model, dtype=torch.bfloat16)
+    projected = [
+        cache.stack_neuron_results(layer, apply_ln=True, project_output_onto=direction)
+        for layer in (0, 1)
+    ]
+    assert projected[0].shape[0] == 0
+    assert projected[0].dtype == projected[1].dtype

@@ -165,6 +165,15 @@ class TestSampleLogitsFreqPenalty:
         with pytest.raises(AssertionError):
             sample_logits(torch.randn(1, 4), freq_penalty=1.0)
 
+    @pytest.mark.parametrize("temperature", [1.0, 0.0])
+    def test_negative_freq_penalty_raises(self, temperature):
+        # Only positive penalties are applied, so a negative one must not pass silently.
+        tokens = torch.zeros((1, 5), dtype=torch.long)
+        with pytest.raises(ValueError, match="freq_penalty must be non-negative"):
+            sample_logits(
+                torch.randn(1, 4), temperature=temperature, freq_penalty=-0.5, tokens=tokens
+            )
+
 
 class TestApplyRepetitionPenalty:
     def test_positive_logits_divided_negative_multiplied(self):

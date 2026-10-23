@@ -178,3 +178,33 @@ class TestDirectLogitAttributionValidation:
 
         with pytest.raises(ValueError, match="either `input`"):
             direct_logit_attribution(gpt2_bridge_compat, answer_tokens=CORRECT)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "model_name, reason",
+    [
+        ("hf-internal-testing/tiny-random-BertForMaskedLM", r"mounts \['mlm_head'\]"),
+        (
+            "onnx-internal-testing/tiny-random-Gemma3nForConditionalGeneration",
+            r"blocks.0 \(AltUpBlockBridge\) carries a stack",
+        ),
+    ],
+)
+def test_bridges_with_another_readout_are_refused_before_any_forward(
+    model_name, reason, monkeypatch
+):
+    import torch
+
+    from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.tools.analysis import direct_logit_attribution
+
+    model = TransformerBridge.boot_transformers(model_name, device="cpu", dtype=torch.float32)
+    model.enable_compatibility_mode()
+
+    def forward_ran(*args, **kwargs):
+        raise AssertionError("the model was run before the readout-path check")
+
+    monkeypatch.setattr(model, "run_with_cache", forward_ran)
+    with pytest.raises(ValueError, match=reason):
+        direct_logit_attribution(model, PROMPT, answer_tokens=5, incorrect_tokens=6)

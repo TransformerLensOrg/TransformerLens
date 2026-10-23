@@ -12,6 +12,11 @@ import copy
 
 import pytest
 import torch
+from transformers import (
+    LongT5Config,
+    LongT5ForConditionalGeneration,
+    T5ForConditionalGeneration,
+)
 from transformers.models.t5.configuration_t5 import T5Config
 from transformers.models.t5.modeling_t5 import T5Block
 
@@ -19,6 +24,9 @@ from transformer_lens.factories.architecture_adapter_factory import (
     ArchitectureAdapterFactory,
 )
 from transformer_lens.model_bridge.component_setup import setup_submodules
+from transformer_lens.model_bridge.sources._bridge_builder import (
+    build_bridge_from_module,
+)
 
 
 def _tiny_config() -> T5Config:
@@ -126,9 +134,199 @@ def test_sublayer_output_aliases_resolve_and_fire() -> None:
     torch.testing.assert_close(seen["mid"], seen["pre"] + seen["attn_out"])
 
 
+class _FixedTupleAttention(torch.nn.Module):
+    """T5Attention as of Transformers 5.15: no ``output_attentions`` parameter,
+    always (attn_output, position_bias, attn_weights)."""
+
+    def forward(
+        self, hidden_states, mask=None, key_value_states=None, position_bias=None, **kwargs
+    ):
+        seq = hidden_states.shape[1]
+        kv_seq = seq if key_value_states is None else key_value_states.shape[1]
+        if position_bias is None:
+            position_bias = torch.zeros(1, 1, seq, kv_seq)
+        weights = torch.full((hidden_states.shape[0], 1, seq, kv_seq), 1.0 / kv_seq)
+        return hidden_states, position_bias, weights
+
+
+class _FixedTupleAttentionLayer(torch.nn.Module):
+    """T5LayerSelfAttention / T5LayerCrossAttention as of Transformers 5.15:
+    unpacks exactly three values from the attention module."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.attention = _FixedTupleAttention()
+
+    def forward(
+        self,
+        hidden_states,
+        key_value_states=None,
+        attention_mask=None,
+        position_bias=None,
+        past_key_values=None,
+        **kwargs,
+    ):
+        attention_output, position_bias, attn_weights = self.attention(
+            hidden_states,
+            mask=attention_mask,
+            key_value_states=key_value_states,
+            position_bias=position_bias,
+            **kwargs,
+        )
+        return hidden_states + attention_output, position_bias, attn_weights
+
+
+class _FixedTupleBlock(torch.nn.Module):
+    """T5Block as of Transformers 5.15: no ``output_attentions`` parameter.
+    The bridge replaces the forward; only its signature is read."""
+
+    def __init__(self, is_decoder: bool) -> None:
+        super().__init__()
+        layers = [_FixedTupleAttentionLayer()]
+        if is_decoder:
+            layers.append(_FixedTupleAttentionLayer())
+        layers.append(torch.nn.Identity())
+        self.layer = torch.nn.ModuleList(layers)
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        position_bias=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        encoder_decoder_position_bias=None,
+        past_key_values=None,
+        **kwargs,
+    ):
+        raise NotImplementedError
+
+
+class _OptionalAttentionsBlock(_FixedTupleBlock):
+    """LongT5Block as of Transformers 5.15: the sublayers return the fixed
+    3-tuple, but the block keeps ``output_attentions`` and the older layout."""
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        position_bias=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        encoder_decoder_position_bias=None,
+        past_key_values=None,
+        use_cache=False,
+        output_attentions=False,
+        return_dict=True,
+        **kwargs,
+    ):
+        raise NotImplementedError
+
+
+def _bridged_block_outputs(block, is_decoder: bool, hidden: torch.Tensor):
+    from transformer_lens.model_bridge.generalized_components import (
+        AttentionBridge,
+        T5BlockBridge,
+    )
+
+    cfg = _adapter().cfg
+    for layer in block.layer[:-1]:
+        attn = AttentionBridge(name="attention", config=cfg, requires_relative_position_bias=True)
+        attn.set_original_component(layer.attention)
+        layer.attention = attn
+    T5BlockBridge(name="block", is_decoder=is_decoder).set_original_component(block)
+
+    encoder_hidden = torch.randn(2, 3, 16) if is_decoder else None
+    return block(hidden, encoder_hidden_states=encoder_hidden)
+
+
+@pytest.mark.parametrize("is_decoder", [False, True])
+def test_block_follows_fixed_tuple_layout_of_newer_transformers(is_decoder) -> None:
+    """Transformers 5.15 sublayers return a fixed 3-tuple and the stack unpacks
+    ``hidden, self_bias, cross_bias`` from every block; the bridge must keep that arity."""
+    hidden = torch.randn(2, 5, 16)
+    outputs = _bridged_block_outputs(_FixedTupleBlock(is_decoder), is_decoder, hidden)
+
+    assert len(outputs) == 3
+    assert outputs[0].shape == hidden.shape
+    assert outputs[1].shape == (1, 1, 5, 5)
+    if is_decoder:
+        assert outputs[2].shape == (1, 1, 5, 3)
+    else:
+        assert outputs[2] is None
+
+
+@pytest.mark.parametrize("is_decoder", [False, True])
+def test_block_layout_follows_its_own_forward_not_the_sublayers(is_decoder) -> None:
+    """LongT5's sublayers moved to the fixed 3-tuple while LongT5Block and its
+    stack kept the older layout, reading the cross-attention bias at index 3."""
+    hidden = torch.randn(2, 5, 16)
+    outputs = _bridged_block_outputs(_OptionalAttentionsBlock(is_decoder), is_decoder, hidden)
+
+    assert len(outputs) == (5 if is_decoder else 3)
+    assert outputs[0].shape == hidden.shape
+    assert outputs[1].shape == (1, 1, 5, 5)
+    assert outputs[2].shape == (2, 1, 5, 5)
+    if is_decoder:
+        assert outputs[3].shape == (1, 1, 5, 3)
+        assert outputs[4].shape == (2, 1, 5, 3)
+
+
 def test_decoder_gets_the_cross_attention_alias() -> None:
     adapter = _adapter()
     decoder = adapter.component_mapping["decoder_blocks"]
     assert decoder.hook_aliases["hook_attn_out"] == "self_attn.hook_out"
     assert decoder.hook_aliases["hook_cross_attn_out"] == "cross_attn.hook_out"
     assert decoder.hook_aliases["hook_mlp_out"] == "mlp.hook_out"
+
+
+def _tiny_seq2seq(arch: str):
+    common = dict(
+        vocab_size=32,
+        d_model=16,
+        d_kv=4,
+        d_ff=32,
+        num_layers=2,
+        num_decoder_layers=2,
+        num_heads=4,
+        dropout_rate=0.0,
+        decoder_start_token_id=0,
+    )
+    if arch == "LongT5ForConditionalGeneration":
+        cfg = LongT5Config(**common, encoder_attention_type="local", local_radius=2)
+        return LongT5ForConditionalGeneration(cfg).eval(), cfg
+    cfg = T5Config(**common)
+    return T5ForConditionalGeneration(cfg).eval(), cfg
+
+
+@pytest.mark.parametrize("arch", ["T5ForConditionalGeneration", "LongT5ForConditionalGeneration"])
+def test_patched_block_fills_the_kv_cache(arch) -> None:
+    """A patched forward that drops ``past_key_values`` leaves the cache empty, so HF
+    ``generate`` on the bridged model decodes every step without context."""
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model, cfg = _tiny_seq2seq(arch)
+        enc_ids = torch.randint(0, 32, (2, 5))
+        dec_ids = torch.randint(0, 32, (2, 4))
+    reference = copy.deepcopy(model)
+    build_bridge_from_module(model, arch, hf_config=copy.deepcopy(cfg), device="cpu")
+
+    with torch.no_grad():
+        full = model(input_ids=enc_ids, decoder_input_ids=dec_ids, use_cache=False).logits
+        prefix = model(input_ids=enc_ids, decoder_input_ids=dec_ids[:, :3], use_cache=True)
+        reference_prefix = reference(
+            input_ids=enc_ids, decoder_input_ids=dec_ids[:, :3], use_cache=True
+        )
+        cache, reference_cache = prefix.past_key_values, reference_prefix.past_key_values
+        assert cache.get_seq_length() == reference_cache.get_seq_length() == 3
+        # A dropped cross-attention cache only recomputes K/V, so logits alone cannot see it.
+        cross_len = cache.cross_attention_cache.get_seq_length()
+        assert cross_len == reference_cache.cross_attention_cache.get_seq_length() == 5
+        step = model(
+            encoder_outputs=(prefix.encoder_last_hidden_state,),
+            decoder_input_ids=dec_ids[:, 3:],
+            past_key_values=cache,
+            use_cache=True,
+        ).logits
+
+    torch.testing.assert_close(step[:, -1], full[:, -1], atol=1e-5, rtol=1e-4)

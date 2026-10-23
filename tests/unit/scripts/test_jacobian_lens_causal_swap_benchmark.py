@@ -1,8 +1,4 @@
-"""Unit tests for the causal coordinate-swap benchmark's corpus schema and answer metrics.
-
-Model-free: these exercise the prompt-corpus cross product and the rank/margin metric
-directly on plain tensors, so no model is loaded.
-"""
+"""Model-free tests for the causal-swap benchmark's corpus, metrics, controls and artifact."""
 
 import dataclasses
 import hashlib
@@ -12,7 +8,7 @@ from typing import Any, Dict, List
 import pytest
 import torch
 
-from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+from scripts.jacobian_lens_causal_swap_benchmark import (
     SCHEMA_VERSION,
     AnswerMetrics,
     BaselineRecord,
@@ -27,12 +23,11 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     filter_baseline_capable,
     fingerprint_manifest,
     iter_prompt_trials,
-    load_artifact,
     results_fingerprint,
     select_displacement_matched_control_token,
     serialize_artifact,
-    success_rate_ci,
 )
+from transformer_lens.utilities import success_rate_ci
 
 
 def test_iter_prompt_trials_yields_ordered_pairs_per_function() -> None:
@@ -84,8 +79,7 @@ def test_compute_answer_metrics_rejects_non_finite_or_out_of_range_target() -> N
 
 
 def test_compute_answer_metrics_pins_deterministic_argmax_tie_semantics() -> None:
-    # A target tied for the global maximum: target_is_top1 follows argmax's own tie-break
-    # (first index), target_tied_for_top is true, and margin against itself is zero.
+    # argmax breaks the tie toward the first index, so a target tied for the max is not top-1.
     metrics = compute_answer_metrics(torch.tensor([3.0, 1.0, 3.0]), target_token_id=2)
     assert metrics.target_rank == 1
     assert metrics.target_is_top1 is False
@@ -121,8 +115,7 @@ def test_filter_baseline_capable_preserves_order_and_does_not_mutate_input() -> 
 
 
 def test_filter_baseline_capable_treats_tied_for_top_as_incapable() -> None:
-    # argmax returns the lowest index on an exact tie, so admitting a tied-for-top baseline
-    # would let token-id order decide whether a prompt enters the trial set.
+    # Otherwise argmax's lowest-index tie-break would decide whether a prompt enters the trial set.
     tied = BaselineRecord("f", "A", "p1", AnswerMetrics(0, 1, True, True, 0.0))
     capable, excluded = filter_baseline_capable([tied])
     assert capable == []
@@ -184,9 +177,8 @@ def test_select_displacement_matched_control_token_respects_tolerance_and_exclus
 
 
 def test_select_displacement_matched_control_token_matches_displacement_not_atom_norm() -> None:
-    # Atom 2 shares the target's atom norm but sits at a different distance from the source;
-    # atom 3 has a different norm but the target's exact displacement. A norm-matching
-    # selector would accept atom 2 and reject atom 3, so this pins the criterion change.
+    # Atom 2 matches the target's norm but not its displacement; atom 3 the reverse. A
+    # norm-matching selector would pick atom 2.
     dictionary = torch.zeros(4, 2)
     dictionary[0] = torch.tensor([1.0, 0.0])  # source
     dictionary[1] = torch.tensor([3.0, 0.0])  # target: norm 3, displacement 2.0
@@ -237,9 +229,8 @@ def test_select_displacement_matched_control_token_returns_none_on_empty_pool() 
 
 
 def test_select_displacement_matched_control_token_always_excludes_the_target_itself() -> None:
-    dictionary = torch.ones(
-        3, 2
-    )  # every atom has an identical displacement -- target would trivially "match" itself
+    # Every atom shares one displacement, so the target would trivially "match" itself.
+    dictionary = torch.ones(3, 2)
     chosen = select_displacement_matched_control_token(
         dictionary,
         source_token_id=0,
@@ -263,9 +254,7 @@ def test_select_displacement_matched_control_token_rejects_non_2d_dictionary() -
 
 
 def test_control_generator_is_always_cpu() -> None:
-    # The generator must not follow the dictionary's device: torch.randint infers its output
-    # device from the generator, so a device-local generator would select a different control
-    # token per device and break artifact reproducibility.
+    # torch.randint draws on CPU, so a generator following the dictionary's device would raise.
     assert _control_generator(0).device == torch.device("cpu")
 
 
@@ -279,9 +268,7 @@ def _accelerator_device() -> str:
 
 @pytest.mark.skipif(not _accelerator_device(), reason="no CUDA or MPS device available")
 def test_select_displacement_matched_control_token_is_device_independent() -> None:
-    # A device-local generator raises on accelerators (torch.randint allocates on CPU while
-    # the generator expects its own device), and drawing on the dictionary's device would
-    # make the same seed pick a different token per device. Selection must agree with CPU.
+    # The same seed must pick the same control token on an accelerator as on CPU.
     torch.manual_seed(0)
     dictionary = torch.randn(20, 4)
     cpu_choice = select_displacement_matched_control_token(
@@ -303,60 +290,6 @@ def test_select_displacement_matched_control_token_is_device_independent() -> No
         seed=1,
     )
     assert device_choice == cpu_choice
-
-
-def test_success_rate_ci_bounds_bracket_point_estimate_and_lie_in_unit_interval() -> None:
-    successes = [True, True, False, True, False, True, True, False]
-    result = success_rate_ci(successes)
-    assert result.ci_low <= result.point_estimate <= result.ci_high
-    assert 0.0 <= result.ci_low and result.ci_high <= 1.0
-    assert result.point_estimate == pytest.approx(sum(successes) / len(successes))
-
-
-def test_success_rate_ci_pins_zero_of_six_upper_bound() -> None:
-    # The exact interval must widen for an all-failure sample. A percentile bootstrap returns
-    # [0, 0] here by construction, asserting a certainty the data does not support.
-    result = success_rate_ci([False] * 6)
-    assert result.ci_low == 0.0
-    assert result.ci_high == pytest.approx(0.4592581, abs=1e-6)
-
-
-def test_success_rate_ci_pins_all_success_lower_bound() -> None:
-    result = success_rate_ci([True] * 6)
-    assert result.ci_high == 1.0
-    assert result.ci_low == pytest.approx(0.5407419, abs=1e-6)
-
-
-def test_success_rate_ci_matches_closed_form_at_the_boundaries() -> None:
-    # At k=0 and k=n the Clopper-Pearson bounds reduce to closed forms, which pins the
-    # bisection direction independently of the interior values. Reversing it collapses every
-    # interval to [0, 1].
-    assert success_rate_ci([False] * 6).ci_high == pytest.approx(1 - 0.025 ** (1 / 6))
-    assert success_rate_ci([True] * 6).ci_low == pytest.approx(0.025 ** (1 / 6))
-
-
-def test_success_rate_ci_narrows_as_the_trial_count_grows() -> None:
-    # The whole point of the change: the same observed rate carries less uncertainty with
-    # more trials. A degenerate interval would not move.
-    small = success_rate_ci([False] * 6)
-    large = success_rate_ci([False] * 600)
-    assert large.ci_high < small.ci_high
-
-
-def test_success_rate_ci_records_trial_and_success_counts() -> None:
-    result = success_rate_ci([True, False, True])
-    assert result.n_trials == 3
-    assert result.n_successes == 2
-
-
-def test_success_rate_ci_is_deterministic() -> None:
-    successes = [True, False, True]
-    assert success_rate_ci(successes) == success_rate_ci(successes)
-
-
-def test_success_rate_ci_rejects_empty_input() -> None:
-    with pytest.raises(ValueError, match="empty"):
-        success_rate_ci([])
 
 
 def test_fingerprint_manifest_matches_the_notebook_recipe() -> None:
@@ -463,21 +396,22 @@ def _skipped_trial(*, layer: int) -> TrialResult:
     )
 
 
-def test_serialize_then_load_artifact_round_trips(tmp_path) -> None:
+def test_serialized_fingerprints_reproduce_after_a_json_round_trip() -> None:
+    # The demo notebook recomputes both fingerprints from the reloaded JSON, so they must
+    # survive serialization, not just match the in-memory artifact.
     manifest = build_protocol_manifest(**_full_manifest_fields())
-    trials: List[TrialResult] = []
+    trials: List[TrialResult] = [_ok_trial(target="France", layer=9)]
     excluded: List[BaselineRecord] = []
     real_ci = success_rate_ci([True, False])
     control_ci = success_rate_ci([False, False])
     artifact = serialize_artifact(manifest, trials, excluded, real_ci, control_ci)
-    path = tmp_path / "artifact.json"
-    path.write_text(json.dumps(artifact))
-    loaded = load_artifact(path)
-    assert loaded["protocol_fingerprint"] == artifact["protocol_fingerprint"]
+    loaded = json.loads(json.dumps(artifact, indent=2, sort_keys=True))
     assert loaded["schema_version"] == SCHEMA_VERSION
+    assert fingerprint_manifest(loaded["protocol_manifest"]) == loaded["protocol_fingerprint"]
+    assert results_fingerprint(loaded) == loaded["results_fingerprint"]
 
 
-def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> None:
+def test_serialize_artifact_round_trips_trial_and_baseline_records() -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields(layers_swept=[6]))
     trial = TrialResult(
         function="capital",
@@ -500,26 +434,21 @@ def test_serialize_artifact_round_trips_trial_and_baseline_records(tmp_path) -> 
     real_ci = success_rate_ci([True])
     control_ci = success_rate_ci([False])
     artifact = serialize_artifact(manifest, [trial], excluded, real_ci, control_ci)
-    path = tmp_path / "artifact.json"
-    path.write_text(json.dumps(artifact))
-    loaded = load_artifact(path)
+    loaded = json.loads(json.dumps(artifact))
     assert loaded["trials"] == [dataclasses.asdict(trial)]
     assert loaded["excluded_baselines"] == [dataclasses.asdict(excluded[0])]
 
 
-def test_load_artifact_rejects_tampered_fingerprint(tmp_path) -> None:
+def test_protocol_fingerprint_detects_a_tampered_manifest() -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields(layers_swept=[1]))
     artifact = serialize_artifact(
         manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
     )
     artifact["protocol_manifest"]["layers_swept"] = [2]
-    path = tmp_path / "bad.json"
-    path.write_text(json.dumps(artifact))
-    with pytest.raises(ValueError, match="fingerprint"):
-        load_artifact(path)
+    assert fingerprint_manifest(artifact["protocol_manifest"]) != artifact["protocol_fingerprint"]
 
 
-def test_load_artifact_rejects_tampered_trials(tmp_path) -> None:
+def test_results_fingerprint_detects_tampered_trials() -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields())
     artifact = serialize_artifact(
         manifest,
@@ -529,22 +458,16 @@ def test_load_artifact_rejects_tampered_trials(tmp_path) -> None:
         success_rate_ci([False]),
     )
     artifact["trials"][0]["status"] = "skipped_source_inactive"
-    path = tmp_path / "tampered_trials.json"
-    path.write_text(json.dumps(artifact))
-    with pytest.raises(ValueError, match="results_fingerprint"):
-        load_artifact(path)
+    assert results_fingerprint(artifact) != artifact["results_fingerprint"]
 
 
-def test_load_artifact_rejects_tampered_ci_block(tmp_path) -> None:
+def test_results_fingerprint_detects_a_tampered_ci_block() -> None:
     manifest = build_protocol_manifest(**_full_manifest_fields())
     artifact = serialize_artifact(
         manifest, [], [], success_rate_ci([True, False]), success_rate_ci([False, False])
     )
     artifact["real_success_ci"]["n_trials"] = 99
-    path = tmp_path / "tampered_ci.json"
-    path.write_text(json.dumps(artifact))
-    with pytest.raises(ValueError, match="results_fingerprint"):
-        load_artifact(path)
+    assert results_fingerprint(artifact) != artifact["results_fingerprint"]
 
 
 def test_results_fingerprint_is_stable_across_key_order() -> None:
@@ -575,34 +498,8 @@ def test_serialize_artifact_records_executed_layers_and_status_counts() -> None:
     assert artifact["trial_status_counts"] == {"ok": 2, "skipped_source_inactive": 1}
 
 
-def test_load_artifact_rejects_wrong_schema_version(tmp_path) -> None:
-    manifest = build_protocol_manifest(**_full_manifest_fields())
-    artifact = serialize_artifact(
-        manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
-    )
-    artifact["schema_version"] = SCHEMA_VERSION + 1
-    artifact["protocol_fingerprint"] = fingerprint_manifest(artifact["protocol_manifest"])
-    path = tmp_path / "bad_version.json"
-    path.write_text(json.dumps(artifact))
-    with pytest.raises(ValueError, match="schema_version"):
-        load_artifact(path)
-
-
-def test_load_artifact_rejects_missing_required_key(tmp_path) -> None:
-    manifest = build_protocol_manifest(**_full_manifest_fields())
-    artifact = serialize_artifact(
-        manifest, [], [], success_rate_ci([True]), success_rate_ci([False])
-    )
-    del artifact["excluded_baselines"]
-    path = tmp_path / "bad_missing.json"
-    path.write_text(json.dumps(artifact))
-    with pytest.raises(ValueError, match="excluded_baselines"):
-        load_artifact(path)
-
-
 def test_serialize_artifact_counts_independent_prompts(tmp_path) -> None:
-    # Several trials can share one prompt, so the pooled rate rests on fewer independent
-    # prompts than trials. The count must travel with the rate.
+    # Trials can share a prompt, so the pooled rate rests on fewer independent prompts than trials.
     manifest = build_protocol_manifest(**_full_manifest_fields())
     trials = [
         _ok_trial(target=target, layer=layer)

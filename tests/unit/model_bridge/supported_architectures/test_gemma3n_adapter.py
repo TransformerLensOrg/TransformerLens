@@ -100,14 +100,21 @@ def test_altup_block_decomposition():
         "mlp",
     ):
         assert name in blocks.submodules
-    for norm in (
-        "input_layernorm",
-        "post_attention_layernorm",
-        "pre_feedforward_layernorm",
-        "post_feedforward_layernorm",
-        "post_per_layer_input_norm",
+    for key, hf_name in (
+        ("ln1", "input_layernorm"),
+        ("ln1_post", "post_attention_layernorm"),
+        ("ln2", "pre_feedforward_layernorm"),
+        ("ln2_post", "post_feedforward_layernorm"),
+        ("post_per_layer_input_norm", "post_per_layer_input_norm"),
     ):
-        assert norm in blocks.submodules
+        assert blocks.submodules[key].name == hf_name
+
+
+def test_contribution_aliases_point_at_post_norm_outputs():
+    """The residual contribution is the post-sublayer norm output (Gemma 2/3 contract)."""
+    blocks = _adapter().component_mapping["blocks"]
+    assert blocks.hook_aliases["hook_attn_out"] == "ln1_post.hook_out"
+    assert blocks.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
 
 
 def test_kv_shared_submodules_are_optional():
