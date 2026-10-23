@@ -87,13 +87,18 @@ def benchmark_forward_pass(
             decoder_input_ids = _get_decoder_input_ids(bridge.original_model, batch_size)
             decoder_input_ids = decoder_input_ids.to(tokens.device)
             extra_kwargs["decoder_input_ids"] = decoder_input_ids
+        elif getattr(bridge.cfg, "is_audio_seq2seq", False) and isinstance(
+            test_input, torch.Tensor
+        ):
+            decoder_input_ids = _get_decoder_input_ids(bridge.original_model, test_input.shape[0])
+            extra_kwargs["decoder_input_ids"] = decoder_input_ids.to(test_input.device)
 
         # Run bridge forward pass (use no_grad to match HF reference context —
         # MPS SDPA can produce different results with vs without gradient tracking)
         with torch.no_grad():
             if _is_audio and isinstance(test_input, torch.Tensor):
                 # Audio models: pass waveform, extract tensor from output
-                bridge_output_raw = bridge(test_input, return_type="logits")
+                bridge_output_raw = bridge(test_input, return_type="logits", **extra_kwargs)
                 if isinstance(bridge_output_raw, torch.Tensor):
                     bridge_output = bridge_output_raw
                 elif hasattr(bridge_output_raw, "logits") and bridge_output_raw.logits is not None:
@@ -138,7 +143,7 @@ def benchmark_forward_pass(
             # (input_values for wav2vec2-style, input_features for AST-style)
             assert reference_model is not None
             with torch.no_grad():
-                hf_output = reference_model(test_input)
+                hf_output = reference_model(test_input, **extra_kwargs)
                 if hasattr(hf_output, "logits") and hf_output.logits is not None:
                     reference_output = hf_output.logits
                 else:

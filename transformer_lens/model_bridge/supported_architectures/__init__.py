@@ -318,6 +318,9 @@ from transformer_lens.model_bridge.supported_architectures.t5gemma2 import (
 from transformer_lens.model_bridge.supported_architectures.vaultgemma import (
     VaultGemmaArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.whisper import (
+    WhisperArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.xglm import XGLMArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.youtu import YoutuArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.zamba2 import Zamba2ArchitectureAdapter
@@ -463,6 +466,7 @@ __all__ = [
     "T5GemmaArchitectureAdapter",
     "T5Gemma2ArchitectureAdapter",
     "ViTArchitectureAdapter",
+    "WhisperArchitectureAdapter",
     "XGLMArchitectureAdapter",
     "Zamba2ArchitectureAdapter",
     "HrmTextArchitectureAdapter",

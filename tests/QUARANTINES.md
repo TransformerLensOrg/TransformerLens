@@ -99,6 +99,7 @@ Big-model adapter tests use `@pytest.mark.slow`, CI tier filters `-m "not slow"`
 | [`integration/model_bridge/test_raven_adapter.py`:42](integration/model_bridge/test_raven_adapter.py) (skipif + `slow`) | huginn-0125: ~14GB download + ~28GB RAM |
 | [`integration/model_bridge/test_rwkv7_adapter.py`:36](integration/model_bridge/test_rwkv7_adapter.py) (skipif + `slow`; `importorskip("fla")` at :30) | rwkv7-0.1B-g1: remote code + flash-linear-attention dep |
 | [`integration/model_bridge/test_bridge_vs_hf_roberta_parity.py`:23](integration/model_bridge/test_bridge_vs_hf_roberta_parity.py) | distilroberta-base 82M; not in the CI cache allowlist (test_roberta_tiny.py keeps the same surfaces in CI on random weights) |
+| [`integration/model_bridge/test_whisper_adapter.py`:18](integration/model_bridge/test_whisper_adapter.py) | whisper-tiny 39M; not in the CI cache allowlist (test_whisper_tiny.py keeps the same surfaces in CI on random weights) |
 | [`integration/test_jacobian_lens_kurtosis.py`](integration/test_jacobian_lens_kurtosis.py) | Qwen3.5-0.8B (~1.6GB) + lens artifacts + wikitext validation split; CPU-feasible (#1539 Tier-1) |
 
 **Un-skip:** locally with `HF_TOKEN` sourced (slow-marked files: run the file directly or `-m slow`).

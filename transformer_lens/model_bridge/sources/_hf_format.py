@@ -204,6 +204,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = (img_h // patch_h) * (img_w // patch_w) + 1
     elif hasattr(source_config, "max_sequence_length"):
         tl_config.n_ctx = source_config.max_sequence_length
+    elif hasattr(source_config, "max_target_positions"):
+        # Audio seq2seq (Whisper): the token context is the decoder's.
+        tl_config.n_ctx = source_config.max_target_positions
     else:
         # ALiBi models (Bloom) have no context length field; 2048 is a safe fallback.
         tl_config.n_ctx = 2048
@@ -329,6 +332,7 @@ def determine_architecture_from_hf_config(hf_config):
             "marian": "MarianMTModel",
             "mbart": "MBartForConditionalGeneration",
             "pegasus": "PegasusForConditionalGeneration",
+            "whisper": "WhisperForConditionalGeneration",
             "seed_oss": "SeedOssForCausalLM",
             "starcoder2": "Starcoder2ForCausalLM",
             "nemotron": "NemotronForCausalLM",
