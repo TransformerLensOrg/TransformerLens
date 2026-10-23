@@ -99,6 +99,7 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     get_sparse_decomposition,
 )
 from transformer_lens.tools.analysis.logit_lens import logit_readout
+from transformer_lens.tools.analysis.projection_kernel import orthonormal_subspace
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
 ConceptToken = Union[str, int]
@@ -1335,8 +1336,9 @@ class JacobianLens:
     ) -> List[Tuple[str, Any]]:
         """Hooks that project token directions out of the residual stream.
 
-        For each token's unit lens vector ``v̂``: ``h <- h - (h·v̂) v̂``,
-        applied sequentially when several tokens are given.
+        With an orthonormal basis ``Q`` of the span of the tokens' lens vectors:
+        ``h <- h - Q Qᵀ h``, so ``h`` ends with zero projection onto every
+        requested vector. For a single token this is ``h - (h·v̂) v̂``.
 
         Args:
             model: The model the hooks will run on.
@@ -1353,20 +1355,20 @@ class JacobianLens:
         for layer in [_normalize_layer(layer, model.cfg.n_layers) for layer in layers]:
             vectors = self.lens_vectors(model, tokens, layer)
             units = _unit_rows(vectors, layer=layer)
-            device_units: Dict[torch.device, torch.Tensor] = {}
+            # Lens vectors of related tokens are far from orthogonal, so removing them one
+            # at a time would reintroduce components along the earlier ones
+            basis = orthonormal_subspace(units.T).basis
+            device_bases: Dict[torch.device, torch.Tensor] = {}
 
             def transform(
                 selected: Float[torch.Tensor, "batch pos d_model"],
                 positions: List[int],
-                units: torch.Tensor = units,
-                device_units: Dict[torch.device, torch.Tensor] = device_units,
+                basis: torch.Tensor = basis,
+                device_bases: Dict[torch.device, torch.Tensor] = device_bases,
             ) -> Float[torch.Tensor, "batch pos d_model"]:
-                local_units = _cached_on_device(units, device_units, selected.device)
+                local_basis = _cached_on_device(basis, device_bases, selected.device)
                 result = selected.float()
-                for unit in local_units:
-                    coeff = result @ unit
-                    result = result - coeff.unsqueeze(-1) * unit
-                return result
+                return result - (result @ local_basis) @ local_basis.T
 
             hooks.append(
                 (
