@@ -332,6 +332,7 @@ def determine_architecture_from_hf_config(hf_config):
             "marian": "MarianMTModel",
             "mbart": "MBartForConditionalGeneration",
             "pegasus": "PegasusForConditionalGeneration",
+            "whisper": "WhisperForConditionalGeneration",
             "seed_oss": "SeedOssForCausalLM",
             "starcoder2": "Starcoder2ForCausalLM",
             "nemotron": "NemotronForCausalLM",
