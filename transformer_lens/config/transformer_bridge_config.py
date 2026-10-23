@@ -110,6 +110,9 @@ class TransformerBridgeConfig(TransformerLensConfig):
         attn_implementation: Optional[str] = None,
         # Audio model configuration
         is_audio_model: bool = False,
+        # Audio encoder with a text decoder (Whisper): keeps the tokenizer and
+        # takes decoder token ids alongside the audio features.
+        is_audio_seq2seq: bool = False,
         # Vision model (ViT, DeiT) configuration
         is_visual_model: bool = False,
         # Stateful model configuration (e.g., Mamba SSMs use cache_params,
@@ -211,6 +214,7 @@ class TransformerBridgeConfig(TransformerLensConfig):
         self.attn_implementation = attn_implementation
         # Audio model configuration
         self.is_audio_model = is_audio_model
+        self.is_audio_seq2seq = is_audio_seq2seq
         # Vision model (ViT, DeiT) configuration
         self.is_visual_model = is_visual_model
         # Stateful model configuration

@@ -204,6 +204,9 @@ def map_default_transformer_lens_config(hf_config):
         tl_config.n_ctx = (img_h // patch_h) * (img_w // patch_w) + 1
     elif hasattr(source_config, "max_sequence_length"):
         tl_config.n_ctx = source_config.max_sequence_length
+    elif hasattr(source_config, "max_target_positions"):
+        # Audio seq2seq (Whisper): the token context is the decoder's.
+        tl_config.n_ctx = source_config.max_target_positions
     else:
         # ALiBi models (Bloom) have no context length field; 2048 is a safe fallback.
         tl_config.n_ctx = 2048

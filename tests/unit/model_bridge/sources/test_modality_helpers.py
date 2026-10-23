@@ -1,10 +1,11 @@
 """Modality helpers shared by the boot sources.
 
 ``load_modality_processor`` must apply its loader table in declared order
-(multimodal → audio → vision, last write wins on ``bridge.processor``), swallow
-per-loader failures, and keep the torchvision-install retry an AutoProcessor-only
-special case. ``skip_tokenizer_for_modality`` must skip exactly the audio/vision
-flags (multimodal models keep their text tokenizer). The boot test mocks the
+(multimodal → audio → audio seq2seq → vision, last write wins on
+``bridge.processor``), swallow per-loader failures, and keep the
+torchvision-install retry an AutoProcessor-only special case.
+``skip_tokenizer_for_modality`` must skip exactly the audio/vision flags
+(multimodal and audio seq2seq models keep their text tokenizer). The boot test mocks the
 external boundaries in the style of test_boot_architecture_resolution.py; the
 helpers themselves run real.
 """
@@ -95,6 +96,19 @@ class TestLoadModalityProcessor:
         for name, loader in loaders.items():
             if name != loader_name:
                 loader.from_pretrained.assert_not_called()
+
+    def test_audio_seq2seq_full_processor_replaces_feature_extractor(self, monkeypatch):
+        """Whisper sets both audio flags; the full processor (feature extractor +
+        tokenizer) loads after the bare feature extractor and wins."""
+        calls: list = []
+        _patch_all_loaders(monkeypatch, calls)
+        bridge = SimpleNamespace()
+        cfg = SimpleNamespace(is_audio_model=True, is_audio_seq2seq=True)
+
+        load_modality_processor(bridge, cfg, "org/model", False, None)
+
+        assert [c[0] for c in calls] == ["AutoFeatureExtractor", "AutoProcessor"]
+        assert bridge.processor == "AutoProcessor-processor"
 
     def test_token_and_trust_remote_code_threaded_through(self, monkeypatch):
         """The token comes in as a parameter (single derivation at the call site),
@@ -198,6 +212,11 @@ class TestSkipTokenizerForModality:
         cfg = SimpleNamespace(is_multimodal=True)
         assert skip_tokenizer_for_modality(cfg) is False
 
+    def test_audio_seq2seq_keeps_tokenizer(self):
+        """Whisper is an audio model whose decoder emits text tokens."""
+        cfg = SimpleNamespace(is_audio_model=True, is_audio_seq2seq=True)
+        assert skip_tokenizer_for_modality(cfg) is False
+
 
 class _FakeBridge(TransformerBridge):
     """TransformerBridge subclass (boot's return hint is beartype-enforced) that skips
@@ -250,3 +269,51 @@ class TestBootTransformersVisualModel:
         image_loader.from_pretrained.assert_called_once_with(
             "fake-org/tiny-vit", token="boot-token", trust_remote_code=False
         )
+
+
+class TestBootTransformersAudioSeq2Seq:
+    def test_audio_seq2seq_boot_keeps_tokenizer_and_gets_full_processor(self, monkeypatch):
+        """End-to-end wiring through boot(): an audio seq2seq model (Whisper) still
+        loads its text tokenizer, and bridge.processor ends on AutoProcessor."""
+        calls: list = []
+        _patch_all_loaders(monkeypatch, calls)
+
+        cfg = boot_cfg(
+            architecture="WhisperForConditionalGeneration",
+            is_audio_model=True,
+            is_audio_seq2seq=True,
+        )
+        adapter = stub_adapter(cfg)
+        monkeypatch.setattr(f"{_SOURCE}.build_bridge_config_from_hf", MagicMock(return_value=cfg))
+        monkeypatch.setattr(
+            f"{_SOURCE}.architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter",
+            lambda c: adapter,
+        )
+        tokenizer_loader = MagicMock(name="autotokenizer", return_value="base-tokenizer")
+        monkeypatch.setattr(
+            "transformer_lens.utilities.hf_utils.autotokenizer_with_special_token_compat",
+            tokenizer_loader,
+        )
+        monkeypatch.setattr(f"{_SOURCE}.configure_tokenizer", lambda tok, c: f"configured-{tok}")
+        monkeypatch.setattr(f"{_SOURCE}.TransformerBridge", _FakeBridge)
+        monkeypatch.setattr(
+            "transformer_lens.model_bridge.sources.transformers_driver.TransformersDriver",
+            MagicMock(name="TransformersDriver"),
+        )
+        monkeypatch.setattr(
+            "transformer_lens.utilities.multi_gpu.find_embedding_device", lambda m: None
+        )
+        hf_model = SimpleNamespace(
+            config=SimpleNamespace(
+                architectures=["WhisperForConditionalGeneration"], model_type="whisper"
+            )
+        )
+
+        from transformer_lens.model_bridge.sources.transformers.source import boot
+
+        bridge = boot("fake-org/tiny-whisper", device="cpu", hf_model=hf_model)
+
+        assert tokenizer_loader.call_args.args[0] == "fake-org/tiny-whisper"
+        assert bridge.tokenizer == "configured-base-tokenizer"
+        assert [c[0] for c in calls] == ["AutoFeatureExtractor", "AutoProcessor"]
+        assert bridge.processor == "AutoProcessor-processor"

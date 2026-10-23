@@ -613,6 +613,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "for the hook/component compatibility layer without the weight transforms."
                 )
 
+        if getattr(self.cfg, "is_audio_seq2seq", False):
+            raise NotImplementedError(
+                "enable_compatibility_mode() is not supported for audio seq2seq models "
+                "(e.g. Whisper) yet: weight processing for their audio encoder is not "
+                "implemented. Use the bridge's native hooks (run_with_cache / "
+                "run_with_hooks) directly."
+            )
         if getattr(self.cfg, "is_audio_model", False):
             # Audio encoders have no text embed/unembed for the legacy weight
             # processing to operate on; without this guard the processing path
@@ -2097,7 +2104,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 Only valid when cfg.is_multimodal is True or cfg.is_visual_model is True.
             input_values: Optional audio waveform tensor for audio models (e.g., HuBERT).
                 The tensor is passed directly to the underlying HuggingFace model.
-                Only valid when cfg.is_audio_model is True.
+                Only valid when cfg.is_audio_model is True. Audio seq2seq models
+                (cfg.is_audio_seq2seq, e.g. Whisper) instead take their features as
+                ``input`` and require ``decoder_input`` (decoder token ids) or ``labels``.
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -2166,6 +2175,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         try:
             if isinstance(input, (str, list)):
+                if getattr(self.cfg, "is_audio_seq2seq", False):
+                    raise ValueError(
+                        "Audio seq2seq models take the audio features tensor as `input` "
+                        f"(passed to the model as {self.adapter.audio_input_name!r}); "
+                        "decoder token ids go in decoder_input."
+                    )
                 if getattr(self.cfg, "is_audio_model", False):
                     raise ValueError(
                         "Audio models require tensor input (raw waveform), not text. "
@@ -2273,8 +2288,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 kwargs["use_cache"] = True
             if kwargs.pop("use_past_kv_cache", False) or kwargs.get("use_cache", False):
                 kwargs["use_cache"] = True
-            # Auto-generate decoder_input_ids for encoder-decoder models
-            if "decoder_input_ids" not in kwargs and labels is None and is_encoder_decoder:
+            is_audio_seq2seq = getattr(self.cfg, "is_audio_seq2seq", False)
+            # Auto-generate decoder_input_ids for encoder-decoder models. Audio
+            # seq2seq is excluded: its encoder input is audio, not decoder tokens.
+            if (
+                "decoder_input_ids" not in kwargs
+                and labels is None
+                and is_encoder_decoder
+                and not is_audio_seq2seq
+            ):
                 decoder_start_token_id = getattr(
                     self.original_model.config, "decoder_start_token_id", None
                 )
@@ -2315,8 +2337,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     )
                 kwargs["input_values"] = input_values
 
+            if is_audio_seq2seq:
+                if input_values is not None:
+                    raise ValueError(
+                        "Audio seq2seq models take the audio features tensor as `input` "
+                        f"(passed to the model as {self.adapter.audio_input_name!r}), "
+                        "not input_values."
+                    )
+                if "decoder_input_ids" not in kwargs and labels is None:
+                    raise ValueError(
+                        "Audio seq2seq models require decoder_input (decoder token ids, "
+                        "e.g. the start-of-transcript prompt) or labels."
+                    )
+                decoder_input_ids = kwargs.get("decoder_input_ids")
+                if isinstance(decoder_input_ids, torch.Tensor) and decoder_input_ids.ndim == 1:
+                    kwargs["decoder_input_ids"] = decoder_input_ids.unsqueeze(0)
+                kwargs[self.adapter.audio_input_name] = input
+                result = self._driver.forward(**kwargs)
             # Audio models use input_values (waveform), not input_ids
-            if getattr(self.cfg, "is_audio_model", False):
+            elif getattr(self.cfg, "is_audio_model", False):
                 if input_values is not None:
                     result = self._driver.forward(**kwargs)
                 elif isinstance(input, torch.Tensor):
