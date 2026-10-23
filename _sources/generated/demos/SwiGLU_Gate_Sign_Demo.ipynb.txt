@@ -1,0 +1,960 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "bf9dfcf8",
+   "metadata": {},
+   "source": [
+    "# SwiGLU gate-sign regimes: double-negative echoes\n",
+    "\n",
+    "A gated MLP neuron computes $\\text{post} = \\text{act}(\\text{gate}) \\cdot \\text{value}$. With SiLU or GELU, $\\text{act}(\\text{gate})$ is a small negative number when the gate is closed, so a closed gate times a negative value gives a **positive** output. Goodfire's essay [*Neural Networks Are Already Clean*](https://already-clean.goodfire.com/) calls this the double-negative regime. It reports that the echo is usually small, but for about 4% of neurons it fills the whole top of the positive activation list. Max-activating-example dashboards then describe these neurons by their echo.\n",
+    "\n",
+    "This notebook uses only existing `TransformerBridge` hook points to:\n",
+    "\n",
+    "1. split every neuron's output by the signs of its two factors;\n",
+    "2. find neurons whose top activations are echoes, and compare the echo with the neuron's gate-open peak;\n",
+    "3. remove the echo with a forward hook and measure the loss change against two controls.\n",
+    "\n",
+    "It runs SmolLM2-135M on CPU in float32 with a small token budget, so the saved outputs stay portable. Change `DEVICE` and the token budgets for real analyses. The last section lists full-size results for three models. Proposal: [#1933](https://github.com/TransformerLensOrg/TransformerLens/issues/1933)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "852075b6",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:17.434756Z",
+     "iopub.status.busy": "2026-10-22T16:16:17.434756Z",
+     "iopub.status.idle": "2026-10-22T16:16:41.527881Z",
+     "shell.execute_reply": "2026-10-22T16:16:41.527881Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# NBVAL_IGNORE_OUTPUT\n",
+    "import os\n",
+    "\n",
+    "os.environ[\"HF_HUB_DISABLE_PROGRESS_BARS\"] = \"1\"\n",
+    "os.environ[\"TOKENIZERS_PARALLELISM\"] = \"false\"\n",
+    "\n",
+    "import datasets\n",
+    "import matplotlib.pyplot as plt\n",
+    "import pandas as pd\n",
+    "import torch\n",
+    "import torch.nn.functional as F\n",
+    "\n",
+    "from transformer_lens.model_bridge import TransformerBridge\n",
+    "from transformer_lens.utilities import SUPPORTED_ACTIVATIONS\n",
+    "\n",
+    "datasets.disable_progress_bars()\n",
+    "torch.set_grad_enabled(False)\n",
+    "DEVICE = \"cpu\"\n",
+    "MODEL_NAME = \"HuggingFaceTB/SmolLM2-135M\"\n",
+    "SEQ_LEN = 256\n",
+    "SWEEP_TOKENS = 16_384  # the full-size runs below used ~262k\n",
+    "EVAL_TOKENS = 4_096  # the full-size runs below used 65k\n",
+    "TOP_K = 20\n",
+    "ECHO_DOMINATED = 0.9  # share of a neuron's top-k that must be echoes\n",
+    "SKIP = 1  # position 0 collects attention-sink activations; leave it out of every statistic"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "eed2f123",
+   "metadata": {},
+   "source": [
+    "## The four sign regimes\n",
+    "\n",
+    "| gate | value | act(gate) | post | regime |\n",
+    "| --- | --- | --- | --- | --- |\n",
+    "| > 0 | > 0 | positive | positive | open, positive pole |\n",
+    "| > 0 | < 0 | positive | negative | open, negative pole |\n",
+    "| < 0 | > 0 | small negative | negative | closed |\n",
+    "| < 0 | < 0 | small negative | **positive** | closed: the echo |\n",
+    "\n",
+    "The echo is bounded by $|\\min \\text{act}| \\cdot |\\text{value}|$. The bound depends on the activation, so it is model-specific:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "cf5e4077",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:41.527881Z",
+     "iopub.status.busy": "2026-10-22T16:16:41.527881Z",
+     "iopub.status.idle": "2026-10-22T16:16:41.562828Z",
+     "shell.execute_reply": "2026-10-22T16:16:41.562297Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "min silu               = -0.278\n",
+      "min gelu               = -0.170\n",
+      "min gelu_pytorch_tanh  = -0.170\n"
+     ]
+    }
+   ],
+   "source": [
+    "grid = torch.linspace(-10, 0, 1_000_001)\n",
+    "for name in (\"silu\", \"gelu\", \"gelu_pytorch_tanh\"):\n",
+    "    print(f\"min {name:18s} = {SUPPORTED_ACTIVATIONS[name](grid).min().item():.3f}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "8e08ec9e",
+   "metadata": {},
+   "source": [
+    "## Load a raw Bridge\n",
+    "\n",
+    "The hook aliases `mlp.hook_pre` (gate), `mlp.hook_pre_linear` (value) and `mlp.hook_post` (their product) exist on every gated MLP bridge, including fused gate/up projections (`JointGateUpMLPBridge`). The activation comes from the model config, and a factorization check confirms the hooks recompose the MLP exactly."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "50d389fa",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:41.564880Z",
+     "iopub.status.busy": "2026-10-22T16:16:41.564354Z",
+     "iopub.status.idle": "2026-10-22T16:16:46.657127Z",
+     "shell.execute_reply": "2026-10-22T16:16:46.657127Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# NBVAL_IGNORE_OUTPUT\n",
+    "model = TransformerBridge.boot_transformers(MODEL_NAME, device=DEVICE, dtype=torch.float32).eval()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "605f6501",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:46.657127Z",
+     "iopub.status.busy": "2026-10-22T16:16:46.657127Z",
+     "iopub.status.idle": "2026-10-22T16:16:46.798430Z",
+     "shell.execute_reply": "2026-10-22T16:16:46.798430Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "HuggingFaceTB/SmolLM2-135M: 30 layers x 1536 neurons, act_fn=silu\n",
+      "max |post - act(gate) * value| over all layers: 0.0e+00\n"
+     ]
+    }
+   ],
+   "source": [
+    "act = SUPPORTED_ACTIVATIONS[model.cfg.act_fn]\n",
+    "N_LAYERS, D_MLP = model.cfg.n_layers, model.cfg.d_mlp\n",
+    "print(f\"{MODEL_NAME}: {N_LAYERS} layers x {D_MLP} neurons, act_fn={model.cfg.act_fn}\")\n",
+    "\n",
+    "\n",
+    "def run_with_gated_mlp(model, tokens, on_layer):\n",
+    "    \"\"\"Forward once, calling on_layer(layer, gate, value, post) as soon as each MLP finishes.\n",
+    "\n",
+    "    Only one layer's factors are alive at a time, so memory does not grow with depth.\n",
+    "    \"\"\"\n",
+    "    pending = {}\n",
+    "\n",
+    "    def keep(key):\n",
+    "        def hook(tensor, hook):\n",
+    "            pending[key] = tensor\n",
+    "\n",
+    "        return hook\n",
+    "\n",
+    "    def finish(layer):\n",
+    "        def hook(tensor, hook):\n",
+    "            on_layer(layer, pending.pop((\"gate\", layer)), pending.pop((\"value\", layer)), tensor)\n",
+    "\n",
+    "        return hook\n",
+    "\n",
+    "    fwd_hooks = []\n",
+    "    for layer in range(model.cfg.n_layers):\n",
+    "        fwd_hooks += [\n",
+    "            (f\"blocks.{layer}.mlp.hook_pre\", keep((\"gate\", layer))),\n",
+    "            (f\"blocks.{layer}.mlp.hook_pre_linear\", keep((\"value\", layer))),\n",
+    "            (f\"blocks.{layer}.mlp.hook_post\", finish(layer)),\n",
+    "        ]\n",
+    "    with model.hooks(fwd_hooks=fwd_hooks):\n",
+    "        return model(tokens)\n",
+    "\n",
+    "\n",
+    "factor_error = []\n",
+    "run_with_gated_mlp(\n",
+    "    model,\n",
+    "    model.to_tokens(\"The quick brown fox jumps over the lazy dog.\"),\n",
+    "    lambda layer, gate, value, post: factor_error.append((post - act(gate) * value).abs().max()),\n",
+    ")\n",
+    "print(f\"max |post - act(gate) * value| over all layers: {max(factor_error).item():.1e}\")\n",
+    "assert max(factor_error) < 1e-6"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "00376e32",
+   "metadata": {},
+   "source": [
+    "## Data\n",
+    "\n",
+    "WikiText-2 at a pinned revision, tokenized as one stream and cut into fixed-length rows. Validation rows feed the sweep. Test rows feed the loss experiment, so the neurons are chosen and evaluated on different text."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "0136f09a",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:46.798430Z",
+     "iopub.status.busy": "2026-10-22T16:16:46.798430Z",
+     "iopub.status.idle": "2026-10-22T16:16:54.046419Z",
+     "shell.execute_reply": "2026-10-22T16:16:54.046419Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# NBVAL_IGNORE_OUTPUT\n",
+    "WIKITEXT = (\"Salesforce/wikitext\", \"wikitext-2-raw-v1\")\n",
+    "WIKITEXT_REVISION = \"b08601e04326c79dfdd32d625aee71d232d685c3\"\n",
+    "\n",
+    "\n",
+    "def token_rows(split, n_tokens):\n",
+    "    text = \"\".join(\n",
+    "        datasets.load_dataset(*WIKITEXT, split=split, revision=WIKITEXT_REVISION)[\"text\"]\n",
+    "    )\n",
+    "    ids = model.tokenizer(text, add_special_tokens=False, return_tensors=\"pt\").input_ids[0]\n",
+    "    n_rows = n_tokens // SEQ_LEN\n",
+    "    return ids[: n_rows * SEQ_LEN].view(n_rows, SEQ_LEN)\n",
+    "\n",
+    "\n",
+    "sweep_rows = token_rows(\"validation\", SWEEP_TOKENS)\n",
+    "eval_rows = token_rows(\"test\", EVAL_TOKENS)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "b45d741c",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:54.047563Z",
+     "iopub.status.busy": "2026-10-22T16:16:54.047563Z",
+     "iopub.status.idle": "2026-10-22T16:16:54.052408Z",
+     "shell.execute_reply": "2026-10-22T16:16:54.052408Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "sweep rows (64, 256), eval rows (16, 256)\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(f\"sweep rows {tuple(sweep_rows.shape)}, eval rows {tuple(eval_rows.shape)}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "a4d7c5ce",
+   "metadata": {},
+   "source": [
+    "## Sweep: per-neuron top-k, tagged by regime\n",
+    "\n",
+    "One streaming pass keeps, for every neuron:\n",
+    "\n",
+    "- its `TOP_K` largest outputs, each tagged as an echo or not;\n",
+    "- its `TOP_K` most negative outputs;\n",
+    "- its echo peak, the largest positive output with the gate closed;\n",
+    "- its gate-open peak, the largest $|\\text{post}|$ with the gate open.\n",
+    "\n",
+    "The top of the list is what a max-activating-example dashboard shows. Counting regimes over all tokens instead would mostly measure near-zero activations."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "bf9f027e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:16:54.054399Z",
+     "iopub.status.busy": "2026-10-22T16:16:54.054399Z",
+     "iopub.status.idle": "2026-10-22T16:17:28.266135Z",
+     "shell.execute_reply": "2026-10-22T16:17:28.266135Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "tokens per neuron: 16,320\n",
+      "echo-dominated neurons (>= 90% of top-20 are echoes): 3.6% of 46,080\n",
+      "top-20 entirely echoes: 2.0%\n",
+      "at least one echo in the top-20: 21.9%\n"
+     ]
+    }
+   ],
+   "source": [
+    "class Sweep:\n",
+    "    def __init__(self, n_layers, d_mlp, k):\n",
+    "        shape = (n_layers, d_mlp, k)\n",
+    "        self.top_val = torch.full(shape, -torch.inf)\n",
+    "        self.top_echo = torch.zeros(shape, dtype=torch.bool)\n",
+    "        self.top_loc = torch.zeros(shape, dtype=torch.long)\n",
+    "        self.bot_val = torch.full(shape, -torch.inf)  # negated, so topk finds the most negative\n",
+    "        self.bot_loc = torch.zeros(shape, dtype=torch.long)\n",
+    "        self.echo_peak = torch.zeros(n_layers, d_mlp)\n",
+    "        self.open_peak = torch.zeros(n_layers, d_mlp)\n",
+    "\n",
+    "    @staticmethod\n",
+    "    def merge(old_val, new_val, *payloads):\n",
+    "        \"\"\"Keep the k largest of old and new columns, carrying payloads along.\"\"\"\n",
+    "        val = torch.cat([old_val, new_val], 1)\n",
+    "        best = val.topk(old_val.shape[1], dim=1).indices\n",
+    "        return (val.gather(1, best),) + tuple(torch.cat(p, 1).gather(1, best) for p in payloads)\n",
+    "\n",
+    "    def update(self, layer, gate, post, row_offset):\n",
+    "        gate, post = gate[:, SKIP:], post[:, SKIP:]\n",
+    "        rows, positions, d = post.shape\n",
+    "        loc = (row_offset + torch.arange(rows))[:, None] * SEQ_LEN + SKIP + torch.arange(positions)\n",
+    "        gate, post, loc = gate.reshape(-1, d), post.reshape(-1, d), loc.reshape(-1)\n",
+    "        closed = gate < 0\n",
+    "        echo = closed & (post > 0)\n",
+    "        k = self.top_val.shape[-1]\n",
+    "\n",
+    "        val, idx = post.topk(k, dim=0)\n",
+    "        self.top_val[layer], self.top_echo[layer], self.top_loc[layer] = self.merge(\n",
+    "            self.top_val[layer],\n",
+    "            val.T,\n",
+    "            (self.top_echo[layer], echo.gather(0, idx).T),\n",
+    "            (self.top_loc[layer], loc[idx].T),\n",
+    "        )\n",
+    "        val, idx = (-post).topk(k, dim=0)\n",
+    "        self.bot_val[layer], self.bot_loc[layer] = self.merge(\n",
+    "            self.bot_val[layer], val.T, (self.bot_loc[layer], loc[idx].T)\n",
+    "        )\n",
+    "        self.echo_peak[layer] = self.echo_peak[layer].maximum(post.masked_fill(~echo, 0).amax(0))\n",
+    "        self.open_peak[layer] = self.open_peak[layer].maximum(\n",
+    "            post.abs().masked_fill(closed, 0).amax(0)\n",
+    "        )\n",
+    "\n",
+    "\n",
+    "BATCH = 8\n",
+    "sweep = Sweep(N_LAYERS, D_MLP, TOP_K)\n",
+    "for start in range(0, len(sweep_rows), BATCH):\n",
+    "    run_with_gated_mlp(\n",
+    "        model,\n",
+    "        sweep_rows[start : start + BATCH].to(DEVICE),\n",
+    "        lambda layer, gate, value, post: sweep.update(layer, gate.cpu(), post.cpu(), start),\n",
+    "    )\n",
+    "\n",
+    "leak_frac = sweep.top_echo.float().mean(-1)  # share of each neuron's top-k that are echoes\n",
+    "echo_dominated = leak_frac >= ECHO_DOMINATED\n",
+    "print(f\"tokens per neuron: {len(sweep_rows) * (SEQ_LEN - SKIP):,}\")\n",
+    "print(\n",
+    "    f\"echo-dominated neurons (>= {ECHO_DOMINATED:.0%} of top-{TOP_K} are echoes): \"\n",
+    "    f\"{echo_dominated.float().mean():.1%} of {echo_dominated.numel():,}\"\n",
+    ")\n",
+    "print(f\"top-{TOP_K} entirely echoes: {(leak_frac == 1).float().mean():.1%}\")\n",
+    "print(f\"at least one echo in the top-{TOP_K}: {(leak_frac > 0).float().mean():.1%}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "cef80420",
+   "metadata": {},
+   "source": [
+    "Fewer tokens make every top-k less extreme, so these shares come out higher than in a large sweep. In the full SmolLM2 run (264k tokens per neuron), 1.3% of neurons were echo-dominated. Echo-dominated neurons cluster in the middle layers:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "d75e2eb5",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:17:28.268708Z",
+     "iopub.status.busy": "2026-10-22T16:17:28.267497Z",
+     "iopub.status.idle": "2026-10-22T16:17:28.488187Z",
+     "shell.execute_reply": "2026-10-22T16:17:28.488187Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "image/png": "iVBORw0KGgoAAAANSUhEUgAAAxYAAAEOCAYAAAAUpIF4AAAAOnRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjEwLjgsIGh0dHBzOi8vbWF0cGxvdGxpYi5vcmcvwVt1zgAAAAlwSFlzAAAPYQAAD2EBqD+naQAAQ+1JREFUeJzt3Qm8zNUf//GPnaxZskeihWgTSaofohShn1QqIkpZWqRUSClSoVQkrVIkpV9KG7KUpWRJRYgQUmQv5M7/8T7//3f+35k7d5l757r3zryej8dw73fmzpz5Luf7/ZzzOeebJxAIBAwAAAAAMiFvZv4YAAAAAAgsAAAAAMQEPRYAAAAAMo3AAgAAAECmEVgAAAAAyDQCCwAAAACZRmABAAAAINMILAAAAABkGoEFAAAAgEwjsEC2eu211yxPnjy2ceNGtkSC0TbXttc+ACRKXfftt99md1GQAm2fhx9+mPWTy88pTz31VHYXJaERWCTYyeuSSy6xM844wxKNvrfWS6TH6tWrj3l5qlevnmJ5/A/vojt8edGiRa127do2dOhQO3jwYMTP+P77791rlyxZ4n7fv3+/DR482G1//X2ZMmXsrLPOsr59+9rWrVstJ9BJXWX+888/U3zNl19+GVwPb775ZsTXNG7c2D3v39e1np5//nlr0aKFVaxY0YoXL25nn322jR071o4ePZqu8nnr8LLLLrPSpUunGhi99NJLdvHFF1v58uWtUKFCdtJJJ9nNN98cMYhOafsPHz485HVdunRxy0uUKGF///13svdZu3Zt8G85uSKzvv76a3dM7t69O9tW5jfffGO9evWyOnXquHrrxBNPtGuuucZ+/vnniK//6aef3PFZrFgxd4zeeOON9scff1giWrdunf33v/+1448/3o477ji78MILbc6cORleb9oPOnXq5N6vRo0a9vLLLyd7H1176LM2bNiQZd8LOVv+7C4AEpsqr2uvvdZdeGW1KlWq2LBhw5Itr1Spkh1ro0ePdhepno8//tjefvttGzVqlJUtWza4/IILLgj+fOmll9pNN93kftbfzp8/3wYOHGgrVqywqVOnJvuMjz76yE444QQ777zz7MiRI3bRRRe5IKpz587Wu3dv9x4//PCDvfXWW9auXbtsWQ+ZUbhwYVf2G264IWS5Ltx1QaTn/X755Rf3vZs1a2Z33323uzj/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2bt3b0zLDQAAACSavBm5j8U777yTbPmUKVOsVq1aFkvXXnut6w3ReI62bdu6MRRKe1IvRmYMGzbMSpYsGXxUrVo1ZmUGAAAAElHUPRZDhgyxjh07ukHS3hiLr776ymbNmhUx4IilGjVqWNmyZW3dunXWrFkzN/Zix44dIa/5999/3UxRKY3LkAEDBtjdd98d0mNBcAEAAAAcw8Di6quvtiVLlrhB3N70sKeffrpbdvbZZ1tW2rJli+3cudMqVqzofm/UqJHt3r3bli5daueee65bNnv2bEtKSrKGDRumOiBcDwCIBe6QHZt1INwpHAASJLA4cuSI3XrrrW5WqDfffDPTH677Taj3wX/zveXLl7sxEnqod0SBjHofNMaif//+LhWrZcuWwYBG4zC6d+9u48aNc+XTbFVKoWJGKAAAACCHjrEoUKCATZs2LWYf/u2337peDq+nQ+lJ+nnQoEFucPbKlSvdGItTTjnF3fhOvRLz588P6W2YNGmSnXbaaS41StPMXnjhhTZ+/PiYlREAAABAFqRCaRC1UqBiMa3sJZdckuqduz/99NM030M9G2+99VamywIAAADgGAYWmvnpkUcecQO21YNQtGjRkOf79OmTieIAAPD/MX4FAOI4sHj55ZfdTek0YFoPvzx58hBYAAAAAAko6sBCA6wBAAAAIFM3yAMAAACATPdYdO3aNdXnX3nllWjfEgAAAECiBRZ//fVXyO+6d8SqVavcjeqaNm0ay7IBAAAAiNfA4v3330+2THe67tmzp5188smxKhcAAACARBtjkTdvXndzu1GjRsXi7QAAAAAk6uDt9evX27///hurtwMAAAAQz6lQ6pnw052zt23bZh999JF17tw5lmUDAAAAEK+BxbJly5KlQZUrV86efvrpNGeMAgAAABCfog4s5syZkzUlAQAAAJBYYyw0luKLL76wF1980fbt2+eWbd261fbv3x/r8gEAAACIxx6LX3/91S677DLbtGmTHTp0yC699FIrXry4PfHEE+73cePGZU1JAQAAAMRPj0Xfvn2tfv367kZ5RYoUCS5v166dzZo1K9blAwAAABCPPRbz58+3r7/+2goWLBiyvHr16vbbb7/FsmwAAAAA4rXHQnfZPnr0aLLlW7ZscSlRAAAAABJP1IFFixYtbPTo0cHf8+TJ4wZtDx482Fq1ahXr8gEAAACIx1Qo3a+iZcuWVrt2bfvnn3/s+uuvt7Vr11rZsmXt7bffzppSAgAAAIivwKJKlSq2YsUKmzx5sq1cudL1VnTr1s06deoUMpgbAAAAQOLIn6E/yp/fbrjhhtiXBgAAAEDiBBZKfdIduHfs2OEGc/sNGjQoVmUDAAAAEK+BxUsvvWQ9e/Z0YyoqVKjgBm979DOBBQAAAJB4og4shg4dao899pjdd999WVMiAAAAAPE/3azuuN2hQ4esKQ0AAACAxAgsFFR89tlnWVMaAAAAAImRClWzZk0bOHCgLVq0yOrWrWsFChQIeb5Pnz6xLB8AAACAeAwsxo8fb8WKFbO5c+e6h58GbxNYAAAAAIkn6sBiw4YNWVMSAAAAAIkzxgIAAAAAwhFYAAAAAMg0AgsAAAAAmUZgAQAAACDTCCwAAAAAHJtZoVauXJnuN6xXr15mygMAAAAgXgOLs846y92jIhAIuP9Tc/To0ViVDQAAAEA8pULp3hW//PKL+3/atGl20kkn2QsvvGDLli1zD/188sknu+cAAAAAJJ509VhUq1Yt+HOHDh3s2WeftVatWoWkP1WtWtUGDhxobdu2zZqSAgAAAIifwdvff/+967EIp2U//vhjrMoFAAAAIJ4Di9NPP92GDRtmhw8fDi7Tz1qm5wAAAAAknnSlQvmNGzfOWrdubVWqVAnOAKVZozSo+8MPP8yKMgIAAACIt8CiQYMGbiD3pEmTbPXq1W5Zx44d7frrr7eiRYtmRRkBAAAAxOMN8hRA9OjRw0aOHOke3bt3z1BQMW/ePNf7UalSJdfjMX369JDnNb3toEGDrGLFilakSBFr3ry5rV27NuQ1u3btsk6dOlmJEiWsVKlS1q1bN9u/f39GvhYAAACAYxlYTJw40S688EIXEPz6669u2ahRo+yDDz6I6n0OHDhgZ555pj3//PMRnx8xYoSbgUrpV4sXL3bBS8uWLe2ff/4JvkZBxQ8//GCff/65zZgxwwUrCnoAAAAA5ODAYuzYsXb33Xfb5Zdfbn/99VfwhnjHH3+8jR49Oqr30nsMHTrU2rVrl+w59Vbo/R566CG76qqr3HiON954w7Zu3Rrs2fjpp5/sk08+sQkTJljDhg1dsDNmzBibPHmyex0AAACAHBpY6ML9pZdesgcffNDy5///QzTq16/vpqKNFd2Mb/v27S79yVOyZEkXQCxcuND9rv+V/qTP9uj1efPmdT0cAAAAAHLo4G1d8J999tnJlhcqVMilNsWKggopX758yHL97j2n/0844YSQ5xXslC5dOviaSA4dOuQenr1798as3AAAAEAiirrHQjfCW758ebLlSknKLfex0D031PvhPXTXcAAAAADHMLDQ+Io77rjDpkyZ4sZBLFmyxB577DEbMGCA9e/f32KlQoUK7v/ff/89ZLl+957T/zt27Ah5/t9//3UzRXmviURl3bNnT/CxefPmmJUbAAAASERRp0LdcsstbupXDao+ePCgu3+FZod65pln7Nprr41ZwdQzouBg1qxZdtZZZwVTljR2omfPnu73Ro0a2e7du23p0qV27rnnumWzZ8+2pKQkNxYjJUrb0gMAAABANgUW3hSveiiw0D0jwsc5pJf+dt26dSHjN5RmpTESJ554ot15551u1qhatWq5QGPgwIEuiGnbtq17vVKvLrvsMncfDU1Je+TIEevVq5cLcPQ6AAAAADk0Fapp06aul0COO+64YFCh3gQ9F41vv/3WDQT3BoMrzUo/66Z4otSq3r17u/tSnHfeeS4Q0ViOwoULB99DdwA/7bTTrFmzZtaqVSs35ez48eOj/VoAAAAAjmWPxZdffmmHDx9Otlw3rZs/f35U73XJJZe4cRop0d24H3nkEfdIiXo33nrrrag+F0Biqn7/R5l+j43Dr4hJWQAASNjAYuXKlcGff/zxx5DpXHWTPPUkVK5cOfYlBAAAABA/gYUGUKsHQY9IKU8a0K2b5wEAAABIPOkOLDSwWmlLNWrUcFPMlitXLvhcwYIF3ViLfPnyZVU5AQAAAMRDYFGtWjX3v6ZyBQAAAIBMTzfrjbPYtGlTsoHcbdq0yehbAgAAAEiUwOKXX36xdu3a2ffff+/GW3izOulnbyA3AAAAgMQS9X0s+vbt625Wt2PHDncfix9++MHmzZtn9evXd1PRAgAAAEg8UfdYLFy40GbPnm1ly5a1vHnzuoduSjds2DDr06ePLVu2LGtKCgAAACB+eiyU6lS8eHH3s4KLrVu3Bgd3r1mzJvYlBAAAABB/PRZnnHGGrVixwqVDNWzY0EaMGOGmmx0/frybihYAAABA4ok6sHjooYfswIED7udHHnnErrzySmvSpImVKVPGpkyZkhVlBAAAABBvgUXLli2DP9esWdNWr15tu3btsuOPPz44MxQAAACAxJLh+1j4lS5dOhZvAwDAMVH9/o8y/R4bh18Rk7IAQMIGFkqDGj58uM2aNctNORt+J27d5wIAAABAYok6sLjlllts7ty5duONN1rFihVJfwIAAAAQfWAxc+ZM++ijj6xx48asPgAAAAAZu4+FBmkzpgIAAABApgKLRx991AYNGmQHDx6M9k8BAAAAxKmoU6GefvppW79+vZUvX96qV69uBQoUCHn+u+++i2X5AAAAAMRjYNG2bdusKQmAhJyyM9K0nVn1vgAAIAcFFoMHD86akgAAAABI7BvkAYmIVnUAAIAoAwvNAvXzzz9b2bJl3axQefLkSfG1u3btSs9bAgAAAEi0wGLUqFFWvHhx9/Po0aOzukwAAAAA4jGw6Ny5c8SfAQAAACDdgUUkO3bscI+kpKSQ5fXq1WPNAgAAAAkm6sBi6dKlrtfip59+skAgEPKcxl4cPXo0luUDAAAAEI+BRdeuXe2UU06xl19+2d0kL7WB3AAAAAASQ9SBxS+//GLTpk2zmjVrZk2JAAAAAOQ6eaP9g2bNmtmKFSuypjQAAAAAEqPHYsKECW6MxapVq+yMM86wAgUKhDzfpk2bWJYPAAAAQDwGFgsXLrSvvvrKZs6cmew5Bm8DAAAAiSnqVKjevXvbDTfcYNu2bXNTzfofzAgFAAAAJKaoA4udO3faXXfd5WaEAgAAAIAMBRbt27e3OXPmsPYAAAAAZHyMhe5hMWDAAFuwYIHVrVs32eDtPn36RPuWAAAAABJxVqhixYrZ3Llz3SN88DaBBQAAAJB4og4sNmzYkDUlAQAAAJA4Yyz8AoGAewAAAABIbBkKLN544w03vqJIkSLuUa9ePZs4cWLsSwcAAAAgPlOhRo4caQMHDrRevXpZ48aN3TIN5L7tttvszz//dFPRAsh5qt//UabfY+PwK2JSFgAAEH+iDizGjBljY8eOtZtuuim4rE2bNlanTh17+OGHCSwAAACABBR1YKE7bl9wwQXJlmuZnoslBSpDhgwJWXbqqafa6tWr3c///POP3XPPPTZ58mQ7dOiQtWzZ0l544QVu3odcjZ4FAACQEGMsatasae+8806y5VOmTLFatWpZrKknRAGL91DalUdpVx9++KFNnTrVTX27detWdwM/AAAAADm8x0I9CB07drR58+YFx1h89dVXNmvWrIgBR6YLmD+/VahQIdnyPXv22Msvv2xvvfWWNW3a1C179dVX7fTTT7dFixbZ+eefH/OyAAAAAIhRj8XVV19tixcvtrJly9r06dPdQz8vWbLE2rVrZ7G2du1aq1SpktWoUcM6depkmzZtcsuXLl1qR44csebNmwdfe9ppp9mJJ55oCxcuTPU9lTa1d+/ekAcAAACAY9hjIeeee669+eabltUaNmxor732mhtXoTQo9ZY0adLEVq1aZdu3b7eCBQtaqVKlQv6mfPny7rnUDBs2LNnYDQAAAABZHFhE06JfokQJi5XLL788+LPulaFAo1q1ai7lSvfPyKgBAwbY3XffHfL9qlatmunyAgAAAIkqXYGFegXy5MmTrjc8evRoZsuUajlOOeUUW7dunV166aV2+PBh2717d0ivxe+//x5xTIZfoUKF3AMAAADAMQws5syZE/x548aNdv/991uXLl2sUaNGbpnGNLz++usuxSgr7d+/39avX2833nijS8cqUKCAGzSucR+yZs0aNwbDKxcAAACAHBRYXHzxxcGfH3nkEXf37euuuy7kBnl169a18ePHW+fOnWNWuH79+lnr1q1d+pOmkh08eLDly5fPfXbJkiWtW7duLqWpdOnSLgWrd+/eLqhgRqisx70WAAAAkKnB2+qdGDduXLLl9evXt1tuucViacuWLS6I2Llzp5UrV84uvPBCN5WsfpZRo0ZZ3rx5XY+F/wZ5AAAAAHJ4YKFBzi+99JKNGDEiZPmECRNiPgBad9ROTeHChe355593DwAAAAC5KLBQL4F6CGbOnOlmaRLdw0L3m5g2bVpWlBEAAABAvAUWrVq1ckHE2LFj7aeffnLLNA7itttuY8pWxO14ENk4/IqYvA8AAEA8ytAN8qpUqWKPPfZY7EsDAAAAIFfKm5k/1kxQmzdvjl1pAAAAACReYKF7Whw5ciR2pQEAAACQOKlQAADg2GCcGICECCyaNGliRYoUiV1pAADIxbh5KIBElqnA4uOPP45dSQAAAAAkVmBx9OhRmz59enC62Tp16libNm0sX758sS4fAAAAgHgMLNatW2dXXHGFbdmyxU499VS3bNiwYe4eFh999JGdfPLJWVFOAACQwEgzA+IwsOjTp4/VqFHDFi5caKVLl3bLdu7caTfccIN7TsEFkBEMUASAY4c6F0C2BxZz5861RYsWBYMKKVOmjA0fPtwaN24c6/IBAAAAiMf7WBQqVMj27duXbPn+/futYMGCsSoXAAAAgHgOLK688krr0aOHLV682AKBgHuoB+O2225zA7gBAAAAJJ6oA4tnn33WDdBu1KiRFS5c2D2UAlWzZk175plnsqaUAAAAAOJrjEWpUqXsgw8+sLVr19rq1avdstNPP90FFgAAAAASU4ZvkFerVi33AAAAAID8Gbk53muvvWazZs2yHTt2WFJSUsjzs2fPZq0CAAAACSbqwKJv374usNBN8s444wzLkydP1pQMAAAAQPwGFpMnT7Z33nnHWrVqlTUlAgAAABD/s0LpXhUM1AYAAACQqcDinnvucdPK6v4VAAAAAJDuVKj27dsnG6A9c+ZMq1OnjhUoUCDkuffee481CwAAACSYdAUWJUuWDPm9Xbt2WVUeAAAAAPEaWLz66qtZXxIAAJDrVb//o0y/x8bhV8SkLEA8HA+56ZiIeozFhg0b3F23w2nZxo0bY1UuAAAAALlI1IFFly5d7Ouvv062fPHixe45AAAAAIkn6vtYLFu2zBo3bpxs+fnnn2+9evWKVbkAAACyHKlbQDYGFrrT9r59+5It37Nnjx09ejRW5QIAAMiVEi2vHshwKtRFF11kw4YNCwki9LOWXXjhhdG+HQAAAIBE7LF44oknXHBx6qmnWpMmTdyy+fPn2969e939LQAAAAAknqgDi9q1a9vKlSvtueeesxUrVliRIkXspptucuMrSpcunTWlRIaROwoAAIAcGVhIpUqV7PHHH499aQAAAAAkxhgLL/XphhtusAsuuMB+++03t2zixIm2YMGCWJcPAAAAQDwGFtOmTbOWLVu6FKjvvvvODh06FJwVil4MAAAAIDFFnQo1dOhQGzdunBtXMXny5OBy3dtCzwEAAAC5CVMEZ1NgsWbNGjcrVLiSJUva7t27Y1QsAAAA+HHxi7gLLCpUqGDr1q2z6tWrhyzX+IoaNWrEsmwAAABACGa8jKMxFt27d7e+ffva4sWL3V24t27dapMmTbJ+/fpZz549s6aUAAAAAOKrx+L++++3pKQka9asmR08eNClRRUqVMgFFr17986aUiYAujcBAACQUIGFeikefPBBu/fee11K1P79+91N84oVK5Y1JQQAAAAQn/exkIIFC7qAokGDBjkiqHj++efduI/ChQtbw4YNbcmSJdldJAAAACBhZOjO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",
+      "text/plain": [
+       "<Figure size 800x280 with 1 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "fig, ax = plt.subplots(figsize=(8, 2.8))\n",
+    "ax.bar(range(N_LAYERS), echo_dominated.sum(1))\n",
+    "ax.set_xlabel(\"layer\")\n",
+    "ax.set_ylabel(\"echo-dominated neurons\")\n",
+    "ax.set_title(f\"{MODEL_NAME}: neurons whose top-{TOP_K} is >= {ECHO_DOMINATED:.0%} echoes\")\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "2e242a18",
+   "metadata": {},
+   "source": [
+    "## One echo-dominated neuron\n",
+    "\n",
+    "The neuron below is chosen by rule as a typical case. Among neurons whose whole top-k is echoes, it has the echo-to-gate-open-peak ratio closest to the median (the next section looks at that ratio). Its positive list is what a dashboard would label it by. `[[ ]]` marks the token where each activation occurs."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "42e13b70",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:17:28.491204Z",
+     "iopub.status.busy": "2026-10-22T16:17:28.490198Z",
+     "iopub.status.idle": "2026-10-22T16:17:28.520590Z",
+     "shell.execute_reply": "2026-10-22T16:17:28.520590Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "layer 12, neuron 1411: echo peak 0.82, gate-open peak 1.51\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>pole</th>\n",
+       "      <th>post</th>\n",
+       "      <th>echo</th>\n",
+       "      <th>context</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>top positive</td>\n",
+       "      <td>0.82</td>\n",
+       "      <td>True</td>\n",
+       "      <td>C ) and the average low is around 70 °[[ F]] ( 21</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>top positive</td>\n",
+       "      <td>0.76</td>\n",
+       "      <td>True</td>\n",
+       "      <td>through February ) the average maximum is around 60 °[[ F]] ( 16</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>top positive</td>\n",
+       "      <td>0.73</td>\n",
+       "      <td>True</td>\n",
+       "      <td>summer ( June through August ) is around 90 °[[ F]] ( 32</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>top positive</td>\n",
+       "      <td>0.72</td>\n",
+       "      <td>True</td>\n",
+       "      <td>06 for use as the \" Mississippi State University Riley Center[[ for]] Education and the Performing</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>top positive</td>\n",
+       "      <td>0.69</td>\n",
+       "      <td>True</td>\n",
+       "      <td>he was assigned to Headquarters Laverton as the station navigation[[ officer]] . On 2</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5</th>\n",
+       "      <td>most negative</td>\n",
+       "      <td>-1.51</td>\n",
+       "      <td>False</td>\n",
+       "      <td>,@ 200 people respectively are in the labor[[ force]] , feed the economy</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>6</th>\n",
+       "      <td>most negative</td>\n",
+       "      <td>-1.37</td>\n",
+       "      <td>False</td>\n",
+       "      <td>ceston , Tasmania . He was schooled at Clemes[[ College]] , Hobart ,</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>7</th>\n",
+       "      <td>most negative</td>\n",
+       "      <td>-1.20</td>\n",
+       "      <td>False</td>\n",
+       "      <td>62 , AOC No. 224 Group[[ RAF]] from 19</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>8</th>\n",
+       "      <td>most negative</td>\n",
+       "      <td>-1.15</td>\n",
+       "      <td>False</td>\n",
+       "      <td>20 December , when a No. 38[[ Squadron]] Dakota he was co</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>9</th>\n",
+       "      <td>most negative</td>\n",
+       "      <td>-1.15</td>\n",
+       "      <td>False</td>\n",
+       "      <td>a senior commander in the Royal Australian Air Force ( RAA[[F]] ) . Born and</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "            pole  post   echo  \\\n",
+       "0   top positive  0.82   True   \n",
+       "1   top positive  0.76   True   \n",
+       "2   top positive  0.73   True   \n",
+       "3   top positive  0.72   True   \n",
+       "4   top positive  0.69   True   \n",
+       "5  most negative -1.51  False   \n",
+       "6  most negative -1.37  False   \n",
+       "7  most negative -1.20  False   \n",
+       "8  most negative -1.15  False   \n",
+       "9  most negative -1.15  False   \n",
+       "\n",
+       "                                                                                              context  \n",
+       "0                                                   C ) and the average low is around 70 °[[ F]] ( 21  \n",
+       "1                                    through February ) the average maximum is around 60 °[[ F]] ( 16  \n",
+       "2                                            summer ( June through August ) is around 90 °[[ F]] ( 32  \n",
+       "3  06 for use as the \" Mississippi State University Riley Center[[ for]] Education and the Performing  \n",
+       "4               he was assigned to Headquarters Laverton as the station navigation[[ officer]] . On 2  \n",
+       "5                            ,@ 200 people respectively are in the labor[[ force]] , feed the economy  \n",
+       "6                                ceston , Tasmania . He was schooled at Clemes[[ College]] , Hobart ,  \n",
+       "7                                                              62 , AOC No. 224 Group[[ RAF]] from 19  \n",
+       "8                                           20 December , when a No. 38[[ Squadron]] Dakota he was co  \n",
+       "9                        a senior commander in the Royal Australian Air Force ( RAA[[F]] ) . Born and  "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "flat_sweep = sweep_rows.reshape(-1)\n",
+    "\n",
+    "\n",
+    "def context(loc, left=12, right=4):\n",
+    "    row_start = loc - loc % SEQ_LEN\n",
+    "    pre = model.tokenizer.decode(flat_sweep[max(row_start, loc - left) : loc])\n",
+    "    token = model.tokenizer.decode(flat_sweep[loc : loc + 1])\n",
+    "    post = model.tokenizer.decode(flat_sweep[loc + 1 : min(row_start + SEQ_LEN, loc + 1 + right)])\n",
+    "    return (pre + \"[[\" + token + \"]]\" + post).replace(\"\\n\", \" \")\n",
+    "\n",
+    "\n",
+    "all_echo = (leak_frac == 1) & (sweep.open_peak > 0)\n",
+    "peak_ratio = sweep.echo_peak / sweep.open_peak.clamp_min(1e-12)\n",
+    "typical = peak_ratio[all_echo].median()\n",
+    "distance = torch.where(all_echo, (peak_ratio - typical).abs(), torch.inf)\n",
+    "layer, neuron = divmod(int(distance.argmin()), D_MLP)\n",
+    "print(\n",
+    "    f\"layer {layer}, neuron {neuron}: echo peak {sweep.echo_peak[layer, neuron]:.2f}, \"\n",
+    "    f\"gate-open peak {sweep.open_peak[layer, neuron]:.2f}\"\n",
+    ")\n",
+    "rows = [\n",
+    "    {\n",
+    "        \"pole\": \"top positive\",\n",
+    "        \"post\": round(float(v), 2),\n",
+    "        \"echo\": bool(e),\n",
+    "        \"context\": context(int(l)),\n",
+    "    }\n",
+    "    for v, e, l in zip(\n",
+    "        sweep.top_val[layer, neuron][:5],\n",
+    "        sweep.top_echo[layer, neuron][:5],\n",
+    "        sweep.top_loc[layer, neuron][:5],\n",
+    "    )\n",
+    "] + [\n",
+    "    {\n",
+    "        \"pole\": \"most negative\",\n",
+    "        \"post\": round(-float(v), 2),\n",
+    "        \"echo\": False,\n",
+    "        \"context\": context(int(l)),\n",
+    "    }\n",
+    "    for v, l in zip(sweep.bot_val[layer, neuron][:5], sweep.bot_loc[layer, neuron][:5])\n",
+    "]\n",
+    "with pd.option_context(\"display.max_colwidth\", 100):\n",
+    "    display(pd.DataFrame(rows))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "8d888cca",
+   "metadata": {},
+   "source": [
+    "Three of its five strongest positive activations are the *F* of °F, so a dashboard would call it a Fahrenheit neuron. All five are echoes. The gate-open negative pole is about twice as large and reads differently: the last word of an organization or military-unit name (labor *force*, Clemes *College*, No. 224 Group *RAF*, No. 38 *Squadron*). Labeling this neuron from its top positive examples would describe its echo and miss what it does with the gate open."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "a85dab39",
+   "metadata": {},
+   "source": [
+    "## How large is the echo?\n",
+    "\n",
+    "For each echo-dominated neuron, divide its echo peak by its gate-open peak. The essay's worked example (Qwen3-32B L1/N20736) sits under 0.08. Neurons whose gate never opened have no gate-open peak, so they are counted separately."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "8e898e36",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:17:28.523230Z",
+     "iopub.status.busy": "2026-10-22T16:17:28.522597Z",
+     "iopub.status.idle": "2026-10-22T16:17:28.635721Z",
+     "shell.execute_reply": "2026-10-22T16:17:28.635721Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "echo / gate-open peak over echo-dominated neurons: p25 0.26, median 0.47, p75 0.88\n",
+      "share under 0.08: 3%\n",
+      "echo-dominated neurons whose gate never opened: 17\n"
+     ]
+    },
+    {
+     "data": {
+      "image/png": "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FmXE35X4G5d1SERERNbAwImIiIjIRQyciIiIiLwxcBo9erReJ6p3794OF+Ps3r275MmTR7Jnzy4vvPCCXLhwwa3lJCIiIu/kMYHTzp075ZNPPtErldvr06ePLFu2TBYvXiwbN26Us2fPSsuWLcXTBeQqKGEvv69DIiIisgaPCJxu3Lghbdu2lU8//VRy5cplez0qKkpmzpypt3h58sknpVq1ajJ79mzZsmWLbNu2TTyZb1BWCS5SUYdERERkDR4ROKEprlmzZtKoUSOH13ft2iV37txxeL1s2bJSpEgR2bp1a7KfFxsbK9HR0Q4Pq7l7/ZJc3ThHh0RERGQNlg+cFi5cKLt375ZRo0YlGXf+/HkJDAyUnDlzOrweFham45KDzwoNDbU9ChcuLFYTf/OaRG/7WodERERkDZa+5cqZM2ekV69esnr1agkODk63zx04cKD07dvX9hw1TlYMnojcrdiAH+5p+lOjm2VYWYiIrMDSNU5oirt48aJUrVpV/P399YEE8EmTJun/qFmKi4uTa9cca2XQqy48PDzZzw0KCpIcOXI4PIiIiIg8usapYcOGsm/fPofXOnbsqHlM/fv311qigIAAWbt2rV6GAI4cOSKnT5+WWrVquanURN5Vi0RERB4SOIWEhMgjjzzi8Fq2bNn0mk3m6506ddJmt9y5c2vNUc+ePTVoqlmzpngyvyw5JHvFxjokIjYbEpE1WDpwcsWECRPE19dXa5zQWy4iIkKmTp0qns4/NL/kafqmu4tBREREnhw4bdiwweE5ksanTJmiD2+ScCdW7l47L/45w8U3IMjdxSEiIiKrJ4dnZncun5Fzs7rrkIiIiKyBgRMRERGRixg4EREREbmIgRMRERGRixg4WZSPj4+In///hkRERGQJHterLrMIDCspRd9e6u5iEBERkR3WOBERERG5iDVOFnXn0hm5tHyc5H3mbQnIyxsQk2fgTYGJyNuxxsmiEu7GStyFEzokIiIia2DgREREROQiBk5ERERELmLgREREROQiBk4WhZv75m0xQIdERERkDexVZ1F+wdklW9k67i4GkaV64XlqWU6NbpZhn01EDxZrnCwq/uZVid6xRIdERERkDQycLOru9ctydf1MHRIREZE1sKkukzVHEBERUdqxxomIiIjIRQyciIiIiFzEwMmifIOySZZSj+uQiIiIrIE5ThYVkKuA5H9hiLuLQURERJ4SOI0aNUq+/fZbOXz4sGTJkkVq164tY8aMkTJlytimiYmJkbfeeksWLlwosbGxEhERIVOnTpWwsDDxZEb8XUmIvak1Tj5+ll5NRJbEThlElOma6jZu3Cjdu3eXbdu2yerVq+XOnTvSuHFjuXnzpm2aPn36yLJly2Tx4sU6/dmzZ6Vly5bi6eL+OSV/TW6rQyIiIrIGS1dlrFy50uH5nDlzJH/+/LJr1y7517/+JVFRUTJz5kxZsGCBPPnkkzrN7NmzpVy5chps1axZ0+nnomYKD1N0dHQGzwkRERF5A0sHTokhUILcuXPrEAEUaqEaNWpkm6Zs2bJSpEgR2bp1a7KBE5oAIyMjH1CpiYgytpmRt3QhenAs3VRnLyEhQXr37i1PPPGEPPLII/ra+fPnJTAwUHLmzOkwLfKbMC45AwcO1CDMfJw5cybDy09ERESez2NqnJDrtH//ftm0adN9f1ZQUJA+iIiIiLwucOrRo4csX75cfv75ZylUqJDt9fDwcImLi5Nr16451DpduHBBx3mywPzFpXDvReITwACPiNIPmwGJvLipzjAMDZqWLFki69atk+LFizuMr1atmgQEBMjatWttrx05ckROnz4ttWrVEk/m4+snvkFZdUhERETW4G/15jn0mPvuu+8kJCTElrcUGhqq13XCsFOnTtK3b19NGM+RI4f07NlTg6bkEsM9xZ0rf8uV1dMl91P/kYDcD7m7OERERGT1wGnatGk6rF+/vsPruORAhw4d9P8JEyaIr6+vvPDCCw4XwPR0CXG3JebUbzokIiIia/C3elNdaoKDg2XKlCn6ICIiIsq0gRMRkTfg7V+IvIelk8OJiIiIrIQ1ThblnyOfJoZjSEREvJQCWQMDJ4vyyxoqIVWfcXcxiIgyDJswyROxqc6i4m9flxsH1uuQiIiIrIGBk0Xdjbogl5d/qEMiIiKyBjbVERF5ODZ5ET04rHEiIiIichFrnIiIKN2w9ou8HWucLMo3IFgCC5bRIREREVkDa5wsKiBPISnQ7kN3F4OIiIjsMHAiIqJksektfZbLqdHN+CvzEmyqs6jY88flzzHP6JCIiIisgTVOREQkmb1WiDVC5CoGTkRElOlldJNkRgZxGV12BpWO2FRHRERE5CLWOBEREVkIE/KtjYGTRQXmLSIFu8wQ/5C87i4KERER/R8GThbl4x8oAbkKursYREREZIeBk0XduXZeon75QkLrviIBOcPdXRwiIqJUZYZmRq9JDp8yZYoUK1ZMgoODpUaNGrJjxw7xZAkxN+TmwQ06JCIiImvwihqnr776Svr27SvTp0/XoGnixIkSEREhR44ckfz587u7eERERB4rM9QiZboap/Hjx0vnzp2lY8eOUr58eQ2gsmbNKrNmzXJ30YiIiMiLeHyNU1xcnOzatUsGDhxoe83X11caNWokW7dudfqe2NhYfZiioqJ0GB0dnSFlTIi9de/viYuxDdPyfiIiIm8TnUHHafNzDcPw/sDp0qVLEh8fL2FhYQ6v4/nhw4edvmfUqFESGRmZ5PXChQuL1Vz8coC7i0BERGQJoRMz9vOvX78uoaGh3h04pQVqp5ATZUpISJArV65Injx5xMfH574iVgRfZ86ckRw5cog347x6p8y0XjPb/HJevRPXa/pATROCpoIFU78MkMcHTnnz5hU/Pz+5cOGCw+t4Hh7uvBt/UFCQPuzlzJkz3cqEHbC374RNnFfvlJnWa2abX86rd+J6vX+p1TR5TXJ4YGCgVKtWTdauXetQg4TntWrVcmvZiIiIyLt4fI0ToNmtffv2Ur16dXn88cf1cgQ3b97UXnZERERE6cUrAqeXXnpJ/vnnHxkyZIicP39eKleuLCtXrkySMJ7R0Pz33nvvJWkG9EacV++UmdZrZptfzqt34np98HwMV/reEREREZHn5zgRERERPSgMnIiIiIhcxMCJiIiIyEUMnIiIiIhcxMApFVOmTJFixYpJcHCw1KhRQ3bs2JHi9IsXL5ayZcvq9I8++qisWLHCYTxy8dH7r0CBApIlSxa9p96xY8fE0+b1008/lbp160quXLn0gflIPH2HDh30Suz2jyZNmoinzeucOXOSzAfe543rtX79+knmFY9mzZpZfr3+/PPP0rx5c73yL8q0dOnSVN+zYcMGqVq1qvZMKlWqlK7r+90HWHFev/32W3nqqackX758eqFEXONu1apVDtMMHTo0yXrFvszT5hXr1NlvGD2uvW29OtsW8ahQoYKl1+uoUaPksccek5CQEMmfP78899xzcuTIkVTfZ5XjKwOnFHz11Vd6jSh0V969e7dUqlRJIiIi5OLFi06n37Jli7z88svSqVMn+e233/THgMf+/ftt04wdO1YmTZok06dP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",
+      "text/plain": [
+       "<Figure size 600x280 with 1 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "gate_opens = sweep.open_peak > 1e-3 * sweep.echo_peak\n",
+    "ratio = (sweep.echo_peak / sweep.open_peak)[echo_dominated & gate_opens]\n",
+    "q25, q50, q75 = ratio.quantile(torch.tensor([0.25, 0.5, 0.75])).tolist()\n",
+    "print(\n",
+    "    f\"echo / gate-open peak over echo-dominated neurons: p25 {q25:.2f}, median {q50:.2f}, p75 {q75:.2f}\"\n",
+    ")\n",
+    "print(f\"share under 0.08: {(ratio < 0.08).float().mean():.0%}\")\n",
+    "print(\n",
+    "    f\"echo-dominated neurons whose gate never opened: {int((echo_dominated & ~gate_opens).sum())}\"\n",
+    ")\n",
+    "\n",
+    "fig, ax = plt.subplots(figsize=(6, 2.8))\n",
+    "ax.hist(ratio.clamp(max=2).numpy(), bins=40)\n",
+    "ax.axvline(0.08, color=\"black\", linestyle=\"--\", linewidth=1, label=\"essay's example (< 0.08)\")\n",
+    "ax.legend()\n",
+    "ax.set_xlabel(\"echo peak / gate-open peak (clamped at 2)\")\n",
+    "ax.set_ylabel(\"neurons\")\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0857f2e9",
+   "metadata": {},
+   "source": [
+    "For most echo-dominated neurons the echo is a sizeable fraction of the gate-open peak, and the bar at 2 collects neurons whose echo is more than twice their gate-open peak.\n",
+    "\n",
+    "## Does the model use the echo?\n",
+    "\n",
+    "`remove_closed_hooks` zeroes a neuron's output wherever its gate is closed and the output has the chosen sign. Removing the positive sign removes the echo. Each condition is compared with the unmodified model's next-token loss on the held-out test rows:\n",
+    "\n",
+    "- **echo, all neurons**: the essay's network-wide ablation, as we read it;\n",
+    "- **closed negatives, all neurons**: a control with the same gate state and the opposite sign, which asks whether the whole closed regime carries signal;\n",
+    "- **echo, echo-dominated neurons**: only the neurons the sweep selected;\n",
+    "- **echo, random neurons (matched echo)**: other neurons, drawn at random per layer until they carry as much echo on the test rows as the selected ones. Because the same amount of echo is removed, the gap to the previous row tests the selection itself."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "4d8a40b8",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2026-10-22T16:17:28.637747Z",
+     "iopub.status.busy": "2026-10-22T16:17:28.637747Z",
+     "iopub.status.idle": "2026-10-22T16:18:12.523175Z",
+     "shell.execute_reply": "2026-10-22T16:18:12.522168Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "random control: 4748 neurons carrying 1.01x the echo of the 1677 echo-dominated neurons\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "baseline loss: 3.227 over 4,064 predictions\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>removed</th>\n",
+       "      <th>Δ loss</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>echo, all neurons</td>\n",
+       "      <td>1.414</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>closed negatives, all neurons</td>\n",
+       "      <td>0.843</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>echo, echo-dominated neurons</td>\n",
+       "      <td>0.334</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>echo, random neurons (matched echo)</td>\n",
+       "      <td>0.033</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "                               removed  Δ loss\n",
+       "0                    echo, all neurons   1.414\n",
+       "1        closed negatives, all neurons   0.843\n",
+       "2         echo, echo-dominated neurons   0.334\n",
+       "3  echo, random neurons (matched echo)   0.033"
+      ]
+     },
+     "execution_count": 11,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "def remove_closed_hooks(neurons, sign):\n",
+    "    \"\"\"Hooks that zero post where the gate is closed and post has the given sign.\n",
+    "\n",
+    "    `neurons` is a [layer, neuron] mask; sign +1 removes the echo, -1 the closed negatives.\n",
+    "    \"\"\"\n",
+    "    gates, fwd_hooks = {}, []\n",
+    "    for layer in range(N_LAYERS):\n",
+    "        mask = neurons[layer].to(DEVICE)\n",
+    "        if not mask.any():\n",
+    "            continue\n",
+    "\n",
+    "        def keep_gate(tensor, hook, layer=layer):\n",
+    "            gates[layer] = tensor\n",
+    "\n",
+    "        def edit(tensor, hook, layer=layer, mask=mask):\n",
+    "            closed = gates.pop(layer) < 0\n",
+    "            return tensor.masked_fill(closed & (tensor * sign > 0) & mask, 0)\n",
+    "\n",
+    "        fwd_hooks += [\n",
+    "            (f\"blocks.{layer}.mlp.hook_pre\", keep_gate),\n",
+    "            (f\"blocks.{layer}.mlp.hook_post\", edit),\n",
+    "        ]\n",
+    "    return fwd_hooks\n",
+    "\n",
+    "\n",
+    "def mean_loss(fwd_hooks):\n",
+    "    total, count = 0.0, 0\n",
+    "    with model.hooks(fwd_hooks=fwd_hooks):\n",
+    "        for start in range(0, len(eval_rows), BATCH):\n",
+    "            tokens = eval_rows[start : start + BATCH].to(DEVICE)\n",
+    "            logits = model(tokens)\n",
+    "            nll = F.cross_entropy(\n",
+    "                logits[:, SKIP:-1].flatten(0, 1).float(),\n",
+    "                tokens[:, SKIP + 1 :].flatten(),\n",
+    "                reduction=\"sum\",\n",
+    "            )\n",
+    "            total, count = total + nll.item(), count + tokens[:, SKIP + 1 :].numel()\n",
+    "    return total / count\n",
+    "\n",
+    "\n",
+    "# Echo each neuron would lose on the test rows, at every position (the hooks edit every position).\n",
+    "echo_mass = torch.zeros(N_LAYERS, D_MLP)\n",
+    "\n",
+    "\n",
+    "def add_echo_mass(layer, gate, value, post):\n",
+    "    echo_mass[layer] += post.masked_fill(~((gate < 0) & (post > 0)), 0).sum((0, 1)).cpu()\n",
+    "\n",
+    "\n",
+    "for start in range(0, len(eval_rows), BATCH):\n",
+    "    run_with_gated_mlp(model, eval_rows[start : start + BATCH].to(DEVICE), add_echo_mass)\n",
+    "\n",
+    "# Control: per layer, other neurons in random order until they carry as much echo as the\n",
+    "# selected ones, so the comparison tests the selection rather than the amount removed.\n",
+    "generator = torch.Generator().manual_seed(0)\n",
+    "random_neurons = torch.zeros_like(echo_dominated)\n",
+    "for layer in range(N_LAYERS):\n",
+    "    target = echo_mass[layer][echo_dominated[layer]].sum()\n",
+    "    if target == 0:\n",
+    "        continue\n",
+    "    pool = (~echo_dominated[layer]).nonzero().squeeze(-1)\n",
+    "    pool = pool[torch.randperm(len(pool), generator=generator)]\n",
+    "    n = int((echo_mass[layer][pool].cumsum(0) < target).sum()) + 1\n",
+    "    random_neurons[layer, pool[:n]] = True\n",
+    "print(\n",
+    "    f\"random control: {int(random_neurons.sum())} neurons carrying \"\n",
+    "    f\"{echo_mass[random_neurons].sum() / echo_mass[echo_dominated].sum():.2f}x the echo of \"\n",
+    "    f\"the {int(echo_dominated.sum())} echo-dominated neurons\"\n",
+    ")\n",
+    "\n",
+    "everyone = torch.ones_like(echo_dominated)\n",
+    "conditions = {\n",
+    "    \"echo, all neurons\": remove_closed_hooks(everyone, +1),\n",
+    "    \"closed negatives, all neurons\": remove_closed_hooks(everyone, -1),\n",
+    "    \"echo, echo-dominated neurons\": remove_closed_hooks(echo_dominated, +1),\n",
+    "    \"echo, random neurons (matched echo)\": remove_closed_hooks(random_neurons, +1),\n",
+    "}\n",
+    "baseline = mean_loss([])\n",
+    "print(f\"baseline loss: {baseline:.3f} over {len(eval_rows) * (SEQ_LEN - SKIP - 1):,} predictions\")\n",
+    "pd.DataFrame(\n",
+    "    [\n",
+    "        {\"removed\": name, \"Δ loss\": round(mean_loss(hooks) - baseline, 3)}\n",
+    "        for name, hooks in conditions.items()\n",
+    "    ]\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "e7b5cb6f",
+   "metadata": {},
+   "source": [
+    "Removing the echo raises loss, both network-wide and from the selected neurons alone. Removing the same amount of echo from random neurons costs far less. At this size, the model uses its closed-gate outputs.\n",
+    "\n",
+    "## Full-size results\n",
+    "\n",
+    "The same procedure with larger budgets: 261k–264k validation tokens per neuron, and 65,024 held-out test predictions. SmolLM2-135M and Qwen3-0.6B ran in float32 and Qwen3-1.7B in bfloat16. Δ loss is in nats per token.\n",
+    "\n",
+    "| | SmolLM2-135M | Qwen3-0.6B | Qwen3-1.7B |\n",
+    "| --- | ---: | ---: | ---: |\n",
+    "| Neurons whose top-20 is ≥ 90% echo | 1.32% | 2.90% | 2.84% |\n",
+    "| Echo / gate-open peak (median, those neurons) | 0.343 | 0.448 | 0.415 |\n",
+    "| Δ loss, echo removed, all neurons | +1.45 | +2.09 | +1.62 |\n",
+    "| Δ loss, closed negatives removed, all neurons | +0.90 | +2.34 | +1.89 |\n",
+    "| Δ loss, echo removed, echo-dominated neurons | +0.21 | +1.31 | +0.53 |\n",
+    "| Δ loss, echo removed, random neurons with matched echo | +0.018 | +0.013 | +0.030 |\n",
+    "\n",
+    "In the Qwen3 models, layer 1 holds many echo-dominated neurons, and some neurons never open their gate. The split below separates them. Each cell gives Δ loss, then the matched-echo random control in parentheses, then the number of neurons. The first two groups overlap (layer 1 contains some never-open neurons), and \"Neither\" excludes both.\n",
+    "\n",
+    "| | SmolLM2-135M | Qwen3-0.6B | Qwen3-1.7B |\n",
+    "| --- | ---: | ---: | ---: |\n",
+    "| Layer 1 | +0.006 (+0.001) · 7 | +0.088 (+0.006) · 542 | +0.040 (+0.014) · 1,983 |\n",
+    "| Gate never opens | +0.003 (+0.000) · 2 | +0.366 (−0.003) · 108 | +0.036 (+0.008) · 610 |\n",
+    "| Neither | +0.180 (+0.017) · 597 | +0.257 (+0.003) · 1,899 | +0.259 (+0.046) · 2,830 |\n",
+    "\n",
+    "Every group costs more than its matched control, but where the cost sits differs by model:\n",
+    "\n",
+    "- **SmolLM2-135M.** Almost all echo-dominated neurons fall in neither group, and that group carries the cost.\n",
+    "- **Qwen3-0.6B.** The 108 never-open neurons cost the most (+0.366), more than the 1,899 neurons in neither group (+0.257). For those neurons every positive output is an echo, so removing the echo silences their positive side entirely.\n",
+    "- **Qwen3-1.7B.** Most of the cost sits in neither group (+0.259). Layer 1 and the never-open neurons each cost about +0.04, closer to their controls.\n",
+    "\n",
+    "## Reading the results\n",
+    "\n",
+    "- **The echo distorts labels.** A neuron whose top-k is all echoes is described by its echo. Before labeling a neuron from its max-activating examples, tag the regime, and read the gate-open negative pole.\n",
+    "- **\"Small\" is model-specific.** Here the echo is a third to a half of the gate-open peak, far above the essay's example. Check the ratio on your model before treating the echo as noise.\n",
+    "- **Removal is not free at these sizes.** The essay reports that network-wide ablation raised most benchmarks but lowered some reasoning ones, on much larger models. Within Qwen3 the cost falls from 0.6B to 1.7B, but two sizes are not a trend.\n",
+    "- **Effects are not additive.** In Qwen3-0.6B the three groups cost about 0.71 nats separately but 1.31 together, so report exactly which neurons were edited.\n",
+    "- **Match controls on what was removed.** A random control with the same number of neurons removes much less echo. Matching on removed echo raises the control's cost (SmolLM2: +0.002 to +0.018), so a count-matched control overstates the selection effect.\n",
+    "- **Budgets matter.** Top-k shares fall as the sweep grows, so compare models at matched token counts."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "transformer-lens",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.12.10"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

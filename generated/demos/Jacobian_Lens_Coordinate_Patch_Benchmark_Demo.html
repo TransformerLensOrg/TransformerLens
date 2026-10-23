@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Backward Lens" href="../../content/backward_lens.html" /><link rel="prev" title="Jacobian Lens: sparse decomposition in J-space" href="Jacobian_Lens_Decomposition_Demo.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Debugging Numerical Divergence" href="../../content/debugging_numerical_divergence.html" /><link rel="prev" title="Jacobian Lens: sparse decomposition in J-space" href="Jacobian_Lens_Decomposition_Demo.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>Coordinate-patch causal-swap benchmark - TransformerLens Documentation</title>
@@ -471,6 +471,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe.html">transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.raven.html">transformer_lens.model_bridge.supported_architectures.raven module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.recurrent_gemma.html">transformer_lens.model_bridge.supported_architectures.recurrent_gemma module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.roberta.html">transformer_lens.model_bridge.supported_architectures.roberta module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.rwkv.html">transformer_lens.model_bridge.supported_architectures.rwkv module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.rwkv7.html">transformer_lens.model_bridge.supported_architectures.rwkv7 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.model_bridge.supported_architectures.seed_oss.html">transformer_lens.model_bridge.supported_architectures.seed_oss module</a></li>
@@ -507,18 +508,15 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../code/transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../code/transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.interchange.html">transformer_lens.tools.analysis.interchange module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.logit_lens.html">transformer_lens.tools.analysis.logit_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -618,9 +616,12 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Coordinate-patch causal-swap benchmark</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="Main_Demo.html#Introduction">Introduction</a></li>
@@ -696,7 +697,7 @@ concept mattered” from “any coordinate edit of this magnitude would have mat
 <li><p><strong>Exact Clopper-Pearson intervals.</strong> Every reported success rate carries an exact 95% interval, not a bare point estimate. A percentile bootstrap cannot express uncertainty about an all-failure sample: it collapses to <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0]</span></code> whether the run had one trial or a thousand, whereas the exact upper bound for 0 of 6 is 0.46.</p></li>
 </ul>
 <p>Each trial installs <code class="docutils literal notranslate"><span class="pre">coordinate_patch_hooks</span></code> at exactly <strong>one</strong> layer and the final prompt position – a single-layer intervention, not a multi-layer band. A trial whose source concept is not active in that layer’s support, or whose layer admits no displacement-matched control, is recorded as skipped, not silently dropped and not counted as a failure. Because several trials can share one prompt, the pooled rate also travels with the number of independent prompts behind it.</p>
-<p><strong>This notebook loads a frozen artifact and never calls the model.</strong> The artifact was generated once, out-of-band, by running the benchmark’s CLI entry point; see the load cell below for the exact command. Re-running the sweep is a separate, explicit step, not something this notebook triggers.</p>
+<p><strong>This notebook loads a frozen artifact and never calls the model.</strong> The artifact was generated once, out-of-band, by <code class="docutils literal notranslate"><span class="pre">scripts/jacobian_lens_causal_swap_benchmark.py</span></code>; the load cell below names the exact command. Re-running the sweep is a separate, explicit step, not something this notebook triggers.</p>
 <div class="nbinput docutils container">
 <div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
 </pre></div>
@@ -721,14 +722,18 @@ Running locally
 <div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.tools.analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_artifact</span><span class="p">,</span> <span class="n">success_rate_ci</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.utilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">success_rate_ci</span>
 
 <span class="n">ARTIFACT_NAME</span> <span class="o">=</span> <span class="s2">&quot;jacobian_lens_causal_swap_benchmark_gpt2.json&quot;</span>
+<span class="n">SCHEMA_VERSION</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">RESULT_BLOCKS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;trials&quot;</span><span class="p">,</span> <span class="s2">&quot;excluded_baselines&quot;</span><span class="p">,</span> <span class="s2">&quot;real_success_ci&quot;</span><span class="p">,</span> <span class="s2">&quot;control_success_ci&quot;</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_find_artifact</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
@@ -747,15 +752,30 @@ Running locally
         <span class="s2">&quot;directory. This notebook requires a repository checkout: it loads a frozen &quot;</span>
         <span class="s2">&quot;artifact that is not packaged in the transformer_lens wheel. Clone the repository &quot;</span>
         <span class="s2">&quot;and run the notebook from within it, or regenerate the artifact with &quot;</span>
-        <span class="s2">&quot;`uv run python -m transformer_lens.tools.analysis.&quot;</span>
-        <span class="s2">&quot;jacobian_lens_causal_swap_benchmark_cli`.&quot;</span>
+        <span class="s2">&quot;`uv run python scripts/jacobian_lens_causal_swap_benchmark.py`.&quot;</span>
     <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fingerprint</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;SHA-256 over canonical JSON, the same recipe the generation script uses.&quot;&quot;&quot;</span>
+    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
 
 
 <span class="n">ARTIFACT_PATH</span> <span class="o">=</span> <span class="n">_find_artifact</span><span class="p">()</span>
 <span class="n">REPO_ROOT</span> <span class="o">=</span> <span class="n">ARTIFACT_PATH</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
-<span class="n">artifact</span> <span class="o">=</span> <span class="n">load_artifact</span><span class="p">(</span><span class="n">ARTIFACT_PATH</span><span class="p">)</span>
+<span class="n">artifact</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">ARTIFACT_PATH</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
 <span class="n">manifest</span> <span class="o">=</span> <span class="n">artifact</span><span class="p">[</span><span class="s2">&quot;protocol_manifest&quot;</span><span class="p">]</span>
+<span class="c1"># Recomputed rather than trusted, so a hand-edited artifact or one from another schema fails</span>
+<span class="c1"># here instead of rendering as if the script had produced it.</span>
+<span class="n">expected</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;schema_version&quot;</span><span class="p">:</span> <span class="n">SCHEMA_VERSION</span><span class="p">,</span>
+    <span class="s2">&quot;protocol_fingerprint&quot;</span><span class="p">:</span> <span class="n">_fingerprint</span><span class="p">(</span><span class="n">manifest</span><span class="p">),</span>
+    <span class="s2">&quot;results_fingerprint&quot;</span><span class="p">:</span> <span class="n">_fingerprint</span><span class="p">({</span><span class="n">key</span><span class="p">:</span> <span class="n">artifact</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">RESULT_BLOCKS</span><span class="p">}),</span>
+<span class="p">}</span>
+<span class="k">for</span> <span class="n">field</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">expected</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">if</span> <span class="n">artifact</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="o">!=</span> <span class="n">value</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;artifact </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> is </span><span class="si">{</span><span class="n">artifact</span><span class="p">[</span><span class="n">field</span><span class="p">]</span><span class="si">!r}</span><span class="s2">, expected </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;artifact=</span><span class="si">{</span><span class="n">ARTIFACT_PATH</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">REPO_ROOT</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;schema_version=</span><span class="si">{</span><span class="n">artifact</span><span class="p">[</span><span class="s1">&#39;schema_version&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;protocol_fingerprint=</span><span class="si">{</span><span class="n">artifact</span><span class="p">[</span><span class="s1">&#39;protocol_fingerprint&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
@@ -1247,12 +1267,12 @@ pooled rate rests on 1 independent prompt(s); executed layers [9, 10] of swept [
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../../content/backward_lens.html">
+          <a class="next-page" href="../../content/debugging_numerical_divergence.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Backward Lens</div>
+                <div class="title">Debugging Numerical Divergence</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

@@ -64,9 +64,12 @@ content/projection_kernel
 content/jacobian_lens_fitting
 generated/demos/Jacobian_Lens_Decomposition_Demo
 generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo
-content/backward_lens
 content/debugging_numerical_divergence
 content/sparse_probing
+content/interchange_interventions
+generated/demos/SVD_Circuits_Demo
+generated/demos/SwiGLU_Gate_Sign_Demo
+generated/demos/Backward_Lens_Demo
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 content/special_cases

@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.backward_lens module" href="transformer_lens.tools.analysis.backward_lens.html" /><link rel="prev" title="transformer_lens.tools.analysis package" href="transformer_lens.tools.analysis.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.direct_logit_attribution module" href="transformer_lens.tools.analysis.direct_logit_attribution.html" /><link rel="prev" title="transformer_lens.tools.analysis package" href="transformer_lens.tools.analysis.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.attribution_patching module - TransformerLens Documentation</title>
@@ -470,6 +470,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe.html">transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.raven.html">transformer_lens.model_bridge.supported_architectures.raven module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.recurrent_gemma.html">transformer_lens.model_bridge.supported_architectures.recurrent_gemma module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.roberta.html">transformer_lens.model_bridge.supported_architectures.roberta module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.rwkv.html">transformer_lens.model_bridge.supported_architectures.rwkv module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.rwkv7.html">transformer_lens.model_bridge.supported_architectures.rwkv7 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.seed_oss.html">transformer_lens.model_bridge.supported_architectures.seed_oss module</a></li>
@@ -506,18 +507,15 @@
 <li class="toctree-l3 current has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.attribution_patching module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.interchange.html">transformer_lens.tools.analysis.interchange module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.logit_lens.html">transformer_lens.tools.analysis.logit_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -617,9 +615,12 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -685,8 +686,7 @@ forward whose backward hooks capture <code class="docutils literal notranslate">
 its gradient), and scores each node with the
 first-order Taylor estimate <code class="docutils literal notranslate"><span class="pre">effect(node)</span> <span class="pre">=</span> <span class="pre">(a_clean</span> <span class="pre">-</span> <span class="pre">a_corrupt)</span> <span class="pre">.</span> <span class="pre">g</span></code>. Scores
 over a batch of clean/corrupt pairs are averaged before ranking.</p>
-<p>Only the <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> API is targeted; TransformerLens v4 deprecates
-<code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code>.</p>
+<p>Only the <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> API is targeted.</p>
 <p>Sign/direction convention (denoising form): the gradient is taken on the
 <em>corrupt</em> run and the estimate points <em>toward</em> the clean activation, so a
 positive score means patching that node from corrupt toward clean moves the
@@ -696,10 +696,14 @@ onto a pinned reference rather than assuming the two agree.</p>
 Retaining gradients at every hook point roughly doubles cache memory, so callers
 should filter to the hook families their analysis actually reads.</p>
 <p>Scope: this build ships node and edge granularity with plain attribution
-(<code class="docutils literal notranslate"><span class="pre">ig_steps=1</span></code>). The integrated-gradient path (EAP-IG, <code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code>) and
-ablate-outside faithfulness are not implemented yet; their API is declared here,
-and <code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code> raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NotImplementedError</span></code>, so downstream code can pin
+(<code class="docutils literal notranslate"><span class="pre">ig_steps=1</span></code>), plus ablate-outside faithfulness. The integrated-gradient path
+(EAP-IG, <code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code>) is not implemented yet; its API is declared here, and
+<code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code> raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NotImplementedError</span></code>, so downstream code can pin
 against a stable surface now.</p>
+<p>Faithfulness intervenes rather than estimating: it ablates every edge outside a
+candidate circuit and reports how much of the clean-to-corrupt metric gap the
+circuit recovers. Because the residual stream is a running sum and the reader
+hooks fire before the layer norm, each reader’s input is rebuilt exactly.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.AttributionResult">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.attribution_patching.</span></span><span class="sig-name descname"><span class="pre">AttributionResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">node_scores:</span> <span class="pre">dict[~transformer_lens.tools.analysis.attribution_patching.Node,</span> <span class="pre">float],</span> <span class="pre">edge_scores:</span> <span class="pre">dict[tuple[~transformer_lens.tools.analysis.attribution_patching.Node,</span> <span class="pre">~transformer_lens.tools.analysis.attribution_patching.Node],</span> <span class="pre">float]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.AttributionResult" title="Link to this definition">¶</a></dt>
@@ -791,7 +795,7 @@ which overlap: the method is fully determined by <code class="docutils literal n
 <p>This build implements node and edge granularity with plain attribution.
 <code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code> is accepted by the type but raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NotImplementedError</span></code>
 at construction, so downstream code can import and reference this API now
-while the integrated-gradient path is not implemented yet. Once EAP-IG lands,
+while the integrated-gradient path is not implemented. Once EAP-IG lands,
 the default flips to <code class="docutils literal notranslate"><span class="pre">ig_steps=5</span></code> (EAP-IG is the faithful default); until
 then the default is the only executable value, <code class="docutils literal notranslate"><span class="pre">ig_steps=1</span></code>.</p>
 <dl class="py attribute">
@@ -824,6 +828,156 @@ then the default is the only executable value, <code class="docutils literal not
 <dl class="py attribute">
 <dt class="sig sig-object py" id="id3">
 <span class="sig-name descname"><span class="pre">ig_steps</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="headerlink" href="#id3" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.attribution_patching.</span></span><span class="sig-name descname"><span class="pre">FaithfulnessConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ablation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'corrupt'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mean'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'corrupt'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Configuration for an ablate-outside faithfulness measurement.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig.ablation">
+<span class="sig-name descname"><span class="pre">ablation</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig.ablation" title="Link to this definition">¶</a></dt>
+<dd><p>How an out-of-circuit edge’s writer is replaced.
+<code class="docutils literal notranslate"><span class="pre">&quot;corrupt&quot;</span></code> (default) substitutes the corrupt run’s own contribution;
+<code class="docutils literal notranslate"><span class="pre">&quot;mean&quot;</span></code> substitutes that writer’s mean over the held-out
+<code class="docutils literal notranslate"><span class="pre">mean_tokens</span></code> batch passed to <a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.faithfulness" title="transformer_lens.tools.analysis.attribution_patching.faithfulness"><code class="xref py py-func docutils literal notranslate"><span class="pre">faithfulness()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Literal[‘corrupt’, ‘mean’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id4">
+<span class="sig-name descname"><span class="pre">ablation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'corrupt'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mean'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'corrupt'</span></em><a class="headerlink" href="#id4" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.attribution_patching.</span></span><span class="sig-name descname"><span class="pre">FaithfulnessResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">recovered:</span> <span class="pre">float,</span> <span class="pre">full_metric:</span> <span class="pre">float,</span> <span class="pre">corrupt_metric:</span> <span class="pre">float,</span> <span class="pre">circuit_size:</span> <span class="pre">int,</span> <span class="pre">total_edges:</span> <span class="pre">int,</span> <span class="pre">edge_class_recovered:</span> <span class="pre">dict[~typing.Literal['into_qk',</span> <span class="pre">'into_v',</span> <span class="pre">'into_mlp',</span> <span class="pre">'into_logits'],</span> <span class="pre">float]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;,</span> <span class="pre">edge_class_counts:</span> <span class="pre">dict[~typing.Literal['into_qk',</span> <span class="pre">'into_v',</span> <span class="pre">'into_mlp',</span> <span class="pre">'into_logits'],</span> <span class="pre">int]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>How much of the clean-to-corrupt metric gap a candidate circuit recovers.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.recovered">
+<span class="sig-name descname"><span class="pre">recovered</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.recovered" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">(m_ablated</span> <span class="pre">-</span> <span class="pre">m_corrupt)</span> <span class="pre">/</span> <span class="pre">(m_clean</span> <span class="pre">-</span> <span class="pre">m_corrupt)</span></code>, a fraction
+(<code class="docutils literal notranslate"><span class="pre">1.0</span></code> = clean metric, <code class="docutils literal notranslate"><span class="pre">0.0</span></code> = corrupt metric); values outside
+<code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code> are possible, since a circuit can overshoot the clean run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.full_metric">
+<span class="sig-name descname"><span class="pre">full_metric</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.full_metric" title="Link to this definition">¶</a></dt>
+<dd><p>The clean run’s metric, the top of the gap.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.corrupt_metric">
+<span class="sig-name descname"><span class="pre">corrupt_metric</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.corrupt_metric" title="Link to this definition">¶</a></dt>
+<dd><p>The corrupt run’s metric, the bottom of the gap.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.circuit_size">
+<span class="sig-name descname"><span class="pre">circuit_size</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.circuit_size" title="Link to this definition">¶</a></dt>
+<dd><p>Number of edges kept.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.total_edges">
+<span class="sig-name descname"><span class="pre">total_edges</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.total_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.edge_class_recovered">
+<span class="sig-name descname"><span class="pre">edge_class_recovered</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.edge_class_recovered" title="Link to this definition">¶</a></dt>
+<dd><p>Recovery after also removing this class’s retained
+edges, with the same replacements and gap; a class absent from the
+circuit has the aggregate recovery. Conditional dependence, not
+additive and not bounded to <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict[Literal[‘into_qk’, ‘into_v’, ‘into_mlp’, ‘into_logits’], float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.edge_class_counts">
+<span class="sig-name descname"><span class="pre">edge_class_counts</span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.edge_class_counts" title="Link to this definition">¶</a></dt>
+<dd><p>Full-graph edge counts per class, not retained counts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict[Literal[‘into_qk’, ‘into_v’, ‘into_mlp’, ‘into_logits’], int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id5">
+<span class="sig-name descname"><span class="pre">circuit_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id5" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id6">
+<span class="sig-name descname"><span class="pre">corrupt_metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id6" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id7">
+<span class="sig-name descname"><span class="pre">edge_class_counts</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'into_qk'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'into_v'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'into_mlp'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'into_logits'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id7" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id8">
+<span class="sig-name descname"><span class="pre">edge_class_recovered</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'into_qk'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'into_v'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'into_mlp'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'into_logits'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id8" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id9">
+<span class="sig-name descname"><span class="pre">full_metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id9" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id10">
+<span class="sig-name descname"><span class="pre">recovered</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#id10" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id11">
+<span class="sig-name descname"><span class="pre">total_edges</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#id11" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -867,18 +1021,18 @@ then the default is the only executable value, <code class="docutils literal not
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id4">
-<span class="sig-name descname"><span class="pre">activations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id4" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id12">
+<span class="sig-name descname"><span class="pre">activations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id12" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id5">
-<span class="sig-name descname"><span class="pre">gradients</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id5" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id13">
+<span class="sig-name descname"><span class="pre">gradients</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id13" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id6">
-<span class="sig-name descname"><span class="pre">metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id6" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="id14">
+<span class="sig-name descname"><span class="pre">metric</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tensor</span></em><a class="headerlink" href="#id14" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -998,7 +1152,11 @@ the one to the logits reader).</p>
 <dd class="field-odd"><p><strong>ValueError</strong> – if <code class="docutils literal notranslate"><span class="pre">clean</span></code>/<code class="docutils literal notranslate"><span class="pre">corrupt</span></code> are not 2D, hold a different number of
     pairs, a pair tokenizes to different lengths (activations must align
     position-by-position), or the model or one of its submodules is in
-    training mode.</p>
+    training mode. At edge granularity, also if per-head attention outputs
+    are normalized or scaled before the residual add (post-norm,
+    scaled-residual or parallel-mixer blocks), where <code class="docutils literal notranslate"><span class="pre">attn.hook_result</span></code> is not
+    a head’s residual contribution, or if an attention layer’s K/V head count
+    differs from <code class="docutils literal notranslate"><span class="pre">n_heads</span></code> (GQA/MQA).</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1055,6 +1213,35 @@ gradient <code class="docutils literal notranslate"><span class="pre">None</span
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.capture_writer_outputs">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.attribution_patching.</span></span><span class="sig-name descname"><span class="pre">capture_writer_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names_filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.capture_writer_outputs" title="Link to this definition">¶</a></dt>
+<dd><p>Capture writer contributions in one forward-only pass, with no gradient retained.</p>
+<p>Memory caveat: <code class="docutils literal notranslate"><span class="pre">attn.hook_result</span></code> is a per-head <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq,</span> <span class="pre">n_heads,</span> <span class="pre">d_model]</span></code>
+tensor, so this does not scale to models with many heads or layers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> (or compatible) exposing <code class="docutils literal notranslate"><span class="pre">cfg.n_layers</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hook_dict</span></code>, and the <code class="docutils literal notranslate"><span class="pre">hooks()</span></code> context manager.</p></li>
+<li><p><strong>tokens</strong> – Input token ids for a single forward pass.</p></li>
+<li><p><strong>names_filter</strong> – Restricts which hook points are captured. <code class="docutils literal notranslate"><span class="pre">None</span></code> (the
+default) captures <code class="docutils literal notranslate"><span class="pre">hook_embed</span></code>, <code class="docutils literal notranslate"><span class="pre">attn.hook_result</span></code> and
+<code class="docutils literal notranslate"><span class="pre">hook_mlp_out</span></code>. Gated points (<code class="docutils literal notranslate"><span class="pre">attn.hook_result</span></code>, the split-QKV
+inputs, <code class="docutils literal notranslate"><span class="pre">hook_mlp_in</span></code>) raise in <code class="docutils literal notranslate"><span class="pre">add_hook</span></code> unless their
+<code class="docutils literal notranslate"><span class="pre">set_use_*</span></code> flag is on; see <code class="xref py py-func docutils literal notranslate"><span class="pre">_edge_hook_flags()</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Detached activation tensors keyed by hook name, for every hook point
+matching <code class="docutils literal notranslate"><span class="pre">names_filter</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – if <code class="docutils literal notranslate"><span class="pre">names_filter</span></code> matches no hook point.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.enumerate_edges">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.attribution_patching.</span></span><span class="sig-name descname"><span class="pre">enumerate_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.GradientCache" title="transformer_lens.tools.analysis.attribution_patching.GradientCache"><span class="pre">GradientCache</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node" title="transformer_lens.tools.analysis.attribution_patching.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node" title="transformer_lens.tools.analysis.attribution_patching.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.enumerate_edges" title="Link to this definition">¶</a></dt>
 <dd><p>Enumerate every writer -&gt; reader edge in the residual-stream graph.</p>
@@ -1090,7 +1277,7 @@ for edge granularity.</p></li>
 <dd class="field-even"><p>The edge list as <code class="docutils literal notranslate"><span class="pre">(writer,</span> <span class="pre">reader)</span></code> node pairs; no pair repeats.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – if any required hook point is absent from <code class="docutils literal notranslate"><span class="pre">cache</span></code> – the
+<dd class="field-odd"><p><strong>ValueError</strong> – if any required hook point is absent from <code class="docutils literal notranslate"><span class="pre">cache</span></code> — the
     graph is never silently truncated.</p>
 </dd>
 </dl>
@@ -1121,6 +1308,53 @@ tensor shapes; <code class="docutils literal notranslate"><span class="pre">n_la
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.tools.analysis.attribution_patching.faithfulness">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.attribution_patching.</span></span><span class="sig-name descname"><span class="pre">faithfulness</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">circuit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node" title="transformer_lens.tools.analysis.attribution_patching.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node" title="transformer_lens.tools.analysis.attribution_patching.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node" title="transformer_lens.tools.analysis.attribution_patching.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node" title="transformer_lens.tools.analysis.attribution_patching.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig" title="transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig"><span class="pre">FaithfulnessConfig</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">FaithfulnessConfig(ablation='corrupt')</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult" title="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult"><span class="pre">FaithfulnessResult</span></a></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.attribution_patching.faithfulness" title="Link to this definition">¶</a></dt>
+<dd><p>Measure how much of the clean-to-corrupt metric gap a circuit recovers.</p>
+<p>Ablates every edge <em>outside</em> <code class="docutils literal notranslate"><span class="pre">circuit</span></code> (forward-only, exact rather than linearized) and
+reports the metric the model then produces. Feed a ranked edge set straight in from
+<code class="docutils literal notranslate"><span class="pre">attribution_patch(...,</span> <span class="pre">config=EdgeAttributionConfig(granularity=&quot;edge&quot;)).top_edges(k=...)</span></code>.</p>
+<p>Under mean ablation recovery is still normalized to the clean/corrupt gap, so an empty
+circuit need not have zero recovery.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> (or compatible) exposing <code class="docutils literal notranslate"><span class="pre">cfg.n_layers</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hook_dict</span></code>, and <code class="docutils literal notranslate"><span class="pre">hooks()</span></code>.</p></li>
+<li><p><strong>clean</strong> – Clean token ids for one evaluated example, shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>.</p></li>
+<li><p><strong>corrupt</strong> – Paired corrupt token ids, shape <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">seq]</span></code>.</p></li>
+<li><p><strong>metric_fn</strong> – Maps single-example logits to a scalar.</p></li>
+<li><p><strong>circuit</strong> – The edges to keep, as <code class="docutils literal notranslate"><span class="pre">(writer,</span> <span class="pre">reader)</span></code> pairs or the
+<code class="docutils literal notranslate"><span class="pre">(writer,</span> <span class="pre">reader,</span> <span class="pre">score)</span></code> triples <code class="docutils literal notranslate"><span class="pre">top_edges</span></code> returns. Every
+other edge in the graph is ablated. Duplicate entries count once.</p></li>
+<li><p><strong>config</strong> – Ablation configuration. Defaults to replacing an ablated writer
+with the corrupt run’s own contribution.</p></li>
+<li><p><strong>mean_tokens</strong> – Required only for <code class="docutils literal notranslate"><span class="pre">ablation=&quot;mean&quot;</span></code>. Held-out <code class="docutils literal notranslate"><span class="pre">int32</span></code>/<code class="docutils literal notranslate"><span class="pre">int64</span></code>
+calibration token ids, <code class="docutils literal notranslate"><span class="pre">[n_calibration,</span> <span class="pre">seq]</span></code> at the evaluated length and
+on the clean/corrupt device; writer activations are averaged per position
+and head. Rows equal to either endpoint are rejected; avoid semantic leakage too.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A <a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult" title="transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">FaithfulnessResult</span></code></a>. The per-edge-class breakout costs one extra
+forward per retained class.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – if <code class="docutils literal notranslate"><span class="pre">clean</span></code>/<code class="docutils literal notranslate"><span class="pre">corrupt</span></code> are not 2D, hold a different number
+    of pairs, hold more than one pair, a pair tokenizes to different
+    lengths, the model or a submodule is in training mode, a circuit edge
+    is not in the graph, the clean and corrupt metrics are equal (so
+    the recovered fraction is undefined), mean calibration is missing,
+    empty, misaligned, on a different input device, has an unsupported
+    dtype, contains an evaluated endpoint, or is supplied in corrupt mode;
+    or per-head attention outputs are normalized or scaled before the
+    residual add (post-norm, scaled-residual or parallel-mixer blocks), or an
+    attention layer’s K/V head count differs from <code class="docutils literal notranslate"><span class="pre">n_heads</span></code> (GQA/MQA).</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
         </article>
@@ -1128,12 +1362,12 @@ tensor shapes; <code class="docutils literal notranslate"><span class="pre">n_la
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.tools.analysis.backward_lens.html">
+          <a class="next-page" href="transformer_lens.tools.analysis.direct_logit_attribution.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.tools.analysis.backward_lens module</div>
+                <div class="title">transformer_lens.tools.analysis.direct_logit_attribution module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -1195,13 +1429,35 @@ tensor shapes; <code class="docutils literal notranslate"><span class="pre">n_la
 <li><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">EdgeAttributionConfig.ig_steps</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig"><code class="docutils literal notranslate"><span class="pre">FaithfulnessConfig</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessConfig.ablation"><code class="docutils literal notranslate"><span class="pre">FaithfulnessConfig.ablation</span></code></a></li>
+<li><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">FaithfulnessConfig.ablation</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.recovered"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.recovered</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.full_metric"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.full_metric</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.corrupt_metric"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.corrupt_metric</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.circuit_size"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.circuit_size</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.total_edges"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.total_edges</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.edge_class_recovered"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.edge_class_recovered</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.FaithfulnessResult.edge_class_counts"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.edge_class_counts</span></code></a></li>
+<li><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.circuit_size</span></code></a></li>
+<li><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.corrupt_metric</span></code></a></li>
+<li><a class="reference internal" href="#id7"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.edge_class_counts</span></code></a></li>
+<li><a class="reference internal" href="#id8"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.edge_class_recovered</span></code></a></li>
+<li><a class="reference internal" href="#id9"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.full_metric</span></code></a></li>
+<li><a class="reference internal" href="#id10"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.recovered</span></code></a></li>
+<li><a class="reference internal" href="#id11"><code class="docutils literal notranslate"><span class="pre">FaithfulnessResult.total_edges</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.GradientCache"><code class="docutils literal notranslate"><span class="pre">GradientCache</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.GradientCache.activations"><code class="docutils literal notranslate"><span class="pre">GradientCache.activations</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.GradientCache.gradients"><code class="docutils literal notranslate"><span class="pre">GradientCache.gradients</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.GradientCache.metric"><code class="docutils literal notranslate"><span class="pre">GradientCache.metric</span></code></a></li>
-<li><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">GradientCache.activations</span></code></a></li>
-<li><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">GradientCache.gradients</span></code></a></li>
-<li><a class="reference internal" href="#id6"><code class="docutils literal notranslate"><span class="pre">GradientCache.metric</span></code></a></li>
+<li><a class="reference internal" href="#id12"><code class="docutils literal notranslate"><span class="pre">GradientCache.activations</span></code></a></li>
+<li><a class="reference internal" href="#id13"><code class="docutils literal notranslate"><span class="pre">GradientCache.gradients</span></code></a></li>
+<li><a class="reference internal" href="#id14"><code class="docutils literal notranslate"><span class="pre">GradientCache.metric</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.Node"><code class="docutils literal notranslate"><span class="pre">Node</span></code></a><ul>
@@ -1214,8 +1470,10 @@ tensor shapes; <code class="docutils literal notranslate"><span class="pre">n_la
 </li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.attribution_patch"><code class="docutils literal notranslate"><span class="pre">attribution_patch()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.cache_activation_and_gradient"><code class="docutils literal notranslate"><span class="pre">cache_activation_and_gradient()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.capture_writer_outputs"><code class="docutils literal notranslate"><span class="pre">capture_writer_outputs()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.enumerate_edges"><code class="docutils literal notranslate"><span class="pre">enumerate_edges()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.enumerate_nodes"><code class="docutils literal notranslate"><span class="pre">enumerate_nodes()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.tools.analysis.attribution_patching.faithfulness"><code class="docutils literal notranslate"><span class="pre">faithfulness()</span></code></a></li>
 </ul>
 </li>
 </ul>

@@ -133,6 +133,7 @@ Submodules
    transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe
    transformer_lens.model_bridge.supported_architectures.raven
    transformer_lens.model_bridge.supported_architectures.recurrent_gemma
+   transformer_lens.model_bridge.supported_architectures.roberta
    transformer_lens.model_bridge.supported_architectures.rwkv
    transformer_lens.model_bridge.supported_architectures.rwkv7
    transformer_lens.model_bridge.supported_architectures.seed_oss

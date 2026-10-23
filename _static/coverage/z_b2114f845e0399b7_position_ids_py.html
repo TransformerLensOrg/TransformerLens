@@ -55,8 +55,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">19 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">19<span class="text"> run</span></button>
+            <span class="text">22 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">22<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">0<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
             <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">0<span class="text"> partial</span></button>
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="z_b2114f845e0399b7_quantization_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-10-10 05:10 +0000
+            created at 2026-10-23 20:45 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -107,13 +107,18 @@
     <p class="run"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t">        <span class="nam">scaling</span> <span class="op">=</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">candidate</span><span class="op">,</span> <span class="str">"rope_scaling"</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">scaling</span><span class="op">,</span> <span class="nam">dict</span><span class="op">)</span> <span class="key">and</span> <span class="str">"mrope_section"</span> <span class="key">in</span> <span class="nam">scaling</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t">            <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t">    <span class="com"># A positional embedding that takes the mask derives positions for itself; only</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t">    <span class="com"># embeddings that override nn.Embedding.forward are worth inspecting.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t">    <span class="com"># fairseq-style (RoBERTa) embeddings start positions at padding_idx + 1; an injected</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t">    <span class="com"># 0-based arange would put content tokens on the reserved rows.</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t">    <span class="key">for</span> <span class="nam">module</span> <span class="key">in</span> <span class="nam">model</span><span class="op">.</span><span class="nam">modules</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">module</span><span class="op">,</span> <span class="nam">nn</span><span class="op">.</span><span class="nam">Embedding</span><span class="op">)</span> <span class="key">and</span> <span class="nam">type</span><span class="op">(</span><span class="nam">module</span><span class="op">)</span><span class="op">.</span><span class="nam">forward</span> <span class="key">is</span> <span class="key">not</span> <span class="nam">nn</span><span class="op">.</span><span class="nam">Embedding</span><span class="op">.</span><span class="nam">forward</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">            <span class="key">if</span> <span class="str">"attention_mask"</span> <span class="key">in</span> <span class="nam">inspect</span><span class="op">.</span><span class="nam">signature</span><span class="op">(</span><span class="nam">module</span><span class="op">.</span><span class="nam">forward</span><span class="op">)</span><span class="op">.</span><span class="nam">parameters</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">                <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">    <span class="key">return</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t">        <span class="key">if</span> <span class="nam">callable</span><span class="op">(</span><span class="nam">getattr</span><span class="op">(</span><span class="nam">module</span><span class="op">,</span> <span class="str">"create_position_ids_from_input_ids"</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">            <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t">    <span class="com"># A positional embedding that takes the mask derives positions for itself; only</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t32" href="#t32">32</a></span><span class="t">    <span class="com"># embeddings that override nn.Embedding.forward are worth inspecting.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t33" href="#t33">33</a></span><span class="t">    <span class="key">for</span> <span class="nam">module</span> <span class="key">in</span> <span class="nam">model</span><span class="op">.</span><span class="nam">modules</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t34" href="#t34">34</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">module</span><span class="op">,</span> <span class="nam">nn</span><span class="op">.</span><span class="nam">Embedding</span><span class="op">)</span> <span class="key">and</span> <span class="nam">type</span><span class="op">(</span><span class="nam">module</span><span class="op">)</span><span class="op">.</span><span class="nam">forward</span> <span class="key">is</span> <span class="key">not</span> <span class="nam">nn</span><span class="op">.</span><span class="nam">Embedding</span><span class="op">.</span><span class="nam">forward</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">            <span class="key">if</span> <span class="str">"attention_mask"</span> <span class="key">in</span> <span class="nam">inspect</span><span class="op">.</span><span class="nam">signature</span><span class="op">(</span><span class="nam">module</span><span class="op">.</span><span class="nam">forward</span><span class="op">)</span><span class="op">.</span><span class="nam">parameters</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">                <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">    <span class="key">return</span> <span class="key">True</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -123,7 +128,7 @@
             <a class="nav" href="z_b2114f845e0399b7_quantization_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.10.1">coverage.py v7.10.1</a>,
-            created at 2026-10-10 05:10 +0000
+            created at 2026-10-23 20:45 +0000
         </p>
     </div>
 </footer>

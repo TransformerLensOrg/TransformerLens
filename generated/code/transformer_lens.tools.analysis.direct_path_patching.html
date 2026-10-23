@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.jacobian_lens module" href="transformer_lens.tools.analysis.jacobian_lens.html" /><link rel="prev" title="transformer_lens.tools.analysis.direct_logit_attribution module" href="transformer_lens.tools.analysis.direct_logit_attribution.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.tools.analysis.interchange module" href="transformer_lens.tools.analysis.interchange.html" /><link rel="prev" title="transformer_lens.tools.analysis.direct_logit_attribution module" href="transformer_lens.tools.analysis.direct_logit_attribution.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 7.4.7 and Furo 2023.09.10 -->
         <title>transformer_lens.tools.analysis.direct_path_patching module - TransformerLens Documentation</title>
@@ -470,6 +470,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe.html">transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.raven.html">transformer_lens.model_bridge.supported_architectures.raven module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.recurrent_gemma.html">transformer_lens.model_bridge.supported_architectures.recurrent_gemma module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.roberta.html">transformer_lens.model_bridge.supported_architectures.roberta module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.rwkv.html">transformer_lens.model_bridge.supported_architectures.rwkv module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.rwkv7.html">transformer_lens.model_bridge.supported_architectures.rwkv7 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.seed_oss.html">transformer_lens.model_bridge.supported_architectures.seed_oss module</a></li>
@@ -506,18 +507,15 @@
 <li class="toctree-l3 current has-children"><a class="reference internal" href="transformer_lens.tools.html">transformer_lens.tools package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l4 current has-children"><a class="reference internal" href="transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5 current current-page"><a class="current reference internal" href="#">transformer_lens.tools.analysis.direct_path_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.interchange.html">transformer_lens.tools.analysis.interchange module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.logit_lens.html">transformer_lens.tools.analysis.logit_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -617,9 +615,12 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../content/backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../content/sparse_probing.html">Sparse Probing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -676,93 +677,45 @@
         <article role="main">
           <section id="module-transformer_lens.tools.analysis.direct_path_patching">
 <span id="transformer-lens-tools-analysis-direct-path-patching-module"></span><h1>transformer_lens.tools.analysis.direct_path_patching module<a class="headerlink" href="#module-transformer_lens.tools.analysis.direct_path_patching" title="Link to this heading">¶</a></h1>
-<p>Direct Path Patching.</p>
-<p>Implements direct path patching — a finer-grained variant of activation patching
-introduced for circuit analysis.</p>
-<section id="background">
-<h2>Background<a class="headerlink" href="#background" title="Link to this heading">¶</a></h2>
-<p>Standard activation patching (see patching.py) replaces an activation at a given
-layer/position with its value from a clean run, and measures how much the model’s
-output shifts. But patching the <em>residual stream</em> affects ALL downstream components,
-making it hard to isolate the direct information flow between two specific heads.</p>
-<p>Direct path patching isolates the path A → B: it patches <em>only</em> the contribution of
-source head A (at layer src_layer) into the input of destination head B (at layer
-dst_layer &gt; src_layer), leaving every other component’s view of A’s output unchanged.</p>
-<p>The linear approximation used here (following Neel Nanda’s description in issue #111)
-is:</p>
-<blockquote>
-<div><p>delta_resid = clean_A_result - corrupted_A_result   # [batch, pos, d_model]
-delta_q     = (delta_resid / ln1_scale) &#64; W_Q[hb]  # [batch, pos, d_head]
-patched_q   = corrupted_q + delta_q</p>
-</div></blockquote>
-<p>This is an approximation, not exact even with LayerNorm folded: it freezes the
-corrupted run’s ln1 scale, whereas the true scale shifts with the patched
-residual.  The error grows with how much <code class="docutils literal notranslate"><span class="pre">delta_resid</span></code> changes the residual
-norm at the destination layer.</p>
-</section>
-<section id="usage">
-<h2>Usage<a class="headerlink" href="#usage" title="Link to this heading">¶</a></h2>
-<blockquote>
-<div><p># 1. Cache clean and corrupted activations
-_, clean_cache = model.run_with_cache(clean_tokens)
-_, corrupted_cache = model.run_with_cache(corrupted_tokens)</p>
-<p># 2. Define your metric (same as activation patching)
-def metric(logits):</p>
-<blockquote>
-<div><p>return logit_diff(logits, …)</p>
-</div></blockquote>
-<p># 3. Sweep all (dst_layer, dst_head) pairs for a fixed source head
-results = get_act_patch_direct_path(</p>
-<blockquote>
-<div><p>model, corrupted_tokens, clean_cache, corrupted_cache,
-metric, src_layer=9, src_head=9,
-component=”q”,   # patch into Q; also supports “k”, “v”</p>
-</div></blockquote>
-<p>)
-# results.shape == (n_layers, n_heads)
-# results[dst_layer, dst_head] = metric when A→B path is patched</p>
-</div></blockquote>
-<p class="rubric">References</p>
-<ul class="simple">
-<li><p>Neel Nanda, TransformerLens issue #111 (2022)</p></li>
-<li><p>Wang et al., “Interpretability in the Wild: a Circuit for Indirect Object
-Identification in GPT-2 small” (2022)</p></li>
-</ul>
-</section>
+<p>Deprecated location of direct path patching, now in <a class="reference internal" href="transformer_lens.patching.html#module-transformer_lens.patching" title="transformer_lens.patching"><code class="xref py py-mod docutils literal notranslate"><span class="pre">transformer_lens.patching</span></code></a>.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.direct_path_patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_direct_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.model_protocol.html#transformer_lens.model_protocol.TransformerLensModel" title="transformer_lens.model_protocol.TransformerLensModel"><span class="pre">TransformerLensModel</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ActivationCache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ActivationCache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">patching_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src_head</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">component</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'k'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'v'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'q'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path" title="Link to this definition">¶</a></dt>
-<dd><p>Sweep direct path patches from one source head to all downstream heads.</p>
-<p>For every destination head B = (dst_layer, dst_head) where dst_layer &gt; src_layer,
-patch the contribution of source head A = (src_layer, src_head) into B’s query
-(or key / value) input, and record the patching metric.</p>
-<p>The patch is a linear approximation:</p>
-<blockquote>
-<div><p>delta_resid  = clean_A_result - corrupted_A_result   [batch, pos, d_model]
-delta_B_comp = (delta_resid / ln1_scale) &#64; W_comp[dst_head]</p>
-</div></blockquote>
-<p>where W_comp is W_Q, W_K, or W_V according to <cite>component</cite>.</p>
+<dd><p>Patch one source head’s output into each later head’s Q, K or V input alone.</p>
+<p>Direct path patching (Wang et al. 2022) isolates the edge A -&gt; B: A’s clean-minus-corrupted
+write (<code class="docutils literal notranslate"><span class="pre">z</span> <span class="pre">&#64;</span> <span class="pre">W_O</span></code>) is added at every position to B’s own pre-<code class="docutils literal notranslate"><span class="pre">ln1</span></code> copy of the residual,
+while every other reader still sees A’s corrupted output. The result is the exact edge
+intervention, folded LayerNorm or not.</p>
+<p>The sweep temporarily enables <code class="docutils literal notranslate"><span class="pre">cfg.use_split_qkv_input</span></code> (restoring the caller’s flags on
+exit), which costs about <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">n_heads</span></code> times the usual <code class="docutils literal notranslate"><span class="pre">ln1</span></code> activation memory per forward.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> – Any TransformerLens model (e.g. TransformerBridge).</p></li>
-<li><p><strong>corrupted_tokens</strong> – Token IDs for the corrupted input, shape [batch, seq_len].</p></li>
-<li><p><strong>clean_cache</strong> – Cached activations from the clean (unpatched) run.</p></li>
-<li><p><strong>corrupted_cache</strong> – Cached activations from the corrupted run (needed for ln1 scale).</p></li>
-<li><p><strong>patching_metric</strong> – A function mapping the model’s logits tensor to a scalar.</p></li>
-<li><p><strong>src_layer</strong> – Layer index of the source attention head.</p></li>
-<li><p><strong>src_head</strong> – Head index of the source attention head.</p></li>
-<li><p><strong>component</strong> – Which input to patch at the destination head — “q” (default), “k”, or “v”.</p></li>
-<li><p><strong>verbose</strong> – Whether to show a tqdm progress bar.</p></li>
+<li><p><strong>model</strong> – A <code class="docutils literal notranslate"><span class="pre">TransformerBridge</span></code> whose attention exposes the pre-Q/K/V fork.</p></li>
+<li><p><strong>corrupted_tokens</strong> – Token ids for the corrupted run, <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">pos]</span></code>.</p></li>
+<li><p><strong>clean_cache</strong> – Cache of the clean run; must hold <code class="docutils literal notranslate"><span class="pre">blocks.{src_layer}.attn.hook_z</span></code>.</p></li>
+<li><p><strong>corrupted_cache</strong> – Cache of the corrupted run; must hold the same <code class="docutils literal notranslate"><span class="pre">hook_z</span></code>.</p></li>
+<li><p><strong>patching_metric</strong> – Maps the patched logits to a scalar.</p></li>
+<li><p><strong>src_layer</strong> – Layer of the source head.</p></li>
+<li><p><strong>src_head</strong> – Index of the source head.</p></li>
+<li><p><strong>component</strong> – Destination input to patch: <code class="docutils literal notranslate"><span class="pre">&quot;q&quot;</span></code> (default), <code class="docutils literal notranslate"><span class="pre">&quot;k&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;v&quot;</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>results</strong> – results[dst_layer, dst_head] is the patching metric when the direct path
-A → B is patched in.  Entries for dst_layer &lt;= src_layer are left as 0.0
-(no causal path from A to those layers).</p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">results[l,</span> <span class="pre">h]</span></code> is the metric with the path into head
+<code class="docutils literal notranslate"><span class="pre">(l,</span> <span class="pre">h)</span></code> patched. Rows <code class="docutils literal notranslate"><span class="pre">l</span> <span class="pre">&lt;=</span> <span class="pre">src_layer</span></code> are 0.0 placeholders, not measurements.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Float[Tensor, “n_layers n_heads”]</p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">[n_layers,</span> <span class="pre">n_heads]</span></code></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – if a block from <code class="docutils literal notranslate"><span class="pre">src_layer</span></code> on has no attention, if the source block
+    normalises, scales or joins its attention output before the residual add (post-norm,
+    scaled-residual or parallel-mixer blocks), if <code class="docutils literal notranslate"><span class="pre">component</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;k&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;v&quot;</span></code> on
+    a GQA/MQA model, or if any module is in training mode.</p></li>
+<li><p><strong>NotImplementedError</strong> – if a destination layer’s attention has no pre-Q/K/V fork.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -770,14 +723,10 @@ A → B is patched in.  Entries for dst_layer &lt;= src_layer are left as 0.0
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path_all_sources">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.tools.analysis.direct_path_patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_direct_path_all_sources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.model_protocol.html#transformer_lens.model_protocol.TransformerLensModel" title="transformer_lens.model_protocol.TransformerLensModel"><span class="pre">TransformerLensModel</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ActivationCache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ActivationCache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">patching_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">component</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'q'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'k'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'v'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'q'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">n_layers</span> <span class="pre">n_heads'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path_all_sources" title="Link to this definition">¶</a></dt>
-<dd><p>Full sweep: all (src_layer, src_head) → (dst_layer, dst_head) direct paths.</p>
-<p>Returns a 4-D tensor of shape [n_layers, n_heads, n_layers, n_heads].
-result[sl, sh, dl, dh] = patching metric when head (sl,sh)’s output is
-patched directly into head (dl,dh)’s query/key/value input.</p>
-<p>Entries where dl &lt;= sl are 0 (no causal path).</p>
-<p>This runs O(n_layers * n_heads * n_layers * n_heads) forward passes and is
-intended for small models or targeted sub-sweeps.  For large models prefer
-calling get_act_patch_direct_path per source head.</p>
+<dd><p>Run <a class="reference internal" href="#transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path" title="transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_act_patch_direct_path()</span></code></a> from every source head.</p>
+<p><code class="docutils literal notranslate"><span class="pre">results[sl,</span> <span class="pre">sh,</span> <span class="pre">dl,</span> <span class="pre">dh]</span></code> is the metric with the path from head <code class="docutils literal notranslate"><span class="pre">(sl,</span> <span class="pre">sh)</span></code> into head
+<code class="docutils literal notranslate"><span class="pre">(dl,</span> <span class="pre">dh)</span></code> patched, and 0.0 where <code class="docutils literal notranslate"><span class="pre">dl</span> <span class="pre">&lt;=</span> <span class="pre">sl</span></code>. One forward per (source, later destination)
+pair, so it suits small models or targeted sub-sweeps.</p>
 </dd></dl>
 
 </section>
@@ -787,12 +736,12 @@ calling get_act_patch_direct_path per source head.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.tools.analysis.jacobian_lens.html">
+          <a class="next-page" href="transformer_lens.tools.analysis.interchange.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.tools.analysis.jacobian_lens module</div>
+                <div class="title">transformer_lens.tools.analysis.interchange module</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -838,8 +787,6 @@ calling get_act_patch_direct_path per source head.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.tools.analysis.direct_path_patching module</a><ul>
-<li><a class="reference internal" href="#background">Background</a></li>
-<li><a class="reference internal" href="#usage">Usage</a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path"><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path_all_sources"><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path_all_sources()</span></code></a></li>
 </ul>

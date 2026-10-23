@@ -470,6 +470,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe.html">transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.raven.html">transformer_lens.model_bridge.supported_architectures.raven module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.recurrent_gemma.html">transformer_lens.model_bridge.supported_architectures.recurrent_gemma module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.roberta.html">transformer_lens.model_bridge.supported_architectures.roberta module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.rwkv.html">transformer_lens.model_bridge.supported_architectures.rwkv module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.rwkv7.html">transformer_lens.model_bridge.supported_architectures.rwkv7 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.seed_oss.html">transformer_lens.model_bridge.supported_architectures.seed_oss module</a></li>
@@ -506,18 +507,15 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.interchange.html">transformer_lens.tools.analysis.interchange module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.logit_lens.html">transformer_lens.tools.analysis.logit_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -617,9 +615,12 @@
 <li class="toctree-l1"><a class="reference internal" href="jacobian_lens_fitting.html">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
-<li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="interchange_interventions.html">Interchange Interventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -713,32 +714,27 @@ the <a class="reference internal" href="migrating_to_v4.html"><span class="std s
 <tr class="row-odd"><td><p>Does a particular head-to-head route affect my metric?</p></td>
 <td><p><strong>Direct Path Patching</strong></p></td>
 <td><p>Clean/corrupt caches, a source head, and a metric → destination-head patch scores.</p></td>
-<td><p>The measured effect of the implemented path intervention, subject to its LayerNorm approximation.</p></td>
+<td><p>The measured effect of patching that one path, with every other reader of the source head left on its corrupted output.</p></td>
 </tr>
 <tr class="row-even"><td><p>What does each layer “predict”, and where does a token’s rank change?</p></td>
 <td><p><strong>Logit Lens</strong></p></td>
 <td><p>A prompt or activation cache, optional target tokens, top-k or a vocabulary subset → per-layer logits, log-probabilities, ranks and entropy.</p></td>
 <td><p>What the residual stream reads as through the real final norm and unembedding; the final entry reproduces the model’s own logits.</p></td>
 </tr>
-<tr class="row-odd"><td><p>What vocabulary directions appear in an MLP’s gradient factors?</p></td>
-<td><p><strong>Backward Lens</strong></p></td>
-<td><p>A prompt, one target token, and selected layers → gradient factors and vocabulary rankings.</p></td>
-<td><p>A diagnostic of the forward inputs and backward signals composing a weight gradient.</p></td>
-</tr>
-<tr class="row-even"><td><p>How can I read or edit residuals through a fitted transport map?</p></td>
+<tr class="row-odd"><td><p>How can I read or edit residuals through a fitted transport map?</p></td>
 <td><p><strong>Jacobian Lens</strong></p></td>
 <td><p>A matching lens artifact and model, plus prompts or activations → vocabulary readouts, decompositions, or interventions.</p></td>
 <td><p>Readouts under the fitted map; causal effects require running and measuring an intervention.</p></td>
+</tr>
+<tr class="row-even"><td><p>Does a subspace at one hook point carry a variable the output depends on?</p></td>
+<td><p><strong>Interchange Interventions</strong></p></td>
+<td><p>A hook point, base and source inputs, a basis (fixed, a set of MLP neurons, or learned by DAS from pairs labelled by a high-level model), and a task readout → task logits with the base’s subspace coordinates set to the source’s.</p></td>
+<td><p>The effect of that intervention on the chosen pairs; compare a learned subspace with its trained controls (arbitrary labels, an untrained model), a norm-matched placebo and random bases before reading it as use.</p></td>
 </tr>
 <tr class="row-odd"><td><p>How much do two subspaces overlap?</p></td>
 <td><p><strong>Projection Kernel</strong></p></td>
 <td><p>Two subspace bases, or Bridge attention-head weight spaces → overlap scores and principal-angle information.</p></td>
 <td><p>Shared geometric support, independent of the choice of basis within each subspace.</p></td>
-</tr>
-<tr class="row-even"><td><p>What are a head’s QK/OV singular directions?</p></td>
-<td><p><strong>SVD Circuits: head decomposition</strong></p></td>
-<td><p>Model weights and a layer/head index → singular values, vectors, and degeneracy reports.</p></td>
-<td><p>The linear structure of the head’s weight maps.</p></td>
 </tr>
 </tbody>
 </table>
@@ -762,7 +758,7 @@ available hooks, and the meaning of the selected tensor axes.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>DLA</p></td>
-<td><p>Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected.</p></td>
+<td><p>Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected, as are bridges whose readout is not <code class="docutils literal notranslate"><span class="pre">ln_final</span> <span class="pre">-&gt;</span> <span class="pre">unembed</span></code> on the last block (multi-stream AltUp blocks, a head transform such as BERT’s <code class="docutils literal notranslate"><span class="pre">mlm_head</span></code>). When DLA runs the prompt, the model and all submodules must be in evaluation mode, or it raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before the forward; a supplied cache is accepted as is.</p></td>
 <td><p>One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Activation Patching</p></td>
@@ -770,32 +766,28 @@ available hooks, and the meaning of the selected tensor axes.</p>
 <td><p>One forward of the corrupted batch per swept cell (plus one for <code class="docutils literal notranslate"><span class="pre">baseline=True</span></code>); per-example storage is <code class="docutils literal notranslate"><span class="pre">cells</span> <span class="pre">×</span> <span class="pre">batch</span></code> floats per metric. Statistics are computed afterwards from the stored values and add no forwards.</p></td>
 </tr>
 <tr class="row-even"><td><p>Attribution Patching</p></td>
-<td><p>Targets TransformerBridge. Clean/corrupt inputs must be <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq]</span></code> token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork, with <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span> <span class="pre">==</span> <span class="pre">n_heads</span></code>; GQA/MQA is not yet supported. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller’s hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported.</p></td>
+<td><p>Targets TransformerBridge. Clean/corrupt inputs must be <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq]</span></code> token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork. On GQA/MQA models, where any attention layer’s K/V head count (<code class="docutils literal notranslate"><span class="pre">per_layer_num_key_value_heads</span></code> where set, else <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span></code>) differs from <code class="docutils literal notranslate"><span class="pre">n_heads</span></code>, edge granularity and faithfulness raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before any forward; node granularity remains available. Edge granularity and faithfulness are unsupported on post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1), where per-head outputs are normalized, scaled or joined by an unmodeled mixer before the residual add; both raise there, and node granularity remains available. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller’s hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported.</p></td>
 <td><p>Two forwards and one backward <strong>per prompt pair</strong>; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as <code class="docutils literal notranslate"><span class="pre">O(seq_len</span> <span class="pre">×</span> <span class="pre">(n_layers</span> <span class="pre">×</span> <span class="pre">n_heads)²)</span></code>, while the cache also gains per-head <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">seq,</span> <span class="pre">n_heads,</span> <span class="pre">d_model]</span></code> tensors. Pair scores are averaged across the batch.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Direct Path Patching</p></td>
-<td><p>Requires a TransformerBridge exposing the expected attention weights, Q/K/V hook aliases, source <code class="docutils literal notranslate"><span class="pre">hook_z</span></code>, and destination LayerNorm scales. Folded LayerNorm parameters improve the approximation. On GQA/MQA models, direct Q-path patching remains available, but <code class="docutils literal notranslate"><span class="pre">component=&quot;k&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;v&quot;</span></code> currently require <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span> <span class="pre">==</span> <span class="pre">n_heads</span></code>; per-query-head K/V semantics are not yet defined.</p></td>
-<td><p>Clean/corrupt caching, then repeated forwards over destination heads. Sweeping all source heads adds another sweep dimension.</p></td>
+<td><p>Requires a TransformerBridge whose attention layers have the pre-Q/K/V residual fork that <code class="docutils literal notranslate"><span class="pre">use_split_qkv_input</span></code> enables (the joint-QKV and position-embedding attention bridges, e.g. GPT-2, Pythia, Llama, Mistral, Qwen2); attention without it, such as GPT-J, GPT-Neo, OPT, BERT or a bridge built with <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_native</span></code>, raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>. The supplied caches must hold the source layer’s <code class="docutils literal notranslate"><span class="pre">hook_z</span></code>. The function turns the fork flag on for the sweep and restores the caller’s <code class="docutils literal notranslate"><span class="pre">use_split_qkv_input</span></code> and <code class="docutils literal notranslate"><span class="pre">use_attn_in</span></code>; LayerNorm need not be folded. On GQA/MQA models, direct Q-path patching remains available, but <code class="docutils literal notranslate"><span class="pre">component=&quot;k&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;v&quot;</span></code> require <code class="docutils literal notranslate"><span class="pre">n_key_value_heads</span> <span class="pre">==</span> <span class="pre">n_heads</span></code> and raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> otherwise, since K/V inputs are per K/V head rather than per query head. Every block from the source layer on must have an <code class="docutils literal notranslate"><span class="pre">attn</span></code> component; SSM, mixer, linear-attention and AltUp blocks raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before any forward. Source blocks must add the head outputs to the residual unchanged: post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1) raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before any forward, since a head’s residual write there is not <code class="docutils literal notranslate"><span class="pre">hook_z</span> <span class="pre">&#64;</span> <span class="pre">W_O</span></code>. Run the model and all submodules in evaluation mode; both entry points raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> before any forward otherwise.</p></td>
+<td><p>Clean/corrupt caching, then one forward of the corrupted batch per later destination head. While the fork is on, every attention layer normalizes a <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">pos,</span> <span class="pre">n_heads,</span> <span class="pre">d_model]</span></code> residual copy for each of Q, K and V, about <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">×</span> <span class="pre">n_heads</span></code> times the usual attention-input activation memory. Sweeping all source heads adds another sweep dimension.</p></td>
 </tr>
 <tr class="row-even"><td><p>Logit Lens</p></td>
-<td><p>Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an <code class="docutils literal notranslate"><span class="pre">ln_final</span></code> component (or no final norm) and <code class="docutils literal notranslate"><span class="pre">W_U</span></code>; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings. Hybrid SSM stacks work with <code class="docutils literal notranslate"><span class="pre">incl_mid=False</span></code>. Run the model in evaluation mode.</p></td>
+<td><p>Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an <code class="docutils literal notranslate"><span class="pre">ln_final</span></code> component (or no final norm) and <code class="docutils literal notranslate"><span class="pre">W_U</span></code>; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings and bridges whose readout is not <code class="docutils literal notranslate"><span class="pre">ln_final</span> <span class="pre">-&gt;</span> <span class="pre">unembed</span></code> on the last block (multi-stream AltUp blocks, a head transform such as BERT’s <code class="docutils literal notranslate"><span class="pre">mlm_head</span></code>; a prompt run with <code class="docutils literal notranslate"><span class="pre">apply_ln=True</span></code> is also checked against the model’s own output, a supplied cache only structurally). Hybrid SSM stacks work with <code class="docutils literal notranslate"><span class="pre">incl_mid=False</span></code>. Run the model in evaluation mode.</p></td>
 <td><p>One cached forward pass over the residual hooks, or reuse of a cache. Logits are produced in chunks of <code class="docutils literal notranslate"><span class="pre">chunk_size</span></code> rows; full-vocabulary output is materialized only when no <code class="docutils literal notranslate"><span class="pre">targets</span></code>, <code class="docutils literal notranslate"><span class="pre">top_k</span></code> or <code class="docutils literal notranslate"><span class="pre">vocab</span></code> selector is given.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Backward Lens</p></td>
-<td><p>Requires a raw decoder-only TransformerBridge with dense, non-gated MLPs and without compatibility mode, such as GPT-2 or Pythia/GPT-NeoX. Use one target token and check the restrictions in the <a class="reference internal" href="backward_lens.html"><span class="std std-doc">tool guide</span></a>.</p></td>
-<td><p>Gradient computation plus vocabulary projections for selected layers and positions; retaining full logits increases memory.</p></td>
-</tr>
-<tr class="row-even"><td><p>Jacobian Lens</p></td>
-<td><p>Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Fitting additionally requires all modules in evaluation mode.</p></td>
+<tr class="row-odd"><td><p>Jacobian Lens</p></td>
+<td><p>Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Run the model and all submodules in evaluation mode; fitting and every call that runs the model raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> otherwise.</p></td>
 <td><p>Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and <code class="docutils literal notranslate"><span class="pre">ceil(d_model</span> <span class="pre">/</span> <span class="pre">dim_batch)</span></code> backwards per prompt; larger batches increase memory.</p></td>
+</tr>
+<tr class="row-even"><td><p>Interchange Interventions</p></td>
+<td><p>Any model with the hook API (TransformerBridge or <code class="docutils literal notranslate"><span class="pre">HookedRootModule</span></code>). Activations at the hook must be <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">d_model]</span></code>, or <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">pos,</span> <span class="pre">d_model]</span></code> with one position index per example; base and source rows are paired.</p></td>
+<td><p>One forward pass per <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> sources to collect activations, then one per <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> bases per intervention with <code class="docutils literal notranslate"><span class="pre">intervened_logits</span></code>; both run without gradients, so memory is bounded by <code class="docutils literal notranslate"><span class="pre">batch_size</span></code>. <code class="docutils literal notranslate"><span class="pre">run_with_intervention</span></code> is a single differentiable pass over all the bases it is given. DAS adds a forward and backward pass per batch per epoch; <code class="docutils literal notranslate"><span class="pre">micro_batch_size</span></code> bounds its memory.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Projection Kernel</p></td>
 <td><p>The numerical API accepts finite, real floating-point matrices via orthonormal bases. The attention-head wrapper requires Bridge weights with compatible dimensions and ranks.</p></td>
 <td><p>Basis extraction uses SVD. All-head comparisons allocate basis stacks and a pairwise score grid; they can be large despite requiring no forward pass.</p></td>
-</tr>
-<tr class="row-even"><td><p>SVD head decomposition</p></td>
-<td><p>Uses Bridge per-block weight accessors; requires accessible, compatible <code class="docutils literal notranslate"><span class="pre">W_Q</span></code>, <code class="docutils literal notranslate"><span class="pre">W_K</span></code>, <code class="docutils literal notranslate"><span class="pre">W_V</span></code>, and <code class="docutils literal notranslate"><span class="pre">W_O</span></code> for the selected head. No compatibility mode or activation cache is needed.</p></td>
-<td><p>Factored QK/OV SVD, with rank bounded by <code class="docutils literal notranslate"><span class="pre">d_head</span></code>; the dense <code class="docutils literal notranslate"><span class="pre">d_model</span> <span class="pre">×</span> <span class="pre">d_model</span></code> product is not materialized.</p></td>
 </tr>
 </tbody>
 </table>
@@ -857,19 +849,114 @@ candidates with actual activation replacements using the <a class="reference int
 <p>Both node and edge granularity use plain attribution with <code class="docutils literal notranslate"><span class="pre">ig_steps=1</span></code>.
 <code class="docutils literal notranslate"><span class="pre">ig_steps&gt;1</span></code> still raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>; EAP-IG is not available yet.</p>
 <p>API: <a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.attribution_patching.html#transformer_lens.tools.analysis.attribution_patching.attribution_patch" title="transformer_lens.tools.analysis.attribution_patching.attribution_patch"><code class="xref py py-func docutils literal notranslate"><span class="pre">attribution_patch()</span></code></a>.</p>
+<section id="faithfulness-check-that-a-circuit-actually-explains-the-behavior">
+<h4>Faithfulness: check that a circuit actually explains the behavior<a class="headerlink" href="#faithfulness-check-that-a-circuit-actually-explains-the-behavior" title="Link to this heading">¶</a></h4>
+<p>A ranked edge list is a hypothesis, not a result. <code class="docutils literal notranslate"><span class="pre">faithfulness()</span></code> tests one aligned
+clean/corrupt pair at a time by ablating every edge <em>outside</em> the candidate circuit
+and reporting how much of the clean-to-corrupt metric gap the circuit recovers:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.tools.analysis</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">EdgeAttributionConfig</span><span class="p">,</span>
+    <span class="n">attribution_patch</span><span class="p">,</span>
+    <span class="n">faithfulness</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">ranked</span> <span class="o">=</span> <span class="n">attribution_patch</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">,</span> <span class="n">clean</span><span class="p">,</span> <span class="n">corrupt</span><span class="p">,</span> <span class="n">metric_fn</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">EdgeAttributionConfig</span><span class="p">(</span><span class="n">granularity</span><span class="o">=</span><span class="s2">&quot;edge&quot;</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="n">report</span> <span class="o">=</span> <span class="n">faithfulness</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">clean</span><span class="p">,</span> <span class="n">corrupt</span><span class="p">,</span> <span class="n">metric_fn</span><span class="p">,</span> <span class="n">ranked</span><span class="o">.</span><span class="n">top_edges</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mi">50</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">recovered</span><span class="p">,</span> <span class="n">report</span><span class="o">.</span><span class="n">circuit_size</span><span class="p">,</span> <span class="n">report</span><span class="o">.</span><span class="n">total_edges</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">recovered</span></code> is a fraction, not a percentage: <code class="docutils literal notranslate"><span class="pre">1.0</span></code> means the circuit reproduces
+the clean metric, <code class="docutils literal notranslate"><span class="pre">0.0</span></code> means it reproduces the corrupt metric. Values outside
+<code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code> are possible and meaningful, since a circuit can overshoot.</p>
+<p>The residual stream is a running sum, so each reader’s input is rebuilt exactly
+by subtracting the excluded writers’ live contributions and adding their
+replacements. This is a forward-only measurement: it takes no gradient, so it is
+independent of the linearization that ranked the edges in the first place.</p>
+<p><code class="docutils literal notranslate"><span class="pre">FaithfulnessConfig(ablation=...)</span></code> selects the replacement. The default,
+<code class="docutils literal notranslate"><span class="pre">&quot;corrupt&quot;</span></code>, substitutes the corrupt run’s own contribution, which is the
+evaluation the external EAP-IG reference reports. <code class="docutils literal notranslate"><span class="pre">&quot;mean&quot;</span></code> requires an explicit,
+held-out calibration batch through the keyword-only <code class="docutils literal notranslate"><span class="pre">mean_tokens</span></code> argument:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">transformer_lens.tools.analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">FaithfulnessConfig</span>
+
+<span class="n">calibration_tokens</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to_tokens</span><span class="p">([</span>
+    <span class="s2">&quot;The capital of Spain is&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;The capital of Italy is&quot;</span><span class="p">,</span>
+<span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">clean</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+<span class="n">mean_report</span> <span class="o">=</span> <span class="n">faithfulness</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">,</span> <span class="n">clean</span><span class="p">,</span> <span class="n">corrupt</span><span class="p">,</span> <span class="n">metric_fn</span><span class="p">,</span> <span class="n">ranked</span><span class="o">.</span><span class="n">top_edges</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mi">50</span><span class="p">),</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">FaithfulnessConfig</span><span class="p">(</span><span class="n">ablation</span><span class="o">=</span><span class="s2">&quot;mean&quot;</span><span class="p">),</span>
+    <span class="n">mean_tokens</span><span class="o">=</span><span class="n">calibration_tokens</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Calibration must be a nonempty <code class="docutils literal notranslate"><span class="pre">[n_calibration,</span> <span class="pre">seq]</span></code> batch of <code class="docutils literal notranslate"><span class="pre">torch.int32</span></code> or
+<code class="docutils literal notranslate"><span class="pre">torch.int64</span></code> token ids, with the evaluated sequence length and the same device
+as the clean/corrupt token tensors. Align the sequence positions before averaging;
+the helper averages examples only, preserving each position and attention head.
+It captures calibration activations with the same model, hook configuration, and
+weight-processing mode used for evaluation.</p>
+<p>Mean-mode calls without calibration now raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>; there is no fallback
+to the evaluated pair. Exact calibration rows equal to either endpoint are also
+rejected. This check cannot establish dataset independence: callers must choose
+held-out examples and avoid semantically equivalent leakage. Passing <code class="docutils literal notranslate"><span class="pre">mean_tokens</span></code>
+in corrupt mode is rejected rather than silently ignored.</p>
+<p>Recovery is still <code class="docutils literal notranslate"><span class="pre">(circuit_metric</span> <span class="pre">-</span> <span class="pre">corrupt_metric)</span> <span class="pre">/</span> <span class="pre">(clean_metric</span> <span class="pre">-</span> <span class="pre">corrupt_metric)</span></code>.
+An empty mean-ablated circuit can have nonzero recovery because its calibration
+baseline need not reproduce the corrupt run. A full circuit still reproduces the
+clean metric. Compare against a random edge set of the same size, using the same
+calibration batch, before claiming a circuit is meaningful.</p>
+<p><code class="docutils literal notranslate"><span class="pre">report.edge_class_recovered</span></code> is circuit-relative leave-one-out recovery. For a
+candidate <code class="docutils literal notranslate"><span class="pre">C</span></code> and graph class <code class="docutils literal notranslate"><span class="pre">E_t</span></code>, each entry evaluates <code class="docutils literal notranslate"><span class="pre">C</span></code> with its retained
+edges in <code class="docutils literal notranslate"><span class="pre">E_t</span></code> removed, not the full graph with the class removed. Edges originally
+outside <code class="docutils literal notranslate"><span class="pre">C</span></code> stay ablated. Every diagnostic uses the aggregate’s replacements,
+clean/corrupt endpoints, and normalization:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>edge_class_recovered[t] = recovered(C minus E_t)
+</pre></div>
+</div>
+<p>An absent class leaves the candidate unchanged, so its entry equals
+<code class="docutils literal notranslate"><span class="pre">report.recovered</span></code>. For an empty circuit every class entry equals aggregate
+empty-circuit recovery, including with mean replacements. Duplicate circuit
+entries count once; <code class="docutils literal notranslate"><span class="pre">report.circuit_size</span></code> is the number of unique retained edges.
+<code class="docutils literal notranslate"><span class="pre">report.edge_class_counts</span></code> remains the full-graph count per class, not the number
+retained in <code class="docutils literal notranslate"><span class="pre">C</span></code>.</p>
+<p>The difference <code class="docutils literal notranslate"><span class="pre">report.recovered</span> <span class="pre">-</span> <span class="pre">report.edge_class_recovered[t]</span></code> measures
+conditional dependence on that class’s retained edges. Interactions and inhibitory
+edges can increase recovery after removal; contributions are not additive or
+necessarily positive. This is not a measurement of attribution ranking error.
+Q/K inputs feed attention scores, but that alone does not establish which class
+is ranked most accurately. LayerNorm, MLPs, and downstream attention can introduce
+nonlinearity for the other classes too. The breakout costs one extra forward per
+class present in the candidate; absent classes reuse aggregate recovery.</p>
+<p>API: <a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.attribution_patching.html#transformer_lens.tools.analysis.attribution_patching.faithfulness" title="transformer_lens.tools.analysis.attribution_patching.faithfulness"><code class="xref py py-func docutils literal notranslate"><span class="pre">faithfulness()</span></code></a>.</p>
 </section>
-<section id="direct-path-patching-state-the-path-and-its-approximation">
-<h3>Direct Path Patching: state the path and its approximation<a class="headerlink" href="#direct-path-patching-state-the-path-and-its-approximation" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path</span></code> fixes a source head and sweeps later destination heads,
-patching into their Q, K, or V inputs. It reconstructs the source head’s output from
-cached <code class="docutils literal notranslate"><span class="pre">hook_z</span></code> and <code class="docutils literal notranslate"><span class="pre">W_O</span></code>, so caching <code class="docutils literal notranslate"><span class="pre">hook_result</span></code> is unnecessary. The calculation
-projects the source-output change using cached LayerNorm scaling; it does not
-recompute the full nonlinear normalization response to that change. Folded
-parameters do not remove this fixed-scale assumption.</p>
+</section>
+<section id="direct-path-patching-patch-one-edge-exactly">
+<h3>Direct Path Patching: patch one edge exactly<a class="headerlink" href="#direct-path-patching-patch-one-edge-exactly" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">get_act_patch_direct_path</span></code> (in <code class="docutils literal notranslate"><span class="pre">transformer_lens.patching</span></code>, also importable from
+<code class="docutils literal notranslate"><span class="pre">transformer_lens.tools.analysis</span></code>) fixes a source head and sweeps every later head,
+patching only the path from the source into that head’s Q, K, or V input. The source
+head’s residual write on each run is its cached <code class="docutils literal notranslate"><span class="pre">hook_z</span></code> times <code class="docutils literal notranslate"><span class="pre">W_O</span></code>. For each
+destination, the corrupted prompt is rerun with the clean-minus-corrupted write added,
+at every position, to the destination head’s own copy of the residual, before its
+LayerNorm. The norm and projection are recomputed on that copy and every other reader
+still sees the corrupted output, so on pre-norm blocks the score is the exact edge
+intervention, with LayerNorm folded or not. It equals ablating the same per-position
+edges with the edge-ablation hook behind <code class="docutils literal notranslate"><span class="pre">faithfulness()</span></code>. A source block that
+normalizes, scales or joins its attention output before the residual add (post-norm,
+scaled-residual or parallel-mixer blocks) is refused, since the head’s write there is
+not <code class="docutils literal notranslate"><span class="pre">hook_z</span> <span class="pre">&#64;</span> <span class="pre">W_O</span></code>.</p>
+<p>That per-head copy is the <code class="docutils literal notranslate"><span class="pre">hook_q_input</span></code>/<code class="docutils literal notranslate"><span class="pre">hook_k_input</span></code>/<code class="docutils literal notranslate"><span class="pre">hook_v_input</span></code> fork, which
+fires only while <code class="docutils literal notranslate"><span class="pre">use_split_qkv_input</span></code> is on. The function turns the flag on for the
+sweep (and <code class="docutils literal notranslate"><span class="pre">use_attn_in</span></code> off, since the two are exclusive) and restores both on
+return or error, so you set neither. While it is on, each attention layer normalizes a
+separate residual copy per head for each of Q, K and V; budget activation memory for
+long prompts or many heads accordingly.</p>
 <p>Interpret a score relative to the unpatched corrupt metric. Entries at or before the
 source layer are zero placeholders, not measured interventions. State the source head,
 destination input, prompt pair, and normalization convention when reporting a path.</p>
-<p>API: <a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html#transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path" title="transformer_lens.tools.analysis.direct_path_patching.get_act_patch_direct_path"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_act_patch_direct_path()</span></code></a>.</p>
+<p>API: <a class="reference internal" href="../generated/code/transformer_lens.patching.html#transformer_lens.patching.get_act_patch_direct_path" title="transformer_lens.patching.get_act_patch_direct_path"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_act_patch_direct_path()</span></code></a>.</p>
 </section>
 <section id="logit-lens-read-the-stream-through-the-real-norm">
 <h3>Logit Lens: read the stream through the real norm<a class="headerlink" href="#logit-lens-read-the-stream-through-the-real-norm" title="Link to this heading">¶</a></h3>
@@ -888,23 +975,17 @@ without materializing the full vocabulary; <code class="docutils literal notrans
 their ids; <code class="docutils literal notranslate"><span class="pre">vocab=</span></code> keeps a subset. Ranks, entropy and log-probabilities are always
 computed over the full vocabulary, whatever was selected. <code class="docutils literal notranslate"><span class="pre">logit_readout</span></code> is the
 same kernel for any <code class="docutils literal notranslate"><span class="pre">d_model</span></code> vector: a head output, a steering direction, a
-sparse-coder decoder column.</p>
+sparse-coder decoder column. The
+<a class="reference internal" href="../generated/demos/SVD_Circuits_Demo.html"><span class="std std-doc">SVD Circuits demo</span></a> reads attention-head
+singular directions through it, and the
+<a class="reference internal" href="../generated/demos/Backward_Lens_Demo.html"><span class="std std-doc">Backward Lens demo</span></a> reads MLP
+weight-gradient factors.</p>
 <p>Intermediate-layer readouts are observations, not interventions. A token ranked
 first at layer 6 is what the unembedding would say <em>if the model stopped there</em>; it
 does not establish that later layers are inert, and the recomputed norm can magnify a
 small early residual. Pair a lens trajectory with patching or DLA before making a
 causal claim. For a fitted per-layer map instead of the identity, see
 <a class="reference internal" href="#jacobian-lens-distinguish-readout-reconstruction-and-intervention"><span class="std std-ref">Jacobian Lens</span></a>.</p>
-</section>
-<section id="backward-lens-preserve-the-gradient-sign">
-<h3>Backward Lens: preserve the gradient sign<a class="headerlink" href="#backward-lens-preserve-the-gradient-sign" title="Link to this heading">¶</a></h3>
-<p>Vocabulary rankings describe factors of <code class="docutils literal notranslate"><span class="pre">d(loss)</span> <span class="pre">/</span> <span class="pre">d(weight)</span></code>. Gradient descent
-<strong>subtracts</strong> this gradient. The highest raw-gradient token is therefore not
-automatically the token favored by an update. Use the documented bottom rankings
-and gradient-descent target ranks where appropriate. Align positions using
-<code class="docutils literal notranslate"><span class="pre">result.prompt_token_ids</span></code>, which records the actual tokenization.</p>
-<p>See <a class="reference internal" href="backward_lens.html"><span class="std std-doc">Backward Lens</span></a> for the example, sign conventions, and result
-structure.</p>
 </section>
 <section id="jacobian-lens-distinguish-readout-reconstruction-and-intervention">
 <h3>Jacobian Lens: distinguish readout, reconstruction, and intervention<a class="headerlink" href="#jacobian-lens-distinguish-readout-reconstruction-and-intervention" title="Link to this heading">¶</a></h3>
@@ -926,11 +1007,6 @@ single-layer edits.</p>
 behavior on a prompt. In attention-head results, use <code class="docutils literal notranslate"><span class="pre">valid_mask</span></code> when interpreting
 scores: invalid pairs are stored as zeros. See <a class="reference internal" href="projection_kernel.html"><span class="std std-doc">Projection Kernel</span></a>
 for rank selection, normalization, and all-head memory costs.</p>
-<p>For SVD head decomposition, inspect the rank report before assigning meaning to an
-individual direction. Near-equal singular values define a subspace whose basis can
-rotate; numerically null directions are also unsuitable for individual attribution.
-The weight decomposition alone is not a causal validation of a proposed subfunction.</p>
-<p>API: <a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html#transformer_lens.tools.analysis.svd_circuits.decompose_head" title="transformer_lens.tools.analysis.svd_circuits.decompose_head"><code class="xref py py-func docutils literal notranslate"><span class="pre">decompose_head()</span></code></a>.</p>
 </section>
 </section>
 <section id="try-a-geometry-question-without-downloading-a-model">
@@ -1037,10 +1113,12 @@ experiment, with enough information for another researcher to repeat it.</p>
 <li><a class="reference internal" href="#read-the-output-with-the-right-interpretation">Read the output with the right interpretation</a><ul>
 <li><a class="reference internal" href="#dla-contributions-not-ablation-effects">DLA: contributions, not ablation effects</a></li>
 <li><a class="reference internal" href="#activation-patching-per-example-cells-then-intervals">Activation Patching: per-example cells, then intervals</a></li>
-<li><a class="reference internal" href="#attribution-patching-screen-candidates-then-measure-interventions">Attribution Patching: screen candidates, then measure interventions</a></li>
-<li><a class="reference internal" href="#direct-path-patching-state-the-path-and-its-approximation">Direct Path Patching: state the path and its approximation</a></li>
+<li><a class="reference internal" href="#attribution-patching-screen-candidates-then-measure-interventions">Attribution Patching: screen candidates, then measure interventions</a><ul>
+<li><a class="reference internal" href="#faithfulness-check-that-a-circuit-actually-explains-the-behavior">Faithfulness: check that a circuit actually explains the behavior</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#direct-path-patching-patch-one-edge-exactly">Direct Path Patching: patch one edge exactly</a></li>
 <li><a class="reference internal" href="#logit-lens-read-the-stream-through-the-real-norm">Logit Lens: read the stream through the real norm</a></li>
-<li><a class="reference internal" href="#backward-lens-preserve-the-gradient-sign">Backward Lens: preserve the gradient sign</a></li>
 <li><a class="reference internal" href="#jacobian-lens-distinguish-readout-reconstruction-and-intervention">Jacobian Lens: distinguish readout, reconstruction, and intervention</a></li>
 <li><a class="reference internal" href="#weight-space-tools-use-geometry-to-form-hypotheses">Weight-space tools: use geometry to form hypotheses</a></li>
 </ul>

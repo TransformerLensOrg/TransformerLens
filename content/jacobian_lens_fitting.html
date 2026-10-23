@@ -470,6 +470,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe.html">transformer_lens.model_bridge.supported_architectures.qwen3_vl_moe module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.raven.html">transformer_lens.model_bridge.supported_architectures.raven module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.recurrent_gemma.html">transformer_lens.model_bridge.supported_architectures.recurrent_gemma module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.roberta.html">transformer_lens.model_bridge.supported_architectures.roberta module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.rwkv.html">transformer_lens.model_bridge.supported_architectures.rwkv module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.rwkv7.html">transformer_lens.model_bridge.supported_architectures.rwkv7 module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.seed_oss.html">transformer_lens.model_bridge.supported_architectures.seed_oss module</a></li>
@@ -506,18 +507,15 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.html">transformer_lens.tools package</a><input class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><div class="visually-hidden">Toggle navigation of transformer_lens.tools package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.html">transformer_lens.tools.analysis package</a><input class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.analysis package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.attribution_patching.html">transformer_lens.tools.analysis.attribution_patching module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.backward_lens.html">transformer_lens.tools.analysis.backward_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_logit_attribution.html">transformer_lens.tools.analysis.direct_logit_attribution module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.direct_path_patching.html">transformer_lens.tools.analysis.direct_path_patching module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.interchange.html">transformer_lens.tools.analysis.interchange module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens.html">transformer_lens.tools.analysis.jacobian_lens module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli.html">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html">transformer_lens.tools.analysis.jacobian_lens_coordinate_patch module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.jacobian_lens_decomposition.html">transformer_lens.tools.analysis.jacobian_lens_decomposition module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.logit_lens.html">transformer_lens.tools.analysis.logit_lens module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.projection_kernel.html">transformer_lens.tools.analysis.projection_kernel module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.sparse_probing.html">transformer_lens.tools.analysis.sparse_probing module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.tools.analysis.svd_circuits.html">transformer_lens.tools.analysis.svd_circuits module</a></li>
 </ul>
 </li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../generated/code/transformer_lens.tools.model_registry.html">transformer_lens.tools.model_registry package</a><input class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><div class="visually-hidden">Toggle navigation of transformer_lens.tools.model_registry package</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
@@ -617,9 +615,12 @@
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Fitting a Jacobian lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Decomposition_Demo.html">Jacobian Lens: sparse decomposition in J-space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html">Coordinate-patch causal-swap benchmark</a></li>
-<li class="toctree-l1"><a class="reference internal" href="backward_lens.html">Backward Lens</a></li>
 <li class="toctree-l1"><a class="reference internal" href="debugging_numerical_divergence.html">Debugging Numerical Divergence</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sparse_probing.html">Sparse Probing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="interchange_interventions.html">Interchange Interventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -684,6 +685,9 @@ artifact when one exists:</p>
 <span class="n">lens</span> <span class="o">=</span> <span class="n">JacobianLens</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;gemma-2-2b&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>Registry names load the artifact at the Hub commit recorded under <code class="docutils literal notranslate"><span class="pre">revision</span></code> in
+<code class="docutils literal notranslate"><span class="pre">jacobian_lens_registry.json</span></code>, so a TransformerLens release always loads the same lens
+for a name; pass <code class="docutils literal notranslate"><span class="pre">revision=</span></code> to load a different commit.</p>
 <p>Fit a new lens when your model is not in the artifact registry or when you need a
 different prompt distribution. Fitting is deterministic for a fixed model, prompt
 manifest, and set of estimator options.</p>
@@ -879,13 +883,18 @@ model repository:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">lens</span> <span class="o">=</span> <span class="n">JacobianLens</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
     <span class="s2">&quot;your-org/your-jacobian-lenses&quot;</span><span class="p">,</span>
     <span class="n">filename</span><span class="o">=</span><span class="s2">&quot;gpt2_jacobian_lens.pt&quot;</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="s2">&quot;YOUR_LENS_COMMIT_SHA&quot;</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
 </div>
+<p>An explicit repo id follows the repository’s default branch unless <code class="docutils literal notranslate"><span class="pre">revision</span></code> pins a
+commit.</p>
 <p>To propose a short-name entry in TransformerLens, open a pull request that adds the
 published file to <code class="docutils literal notranslate"><span class="pre">transformer_lens/tools/analysis/jacobian_lens_registry.json</span></code> and
-include the fitting provenance and validation results.</p>
+include the fitting provenance and validation results. Every entry is downloaded at the
+registry’s single <code class="docutils literal notranslate"><span class="pre">revision</span></code>, so a file published after that commit also needs
+<code class="docutils literal notranslate"><span class="pre">revision</span></code> moved to a commit that still contains every other entry.</p>
 </section>
 <section id="sparse-decomposition-j-space-coordinates">
 <h2>Sparse decomposition (J-space coordinates)<a class="headerlink" href="#sparse-decomposition-j-space-coordinates" title="Link to this heading">¶</a></h2>
@@ -1047,37 +1056,36 @@ per pair, exactly as they would from an offline <code class="docutils literal no
 </section>
 <section id="causal-swap-benchmark">
 <h3>Causal-swap benchmark<a class="headerlink" href="#causal-swap-benchmark" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark</span></code> measures whether
-<code class="docutils literal notranslate"><span class="pre">coordinate_patch_hooks</span></code> causes a directional change in model output, under baseline-capability
-filtering, a displacement-matched random-atom control, and exact Clopper-Pearson confidence
-intervals on every reported rate. The control matches the real edit’s magnitude: the
-perturbation is <code class="docutils literal notranslate"><span class="pre">c_src</span> <span class="pre">*</span> <span class="pre">(a_target</span> <span class="pre">-</span> <span class="pre">a_source)</span></code>, so a candidate atom qualifies when its
-distance from <code class="docutils literal notranslate"><span class="pre">a_source</span></code> matches the target’s within a fixed relative tolerance. Each trial
-draws the control arm under several seeds and records every draw, because a single draw leaves
-the control arm’s own variance unmeasured. Each trial installs the hook at exactly one layer
-and the final prompt position; a trial whose source concept is not active in that layer’s
-support, or whose layer admits no displacement-matched control, is recorded as skipped, not
-silently dropped.</p>
-<p>The interval is exact rather than bootstrapped: a percentile bootstrap cannot express
-uncertainty about an all-failure sample, collapsing to <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0]</span></code> whether the run had one trial
-or a thousand. The artifact also records how many independent prompts the pooled rate rests on,
-since several trials can share one prompt.</p>
-<p>The artifact separates the layers that were swept from the layers that actually executed, and
-carries a per-status trial count, so a sweep where most layers contribute nothing is visible
-rather than implied. It also fingerprints the result blocks (trials, excluded baselines, and
-both interval blocks) alongside the protocol manifest, and embeds the full corpus definition
-with the repo/path/revision it was taken from, so the prompts and answers that decide
-capability and scoring enter the fingerprint instead of a bare corpus name.</p>
-<p>A generation script (<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark_cli</span></code>, no <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code>
-required) produces a versioned, fingerprinted JSON artifact against the published GPT-2-small
-lens. The
+<p><code class="docutils literal notranslate"><span class="pre">scripts/jacobian_lens_causal_swap_benchmark.py</span></code> measures whether <code class="docutils literal notranslate"><span class="pre">coordinate_patch_hooks</span></code>
+causes a directional change in model output on GPT-2-small. It is a standalone script, not a
+package API:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/jacobian_lens_causal_swap_benchmark.py
+</pre></div>
+</div>
+<p>It needs no <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code> and pins the published lens and the prompt corpus by revision, so a run
+reproduces the frozen artifact
+<code class="docutils literal notranslate"><span class="pre">demos/data/jacobian_lens_causal_swap_benchmark_gpt2.json</span></code>.</p>
+<ul class="simple">
+<li><p><strong>Baseline filtering.</strong> Only prompts the unperturbed model already answers correctly enter
+the trials.</p></li>
+<li><p><strong>Displacement-matched control.</strong> The real edit is <code class="docutils literal notranslate"><span class="pre">c_src</span> <span class="pre">*</span> <span class="pre">(a_target</span> <span class="pre">-</span> <span class="pre">a_source)</span></code>, so a
+control atom qualifies when its distance from <code class="docutils literal notranslate"><span class="pre">a_source</span></code> matches the target’s within a fixed
+relative tolerance. The control arm is drawn under several seeds and every draw is recorded.</p></li>
+<li><p><strong>Exact intervals.</strong> Every rate carries a Clopper-Pearson interval from
+<code class="docutils literal notranslate"><span class="pre">transformer_lens.utilities.statistics.success_rate_ci</span></code>; a percentile bootstrap collapses to
+<code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">0]</span></code> on an all-failure sample whether the run had one trial or a thousand. The artifact
+also records how many independent prompts the pooled rate rests on.</p></li>
+<li><p><strong>Skips are visible.</strong> Each trial patches one layer at the final prompt position. A trial whose
+source concept is inactive in that layer’s support, or whose layer admits no matched control,
+is recorded as skipped, and the artifact separates swept layers from executed layers.</p></li>
+</ul>
+<p>The
 <a class="reference internal" href="../generated/demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.html"><span class="doc std std-doc">coordinate-patch benchmark demo</span></a>
-loads that frozen artifact and renders it; it never calls the model itself. Because the
-artifact lives under <code class="docutils literal notranslate"><span class="pre">demos/data/</span></code>, which the published wheel does not ship, the demo requires
-a repository checkout and fails with that requirement spelled out when the artifact is absent.
-A successful swap in that artifact shows a directional causal effect under the stated controls
-on GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result
-that transfers to closed-weight models.</p>
+loads the frozen artifact and renders it without calling the model. The artifact lives under
+<code class="docutils literal notranslate"><span class="pre">demos/data/</span></code>, which the published wheel does not ship, so the demo requires a repository
+checkout. A successful swap there shows a directional causal effect under the stated controls on
+GPT-2-small, not proof of unique causal mediation, exhaustive concept coverage, or a result that
+transfers to closed-weight models.</p>
 </section>
 <section id="interpreting-the-numbers-honestly">
 <h3>Interpreting the numbers honestly<a class="headerlink" href="#interpreting-the-numbers-honestly" title="Link to this heading">¶</a></h3>
@@ -1113,7 +1121,12 @@ Occupancy records the per-step captured variance <code class="docutils literal n
 against the same occupancy recurrence on <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span></code> random unit-norm dictionaries.
 The occupancy is the step of <strong>maximum separation</strong> between the real and averaged-control
 <em>cumulative</em> captured variance — the point past which further vectors add no more than random
-directions would. It is deterministic given <code class="docutils literal notranslate"><span class="pre">seed</span></code> and needs no threshold.</p>
+directions would. It is deterministic given <code class="docutils literal notranslate"><span class="pre">seed</span></code>, on any device, and needs no threshold.
+That cross-device determinism comes from drawing every control dictionary on the CPU, and each
+draw is the size of the full-vocabulary dictionary, so on an accelerator the draws dominate the
+run time. On an Apple-silicon laptop one draw takes about 0.25 s at GPT-2 size (50257 x 768) and
+about 4 s at Gemma-2-2B size (256000 x 2304), against under 0.1 s on its GPU, so the default 32
+controls cost roughly 8 s and 2 minutes. Lower <code class="docutils literal notranslate"><span class="pre">num_control_dictionaries</span></code> when that matters.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">occ</span> <span class="o">=</span> <span class="n">lens</span><span class="o">.</span><span class="n">occupancy</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;The Eiffel Tower is in the city of&quot;</span><span class="p">,</span> <span class="n">layer</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">position</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
 <span class="n">occ</span><span class="o">.</span><span class="n">occupancy</span>                    <span class="c1"># int: meaningfully-active vector count (a small positive integer)</span>
 <span class="n">occ</span><span class="o">.</span><span class="n">marginal_captured_variance</span>   <span class="c1"># [max_atoms] real per-step captured-variance gains (for plotting)</span>

@@ -114,6 +114,20 @@ def _storage_group_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
     return {key for keys in by_storage.values() if len(keys) > 1 for key in keys}
 
 
+def _extend_prompt_attention_mask(prompt_mask: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+    """Extend a prompt mask over ``tokens``' generated tail; shared by the loop and cache replay."""
+    n_generated = tokens.shape[1] - prompt_mask.shape[1]
+    return torch.cat(
+        [
+            prompt_mask.to(tokens.device),
+            torch.ones(
+                (tokens.shape[0], n_generated), dtype=prompt_mask.dtype, device=tokens.device
+            ),
+        ],
+        dim=1,
+    )
+
+
 class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     """Torch-backed bridge: HF, vLLM-via-torch, anything that wraps an ``nn.Module``.
 
@@ -1294,11 +1308,37 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         plain layer indices. Encoder-decoder models register ``encoder_blocks``
         and ``decoder_blocks`` instead; those are concatenated into one index
         space, matching ``HookedEncoderDecoder``'s ``chain(encoder, decoder)``.
+
+        Non-standard architectures (e.g. Raven/Huginn's ``prelude`` /
+        ``core_block`` / ``coda``) register block lists under other names
+        entirely, so ``_BLOCK_LIST_ATTRS`` alone would silently enumerate zero
+        blocks for them (#1791). After the known names, any other
+        ``nn.ModuleList`` in ``_modules`` whose items are *all* list-item
+        components (``is_list_item``, which ``setup_components`` sets on every
+        block of a stack it builds) is discovered structurally and appended in
+        registration order, so a new adapter's block lists are picked up
+        automatically without a name to add here. This is the same criterion the
+        named path accepts, so block types that never set
+        ``hook_out_is_single_residual_stream`` (T5, AltUp, T5Gemma, DeepSeek V4)
+        are enumerated regardless of the name they are registered under. A list
+        mixing blocks with other modules is skipped whole rather than partly
+        enumerated.
         """
         pairs: List[Tuple[int, Any]] = []
+        modules = self.__dict__.get("_modules") or {}
+        known_names = set(_BLOCK_LIST_ATTRS)
         for list_name in _BLOCK_LIST_ATTRS:
-            block_list = self._modules.get(list_name)
+            block_list = modules.get(list_name)
             if not isinstance(block_list, nn.ModuleList):
+                continue
+            for block in block_list:
+                pairs.append((len(pairs), block))
+        for list_name, block_list in modules.items():
+            if list_name in known_names or not isinstance(block_list, nn.ModuleList):
+                continue
+            if len(block_list) == 0 or not all(
+                getattr(block, "is_list_item", False) for block in block_list
+            ):
                 continue
             for block in block_list:
                 pairs.append((len(pairs), block))
@@ -1705,19 +1745,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
             block = self.blocks[i]
+            scale = getattr(block, "residual_contribution_scale", 1.0)
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O.to(accumulated.device)
+                accumulated = accumulated + b_O.to(accumulated.device) * scale
             if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
-                    accumulated = accumulated + b_out.to(accumulated.device)
+                    accumulated = accumulated + b_out.to(accumulated.device) * scale
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
+            scale = getattr(block, "residual_contribution_scale", 1.0)
             b_O = self._get_block_variant_bias(block)
             if b_O is not None:
-                accumulated = accumulated + b_O.to(accumulated.device)
+                accumulated = accumulated + b_O.to(accumulated.device) * scale
         return accumulated
 
     def all_composition_scores(self, mode: str) -> CompositionScores:
@@ -2194,6 +2236,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     _resolved_padding_side == "left"
                     or is_encoder_decoder
                     or not self.adapter.supports_causal_loss
+                    or getattr(self.cfg, "attention_dir", "causal") != "causal"
                 )
             ):
                 attention_mask = utils.get_attention_mask(
@@ -2678,17 +2721,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     # models that can take them.
                     running_attention_mask: Optional[torch.Tensor] = None
                     if initial_attention_mask is not None:
-                        n_generated = current_tokens.shape[1] - initial_attention_mask.shape[1]
-                        running_attention_mask = torch.cat(
-                            [
-                                initial_attention_mask.to(current_tokens.device),
-                                torch.ones(
-                                    (current_tokens.shape[0], n_generated),
-                                    dtype=initial_attention_mask.dtype,
-                                    device=current_tokens.device,
-                                ),
-                            ],
-                            dim=1,
+                        running_attention_mask = _extend_prompt_attention_mask(
+                            initial_attention_mask, current_tokens
                         )
                         forward_kwargs["attention_mask"] = running_attention_mask
                     # Compute attention mask and position_ids for batched
@@ -2856,6 +2890,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         temperature=0.0,
+                        # Greedy ignores the penalty but still validates it.
+                        freq_penalty=freq_penalty,
                         repetition_penalty=repetition_penalty,
                         tokens=(
                             penalty_tokens
@@ -2998,7 +3034,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             top_k: Number of tokens to sample from. If None, sample from all tokens
             top_p: Probability mass to sample from. If 1.0, sample from all tokens
             temperature: Temperature for sampling. Higher values will make the model more random
-            freq_penalty: Frequency penalty for sampling - how much to penalise previous tokens
+            freq_penalty: Non-negative frequency penalty for sampling - how much to penalise
+                previous tokens (applied only when do_sample=True; negative values raise
+                ValueError). Nonzero values require the hooked generation loop; a
+                stateful/SSM model that falls back to hf_generate() raises
+                NotImplementedError.
             repetition_penalty: HuggingFace-style repetition penalty. Values > 1.0 discourage
                 repetition by dividing positive logits and multiplying negative logits for
                 previously seen tokens. Default 1.0 (no penalty).
@@ -3015,12 +3055,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and logits tuple
             return_cache: If True, also return an ActivationCache for the full prompt +
-                generated sequence, identical to ``run_with_cache(output)``, and the call
+                generated sequence, identical to ``run_with_cache(output)`` with the
+                effective prompt attention mask extended over the generated tokens. The call
                 returns an ``(output, cache)`` tuple. Implemented as one extra clean forward
                 over the output, so the cache includes every hook point (attention patterns
                 included). Supported only for single-sequence, decoder-only text generation;
                 encoder-decoder, SSM, multimodal, batched, and inputs_embeds inputs raise
-                NotImplementedError. The cache spans prompt + max_new_tokens and can be large,
+                NotImplementedError. The cache spans prompt + actually generated tokens and can be large,
                 use ``names_filter`` to scope it and/or ``device`` to offload it.
             return_input_tokens: If True, return an ``(output, input_tokens)`` tuple where
                 ``input_tokens`` is the token tensor that was actually fed to the model
@@ -3073,7 +3114,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
             If output_logits=True, returns a ModelOutput-like object with 'sequences' and 'logits' attributes.
             If return_cache=True, returns an ``(output, ActivationCache)`` tuple where ``output`` is the
-            value that would otherwise be returned and the cache equals ``run_with_cache(output)``.
+            value that would otherwise be returned and the cache equals ``run_with_cache(output)``
+            with the effective prompt attention mask extended over the generated tokens.
             If return_input_tokens=True, returns an ``(output, input_tokens)`` tuple.
             If both return_cache and return_input_tokens are True, returns ``(output, cache, input_tokens)``.
 
@@ -3367,10 +3409,33 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     )
 
         if is_stateful_model and not use_stateful_cache:
+            if freq_penalty != 0.0:
+                # Only use_past_kv_cache=False is fixable by the caller; the other
+                # fallback triggers persist with the flag already set.
+                if is_encoder_decoder:
+                    _fallback_cause = "encoder-decoder models"
+                elif _generate_from_embeds:
+                    _fallback_cause = "inputs_embeds generation"
+                elif pixel_values is not None or multimodal_kwargs:
+                    _fallback_cause = "multimodal (pixel_values or extra model kwargs) generation"
+                else:
+                    _fallback_cause = None
+                if _fallback_cause is not None:
+                    raise NotImplementedError(
+                        f"freq_penalty is not supported for {_fallback_cause} on a "
+                        "stateful/SSM model: generate() falls back to hf_generate(), which "
+                        "has no equivalent frequency penalty. Drop freq_penalty or use "
+                        "repetition_penalty, which the fallback forwards."
+                    )
+                raise NotImplementedError(
+                    "freq_penalty requires use_past_kv_cache=True for stateful/SSM models. "
+                    "The HF generation fallback has no equivalent frequency penalty."
+                )
             hf_kwargs: dict[str, Any] = {
                 "max_new_tokens": max_new_tokens,
                 "do_sample": do_sample,
                 "temperature": temperature,
+                "repetition_penalty": repetition_penalty,
                 # hf_generate defaults this to True, so omitting it would make
                 # generate(stop_at_eos=False) silently stop at EOS on this path.
                 "stop_at_eos": stop_at_eos,
@@ -3523,11 +3588,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return result
 
         if return_cache:
-            # return_cache: recompute one clean forward over the full generated sequence so the
-            # cache is identical to run_with_cache(output_tokens) - all hook points, including
-            # attention patterns. The guards above restrict this to single-sequence, decoder-only
-            # text generation (see issue #697).
-            _, cache = self.run_with_cache(output_tokens, names_filter=names_filter, device=device)
+            # Replay the loop's final mask so the cache sees the context and positions
+            # generation did.
+            _, cache = self.run_with_cache(
+                output_tokens,
+                names_filter=names_filter,
+                device=device,
+                attention_mask=(
+                    _extend_prompt_attention_mask(initial_attention_mask, output_tokens)
+                    if initial_attention_mask is not None
+                    else None
+                ),
+            )
             if return_input_tokens:
                 return result, cache, input_tokens
             return result, cache
@@ -3642,7 +3714,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             top_k: Top-k sampling. None means no filtering.
             top_p: Nucleus sampling threshold.
             temperature: Sampling temperature.
-            freq_penalty: Frequency penalty for previous tokens.
+            freq_penalty: Non-negative frequency penalty for previous tokens (applied only
+                when do_sample=True; negative values raise ValueError).
             repetition_penalty: HF-style repetition penalty (>1.0 discourages repeats).
             use_past_kv_cache: Use KV caching for faster generation.
             prepend_bos: Whether to prepend a BOS token when tokenizing string inputs.

@@ -1,0 +1,7 @@
+transformer\_lens.tools.analysis.interchange module
+===================================================
+
+.. automodule:: transformer_lens.tools.analysis.interchange
+   :members:
+   :undoc-members:
+   :show-inheritance:
