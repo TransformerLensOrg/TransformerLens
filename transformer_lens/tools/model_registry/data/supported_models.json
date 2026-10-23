@@ -8,7 +8,7 @@
   },
   "total_architectures": 147,
   "total_models": 15753,
-  "total_verified": 1198,
+  "total_verified": 1199,
   "total_provisional": 7,
   "models": [
     {
@@ -221579,11 +221579,11 @@
     {
       "architecture_id": "WhisperForConditionalGeneration",
       "model_id": "openai/whisper-tiny",
-      "status": 0,
-      "verified_date": null,
+      "status": 1,
+      "verified_date": "2026-10-22",
       "metadata": null,
-      "note": null,
-      "phase1_score": null,
+      "note": "Full verification completed",
+      "phase1_score": 100.0,
       "phase2_score": null,
       "phase3_score": null,
       "phase4_score": null,
