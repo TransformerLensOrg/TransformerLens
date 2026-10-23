@@ -10,10 +10,11 @@ per-block data, with no error.
 
 ``_enumerate_blocks()`` now falls back to structural discovery for any
 ``nn.ModuleList`` in ``_modules`` not already covered by the known names,
-picking up ``GeneralizedComponent``s marked ``hook_out_is_single_residual_stream``
-(the marker ``JacobianLens.validate_model`` already uses to require a
-single-stream block stack) -- so a new adapter's block lists are found
-automatically.
+picking up lists whose items are all ``is_list_item`` components (what
+``setup_components`` sets on every block of a stack it builds, and exactly what
+the named path accepts) -- so a new adapter's block lists are found
+automatically, including block types that never set
+``hook_out_is_single_residual_stream`` (T5, AltUp, T5Gemma, DeepSeek V4).
 """
 from __future__ import annotations
 
@@ -22,6 +23,9 @@ from types import SimpleNamespace
 import torch
 import torch.nn as nn
 
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
+)
 from transformer_lens.model_bridge.generalized_components.linear import LinearBridge
 from transformer_lens.model_bridge.generalized_components.opaque_block import (
     OpaqueBlockBridge,
@@ -49,6 +53,14 @@ def _stub(modules: dict) -> SimpleNamespace:
 class _MockAttn(nn.Module):
     def forward(self, hidden_states: torch.Tensor, **kwargs) -> torch.Tensor:
         return hidden_states
+
+
+class _MultiStreamBlock(GeneralizedComponent):
+    """A list-item block that is not a single-residual-stream block: it sets
+    ``is_list_item`` but not ``hook_out_is_single_residual_stream``, like
+    ``T5BlockBridge``, ``AltUpBlockBridge`` and DeepSeek V4's blocks."""
+
+    is_list_item = True
 
 
 def _opaque_block_with_attn(name: str) -> OpaqueBlockBridge:
@@ -88,12 +100,35 @@ def test_enumerate_blocks_discovers_non_standard_block_lists():
     assert result[6][1].name == "transformer.coda.0"
 
 
-def test_enumerate_blocks_ignores_modulelists_without_the_marker():
-    """A ModuleList that isn't a residual-stream block list (no
-    hook_out_is_single_residual_stream) must not be swept up as one --
-    otherwise any incidental ModuleList on the bridge would get misread as
-    layers."""
+def test_enumerate_blocks_ignores_modulelists_that_are_not_list_items():
+    """A ModuleList whose items aren't list-item components must not be swept
+    up as a block list -- otherwise any incidental ModuleList on the bridge
+    would get misread as layers."""
     stub = _stub({"some_unrelated_list": nn.ModuleList([nn.Linear(2, 2), nn.Linear(2, 2)])})
+
+    assert stub._enumerate_blocks() == []
+
+
+def test_enumerate_blocks_accepts_list_items_without_the_single_stream_marker():
+    """Pins the discovery criterion: ``is_list_item``, not
+    ``hook_out_is_single_residual_stream``. The named path enumerates T5 / AltUp /
+    T5Gemma / DeepSeek V4 blocks, none of which set the single-stream marker, so
+    the same stack under an unknown name must enumerate too instead of silently
+    yielding zero blocks."""
+    items = [_MultiStreamBlock(name=f"layers.{i}") for i in range(3)]
+    assert not any(b.hook_out_is_single_residual_stream for b in items)
+    stub = _stub({"layers": nn.ModuleList(items)})
+
+    result = stub._enumerate_blocks()
+
+    assert [block.name for _, block in result] == ["layers.0", "layers.1", "layers.2"]
+
+
+def test_enumerate_blocks_ignores_components_that_are_not_list_items():
+    """The other side of the criterion: a ``GeneralizedComponent`` list that does
+    not set ``is_list_item`` (e.g. a stack of non-layer helpers) is excluded."""
+    items = [GeneralizedComponent(name=f"helpers.{i}") for i in range(2)]
+    stub = _stub({"helpers": nn.ModuleList(items)})
 
     assert stub._enumerate_blocks() == []
 
