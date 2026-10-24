@@ -30,6 +30,10 @@ jobs:
           df -h /
       - name: Add swap for fp32 CPU model boots
         run: |
+          # The runner image can ship /swapfile already active; fallocate on
+          # live swap fails with "Text file busy", so release it first.
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
           sudo fallocate -l 8G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile

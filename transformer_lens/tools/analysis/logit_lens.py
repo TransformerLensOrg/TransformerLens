@@ -40,7 +40,11 @@ import torch
 from jaxtyping import Float, Int
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.tools.analysis._model_state import require_eval_mode
+from transformer_lens.tools.analysis._model_state import (
+    hybrid_block_types,
+    require_eval_mode,
+    to_token_ids,
+)
 from transformer_lens.utilities import Slice, SliceInput
 from transformer_lens.utilities.logits_utils import logits_to_df
 from transformer_lens.utilities.quantization import require_readable_weight
@@ -57,8 +61,20 @@ _VALUE_COLUMNS = {"logits": "logit", "log_probs": "log_prob", "probs": "probabil
 # Normalization types for which the model has a final norm the lens must apply.
 _FINAL_NORM_TYPES = ("LN", "LNPre", "RMS", "RMSPre")
 
-# Block variants without a ``resid_mid`` hook; mirrors direct_logit_attribution.
-_HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
+# Relative to the reference's per-position spread, the identity error measures 0-2e-6 in
+# fp32 and under 1e-2 in bf16; readouts that skip a model's transform measure 0.7-1.5.
+_READOUT_IDENTITY_RTOL = 0.1
+
+# Readout-path modules ln_final -> unembed would skip: BERT/ModernBERT-decoder heads, OPT-350m's
+# project_out, DeepSeek-V4's hc_head, BD3LM's adaLN sigma_map, AST's classifier LayerNorm.
+_READOUT_TRANSFORM_COMPONENTS = (
+    "mlm_head",
+    "prediction_head",
+    "project_out",
+    "hc_head",
+    "sigma_map",
+    "classifier_ln",
+)
 
 
 @dataclass
@@ -258,21 +274,6 @@ def _decode_nested(ids: torch.Tensor, decode: Callable[[List[int]], str]) -> Any
     return [_decode_nested(row, decode) for row in ids]
 
 
-def _to_token_ids(model: Any, tokens: Union[str, int, Sequence[Union[str, int]]]) -> List[int]:
-    """Resolve strings / ids into a list of single-token ids."""
-    if isinstance(tokens, (str, int)):
-        tokens = [tokens]
-    ids: List[int] = []
-    for token in tokens:
-        if isinstance(token, str):
-            ids.append(int(model.to_single_token(token)))
-        elif isinstance(token, int) and not isinstance(token, bool):
-            ids.append(token)
-        else:
-            raise TypeError(f"tokens must be strings or ints, got {type(token).__name__}")
-    return ids
-
-
 def _target_names(targets: Optional[TokenInput]) -> Optional[List[Optional[str]]]:
     """Positional record of the strings in a shared-targets argument."""
     if targets is None or isinstance(targets, torch.Tensor):
@@ -309,7 +310,7 @@ def _final_norm(model: Any) -> Optional[torch.nn.Module]:
     return ln_final
 
 
-def _require_decoder_unembed(model: Any) -> None:
+def _require_decoder_unembed(model: Any, *, operation: str) -> None:
     modules = getattr(model, "_modules", {})
     if "encoder_blocks" in modules or "decoder_blocks" in modules:
         raise NotImplementedError(
@@ -320,6 +321,28 @@ def _require_decoder_unembed(model: Any) -> None:
         raise NotImplementedError(
             "logit readout needs an `unembed` component; encoder-only bridges expose a "
             "task head instead of W_U."
+        )
+    _require_direct_readout(model, operation=operation)
+
+
+def _require_direct_readout(model: Any, *, operation: str) -> None:
+    """Reject bridges whose logits are not ``unembed(ln_final(last block's hook_resid_post))``."""
+    modules = getattr(model, "_modules", None) or {}
+    blocks = modules.get("blocks")
+    for layer, block in enumerate(blocks if isinstance(blocks, torch.nn.ModuleList) else ()):
+        if not getattr(block, "hook_out_is_single_residual_stream", False):
+            raise ValueError(
+                f"{operation} requires single-stream [batch, position, d_model] block outputs; "
+                f"blocks.{layer} ({type(block).__name__}) carries a stack of residual streams "
+                "that the model combines before ln_final, so its hook_resid_post is not the "
+                "stream the model unembeds."
+            )
+    mounted = [name for name in _READOUT_TRANSFORM_COMPONENTS if name in modules]
+    if mounted:
+        raise ValueError(
+            f"{operation} reads the residual stream through ln_final -> unembed only, but this "
+            f"bridge mounts {mounted} on its readout path, so the result would not be the "
+            "model's prediction."
         )
 
 
@@ -359,13 +382,13 @@ def _validate_selectors(
     if isinstance(targets, torch.Tensor):
         target_ids = targets.reshape(1) if targets.ndim == 0 else targets
         target_ids = target_ids.to(torch.long)
-    elif targets is not None:
-        target_ids = torch.tensor(_to_token_ids(model, targets), dtype=torch.long)
     for ids, name in ((vocab_ids, "vocab"), (target_ids, "targets")):
         if ids is not None and (
             ids.numel() == 0 or int(ids.min()) < 0 or int(ids.max()) >= d_vocab
         ):
             raise ValueError(f"{name} ids must be within [0, {d_vocab})")
+    if targets is not None and not isinstance(targets, torch.Tensor):
+        target_ids = torch.tensor(to_token_ids(model, targets), dtype=torch.long)
     return vocab_ids, target_ids, d_vocab
 
 
@@ -383,6 +406,57 @@ def _run_ln_final(
     # Norm components contract on [batch, pos, d_model]; stats are per vector, so
     # the row axis can be presented as the position axis.
     return ln_final(flat.unsqueeze(0)).squeeze(0)
+
+
+def _require_readout_identity(
+    model: Any,
+    cache: ActivationCache,
+    logits: Any,
+    ln_final: Optional[torch.nn.Module],
+    positions: Slice,
+    *,
+    operation: str,
+    chunk_size: int = 64,
+) -> None:
+    """Refuse when ``ln_final -> unembed`` on the last block's output does not give ``logits``."""
+    if not isinstance(logits, torch.Tensor):
+        return
+    resid = cache[f"blocks.{int(model.cfg.n_layers) - 1}.hook_resid_post"]
+    resid = positions.apply(resid, dim=1)
+    reference = positions.apply(logits, dim=1)
+    W_U = require_readable_weight(model.W_U, operation=f"{operation} readout check", owner=model)
+    if reference.shape != (*resid.shape[:-1], W_U.shape[1]):
+        raise ValueError(
+            f"{operation} reads ln_final -> unembed into {W_U.shape[1]} logits per position, "
+            f"but the model returned logits of shape {tuple(logits.shape)} for a residual "
+            f"stream of shape {tuple(resid.shape)}, so its readout is not that path."
+        )
+    # Compatibility-mode logits are only promised up to center_unembed's per-position shift.
+    log_probs = bool(getattr(model, "compatibility_mode", False))
+    flat = resid.reshape(-1, resid.shape[-1])
+    flat_reference = reference.reshape(-1, reference.shape[-1])
+    worst = spread = 0.0
+    with torch.no_grad():
+        for start in range(0, flat.shape[0], chunk_size):
+            chunk = flat[start : start + chunk_size].to(device=W_U.device, dtype=W_U.dtype)
+            if ln_final is not None:
+                chunk = _run_ln_final(ln_final, chunk)
+            ours, _ = _apply_output_transform(model, chunk @ W_U + model.b_U)
+            ours = ours.float()
+            theirs = flat_reference[start : start + chunk_size].to(ours.device).float()
+            if log_probs:
+                ours, theirs = torch.log_softmax(ours, -1), torch.log_softmax(theirs, -1)
+            worst = max(worst, (ours - theirs).abs().max().item())
+            spread = max(spread, (theirs - theirs.mean(-1, keepdim=True)).abs().max().item())
+    if worst > _READOUT_IDENTITY_RTOL * spread:
+        quantity = "log-probabilities" if log_probs else "logits"
+        raise ValueError(
+            f"{operation} reads the last block's hook_resid_post through ln_final -> unembed, "
+            f"but that differs from the model's own {quantity} by up to {worst:.3g} against a "
+            f"spread of {spread:.3g} (tolerance {_READOUT_IDENTITY_RTOL:g} of the spread): the "
+            "model transforms the residual stream before its logits in a way this tool does not "
+            "reproduce."
+        )
 
 
 def _broadcast_targets(targets: torch.Tensor, lead: Tuple[int, ...]) -> torch.Tensor:
@@ -452,12 +526,13 @@ def logit_readout(
     Raises:
         ValueError: On a bad ``return_type``, more than one selector, a
             ``chunk_size`` below 1, a wrong trailing dimension, empty vectors,
-            per-row targets that do not broadcast, or a model whose final norm
-            cannot be applied exactly.
+            per-row targets that do not broadcast, a model whose final norm
+            cannot be applied exactly, or a bridge whose readout is not
+            ``ln_final -> unembed`` on the last block's output.
         NotImplementedError: For encoder-decoder and encoder-only bridges.
     """
     require_eval_mode(model, operation="logit_readout")
-    _require_decoder_unembed(model)
+    _require_decoder_unembed(model, operation="logit_readout")
     if not isinstance(vectors, torch.Tensor) or not vectors.is_floating_point():
         raise TypeError("vectors must be a floating-point tensor")
     ln_final = _final_norm(model) if apply_ln else None
@@ -595,7 +670,10 @@ def logit_lens(
     through :meth:`~transformer_lens.ActivationCache.ActivationCache.apply_ln_to_stack`
     with recomputed statistics, and hands the result to :func:`logit_readout`.
     The final stack entry reproduces the model's logits (raw bridge) or
-    log-probabilities (compatibility mode).
+    log-probabilities (compatibility mode). Bridges whose readout is not
+    ``ln_final -> unembed`` on the last block's output are refused; a prompt run here
+    with ``apply_ln=True`` is also checked against the model's own output, a supplied
+    ``cache`` only structurally.
 
     Args:
         model: A ``TransformerBridge``, or an :class:`ActivationCache` (then
@@ -631,7 +709,7 @@ def logit_lens(
         cache = model
         model = cache.model
     require_eval_mode(model, operation="logit_lens")
-    _require_decoder_unembed(model)
+    _require_decoder_unembed(model, operation="logit_lens")
     # Everything cheap is checked before the forward pass is paid for.
     ln_final = _final_norm(model) if apply_ln else None
     _validate_selectors(
@@ -643,22 +721,31 @@ def logit_lens(
         chunk_size=chunk_size,
     )
     if incl_mid:
-        layer_types = model.layer_types() if hasattr(model, "layer_types") else []
-        hybrid = [t for t in layer_types if any(p in _HYBRID_VARIANT_NAMES for p in t.split("+"))]
+        hybrid = hybrid_block_types(model)
         if hybrid:
             raise ValueError(
                 f"incl_mid=True needs a resid_mid hook on every block, but this stack has "
-                f"block types {sorted(set(hybrid))} without one; use incl_mid=False."
+                f"block types {hybrid} without one; use incl_mid=False."
             )
+    pos_slice = positions if isinstance(positions, Slice) else Slice(positions)
     if cache is None:
         if input is None:
             raise ValueError("logit_lens needs an input to run or a cache to read")
-        _, cache = model.run_with_cache(
+        logits, cache = model.run_with_cache(
             input, names_filter=_residual_hook_names(int(model.cfg.n_layers), incl_mid)
         )
+        if apply_ln:
+            _require_readout_identity(
+                model,
+                cache,
+                logits,
+                ln_final,
+                pos_slice,
+                operation="logit_lens",
+                chunk_size=chunk_size,
+            )
     assert cache is not None
 
-    pos_slice = positions if isinstance(positions, Slice) else Slice(positions)
     batch = batch_slice if isinstance(batch_slice, Slice) else Slice(batch_slice)
     stack, labels = cache.accumulated_resid(
         layer=None, incl_mid=incl_mid, apply_ln=False, pos_slice=pos_slice, return_labels=True

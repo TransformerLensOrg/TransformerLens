@@ -64,3 +64,52 @@ def test_run_with_cache_text_only(bridge):
         logits, cache = bridge.run_with_cache(IDS)
     assert torch.isfinite(logits).all()
     assert len(cache) > 0
+
+
+def test_contribution_hooks_are_post_norm_outputs(bridge):
+    """hook_attn_out / hook_mlp_out carry the post-sublayer norm outputs, the tensors the
+    layer actually adds (Gemma 2/3 contract), checked against an independent HF run."""
+    from transformers import AutoModelForCausalLM
+
+    hf = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME, torch_dtype=torch.float32, attn_implementation="eager"
+    ).eval()
+    modules = dict(hf.named_modules())
+    reference = {}
+    handles = []
+    for layer in range(bridge.cfg.n_layers):
+        for hf_norm, alias in (
+            ("post_attention_layernorm", "hook_attn_out"),
+            ("post_feedforward_layernorm", "hook_mlp_out"),
+        ):
+            path = next(n for n in modules if n.endswith(f"layers.{layer}.{hf_norm}"))
+            key = f"blocks.{layer}.{alias}"
+            handles.append(
+                modules[path].register_forward_hook(
+                    lambda _m, _i, out, key=key: reference.__setitem__(key, out.detach())
+                )
+            )
+    try:
+        with torch.no_grad():
+            hf(IDS)
+            _, cache = bridge.run_with_cache(IDS)
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    for key, expected in reference.items():
+        torch.testing.assert_close(cache[key], expected, atol=1e-5, rtol=1e-5)
+
+
+def test_half_converts_unmapped_parameters():
+    bridge = TransformerBridge.boot_transformers(MODEL_NAME, device="cpu", dtype=torch.float32)
+    bridge.half()
+
+    unconverted = [
+        name
+        for name, parameter in bridge.original_model.named_parameters()
+        if parameter.dtype != torch.float16
+    ]
+    assert unconverted == []
+    with torch.no_grad():
+        assert bridge(IDS).dtype == torch.float16

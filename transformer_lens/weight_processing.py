@@ -1038,7 +1038,8 @@ class ProcessWeights:
         )
         if alternate_final_w_key != ln_final_w_key and alternate_final_w_key in state_dict:
             state_dict[alternate_final_w_key] = identity_val
-        if center_weights:
+        # RMSNorm outputs are not zero-mean, so centering would change predictions.
+        if center_weights and not getattr(cfg, "final_rms", False):
             unembed_weight_centered = ProcessWeights.convert_tensor_to_tl_format(
                 unembed_W_U_key, state_dict, state_dict.get(unembed_W_U_key), cfg, adapter, None
             )
@@ -1656,6 +1657,7 @@ class ProcessWeights:
         # folding involve multiplications that accumulate rounding errors when
         # performed in low precision.
         original_dtypes: Dict[str, torch.dtype] = {}
+        original_keys = set(state_dict)
         for k, v in state_dict.items():
             if isinstance(v, torch.Tensor) and v.is_floating_point() and v.dtype != torch.float32:
                 original_dtypes[k] = v.dtype
@@ -1701,19 +1703,18 @@ class ProcessWeights:
                 UserWarning,
             )
             center_writing_weights = False
-        if center_writing_weights:
-            if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"] and (
-                not getattr(cfg, "final_rms", False)
-            ):
-                state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
+        should_center_writing_weights = (
+            center_writing_weights
+            and getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]
+            and not getattr(cfg, "final_rms", False)
+        )
+        if should_center_writing_weights:
+            state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
             state_dict = ProcessWeights.center_unembed(state_dict, cfg=cfg, adapter=adapter)
         if fold_value_biases:
             state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
-            if center_writing_weights and getattr(cfg, "normalization_type", "LN") in [
-                "LN",
-                "LNPre",
-            ]:
+            if should_center_writing_weights:
                 for layer_idx in range(cfg.n_layers):
                     b_O_key = ProcessWeights._get_param_key(f"blocks.{layer_idx}.attn.b_O", adapter)
                     if b_O_key in state_dict:
@@ -1730,7 +1731,11 @@ class ProcessWeights:
                 state_dict, cfg, adapter=adapter
             )
 
-        # Downcast back to original dtypes
+        # Downcast back to original dtypes; biases created by folding take their weight's dtype
+        for k in state_dict.keys() - original_keys:
+            weight_dtype = original_dtypes.get(k.removesuffix(".bias") + ".weight")
+            if weight_dtype is not None:
+                original_dtypes[k] = weight_dtype
         for k, orig_dtype in original_dtypes.items():
             if k in state_dict and isinstance(state_dict[k], torch.Tensor):
                 state_dict[k] = state_dict[k].to(orig_dtype)

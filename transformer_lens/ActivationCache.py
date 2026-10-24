@@ -726,7 +726,8 @@ class ActivationCache:
                 A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
             incl_embeds:
-                Whether to include embed & pos_embed
+                Whether to include embed & pos_embed, whose hooks expose their
+                contributions to the residual stream.
             return_labels:
                 Whether to return a list of labels for the residual stream components.
                 Useful for labelling graphs.
@@ -820,7 +821,9 @@ class ActivationCache:
                 # Preserve broadcast promotion for caches collected under autocast.
                 dtype = torch.promote_types(z.dtype, weights.dtype)
                 z, weights = z.to(dtype), weights.to(dtype)
-            self.cache_dict[result_key] = torch.einsum("...hd,hdm->...hm", z, weights)
+            result = torch.einsum("...hd,hdm->...hm", z, weights)
+            scale = getattr(self.model.blocks[layer].attn, "_result_contribution_scale", 1.0)
+            self.cache_dict[result_key] = result if scale == 1.0 else result * scale
         return all_cached
 
     def ssm_layers(self, mixer_type: Optional[Union[type, Tuple[type, ...]]] = None) -> List[int]:
@@ -1075,10 +1078,12 @@ class ActivationCache:
             # stacked correctly. This uses the shape of hook_embed, which is pretty janky since it
             # assumes embed is in the cache. But it's hard to explicitly code the shape, since it
             # depends on the pos slice, whether we have a batch dim, etc. And it's pretty messy!
+            empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
             components = torch.zeros(
                 0,
-                *pos_slice.apply(self["hook_embed"], dim=-2).shape,
-                device=self.model.cfg.device,
+                *empty_src.shape,
+                dtype=empty_src.dtype,
+                device=empty_src.device,
             )
 
         if apply_ln:
@@ -1158,6 +1163,7 @@ class ActivationCache:
         neuron_acts = self[("post", layer, "mlp")]
         block = self.model.blocks[layer]
         W_out = block.mlp.W_out
+        contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
@@ -1165,6 +1171,8 @@ class ActivationCache:
         if neuron_slice is not None:
             neuron_acts = neuron_slice.apply(neuron_acts, dim=-1)
             W_out = neuron_slice.apply(W_out, dim=0)
+        if contribution_scale != 1.0:
+            neuron_acts = neuron_acts * contribution_scale
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
@@ -1172,6 +1180,13 @@ class ActivationCache:
         if project_output_onto.ndim == 1:
             return neuron_acts * projected
         return neuron_acts[..., None] * projected
+
+    def _uses_ln_centering(self, layer: Optional[int]) -> bool:
+        """Use the target norm's semantics, not just the block normalization family."""
+        is_final = layer is None or layer == self.model.cfg.n_layers
+        return self.model.cfg.normalization_type in ["LN", "LNPre"] and not (
+            is_final and getattr(self.model.cfg, "final_rms", False)
+        )
 
     def _get_cached_ln_scale(
         self,
@@ -1191,6 +1206,20 @@ class ActivationCache:
         try:
             scale = self[key]
         except KeyError as e:
+            norm = f"ln{2 if mlp_input else 1}"
+            blocks = getattr(self.model, "blocks", None)
+            block = blocks[layer] if blocks is not None and layer is not None else None
+            if (
+                block is not None
+                and getattr(block, norm, None) is None
+                and getattr(block, f"{norm}_post", None) is not None
+            ):
+                sublayer = "MLP" if mlp_input else "attention"
+                raise KeyError(
+                    f"Layer {layer} has no {norm} (pre-{sublayer} norm): this architecture "
+                    f"normalizes sublayer outputs ({norm}_post) instead, so a mid-layer cached-scale "
+                    f"LN is undefined. Use apply_ln=False, or apply LN at the final layer."
+                ) from e
             raise KeyError(
                 f"Cached LN scale not found at '{key}'. apply_ln operations require the model "
                 f"to have cached this hook (some non-decoder-only architectures expose LN scale "
@@ -1218,13 +1247,14 @@ class ActivationCache:
         """
         scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
-        apply_centering = self.model.cfg.normalization_type in ["LN", "LNPre"]
+        apply_centering = self._uses_ln_centering(layer)
         sum_p = project_2d.sum(dim=0) if apply_centering else None  # [n_outs]
 
         components: list = []
         for l in range(layer):
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
+            contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
             if apply_centering:
@@ -1233,6 +1263,8 @@ class ActivationCache:
                 lin_form_l = W_proj_l - W_means_l[:, None] * sum_p[None, :]
             else:
                 lin_form_l = W_proj_l
+            if contribution_scale != 1.0:
+                lin_form_l = lin_form_l * contribution_scale
             a_l = self[("post", l, "mlp")]
             a_l = pos_slice.apply(a_l, dim=-2)
             a_l = neuron_slice.apply(a_l, dim=-1)
@@ -1241,7 +1273,13 @@ class ActivationCache:
         if not components:
             empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
             return torch.zeros(
-                0, *empty_src.shape[:-1], project_2d.shape[-1], device=self.model.cfg.device
+                0,
+                *empty_src.shape[:-1],
+                project_2d.shape[-1],
+                dtype=torch.promote_types(
+                    torch.promote_types(empty_src.dtype, scale.dtype), project_2d.dtype
+                ),
+                device=empty_src.device,
             )
         stacked = torch.cat(components, dim=-2)
         return einops.rearrange(
@@ -1381,10 +1419,16 @@ class ActivationCache:
                 components = torch.cat([remainder_full[None]], dim=0)
                 labels.append("remainder")
             else:
-                empty_shape_src = pos_slice.apply(self["hook_embed"], dim=-2)
+                empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
+                empty_shape = tuple(empty_src.shape)
+                empty_dtype = empty_src.dtype
                 if project_2d is not None:
-                    empty_shape_src = empty_shape_src @ project_2d
-                components = torch.zeros(0, *empty_shape_src.shape, device=self.model.cfg.device)
+                    # Shape only: a real matmul would demand the cache and direction share a dtype.
+                    empty_shape = (*empty_shape[:-1], project_2d.shape[-1])
+                    empty_dtype = torch.promote_types(empty_dtype, project_2d.dtype)
+                components = torch.zeros(
+                    0, *empty_shape, dtype=empty_dtype, device=empty_src.device
+                )
 
             if apply_ln:
                 components = self.apply_ln_to_stack(
@@ -1485,8 +1529,8 @@ class ActivationCache:
                 results.append(out.reshape(original_shape))
             return torch.stack(results, dim=0)
 
-        # Center the stack onlny if the model uses LayerNorm
-        if self.model.cfg.normalization_type in ["LN", "LNPre"]:
+        # Final RMSNorm must not inherit the block LayerNorm centering convention.
+        if self._uses_ln_centering(layer):
             residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         # Shape is [batch, position, 1] or [position, 1]; final dim is a dummy for broadcasting.
@@ -1516,7 +1560,7 @@ class ActivationCache:
         2. Neuron / MLP results (only if ``cfg.attn_only=False`` and
            ``layer > 0``; ``L * d_mlp`` rows when ``expand_neurons=True``,
            else ``L`` rows)
-        3. ``embed`` (1 row, if the model has token embeddings)
+        3. ``embed`` (1 row, including any post-embedding runtime multiplier)
         4. ``pos_embed`` (1 row, if the model has positional embeddings)
         5. ``bias`` (1 row, the accumulated layer biases)
 
@@ -1612,7 +1656,7 @@ class ActivationCache:
                 components.append(mlp_stack)
 
         if self.has_embed:
-            embed = pos_slice.apply(self["embed"], -2)[None]
+            embed = pos_slice.apply(self["hook_embed"], -2)[None]
             if ln_folded:
                 embed = _ln_then_project(embed)
             elif project_2d is not None:

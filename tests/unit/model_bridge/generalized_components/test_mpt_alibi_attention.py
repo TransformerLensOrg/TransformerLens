@@ -8,6 +8,8 @@ Covers:
 - ALiBi slicing when seq_len < max_seq_len
 - Boolean causal mask enforces causal structure
 - hook_q, hook_k, hook_v, hook_attn_scores, hook_pattern all fire
+- use_attn_result fires hook_result per head without changing the output
+- hook_z edits reach the output on both the summed and the per-head path
 """
 
 import torch
@@ -300,6 +302,91 @@ class TestHooksFire:
     def test_hook_pattern_fires(self) -> None:
         captured = self._run_forward_with_hooks(["hook_pattern"])
         assert "hook_pattern" in captured
+
+
+# ---------------------------------------------------------------------------
+# use_attn_result: per-head output fork
+# ---------------------------------------------------------------------------
+
+
+class TestUseAttnResult:
+    """use_attn_result must fire hook_result per head, and the summed output must not move."""
+
+    d_model, n_heads, seq_len = 64, 2, 8
+
+    def _run(self, bridge: MPTALiBiAttentionBridge, inputs: dict) -> torch.Tensor:
+        with torch.no_grad():
+            out, *_ = bridge(
+                inputs["hidden"],
+                position_bias=inputs["position_bias"],
+                attention_mask=inputs["causal_mask"],
+            )
+        return out
+
+    def _bridge_and_inputs(self) -> tuple[MPTALiBiAttentionBridge, dict]:
+        hf_attn = _make_tiny_mpt_attention(d_model=self.d_model, n_heads=self.n_heads)
+        hf_attn.eval()
+        bridge = _build_bridge(hf_attn)
+        inputs = _make_inputs(
+            d_model=self.d_model, n_heads=self.n_heads, max_seq_len=32, seq_len=self.seq_len
+        )
+        return bridge, inputs
+
+    def test_hook_result_fires_per_head_and_sums_to_output(self) -> None:
+        bridge, inputs = self._bridge_and_inputs()
+        captured: list[torch.Tensor] = []
+        bridge.hook_result.add_hook(lambda tensor, hook: captured.append(tensor.detach().clone()))
+
+        reference = self._run(bridge, inputs)
+        assert captured == [], "hook_result fired with use_attn_result off"
+
+        bridge.config.use_attn_result = True
+        per_head_out = self._run(bridge, inputs)
+
+        assert len(captured) == 1, "hook_result did not fire with use_attn_result on"
+        result = captured[0]
+        assert result.shape == (2, self.seq_len, self.n_heads, self.d_model)
+        torch.testing.assert_close(per_head_out, reference, atol=1e-5, rtol=1e-5)
+        # no_bias=True: out_proj has no b_O, so the heads sum to the output on their own.
+        torch.testing.assert_close(result.sum(dim=2), reference, atol=1e-5, rtol=1e-5)
+
+    def test_hook_result_edit_reaches_output(self) -> None:
+        """A hook that zeroes one head must remove exactly that head's write from the output."""
+        bridge, inputs = self._bridge_and_inputs()
+        bridge.config.use_attn_result = True
+        captured: list[torch.Tensor] = []
+
+        def zero_head_0(tensor: torch.Tensor, hook: object) -> torch.Tensor:
+            captured.append(tensor.detach().clone())
+            tensor = tensor.clone()
+            tensor[:, :, 0, :] = 0.0
+            return tensor
+
+        bridge.hook_result.add_hook(zero_head_0)
+        patched = self._run(bridge, inputs)
+
+        torch.testing.assert_close(patched, captured[0][:, :, 1, :], atol=1e-5, rtol=1e-5)
+
+    def test_hook_z_edit_reaches_per_head_output(self) -> None:
+        """hook_z (o.hook_in) fires ahead of the per-head fork, so z edits move both paths."""
+        bridge, inputs = self._bridge_and_inputs()
+        d_head = self.d_model // self.n_heads
+
+        def zero_head_0_z(tensor: torch.Tensor, hook: object) -> torch.Tensor:
+            tensor = tensor.clone()
+            tensor[..., :d_head] = 0.0
+            return tensor
+
+        bridge.o.hook_in.add_hook(zero_head_0_z)
+        edited = self._run(bridge, inputs)
+
+        bridge.config.use_attn_result = True
+        results: list[torch.Tensor] = []
+        bridge.hook_result.add_hook(lambda tensor, hook: results.append(tensor.detach().clone()))
+        edited_per_head = self._run(bridge, inputs)
+
+        assert not results[0][:, :, 0, :].any(), "hook_z edit did not reach hook_result"
+        torch.testing.assert_close(edited_per_head, edited, atol=1e-5, rtol=1e-5)
 
 
 # ---------------------------------------------------------------------------

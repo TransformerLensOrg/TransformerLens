@@ -10,7 +10,7 @@ from typing import NoReturn, Optional, Union
 import torch
 from typing_extensions import Literal
 
-from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.FactoredMatrix import FactoredMatrix, upcast_for_linalg
 from transformer_lens.model_protocol import TransformerLensModel
 
 OUTPUT_EMBEDDING = "unembed.W_U"
@@ -33,6 +33,7 @@ class SVDInterpreter:
             assert isinstance(model, torch.nn.Module)  # named_parameters() fallback
             self.params = {name: param for name, param in model.named_parameters()}
 
+    @torch.no_grad()
     def get_singular_vectors(
         self,
         vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],
@@ -47,6 +48,8 @@ class SVDInterpreter:
         means inconsistency across devices, and default weight processing doesn't
         replicate the original SVD post very well. So I'd recommend checking out the demo if you
         want to use this!
+
+        Runs under ``torch.no_grad()``, so the returned tensor is always detached from autograd.
 
         Example:
 
@@ -102,11 +105,11 @@ class SVDInterpreter:
 
         elif vector_type == "w_in":
             matrix = self._get_w_in_matrix(layer_index)
-            _, _, V = torch.linalg.svd(matrix)
+            _, _, V = torch.linalg.svd(upcast_for_linalg(matrix))
 
         elif vector_type == "w_out":
             matrix = self._get_w_out_matrix(layer_index)
-            _, _, V = torch.linalg.svd(matrix)
+            _, _, V = torch.linalg.svd(upcast_for_linalg(matrix))
 
         else:
             raise ValueError(f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}")
@@ -115,18 +118,14 @@ class SVDInterpreter:
 
     def _get_singular_vectors_from_matrix(
         self,
-        V: Union[torch.Tensor, FactoredMatrix],
+        V: torch.Tensor,
         embedding: torch.Tensor,
         num_vectors: int = 10,
     ) -> torch.Tensor:
         """Returns the top num_vectors singular vectors from a matrix."""
 
-        vectors_list = []
-        for i in range(num_vectors):
-            activations = V[i, :].float() @ embedding  # type: ignore
-            vectors_list.append(activations)
-
-        vectors = torch.stack(vectors_list, dim=1).unsqueeze(1)
+        embedding = embedding.to(dtype=V.dtype)
+        vectors = (embedding.T @ V[:num_vectors].T).unsqueeze(1)
         assert vectors.shape == (
             self.cfg.d_vocab,
             1,

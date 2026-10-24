@@ -284,6 +284,197 @@ def test_rejects_incompatible_precomputed_decomposition() -> None:
         solve_coordinate_patch(activation, changed_dictionary, 0, 2, decomposition=decomposition)
 
 
+@pytest.mark.parametrize(
+    "algorithm", ["nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"]
+)
+def test_correlated_decomposition_reuse_and_position_cache(
+    algorithm: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import transformer_lens.tools.analysis.jacobian_lens_coordinate_patch as core_module
+
+    dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.7, 0.7, 0.0], [0.0, 0.0, 1.0]])
+    activation = torch.tensor([1.0, 0.3, 0.0])
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2, algorithm=algorithm)
+    fresh = solve_coordinate_patch(activation, dictionary, 0, 2, k=2, algorithm=algorithm)
+    reused = solve_coordinate_patch(
+        activation, dictionary, 0, 2, decomposition=decomposition, algorithm=algorithm
+    )
+    torch.testing.assert_close(reused.patched, fresh.patched)
+    torch.testing.assert_close(
+        reused.delta,
+        torch.tensor([-decomposition.coordinates[0], 0.0, decomposition.coordinates[0]]),
+    )
+    calls = []
+    original = core_module.get_sparse_decomposition
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(core_module, "get_sparse_decomposition", spy)
+    cache: dict = {}
+    for supplied_cache in (None, cache, cache):
+        patched, patches = solve_coordinate_patch_positions(
+            activation.view(1, 1, 3),
+            dictionary,
+            [7],
+            0,
+            2,
+            layer=0,
+            decomposition_cache=supplied_cache,
+            k=2,
+            algorithm=algorithm,
+        )
+        torch.testing.assert_close(patched[0, 0], fresh.patched)
+        torch.testing.assert_close(patches[(0, 0, 7)].residual, fresh.residual)
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "algorithm", ["nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"]
+)
+def test_correlated_reuse_rejects_scaled_coordinates(algorithm: str) -> None:
+    dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.7, 0.7, 0.0], [0.0, 0.0, 1.0]])
+    activation = torch.tensor([1.0, 0.3, 0.0])
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2, algorithm=algorithm)
+    scaled = replace(
+        decomposition,
+        coordinates=decomposition.coordinates * 2,
+        reconstruction=decomposition.reconstruction * 2,
+    )
+    with pytest.raises(ValueError, match="activation"):
+        solve_coordinate_patch(
+            activation, dictionary, 0, 2, decomposition=scaled, algorithm=algorithm
+        )
+
+
+@pytest.mark.parametrize("scale", [1e-3, 1.0, 1e3])
+def test_gradient_pursuit_reuse_with_multiple_correlated_atoms(scale: float) -> None:
+    generator = torch.Generator().manual_seed(17)
+    dictionary = torch.randn(8, 5, generator=generator)
+    activation = torch.randn(5, generator=generator) * scale
+    decomposition = get_sparse_decomposition(
+        activation, dictionary, k=4, algorithm="gradient_pursuit"
+    )
+    source = int(decomposition.support[0])
+    target = (source + 1) % len(dictionary)
+    fresh = solve_coordinate_patch(
+        activation, dictionary, source, target, k=4, algorithm="gradient_pursuit"
+    )
+    reused = solve_coordinate_patch(
+        activation,
+        dictionary,
+        source,
+        target,
+        decomposition=decomposition,
+        algorithm="gradient_pursuit",
+    )
+    torch.testing.assert_close(reused.patched, fresh.patched)
+    with pytest.raises(ValueError, match="activation"):
+        solve_coordinate_patch(
+            activation * 2,
+            dictionary,
+            source,
+            target,
+            decomposition=decomposition,
+            algorithm="gradient_pursuit",
+        )
+
+
+@pytest.mark.parametrize(
+    "produced_by, solve_algorithm",
+    [
+        ("nonnegative_orthogonal_matching_pursuit", "gradient_pursuit"),
+        ("gradient_pursuit", "nonnegative_orthogonal_matching_pursuit"),
+    ],
+)
+def test_reuse_accepts_a_decomposition_from_either_algorithm(
+    produced_by: str, solve_algorithm: str
+) -> None:
+    """``algorithm`` governs fresh solves only; a cache shared across solvers stays reusable."""
+    dictionary = torch.tensor([[1.0, 0.0, 0.0], [0.7, 0.7, 0.0], [0.0, 0.0, 1.0]])
+    activation = torch.tensor([1.0, 0.3, 0.0])
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2, algorithm=produced_by)
+    other = get_sparse_decomposition(activation, dictionary, k=2, algorithm=solve_algorithm)
+    # The solvers must disagree here, or reuse under the other algorithm proves nothing.
+    assert not torch.allclose(decomposition.coordinates, other.coordinates)
+
+    reused = solve_coordinate_patch(
+        activation, dictionary, 0, 2, decomposition=decomposition, algorithm=solve_algorithm
+    )
+
+    fresh = solve_coordinate_patch(activation, dictionary, 0, 2, k=2, algorithm=produced_by)
+    torch.testing.assert_close(reused.patched, fresh.patched)
+    scaled = replace(
+        decomposition,
+        coordinates=decomposition.coordinates * 2,
+        reconstruction=decomposition.reconstruction * 2,
+    )
+    with pytest.raises(ValueError, match="NNLS fit .* or as a gradient-pursuit replay"):
+        solve_coordinate_patch(
+            activation, dictionary, 0, 2, decomposition=scaled, algorithm=solve_algorithm
+        )
+
+
+def test_gradient_pursuit_reuse_validates_a_pruned_selected_atom() -> None:
+    """A selected atom the final step zeroes is pruned on replay; claiming it active is rejected."""
+    dictionary = torch.tensor(
+        [
+            [0.0, -3.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [1.0, -3.0, -3.0, 0.0],
+            [-1.0, -1.0, -1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    activation = torch.tensor([-1.0, -4.0, -4.0, 0.0])
+    decomposition = get_sparse_decomposition(
+        activation, dictionary, k=4, algorithm="gradient_pursuit"
+    )
+    # Atom 1 enters third with a positive coordinate and the fourth step clamps it to zero.
+    assert decomposition.selected_support.tolist() == [2, 3, 1, 0]
+    assert decomposition.support.tolist() == [2, 3, 0]
+
+    reused = solve_coordinate_patch(
+        activation, dictionary, 2, 4, decomposition=decomposition, algorithm="gradient_pursuit"
+    )
+
+    fresh = solve_coordinate_patch(activation, dictionary, 2, 4, k=4, algorithm="gradient_pursuit")
+    torch.testing.assert_close(reused.patched, fresh.patched)
+    # Relabel the pruned atom as active in atom 0's slot, keeping the reconstruction consistent.
+    relabelled = torch.tensor([2, 3, 1])
+    tampered = replace(
+        decomposition,
+        support=relabelled,
+        reconstruction=dictionary[relabelled].T @ decomposition.coordinates,
+    )
+    with pytest.raises(ValueError, match="gradient-pursuit replay"):
+        solve_coordinate_patch(
+            activation, dictionary, 2, 4, decomposition=tampered, algorithm="gradient_pursuit"
+        )
+
+
+def test_gradient_pursuit_empty_support_reports_missing_source() -> None:
+    dictionary = torch.eye(3)
+    activation = torch.zeros(3)
+    decomposition = get_sparse_decomposition(
+        activation, dictionary, k=2, algorithm="gradient_pursuit"
+    )
+    with pytest.raises(ValueError, match="active support"):
+        solve_coordinate_patch(
+            activation, dictionary, 0, 1, decomposition=decomposition, algorithm="gradient_pursuit"
+        )
+
+
+def test_precomputed_decomposition_rejects_unknown_algorithm() -> None:
+    activation, dictionary = _problem()
+    decomposition = get_sparse_decomposition(activation, dictionary, k=2)
+    with pytest.raises(ValueError, match="algorithm"):
+        solve_coordinate_patch(
+            activation, dictionary, 0, 1, decomposition=decomposition, algorithm="unknown"
+        )
+
+
 def test_rejects_scaled_but_self_consistent_decomposition() -> None:
     activation, dictionary = _problem()
     decomposition = get_sparse_decomposition(activation, dictionary, k=2)

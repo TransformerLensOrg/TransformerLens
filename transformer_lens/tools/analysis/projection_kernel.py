@@ -15,6 +15,7 @@ from typing import Any, List, Literal, Optional, Sequence, Tuple, cast
 import torch
 from jaxtyping import Bool, Float, Int
 
+from transformer_lens.tools.analysis._model_state import compute_dtype, require_int
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     _linalg_on_cpu_if_mps,
 )
@@ -133,8 +134,7 @@ class HeadAffinityResult:
 
     def top_pairs(self, k: int = 20, *, normalized: bool = False) -> List[HeadAffinityPair]:
         """Return the highest-scoring valid pairs with deterministic tie order."""
-        if isinstance(k, bool) or not isinstance(k, int) or k < 1:
-            raise ValueError(f"k must be a positive integer, got {k!r}")
+        k = require_int(k, "k")
 
         selected_scores = self.normalized if normalized else self.scores
         entries: List[HeadAffinityPair] = []
@@ -178,14 +178,9 @@ class HeadAffinityResult:
         return entries[:k]
 
 
-def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
-    """Return a dtype supported by stable SVD on common PyTorch backends."""
-    return torch.float64 if dtype == torch.float64 else torch.float32
-
-
 def _validate_rtol(rtol: Optional[float], shape: Tuple[int, int], dtype: torch.dtype) -> float:
     if rtol is None:
-        return max(shape) * torch.finfo(_compute_dtype(dtype)).eps
+        return max(shape) * torch.finfo(compute_dtype(dtype)).eps
     if isinstance(rtol, bool) or not isinstance(rtol, Real):
         raise ValueError(f"rtol must be a finite non-negative real number, got {rtol!r}")
     value = float(rtol)
@@ -197,11 +192,7 @@ def _validate_rtol(rtol: Optional[float], shape: Tuple[int, int], dtype: torch.d
 def _validate_rank(rank: Optional[int], max_rank: int) -> Optional[int]:
     if rank is None:
         return None
-    if isinstance(rank, bool) or not isinstance(rank, int):
-        raise ValueError(f"rank must be an integer or None, got {rank!r}")
-    if not 1 <= rank <= max_rank:
-        raise ValueError(f"rank must be between 1 and min(matrix.shape)={max_rank}, got {rank}")
-    return rank
+    return require_int(rank, "rank", maximum=max_rank)
 
 
 def orthonormal_subspace(
@@ -244,9 +235,8 @@ def orthonormal_subspace(
 
     input_shape = (matrix.shape[0], matrix.shape[1])
     requested_rank = _validate_rank(rank, min(input_shape))
-    compute_dtype = _compute_dtype(matrix.dtype)
     effective_rtol = _validate_rtol(rtol, input_shape, matrix.dtype)
-    work = matrix.to(dtype=compute_dtype)
+    work = matrix.to(dtype=compute_dtype(matrix.dtype))
     left, singular_values, _ = torch.linalg.svd(work, full_matrices=False)
     threshold = float(singular_values[0].item()) * effective_rtol
     measured_rank = int((singular_values > threshold).sum().item())
@@ -291,31 +281,20 @@ def _validate_subspace(value: SubspaceBasis, name: str) -> None:
         raise ValueError(f"{name}.singular_values must be a finite floating-point vector")
     if singular_values.device != basis.device:
         raise ValueError(f"{name}.singular_values must be on the basis device")
-    if (
-        not isinstance(value.input_shape, tuple)
-        or len(value.input_shape) != 2
-        or any(
-            isinstance(dimension, bool) or not isinstance(dimension, int) or dimension < 1
-            for dimension in value.input_shape
-        )
-    ):
+    if not isinstance(value.input_shape, tuple) or len(value.input_shape) != 2:
         raise ValueError(f"{name}.input_shape must contain two positive dimensions")
+    for dimension in value.input_shape:
+        require_int(dimension, f"{name}.input_shape dimension")
     if singular_values.shape[0] != min(value.input_shape):
         raise ValueError(f"{name}.singular_values length must equal min(input_shape)")
-    if (
-        isinstance(value.rank, bool)
-        or not isinstance(value.rank, int)
-        or value.rank < 1
-        or basis.shape[1] != value.rank
-    ):
+    if require_int(value.rank, f"{name}.rank") != basis.shape[1]:
         raise ValueError(f"{name}.rank must equal its positive basis width")
-    if (
-        isinstance(value.measured_rank, bool)
-        or not isinstance(value.measured_rank, int)
-        or value.measured_rank < value.rank
-        or value.measured_rank > min(value.input_shape)
-    ):
-        raise ValueError(f"{name}.measured_rank must be at least its selected rank")
+    require_int(
+        value.measured_rank,
+        f"{name}.measured_rank",
+        minimum=value.rank,
+        maximum=min(value.input_shape),
+    )
     if value.input_shape[0] != basis.shape[0]:
         raise ValueError(f"{name}.input_shape must share its basis ambient dimension")
     if (
@@ -395,7 +374,7 @@ def projection_kernel(
         )
 
     dtype = torch.promote_types(subspace_a.basis.dtype, subspace_b.basis.dtype)
-    dtype = _compute_dtype(dtype)
+    dtype = compute_dtype(dtype)
     first = subspace_a.basis.to(dtype=dtype)
     second = subspace_b.basis.to(dtype=dtype)
     if check_orthonormal:
@@ -430,10 +409,8 @@ def random_projection_kernel_moments(ambient_dim: int, rank: int) -> RandomSubsp
     These idealized descriptive moments are not calibrated p-values for trained
     model weights, whose head subspaces are dependent and anisotropic.
     """
-    if isinstance(ambient_dim, bool) or not isinstance(ambient_dim, int) or ambient_dim < 2:
-        raise ValueError(f"ambient_dim must be an integer at least 2, got {ambient_dim!r}")
-    if isinstance(rank, bool) or not isinstance(rank, int) or not 1 <= rank <= ambient_dim:
-        raise ValueError(f"rank must be an integer between 1 and {ambient_dim}, got {rank!r}")
+    ambient_dim = require_int(ambient_dim, "ambient_dim", minimum=2)
+    rank = require_int(rank, "rank", maximum=ambient_dim)
 
     mean = rank**2 / ambient_dim
     variance = (
@@ -463,12 +440,7 @@ def _pairwise_projection_kernel(
         raise ValueError("source_bases and target_bases must share an ambient dimension")
     if source_bases.device != target_bases.device or source_bases.dtype != target_bases.dtype:
         raise ValueError("source_bases and target_bases must share a device and dtype")
-    if (
-        isinstance(max_temp_bytes, bool)
-        or not isinstance(max_temp_bytes, int)
-        or max_temp_bytes < 1
-    ):
-        raise ValueError("max_temp_bytes must be a positive integer")
+    max_temp_bytes = require_int(max_temp_bytes, "max_temp_bytes")
 
     source_count, _, source_rank = source_bases.shape
     target_count, _, target_rank = target_bases.shape
@@ -652,7 +624,7 @@ def attention_head_subspace_affinity(
     dtype = matrices[0].dtype
     for matrix in matrices[1:]:
         dtype = torch.promote_types(dtype, matrix.dtype)
-    dtype = _compute_dtype(dtype)
+    dtype = compute_dtype(dtype)
     effective_rtol = _validate_rtol(rtol, (source_ambient, max(source_width, target_width)), dtype)
     requested_rank = _validate_rank(rank, min(source_ambient, source_width, target_width))
     source_rank = source_width if requested_rank is None else requested_rank

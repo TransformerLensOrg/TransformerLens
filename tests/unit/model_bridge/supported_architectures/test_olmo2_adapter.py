@@ -6,11 +6,11 @@ Covered:
 - Weight conversions: the adapter uses the base QKVO helper, so only the exact
   key set is asserted at the adapter layer.
 - Component-mapping structure, bridge types, and HF module paths.
-- Post-norm block wiring: ln1 maps to post_attention_layernorm and ln2 maps to
-  post_feedforward_layernorm. This is the central arch-specific decision.
+- Post-norm block wiring: ln1_post maps to post_attention_layernorm and ln2_post
+  to post_feedforward_layernorm, with no ln1/ln2.
 - Q/K-norm submodules under attention with the correct HF names.
-- hook_alias_overrides: hook_resid_mid points at mlp.hook_in (the true post-attn
-  pre-mlp residual under post-norm), overriding BlockBridge's default ln2.hook_in.
+- Derived hook aliases: hook_resid_mid points at mlp.hook_in (the true post-attn
+  pre-mlp residual under post-norm), not BlockBridge's default ln2.hook_in.
 - GQA forward hook shapes for Q and K/V with Q/K-norm wired into the fake attention.
 - setup_component_testing: rotary wiring on template and bridge-model attentions,
   plus forcing eager attention on the HF model and per-layer self_attn configs.
@@ -205,8 +205,8 @@ class TestOlmo2ComponentTypes:
 
     def test_block_norms_are_rms(self, adapter: Olmo2ArchitectureAdapter) -> None:
         block = _mapping(adapter)["blocks"]
-        assert isinstance(block.submodules["ln1"], RMSNormalizationBridge)
-        assert isinstance(block.submodules["ln2"], RMSNormalizationBridge)
+        assert isinstance(block.submodules["ln1_post"], RMSNormalizationBridge)
+        assert isinstance(block.submodules["ln2_post"], RMSNormalizationBridge)
 
     def test_embed_and_unembed_are_correct_bridge_types(
         self, adapter: Olmo2ArchitectureAdapter
@@ -227,26 +227,25 @@ class TestOlmo2ComponentTypes:
 
 
 class TestOlmo2PostNormBlockWiring:
-    """OLMo 2 is post-norm: RMSNorm applies AFTER attention (ln1) and AFTER MLP (ln2).
-    The HF module names diverge from the pre-norm Llama family default, where ln1
-    would be `input_layernorm` and ln2 would be `post_attention_layernorm`. This is
-    the central arch-specific decision and the single test most likely to catch a
-    porting regression."""
+    """OLMo 2 is post-norm only, so its norms sit in ln1_post/ln2_post with no ln1/ln2;
+    Llama's `post_attention_layernorm` is the pre-MLP norm, the porting trap this guards."""
 
-    def test_ln1_maps_to_post_attention_layernorm(self, adapter: Olmo2ArchitectureAdapter) -> None:
-        block = _mapping(adapter)["blocks"]
-        assert block.submodules["ln1"].name == "post_attention_layernorm"
-
-    def test_ln2_maps_to_post_feedforward_layernorm(
+    def test_ln1_post_maps_to_post_attention_layernorm(
         self, adapter: Olmo2ArchitectureAdapter
     ) -> None:
         block = _mapping(adapter)["blocks"]
-        assert block.submodules["ln2"].name == "post_feedforward_layernorm"
+        assert block.submodules["ln1_post"].name == "post_attention_layernorm"
+
+    def test_ln2_post_maps_to_post_feedforward_layernorm(
+        self, adapter: Olmo2ArchitectureAdapter
+    ) -> None:
+        block = _mapping(adapter)["blocks"]
+        assert block.submodules["ln2_post"].name == "post_feedforward_layernorm"
 
     def test_block_submodule_set(self, adapter: Olmo2ArchitectureAdapter) -> None:
-        """Exact block submodule set: sequential transformer with both ln1 and ln2."""
+        """Exact block submodule set: post-norms only, no pre-sublayer ln1/ln2."""
         block = _mapping(adapter)["blocks"]
-        assert set(block.submodules.keys()) == {"ln1", "ln2", "attn", "mlp"}
+        assert set(block.submodules.keys()) == {"ln1_post", "ln2_post", "attn", "mlp"}
 
 
 class TestOlmo2QKNormStructure:
@@ -276,11 +275,8 @@ class TestOlmo2QKNormStructure:
 
 
 class TestOlmo2HookAliasOverrides:
-    """Under post-norm, `ln2.hook_in` no longer captures the residual between
-    attention and MLP (ln2 applies AFTER MLP, so ln2.hook_in is the MLP output).
-    The true post-attn pre-mlp residual is at `mlp.hook_in`. The adapter overrides
-    `hook_resid_mid` accordingly. BlockBridge's default would point at the wrong
-    tensor without this override."""
+    """With no pre-MLP norm, the post-attn pre-mlp residual is `mlp.hook_in`; the default
+    `ln2.hook_in` would not resolve."""
 
     def test_hook_resid_mid_points_at_mlp_hook_in(self, adapter: Olmo2ArchitectureAdapter) -> None:
         block = _mapping(adapter)["blocks"]
@@ -292,8 +288,8 @@ class TestOlmo2HookAliasOverrides:
         """hook_attn_out / hook_mlp_out must expose the tensor added to the
         residual stream, which under post-norm is the norm output (#1648)."""
         block = _mapping(adapter)["blocks"]
-        assert block.hook_aliases["hook_attn_out"] == "ln1.hook_out"
-        assert block.hook_aliases["hook_mlp_out"] == "ln2.hook_out"
+        assert block.hook_aliases["hook_attn_out"] == "ln1_post.hook_out"
+        assert block.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
 
     def test_hook_mlp_in_captures_on_mlp(self, adapter: Olmo2ArchitectureAdapter) -> None:
         """No pre-MLP norm exists, so the hook_mlp_in capture sits on the MLP."""

@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-08-31T10:41:22.140312",
+  "last_updated": "2026-10-10T23:22:28.618265",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -41422,6 +41422,30 @@
       "prompt_profile": "continuation",
       "p4_scoring_version": 2,
       "notes": null,
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "distilbert/distilroberta-base",
+      "architecture_id": "RobertaForMaskedLM",
+      "verified_date": "2026-10-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "FacebookAI/roberta-base",
+      "architecture_id": "RobertaForMaskedLM",
+      "verified_date": "2026-10-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

@@ -39,10 +39,13 @@ def copy_demos(_app: Optional[Any] = None):
     """Copy demo notebooks to the generated directory."""
     copy_to_dir = GENERATED_DIR / "demos"
     notebooks_to_copy = [
+        "Backward_Lens_Demo.ipynb",
         "Exploratory_Analysis_Demo.ipynb",
         "Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb",
         "Jacobian_Lens_Decomposition_Demo.ipynb",
         "Main_Demo.ipynb",
+        "SVD_Circuits_Demo.ipynb",
+        "SwiGLU_Gate_Sign_Demo.ipynb",
     ]
 
     if copy_to_dir.exists():

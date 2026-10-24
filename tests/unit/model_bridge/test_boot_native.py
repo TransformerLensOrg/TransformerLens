@@ -573,6 +573,7 @@ def test_native_adapter_declares_fold_ln_support():
     "overrides",
     [
         pytest.param({"normalization_type": "LN"}, id="LN"),
+        pytest.param({"normalization_type": "LN", "final_rms": True}, id="LN-final-RMS"),
         pytest.param({"normalization_type": "RMS"}, id="RMS"),
         pytest.param({"normalization_type": "LNPre"}, id="LNPre"),
         pytest.param({"normalization_type": "RMSPre"}, id="RMSPre"),
@@ -644,6 +645,54 @@ def test_boot_native_weight_processing_preserves_predictions(overrides, recwarn)
     assert len(moved) >= 1, "weight processing rewrote nothing"
 
     torch.testing.assert_close(after, before, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("nonidentity_scale", [False, True])
+def test_mixed_final_rms_fold_only_preserves_logits_and_unembed(nonidentity_scale):
+    bridge = TransformerBridge.boot_native(
+        _cfg(n_layers=2, normalization_type="LN", final_rms=True)
+    ).eval()
+    with torch.no_grad():
+        if nonidentity_scale:
+            bridge.ln_final.weight.copy_(torch.linspace(0.5, 1.5, bridge.cfg.d_model))
+        weight = bridge.W_U.detach().clone()
+        scale = bridge.ln_final.weight.detach().clone()
+        tokens = torch.tensor([[2, 3, 4]])
+        before = bridge(tokens)
+    bridge.enable_compatibility_mode(
+        fold_ln=True,
+        center_writing_weights=False,
+        center_unembed=False,
+        fold_value_biases=False,
+        refactor_factored_attn_matrices=False,
+    )
+    with torch.no_grad():
+        after = bridge(tokens)
+    torch.testing.assert_close(bridge.W_U, weight * scale[:, None])
+    torch.testing.assert_close(bridge.ln_final.weight, torch.ones_like(scale))
+    torch.testing.assert_close(after, before, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize("fold_ln", [False, True])
+def test_mixed_final_rms_value_bias_folding_preserves_predictions(fold_ln):
+    bridge = TransformerBridge.boot_native(
+        _cfg(n_layers=2, normalization_type="LN", final_rms=True)
+    ).eval()
+    with torch.no_grad():
+        for block in bridge.blocks:
+            block.attn.v.bias.fill_(0.2)
+        tokens = torch.tensor([[2, 3, 4]])
+        before = bridge(tokens).log_softmax(-1)
+    bridge.enable_compatibility_mode(
+        fold_ln=fold_ln,
+        center_writing_weights=True,
+        center_unembed=False,
+        fold_value_biases=True,
+        refactor_factored_attn_matrices=False,
+    )
+    with torch.no_grad():
+        after = bridge(tokens).log_softmax(-1)
+    torch.testing.assert_close(after, before, atol=1e-5, rtol=1e-5)
 
 
 def test_boot_native_fold_ln_zeroes_norm_parameters():

@@ -4,28 +4,31 @@ This subpackage collects high-level, single-call interpretability analyses that
 sit on top of the hook/cache system. Model support is documented per tool;
 new analyses may target the ``TransformerBridge`` API exclusively.
 
+Entry points and the classes they accept are exported here; result dataclasses stay in the
+module that returns them.
+
 Tools:
     - attribution_patching: Attribution patching (gradient-linearized activation
       patching) over residual-stream nodes and edges: typed computational graph,
       a names-filtered manual-backward gradient cache, and signed node and edge
-      scores (EAP). Integrated gradients (EAP-IG) and ablate-outside faithfulness
-      are not implemented yet.
-    - backward_lens: GPT-2 MLP weight-gradient factors projected into vocabulary
-      space with explicit raw-gradient sign semantics.
+      scores (EAP), plus forward-only ablate-outside faithfulness with corrupt
+      or held-out mean replacements and circuit-relative class diagnostics.
+      Integrated gradients (EAP-IG) are not implemented.
     - direct_logit_attribution: Direct Logit Attribution (DLA) over components,
       layers, or attention heads.
-    - direct_path_patching: Direct path patching for head-to-head circuit
-      analysis.
+    - get_act_patch_direct_path, get_act_patch_direct_path_all_sources:
+      re-exported from ``transformer_lens.patching``; exact direct path
+      patching for head-to-head circuit analysis.
+    - interchange: Interchange interventions on linear subspaces: set a base's
+      activation inside a subspace to its value on a source input, with
+      difference-of-means, probe, random and neuron bases, a norm-matched
+      placebo, batched gradient-free evaluation, distributed alignment search
+      (DAS) to learn the subspace, and DAS's trained controls (arbitrary labels
+      and a randomly initialised model).
     - jacobian_lens: The Jacobian lens (J-lens) — per-layer causal transport to
       the output vocabulary basis, with loading of published lens artifacts,
       native fitting, readouts, interventions, J-space sparse decomposition, and
       anchored coordinate patching (offline and dynamic/hooked).
-    - jacobian_lens_causal_swap_benchmark: A causal coordinate-swap benchmark for
-      ``coordinate_patch_hooks``, with baseline-capability filtering,
-      displacement-matched random-atom controls, exact Clopper-Pearson confidence
-      intervals, and a versioned, fingerprinted JSON artifact schema. Its
-      ``_cli`` sibling is the artifact-generation entry point and is deliberately
-      not imported here, so ``python -m`` runs it once.
     - logit_lens: One-call logit lens over the accumulated residual stream and
       the ``logit_readout`` kernel that reads any ``d_model`` vector through the
       real final norm, unembedding and adapter output transform, chunked over
@@ -34,73 +37,52 @@ Tools:
       attention-head OQ/OK/OV affinity.
     - sparse_probing: Leakage-safe k-sparse binary probes over supplied
       activation tensors, with train-only selection and raw null controls.
-    - svd_circuits: Per-head QK/OV singular-vector decomposition with a
-      degeneracy guard, OV vocab and logit readout, per-position activation
-      projection onto singular directions, and a mandatory causal patch gate
-      that reconstructs a head's output onto a chosen singular subspace.
 """
 
-from transformer_lens.tools.analysis.attribution_patching import (
-    AttributionResult,
-    EdgeAttributionConfig,
-    Node,
-    attribution_patch,
-)
-from transformer_lens.tools.analysis.backward_lens import (
-    BackwardLens,
-    BackwardLensLayerResult,
-    BackwardLensMatrixResult,
-    BackwardLensResult,
-    LinearGradientFactors,
-    ProjectedFactor,
-    VocabularyRanking,
-    WeightLayout,
-)
-from transformer_lens.tools.analysis.direct_logit_attribution import (
-    DirectLogitAttribution,
-    direct_logit_attribution,
-)
-from transformer_lens.tools.analysis.direct_path_patching import (
+import warnings
+from typing import TYPE_CHECKING, Any
+
+from transformer_lens.patching import (
     get_act_patch_direct_path,
     get_act_patch_direct_path_all_sources,
 )
-from transformer_lens.tools.analysis.jacobian_lens import (
-    JacobianLens,
-    JacobianLensReadout,
+from transformer_lens.tools.analysis.attribution_patching import (
+    EdgeAttributionConfig,
+    FaithfulnessConfig,
+    Node,
+    attribution_patch,
+    faithfulness,
 )
-from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
-    BenchmarkCorpus,
-    FunctionSpec,
-    corpus_definition,
-    load_artifact,
-    run_causal_swap_benchmark,
-    select_displacement_matched_control_token,
-    success_rate_ci,
+from transformer_lens.tools.analysis.direct_logit_attribution import (
+    direct_logit_attribution,
 )
+from transformer_lens.tools.analysis.interchange import (
+    LearnedSubspace,
+    NormMatchedPlacebo,
+    SubspaceInterchange,
+    arbitrary_targets,
+    collect_activations,
+    fit_das,
+    intervened_logits,
+    mean_difference_basis,
+    neuron_basis,
+    probe_basis,
+    random_basis,
+    random_init_bridge,
+    random_neuron_basis,
+    reinitialized,
+    run_with_intervention,
+)
+from transformer_lens.tools.analysis.jacobian_lens import JacobianLens
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
-    CoordinatePatch,
     solve_coordinate_patch,
-    solve_coordinate_patch_positions,
 )
 from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceDecomposition,
-    JSpaceOccupancy,
-    JSpaceVarianceProfile,
-    estimate_occupancy,
     get_sparse_decomposition,
 )
-from transformer_lens.tools.analysis.logit_lens import (
-    LogitLensResult,
-    LogitReadout,
-    logit_lens,
-    logit_readout,
-)
+from transformer_lens.tools.analysis.logit_lens import logit_lens, logit_readout
 from transformer_lens.tools.analysis.projection_kernel import (
-    AttentionHeadRef,
-    HeadAffinityPair,
-    HeadAffinityResult,
-    ProjectionKernelResult,
-    RandomSubspaceReference,
     SubspaceBasis,
     attention_head_subspace_affinity,
     orthonormal_subspace,
@@ -108,95 +90,66 @@ from transformer_lens.tools.analysis.projection_kernel import (
     random_projection_kernel_moments,
 )
 from transformer_lens.tools.analysis.sparse_probing import (
-    SparseProbeControl,
     SparseProbeConvergenceError,
-    SparseProbeMetrics,
-    SparseProbeRejection,
-    SparseProbeResult,
-    SparseProbeSweep,
     fit_sparse_probe,
     sweep_sparse_probe,
 )
-from transformer_lens.tools.analysis.svd_circuits import (
-    ActivationProjection,
-    DegenerateDirectionError,
-    HeadDecomposition,
-    HeadSVD,
-    LogitSignature,
-    PatchResult,
-    RankReportRow,
-    decompose_head,
-    logit_signature,
-    patch_along_directions,
-    project_activations,
-    vocab_readout,
-)
 
 __all__ = [
-    "ActivationProjection",
-    "AttentionHeadRef",
-    "AttributionResult",
-    "BackwardLens",
-    "BackwardLensLayerResult",
-    "BackwardLensMatrixResult",
-    "BackwardLensResult",
-    "BenchmarkCorpus",
-    "CoordinatePatch",
-    "DegenerateDirectionError",
-    "DirectLogitAttribution",
     "EdgeAttributionConfig",
-    "FunctionSpec",
-    "HeadAffinityPair",
-    "HeadAffinityResult",
-    "HeadDecomposition",
-    "HeadSVD",
+    "FaithfulnessConfig",
     "JSpaceDecomposition",
-    "JSpaceOccupancy",
-    "JSpaceVarianceProfile",
     "JacobianLens",
-    "JacobianLensReadout",
-    "LinearGradientFactors",
-    "LogitLensResult",
-    "LogitReadout",
-    "LogitSignature",
+    "LearnedSubspace",
     "Node",
-    "PatchResult",
-    "ProjectedFactor",
-    "ProjectionKernelResult",
-    "RandomSubspaceReference",
-    "RankReportRow",
-    "SparseProbeControl",
+    "NormMatchedPlacebo",
     "SparseProbeConvergenceError",
-    "SparseProbeMetrics",
-    "SparseProbeRejection",
-    "SparseProbeResult",
-    "SparseProbeSweep",
     "SubspaceBasis",
-    "VocabularyRanking",
-    "WeightLayout",
+    "SubspaceInterchange",
+    "arbitrary_targets",
     "attention_head_subspace_affinity",
     "attribution_patch",
-    "decompose_head",
+    "collect_activations",
     "direct_logit_attribution",
-    "estimate_occupancy",
+    "faithfulness",
+    "fit_das",
     "fit_sparse_probe",
     "get_act_patch_direct_path",
     "get_act_patch_direct_path_all_sources",
     "get_sparse_decomposition",
-    "load_artifact",
+    "intervened_logits",
     "logit_lens",
     "logit_readout",
-    "logit_signature",
+    "mean_difference_basis",
+    "neuron_basis",
     "orthonormal_subspace",
-    "patch_along_directions",
-    "project_activations",
+    "probe_basis",
     "projection_kernel",
+    "random_basis",
+    "random_init_bridge",
+    "random_neuron_basis",
     "random_projection_kernel_moments",
-    "run_causal_swap_benchmark",
-    "select_displacement_matched_control_token",
+    "reinitialized",
+    "run_with_intervention",
     "solve_coordinate_patch",
-    "solve_coordinate_patch_positions",
-    "success_rate_ci",
     "sweep_sparse_probe",
-    "vocab_readout",
 ]
+
+# Moved to transformer_lens.utilities with unchanged results.
+_MOVED_TO_UTILITIES = ("success_rate_ci",)
+
+if TYPE_CHECKING:
+    from transformer_lens.utilities import success_rate_ci
+else:
+    # Hidden from type checkers, which would otherwise type every unknown name here as Any.
+    def __getattr__(name: str) -> Any:
+        if name not in _MOVED_TO_UTILITIES:
+            raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+        warnings.warn(
+            f"{__name__}.{name} is deprecated; import it from transformer_lens.utilities.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from transformer_lens import utilities
+
+        return getattr(utilities, name)

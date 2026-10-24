@@ -1,9 +1,11 @@
 import pytest
 import torch
+from transformers import GPT2Config, GPT2LMHeadModel
 
 from tests.typecheck_errors import TYPECHECK_ERRORS
 from transformer_lens import SVDInterpreter
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.sources import build_bridge_from_module
 
 MODEL = "Intel/tiny-random-gpt2"  # Use a model that works with TransformerBridge
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
@@ -94,6 +96,32 @@ def test_svd_interpreter_returns_different_answers_for_different_models(model, s
 
     # Results should be different between models
     assert not torch.allclose(ov_1, ov_2, atol=ATOL)
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float64])
+def test_svd_interpreter_compute_dtype(dtype):
+    """16-bit weights decompose and read out in float32; float64 weights stay float64."""
+    hf_config = GPT2Config(n_embd=32, n_layer=2, n_head=2, vocab_size=64, n_positions=32)
+    hf_config.architectures = ["GPT2LMHeadModel"]
+    hf_model = GPT2LMHeadModel(hf_config).to(dtype)
+    svd_interpreter = SVDInterpreter(
+        build_bridge_from_module(hf_model, "GPT2LMHeadModel", hf_config=hf_config)
+    )
+    compute_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+
+    for vector_type in VECTOR_TYPES:
+        head_index = 0 if vector_type == "OV" else None
+        vectors = svd_interpreter.get_singular_vectors(
+            vector_type, layer_index=0, num_vectors=2, head_index=head_index
+        )
+        assert vectors.dtype == compute_dtype
+        assert not vectors.requires_grad
+
+    V = torch.randn(2, 32, dtype=compute_dtype)
+    W_U = svd_interpreter.params["unembed.W_U"]
+    readout = svd_interpreter._get_singular_vectors_from_matrix(V, W_U, num_vectors=2)
+    expected = (V.double() @ W_U.double()).T.unsqueeze(1)
+    assert torch.allclose(readout.double(), expected, atol=1e-6)
 
 
 # Failures

@@ -190,8 +190,21 @@ The example selects the final sequence position, which is not appropriate for ev
 Choose the hook and position policy before interpreting selected coordinates. The API cannot detect
 leakage already introduced into caller-provided `features`. When several rows come from one source
 prompt, for example multiple positions of the same sequence, keep all of those rows on one side of
-the split; the row-level split is label-independent and can otherwise place rows of one prompt on
-both sides, inflating held-out accuracy on grouped data.
+the split; the row-level split is stratified by label but blind to which prompt a row came from,
+and can otherwise place rows of one prompt on both sides, inflating held-out accuracy on grouped data. Pass one integer group ID per row to split
+those rows together:
+
+```python
+groups = torch.arange(n_prompts).repeat_interleave(rows_per_prompt)
+result = fit_sparse_probe(features, labels, groups=groups, k=8)
+```
+
+Groups may mix classes, as with per-token labels, but each class must appear in at least two
+groups so both sides of the split can hold both classes. Because whole groups move together,
+`test_fraction` is a target for held-out rows per class rather than an exact share; with groups of
+uneven size, check `test_positive_count` and `test_negative_count` for the realized split.
+`sweep_sparse_probe` accepts the same `groups` argument and reuses one grouped split for every
+sparsity level. Omitting `groups` retains the row-level split.
 
 ## Reference
 

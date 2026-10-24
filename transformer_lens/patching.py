@@ -4,6 +4,7 @@ A module for patching activations in a transformer model, and measuring the effe
 the output. This implements the activation patching technique for a range of types of activation.
 The structure is to have a single :func:`generic_activation_patch` function that does everything,
 and to have a range of specialised functions for specific types of activation.
+:func:`get_act_patch_direct_path` patches one head's output into a single later head's Q/K/V input.
 
 Context:
 
@@ -50,17 +51,21 @@ within the model, rather than just the end.
 from __future__ import annotations
 
 import itertools
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import (
+    Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Mapping,
     Optional,
     Sequence,
     Tuple,
     Union,
+    cast,
     overload,
 )
 
@@ -431,7 +436,7 @@ def generic_activation_patch(
         index_df *optional*: The dataframe of indices
         Or a :class:`PatchingResult` when ``reduce="none"``, ``baseline=True`` or a metric mapping was given.
     """
-    # Lazy import: tools.analysis imports this module's neighbours at package import.
+    # Lazy import: the tools.analysis package imports this module, so top level would be circular.
     from transformer_lens.tools.analysis._model_state import require_eval_mode
 
     require_eval_mode(model, operation="activation patching")
@@ -1214,3 +1219,204 @@ def get_act_patch_block_every(
     return _stack_patch_types(
         results, axis_order=("layer", "pos"), n_heads=0, type_names=_BLOCK_TYPES
     )
+
+
+# %%
+def _check_direct_path_support(model: Any, src_layers: Sequence[int], component: str) -> None:
+    """Refuse missing attention, source writes other than ``z @ W_O``, and K/V on GQA/MQA."""
+    # Lazy import: the tools.analysis package imports this module, so top level would be circular.
+    from transformer_lens.tools.analysis.attribution_patching import (
+        _attention_write_obstruction,
+    )
+
+    cfg = model.cfg
+    src_layer = min(src_layers)
+    for layer in range(src_layer, cfg.n_layers):
+        if getattr(model.blocks[layer], "attn", None) is None:
+            raise ValueError(
+                f"blocks.{layer} has no `attn` component (an SSM, mixer, linear-attention or "
+                "AltUp block), and direct path patching needs one in every block from "
+                f"src_layer={src_layer} on."
+            )
+    detail = _attention_write_obstruction(model, set(src_layers))
+    if detail is not None:
+        raise ValueError(
+            "per-head attention outputs are normalized or scaled before the residual add on "
+            f"this architecture ({detail}), so a source head's residual write is not "
+            "hook_z @ W_O and direct path patching is unsupported here."
+        )
+    if component == "q":
+        return
+    n_heads = cfg.n_heads
+    scalar_kv = getattr(cfg, "n_key_value_heads", None)
+    per_layer_kv = getattr(cfg, "per_layer_num_key_value_heads", None) or []
+    # Only destinations are K/V-patched; the source is read via hook_z and W_O, per query head.
+    for layer in range(src_layer + 1, cfg.n_layers):
+        kv = per_layer_kv[layer] if layer < len(per_layer_kv) else None
+        if kv is None:
+            kv = scalar_kv
+        if kv is not None and kv != n_heads:
+            raise ValueError(
+                f"component={component!r} is unsupported here: blocks.{layer} has "
+                f"n_key_value_heads={kv} for n_heads={n_heads} (GQA/MQA), so per-query-head "
+                'K/V semantics are undefined. component="q" is available.'
+            )
+
+
+@contextmanager
+def _split_qkv_input(model: Any) -> Iterator[None]:
+    """Enable the per-head pre-norm Q/K/V forks, restoring the caller's flags on exit."""
+    saved_split = bool(getattr(model.cfg, "use_split_qkv_input", False))
+    saved_attn_in = bool(getattr(model.cfg, "use_attn_in", False))
+    try:
+        # The two forks are mutually exclusive, so use_attn_in must go off first.
+        if saved_attn_in:
+            model.set_use_attn_in(False)
+        if not saved_split:
+            model.set_use_split_qkv_input(True)
+        yield
+    finally:
+        model.set_use_split_qkv_input(saved_split)
+        if saved_attn_in:
+            model.set_use_attn_in(True)
+
+
+def _make_direct_path_hook(
+    delta: Float[torch.Tensor, "batch pos d_model"], dst_head: int, fired: List[bool]
+) -> Callable[..., torch.Tensor]:
+    """Add the source head's clean-minus-corrupted write to one head's fork input."""
+
+    def hook_fn(
+        fork_input: Float[torch.Tensor, "batch pos n_heads d_model"], hook
+    ) -> Float[torch.Tensor, "batch pos n_heads d_model"]:
+        fired.append(True)
+        patched = fork_input.clone()
+        patched[:, :, dst_head] += delta
+        return patched
+
+    return hook_fn
+
+
+def get_act_patch_direct_path(
+    model: TransformerLensModel,
+    corrupted_tokens: torch.Tensor,
+    clean_cache: ActivationCache,
+    corrupted_cache: ActivationCache,
+    patching_metric: Callable[[torch.Tensor], torch.Tensor],
+    src_layer: int,
+    src_head: int,
+    component: Literal["q", "k", "v"] = "q",
+    verbose: bool = True,
+) -> Float[torch.Tensor, "n_layers n_heads"]:
+    """Patch one source head's output into each later head's Q, K or V input alone.
+
+    Direct path patching (Wang et al. 2022) isolates the edge A -> B: A's clean-minus-corrupted
+    write (``z @ W_O``) is added at every position to B's own pre-``ln1`` copy of the residual,
+    while every other reader still sees A's corrupted output. The result is the exact edge
+    intervention, folded LayerNorm or not.
+
+    The sweep temporarily enables ``cfg.use_split_qkv_input`` (restoring the caller's flags on
+    exit), which costs about ``3 * n_heads`` times the usual ``ln1`` activation memory per forward.
+
+    Args:
+        model: A ``TransformerBridge`` whose attention exposes the pre-Q/K/V fork.
+        corrupted_tokens: Token ids for the corrupted run, ``[batch, pos]``.
+        clean_cache: Cache of the clean run; must hold ``blocks.{src_layer}.attn.hook_z``.
+        corrupted_cache: Cache of the corrupted run; must hold the same ``hook_z``.
+        patching_metric: Maps the patched logits to a scalar.
+        src_layer: Layer of the source head.
+        src_head: Index of the source head.
+        component: Destination input to patch: ``"q"`` (default), ``"k"`` or ``"v"``.
+
+    Returns:
+        ``[n_layers, n_heads]``: ``results[l, h]`` is the metric with the path into head
+        ``(l, h)`` patched. Rows ``l <= src_layer`` are 0.0 placeholders, not measurements.
+
+    Raises:
+        ValueError: if a block from ``src_layer`` on has no attention, if the source block
+            normalises, scales or joins its attention output before the residual add (post-norm,
+            scaled-residual or parallel-mixer blocks), if ``component`` is ``"k"`` or ``"v"`` on
+            a GQA/MQA model, or if any module is in training mode.
+        NotImplementedError: if a destination layer's attention has no pre-Q/K/V fork.
+    """
+    # Lazy import: the tools.analysis package imports this module, so top level would be circular.
+    from transformer_lens.tools.analysis._model_state import require_eval_mode
+
+    _check_direct_path_support(model, [src_layer], component)
+    require_eval_mode(model, operation="get_act_patch_direct_path()")
+
+    n_layers = model.cfg.n_layers
+    n_heads = model.cfg.n_heads
+    results = torch.zeros(n_layers, n_heads, device=model.cfg.device)
+    dst_pairs = [(dl, dh) for dl in range(src_layer + 1, n_layers) for dh in range(n_heads)]
+
+    bridge = cast(Any, model)
+    W_O = bridge.blocks[src_layer].attn.W_O[src_head]
+    z_name = f"blocks.{src_layer}.attn.hook_z"
+    clean_write = clean_cache[z_name][:, :, src_head] @ W_O
+    delta = clean_write - corrupted_cache[z_name][:, :, src_head] @ W_O
+
+    with _split_qkv_input(bridge):
+        for dst_layer, dst_head in tqdm(
+            dst_pairs,
+            desc=f"Direct path patch ({src_layer},{src_head}) → * [{component}]",
+            disable=not verbose,
+        ):
+            hook_name = f"blocks.{dst_layer}.attn.hook_{component}_input"
+            fired: List[bool] = []
+            logits = model.run_with_hooks(
+                corrupted_tokens,
+                fwd_hooks=[(hook_name, _make_direct_path_hook(delta, dst_head, fired))],
+            )
+            # Without a fork the hook never fires and the metric would silently be unpatched.
+            if not fired:
+                raise NotImplementedError(
+                    f"{hook_name} did not fire: blocks.{dst_layer}.attn has no pre-Q/K/V fork, so "
+                    "direct path patching cannot reach that head's input."
+                )
+            results[dst_layer, dst_head] = patching_metric(logits).item()
+    return results
+
+
+def get_act_patch_direct_path_all_sources(
+    model: TransformerLensModel,
+    corrupted_tokens: torch.Tensor,
+    clean_cache: ActivationCache,
+    corrupted_cache: ActivationCache,
+    patching_metric: Callable[[torch.Tensor], torch.Tensor],
+    component: Literal["q", "k", "v"] = "q",
+    verbose: bool = True,
+) -> Float[torch.Tensor, "n_layers n_heads n_layers n_heads"]:
+    """Run :func:`get_act_patch_direct_path` from every source head.
+
+    ``results[sl, sh, dl, dh]`` is the metric with the path from head ``(sl, sh)`` into head
+    ``(dl, dh)`` patched, and 0.0 where ``dl <= sl``. One forward per (source, later destination)
+    pair, so it suits small models or targeted sub-sweeps.
+    """
+    # Lazy import: the tools.analysis package imports this module, so top level would be circular.
+    from transformer_lens.tools.analysis._model_state import require_eval_mode
+
+    _check_direct_path_support(model, range(model.cfg.n_layers), component)
+    require_eval_mode(model, operation="get_act_patch_direct_path_all_sources()")
+
+    n_layers = model.cfg.n_layers
+    n_heads = model.cfg.n_heads
+    results = torch.zeros(n_layers, n_heads, n_layers, n_heads, device=model.cfg.device)
+    src_pairs = [(sl, sh) for sl in range(n_layers) for sh in range(n_heads)]
+    for src_layer, src_head in tqdm(
+        src_pairs,
+        desc=f"Direct path patch — all sources [{component}]",
+        disable=not verbose,
+    ):
+        results[src_layer, src_head] = get_act_patch_direct_path(
+            model=model,
+            corrupted_tokens=corrupted_tokens,
+            clean_cache=clean_cache,
+            corrupted_cache=corrupted_cache,
+            patching_metric=patching_metric,
+            src_layer=src_layer,
+            src_head=src_head,
+            component=component,
+            verbose=False,
+        )
+    return results

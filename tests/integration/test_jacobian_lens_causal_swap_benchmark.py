@@ -9,7 +9,7 @@ country corpus runs only in the frozen-artifact generation script.
 import pytest
 import torch
 
-from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import (
+from scripts.jacobian_lens_causal_swap_benchmark import (
     SCHEMA_VERSION,
     BenchmarkCorpus,
     FunctionSpec,
@@ -17,8 +17,8 @@ from transformer_lens.tools.analysis.jacobian_lens_causal_swap_benchmark import 
     corpus_definition,
     run_causal_swap_benchmark,
     serialize_artifact,
-    success_rate_ci,
 )
+from transformer_lens.utilities import success_rate_ci
 
 LENS_REPO = "neuronpedia/jacobian-lens"
 LENS_REVISION = "a4114d7752d11eb546e6cf372213d7e75526d3a1"

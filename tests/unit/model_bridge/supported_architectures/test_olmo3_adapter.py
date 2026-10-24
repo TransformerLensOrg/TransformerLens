@@ -50,6 +50,6 @@ def test_inherits_post_norm_contribution_aliases() -> None:
     """hook_attn_out / hook_mlp_out must stay on the post-norm outputs (#1648);
     a future de-inheritance from olmo2 must not silently regress this."""
     block = Olmo3ArchitectureAdapter(_cfg("Olmo3ForCausalLM")).component_mapping["blocks"]
-    assert block.hook_aliases["hook_attn_out"] == "ln1.hook_out"
-    assert block.hook_aliases["hook_mlp_out"] == "ln2.hook_out"
+    assert block.hook_aliases["hook_attn_out"] == "ln1_post.hook_out"
+    assert block.hook_aliases["hook_mlp_out"] == "ln2_post.hook_out"
     assert block.hook_aliases["hook_resid_mid"] == "mlp.hook_in"
