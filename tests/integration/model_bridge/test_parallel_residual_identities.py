@@ -162,6 +162,22 @@ def test_sequential_variant_exposes_resid_mid(
         assert f"blocks.{layer}.hook_resid_mid" in cache
 
 
+@pytest.mark.parametrize(
+    "hf_architecture,config_cls,config_kwargs", PARALLEL_CASES + SEQUENTIAL_CASES
+)
+def test_mlp_input_decomposition_matches_norm_input(
+    hf_architecture: str, config_cls: Any, config_kwargs: dict[str, Any]
+) -> None:
+    bridge, cache = _run(hf_architecture, config_cls, config_kwargs)
+    for layer in range(bridge.cfg.n_layers):
+        # Shared-norm parallel blocks feed both branches from ln1; NeoX uses a separate ln2.
+        norm = "ln2" if "ln2" in bridge.blocks[layer]._modules else "ln1"
+        components = cache.decompose_resid(layer=layer, mlp_input=True)
+        torch.testing.assert_close(
+            components.sum(0), cache[f"blocks.{layer}.{norm}.hook_in"], atol=1e-5, rtol=1e-5
+        )
+
+
 @pytest.mark.parametrize("use_parallel_residual", [True, False])
 def test_hf_use_parallel_residual_reaches_the_bridge_config(use_parallel_residual: bool) -> None:
     """The adapter reads HF's own flag, so the passthrough must carry it — the

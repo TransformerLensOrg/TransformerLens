@@ -1740,7 +1740,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """Sum of variant + MLP output biases through the residual stream up to `layer`.
 
         Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
-        to include the variant bias of the target layer itself.
+        to target its MLP input: the current variant bias is included only for sequential blocks.
         """
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
@@ -1756,10 +1756,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
-            scale = getattr(block, "residual_contribution_scale", 1.0)
-            b_O = self._get_block_variant_bias(block)
-            if b_O is not None:
-                accumulated = accumulated + b_O.to(accumulated.device) * scale
+            if getattr(block, "mlp_input_includes_attn", True):
+                scale = getattr(block, "residual_contribution_scale", 1.0)
+                b_O = self._get_block_variant_bias(block)
+                if b_O is not None:
+                    accumulated = accumulated + b_O.to(accumulated.device) * scale
         return accumulated
 
     def all_composition_scores(self, mode: str) -> CompositionScores:

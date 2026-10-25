@@ -373,6 +373,12 @@ class ActivationCache:
         }
         return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
 
+    def _mlp_input_includes_attn(self, layer: int) -> bool:
+        """Whether the target block's MLP reads the current attention contribution."""
+        return layer < self.model.cfg.n_layers and bool(
+            getattr(self.model.blocks[layer], "mlp_input_includes_attn", True)
+        )
+
     def accumulated_resid(
         self,
         layer: Optional[int] = None,
@@ -484,7 +490,8 @@ class ActivationCache:
                 immediately pre logits). The indices are taken such that this gives the accumulated
                 streams up to the input to layer l.
             incl_mid:
-                Whether to return `resid_mid` for all previous layers.
+                Whether to return `resid_mid` for previous sequential-residual layers.
+                Parallel-residual layers have no distinct mid stream.
             apply_ln:
                 Whether to apply the final layer norm to the stack. When True, applies
                 `model.ln_final`, which recomputes normalization statistics (mean and
@@ -493,8 +500,8 @@ class ActivationCache:
             pos_slice:
                 A slice object to apply to the pos dimension. Defaults to None, do nothing.
             mlp_input:
-                Whether to include resid_mid for the current layer. This essentially gives the MLP
-                input rather than the attention input.
+                Target the MLP input: include the current resid_mid for sequential blocks;
+                parallel blocks already expose this input as resid_pre.
             return_labels:
                 Whether to return a list of labels for the residual stream components. Useful for
                 labelling graphs.
@@ -518,7 +525,9 @@ class ActivationCache:
                 continue
             components_list.append(self[("resid_pre", l)])
             labels.append(f"{l}_pre")
-            if (incl_mid and l < layer) or (mlp_input and l == layer):
+            if ((incl_mid and l < layer) or (mlp_input and l == layer)) and (
+                self._mlp_input_includes_attn(l)
+            ):
                 components_list.append(self[("resid_mid", l)])
                 labels.append(f"{l}_mid")
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
@@ -713,9 +722,8 @@ class ActivationCache:
                 means just embed and pos_embed. The indices are taken such that this gives the
                 accumulated streams up to the input to layer l
             mlp_input:
-                Whether to include attn_out for the current
-                layer - essentially decomposing the residual stream that's input to the MLP input
-                rather than the Attn input.
+                Decompose the MLP input rather than the attention input. The current layer's
+                attention contribution is included only for sequential-residual blocks.
             mode:
                 Values are "all", "mlp" or "attn". "all" returns all
                 components, "mlp" returns only the MLP components, and "attn" returns only the
@@ -763,7 +771,7 @@ class ActivationCache:
             if incl_mlp:
                 components_list.append(self[("mlp_out", l)])
                 labels.append(f"{l}_mlp_out")
-        if mlp_input and incl_attn:
+        if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
             components_list.append(self[("attn_out", layer)])
             labels.append(f"{layer}_attn_out")
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
@@ -1334,8 +1342,9 @@ class ActivationCache:
             mlp_input:
                 Treat the stack as the input to ``layer``'s MLP rather than its attention, as in
                 ``decompose_resid``: with ``incl_remainder=True`` the remainder fills the stack up to
-                ``resid_mid`` instead of ``resid_pre``, and with ``apply_ln=True`` the LN scale of
-                ln2 is used instead of ln1. The neurons stacked are unchanged.
+                ``resid_mid`` for sequential blocks or ``resid_pre`` for parallel blocks.
+                With ``apply_ln=True`` the LN scale of ln2 is used instead of ln1.
+                The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1366,9 +1375,11 @@ class ActivationCache:
         neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
         labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
-        # The remainder fills the stack up to the residual stream that layer's LN normalizes:
-        # resid_mid (the MLP input) with mlp_input, else resid_pre (resid_post of layer - 1).
-        remainder_target = ("resid_mid", layer) if mlp_input else ("resid_post", layer - 1)
+        if mlp_input and layer < self.model.cfg.n_layers:
+            stream = "resid_mid" if self._mlp_input_includes_attn(layer) else "resid_pre"
+            remainder_target = (stream, layer)
+        else:
+            remainder_target = ("resid_post", layer - 1)
         components: Any
         ln_folded = apply_ln and project_2d is not None
         if ln_folded:
@@ -1614,7 +1625,9 @@ class ActivationCache:
             return stack @ project_2d if project_2d is not None else stack
 
         head_stack, head_labels = self.stack_head_results(
-            layer + (1 if mlp_input else 0), pos_slice=pos_slice, return_labels=True
+            layer + int(mlp_input and self._mlp_input_includes_attn(layer)),
+            pos_slice=pos_slice,
+            return_labels=True,
         )
         if ln_folded:
             head_stack = _ln_then_project(head_stack)
