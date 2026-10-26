@@ -92,6 +92,31 @@ class TestWhisperForwardEquivalence:
                 for proj in (attn.q, attn.v, attn.o):
                     assert proj.original_component.bias is not None
 
+    def test_shared_prompt_across_clips_matches_hf(self, bridge, hf_eager, features, decoder_ids):
+        t = np.arange(16000) / 16000.0
+        audio = (0.5 * np.sin(2 * np.pi * 220.0 * t)).astype(np.float32)
+        extractor = bridge.processor.feature_extractor
+        second = extractor(audio, sampling_rate=16000, return_tensors="pt").input_features
+        clips = torch.cat([features, second])
+        with torch.no_grad():
+            logits = bridge(clips, decoder_input=decoder_ids)
+            per_clip = torch.cat(
+                [
+                    hf_eager(input_features=clip[None], decoder_input_ids=decoder_ids).logits
+                    for clip in clips
+                ]
+            )
+        torch.testing.assert_close(logits, per_clip, rtol=0.0, atol=PARITY_ATOL)
+
+
+class TestWhisperDecoderPrompt:
+    def test_to_tokens_is_prefix_then_text(self, bridge):
+        tokenizer = bridge.tokenizer
+        tokens = bridge.to_tokens(" Hello world.")[0].tolist()
+        text_ids = tokenizer(" Hello world.", add_special_tokens=False).input_ids
+        assert tokens == tokenizer.prefix_tokens + text_ids
+        assert tokenizer.eos_token_id not in tokens
+
 
 class TestWhisperHooks:
     def test_encoder_and_decoder_hooks(self, bridge, features, decoder_ids):

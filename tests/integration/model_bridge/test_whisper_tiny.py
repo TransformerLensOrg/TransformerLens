@@ -4,7 +4,8 @@ The openai/whisper-tiny parity suite (test_whisper_adapter.py) is ``slow``-marke
 since the checkpoint is not in the CI cache. This file builds a random-weight
 WhisperForConditionalGeneration with asymmetric stacks (3 encoder / 2 decoder
 layers, as on large-v3-turbo and distil-whisper) and exercises the same surfaces:
-live wiring, teacher-forced logit and loss parity, encoder and decoder hooks,
+live wiring, teacher-forced logit and loss parity (including several clips sharing one
+prompt), the decoder prompt from to_tokens, encoder and decoder hooks,
 the channel-first conv hooks, and an encoder-side intervention.
 """
 import copy
@@ -149,6 +150,40 @@ class TestWhisperTinyForwardEquivalence:
             batched = bridge(features[:1], decoder_input=decoder_ids[:1])
         assert torch.equal(flat, batched)
 
+    @pytest.mark.parametrize("prompt_shape", ["1d", "single_row"])
+    def test_shared_prompt_gives_each_clip_its_own_logits(
+        self, bridge, reference_model, features, decoder_ids, prompt_shape
+    ):
+        prompt = decoder_ids[0] if prompt_shape == "1d" else decoder_ids[:1]
+        with torch.no_grad():
+            logits = bridge(features, decoder_input=prompt)
+            per_clip = torch.cat(
+                [
+                    reference_model(
+                        input_features=features[i : i + 1], decoder_input_ids=decoder_ids[:1]
+                    ).logits
+                    for i in range(features.shape[0])
+                ]
+            )
+        assert logits.shape == per_clip.shape
+        assert (logits - per_clip).abs().max().item() < 1e-5
+        assert not torch.allclose(logits[0], logits[1])
+
+    def test_mismatched_decoder_batch_rejected(self, bridge, features, decoder_ids):
+        three_rows = torch.cat([decoder_ids, decoder_ids[:1]])
+        with pytest.raises(ValueError, match="batch size 3 but the audio features have 2"):
+            bridge(features, decoder_input=three_rows)
+
+    def test_shared_labels_match_per_clip_logits_and_loss(self, bridge, reference_model, features):
+        labels = torch.tensor([[5, 6, 7, 2]])
+        with torch.no_grad():
+            expected = reference_model(input_features=features, labels=labels.repeat(2, 1))
+            logits = bridge(features, labels=labels)
+            loss = bridge(features, labels=labels, return_type="loss")
+        assert logits.shape == expected.logits.shape
+        assert (logits - expected.logits).abs().max().item() < 1e-5
+        assert torch.allclose(loss, expected.loss, atol=1e-6)
+
     def test_labels_loss_matches_hf(self, bridge, reference_model, features):
         labels = torch.tensor([[5, 6, 7, 2], [9, 10, 11, 2]])
         with torch.no_grad():
@@ -211,6 +246,88 @@ class TestWhisperTinyHooks:
             unpatched = reference_model(input_features=features, decoder_input_ids=decoder_ids)
         assert (logits - expected).abs().max().item() < 1e-5
         assert (logits - unpatched.logits).abs().max().item() > 1e-3
+
+
+SPECIAL_TOKENS = [
+    "<|endoftext|>",
+    "<|startoftranscript|>",
+    "<|en|>",
+    "<|translate|>",
+    "<|transcribe|>",
+    "<|startoflm|>",
+    "<|startofprev|>",
+    "<|nospeech|>",
+    "<|notimestamps|>",
+]
+
+
+@pytest.fixture
+def prompt_bridge(tmp_path):
+    """Tiny Whisper with a real byte-level WhisperTokenizer, built without a download.
+
+    Saved and reloaded so it carries the from_pretrained metadata the boot path relies on.
+    """
+    from transformers import WhisperTokenizer
+    from transformers.convert_slow_tokenizer import bytes_to_unicode
+
+    from transformer_lens.model_bridge.sources._bridge_builder import (
+        configure_tokenizer,
+    )
+
+    vocab = {ch: i for i, ch in enumerate(bytes_to_unicode().values())}
+    for token in SPECIAL_TOKENS:
+        vocab[token] = len(vocab)
+    WhisperTokenizer(
+        vocab=vocab, merges=[], additional_special_tokens=SPECIAL_TOKENS[1:]
+    ).save_pretrained(tmp_path)
+    tokenizer = WhisperTokenizer.from_pretrained(tmp_path)
+    eot = vocab["<|endoftext|>"]
+    cfg = WhisperConfig(
+        vocab_size=len(vocab),
+        num_mel_bins=N_MELS,
+        d_model=D_MODEL,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=4,
+        decoder_attention_heads=4,
+        encoder_ffn_dim=64,
+        decoder_ffn_dim=64,
+        max_source_positions=N_FRAMES,
+        max_target_positions=24,
+        pad_token_id=eot,
+        bos_token_id=eot,
+        eos_token_id=eot,
+        decoder_start_token_id=vocab["<|startoftranscript|>"],
+    )
+    cfg.architectures = [ARCH]
+    model = AutoModelForSpeechSeq2Seq.from_config(cfg, attn_implementation="eager").eval()
+    bridge_cfg = build_bridge_config_from_hf(model.config, ARCH, "whisper-tok", torch.float32)
+    adapter = WhisperArchitectureAdapter(bridge_cfg)
+    return TransformerBridge(model, adapter, tokenizer=configure_tokenizer(tokenizer, adapter.cfg))
+
+
+class TestWhisperTinyDecoderPrompt:
+    def test_to_tokens_is_prefix_then_text(self, prompt_bridge):
+        """No <|endoftext|> lands inside the prompt, before or after the text."""
+        tokenizer = prompt_bridge.tokenizer
+        tokens = prompt_bridge.to_tokens(" Hello")[0].tolist()
+        text_ids = tokenizer(" Hello", add_special_tokens=False).input_ids
+        assert tokens == tokenizer.prefix_tokens + text_ids
+        assert tokenizer.eos_token_id not in tokens
+
+    def test_language_and_task_prefix(self, prompt_bridge):
+        tokenizer = prompt_bridge.tokenizer
+        tokenizer.set_prefix_tokens(language="english", task="transcribe")
+        tokens = prompt_bridge.to_tokens(" Hello")[0].tolist()
+        prefix = ["<|startoftranscript|>", "<|en|>", "<|transcribe|>", "<|notimestamps|>"]
+        assert tokens[:4] == tokenizer.convert_tokens_to_ids(prefix)
+        assert tokenizer.eos_token_id not in tokens
+
+    def test_prompt_drives_a_multi_clip_forward(self, prompt_bridge):
+        prompt = prompt_bridge.to_tokens(" Hello")
+        with torch.no_grad():
+            logits = prompt_bridge(torch.randn(3, N_MELS, 2 * N_FRAMES), decoder_input=prompt)
+        assert logits.shape == (3, prompt.shape[1], prompt_bridge.cfg.d_vocab)
 
 
 class TestWhisperTinyErrors:

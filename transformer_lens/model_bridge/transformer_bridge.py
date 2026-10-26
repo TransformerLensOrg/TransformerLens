@@ -2106,7 +2106,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 The tensor is passed directly to the underlying HuggingFace model.
                 Only valid when cfg.is_audio_model is True. Audio seq2seq models
                 (cfg.is_audio_seq2seq, e.g. Whisper) instead take their features as
-                ``input`` and require ``decoder_input`` (decoder token ids) or ``labels``.
+                ``input`` and require ``decoder_input`` (decoder token ids) or ``labels``,
+                with one row per clip or a single row shared by every clip.
             **kwargs: Additional arguments passed to model
 
         Returns:
@@ -2349,9 +2350,16 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         "Audio seq2seq models require decoder_input (decoder token ids, "
                         "e.g. the start-of-transcript prompt) or labels."
                     )
+                assert isinstance(input, torch.Tensor)  # str/list input is rejected above
+                n_clips = input.shape[0]
                 decoder_input_ids = kwargs.get("decoder_input_ids")
-                if isinstance(decoder_input_ids, torch.Tensor) and decoder_input_ids.ndim == 1:
-                    kwargs["decoder_input_ids"] = decoder_input_ids.unsqueeze(0)
+                if isinstance(decoder_input_ids, torch.Tensor):
+                    kwargs["decoder_input_ids"] = self._align_decoder_batch(
+                        decoder_input_ids, n_clips, "decoder_input"
+                    )
+                if labels is not None:
+                    labels = self._align_decoder_batch(labels, n_clips, "labels")
+                    kwargs["labels"] = labels
                 kwargs[self.adapter.audio_input_name] = input
                 result = self._driver.forward(**kwargs)
             # Audio models use input_values (waveform), not input_ids
@@ -2450,6 +2458,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
             if start_at_layer is not None:
                 self._teardown_start_at_layer()
+
+    @staticmethod
+    def _align_decoder_batch(ids: torch.Tensor, n_clips: int, name: str) -> torch.Tensor:
+        """Line decoder ids up with the audio batch: one row per clip, or one row shared by all.
+
+        HF does not check this, and a single row against several clips returns one row
+        of logits that matches none of them.
+        """
+        if ids.ndim == 1:
+            ids = ids.unsqueeze(0)
+        if ids.shape[0] == n_clips:
+            return ids
+        if ids.shape[0] == 1:
+            return ids.repeat(n_clips, 1)
+        raise ValueError(
+            f"{name} has batch size {ids.shape[0]} but the audio features have {n_clips}; "
+            "pass one row per clip, or a single row shared by every clip."
+        )
 
     def _setup_start_at_layer(self, input: Any, start_at_layer: int) -> torch.Tensor:
         """Arm residual-stream injection at block ``start_at_layer``.

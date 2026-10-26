@@ -21,7 +21,10 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
     Inputs: ``bridge(input_features, decoder_input=decoder_ids)``, where
     ``input_features`` is the log-mel spectrogram ``[batch, n_mels, 2 * n_frames]``
     from ``bridge.processor`` and ``decoder_ids`` are decoder token ids (e.g. the
-    start-of-transcript prompt). Returns decoder logits under teacher forcing.
+    start-of-transcript prompt), one row per clip or one row shared by all clips.
+    ``bridge.to_tokens(text)`` builds that prompt from the tokenizer's prefix tokens
+    (set the language and task with ``bridge.tokenizer.set_prefix_tokens``). Returns
+    decoder logits under teacher forcing.
 
     Encoder front end (channel-first, so its hooks declare position on dim 2):
 
@@ -60,6 +63,9 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
         super().__init__(cfg)
         self.cfg.is_audio_model = True
         self.cfg.is_audio_seq2seq = True
+        # The tokenizer's own <|startoftranscript|> prefix starts the decoder prompt; a
+        # prepended BOS (<|endoftext|>) would land inside it.
+        self.cfg.default_prepend_bos = False
 
     def _encoder_embeddings(self) -> Dict[str, GeneralizedComponent]:
         conv1 = GeneralizedComponent(name="model.encoder.conv1")

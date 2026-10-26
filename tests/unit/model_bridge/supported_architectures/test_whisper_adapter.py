@@ -81,6 +81,10 @@ class TestWhisperConfig:
     def test_scale_embedding_not_forced_on(self, adapter):
         assert not adapter.cfg.scale_embedding
 
+    def test_no_bos_prepended(self, adapter):
+        """The tokenizer's <|startoftranscript|> prefix starts the decoder prompt."""
+        assert adapter.cfg.default_prepend_bos is False
+
     def test_rejects_asymmetric_heads(self):
         cfg = _base_cfg()
         cfg.decoder_attention_heads = 8
