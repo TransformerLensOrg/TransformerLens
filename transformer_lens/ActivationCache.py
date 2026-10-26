@@ -1207,16 +1207,30 @@ class ActivationCache:
         when the expected hook isn't in the cache (some non-decoder-only architectures expose
         LN scale at a different path or not at all).
         """
+        norm = "ln2" if mlp_input else "ln1"
+        blocks = getattr(self.model, "blocks", None)
+        block = (
+            blocks[layer]
+            if blocks is not None and layer is not None and layer != self.model.cfg.n_layers
+            else None
+        )
+        if (
+            mlp_input
+            and block is not None
+            and layer is not None
+            and not self._mlp_input_includes_attn(layer)
+            and getattr(block, "ln2", None) is None
+            and getattr(block, "ln2_post", None) is None
+        ):
+            # Shared-norm parallel blocks feed the MLP from ln1, not a separate ln2.
+            norm = "ln1"
         if layer == self.model.cfg.n_layers or layer is None:
             key = "ln_final.hook_scale"
         else:
-            key = f"blocks.{layer}.ln{2 if mlp_input else 1}.hook_scale"
+            key = f"blocks.{layer}.{norm}.hook_scale"
         try:
             scale = self[key]
         except KeyError as e:
-            norm = f"ln{2 if mlp_input else 1}"
-            blocks = getattr(self.model, "blocks", None)
-            block = blocks[layer] if blocks is not None and layer is not None else None
             if (
                 block is not None
                 and getattr(block, norm, None) is None
@@ -1250,8 +1264,8 @@ class ActivationCache:
 
         Analytical formula (LN models, cached scale ``s``):
             ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
-        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the ln2
-        scale of ``layer`` when ``mlp_input`` is set, else the ln1 scale.
+        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the
+        MLP-input norm scale when ``mlp_input`` is set, else the ln1 scale.
         """
         scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
@@ -1343,7 +1357,8 @@ class ActivationCache:
                 Treat the stack as the input to ``layer``'s MLP rather than its attention, as in
                 ``decompose_resid``: with ``incl_remainder=True`` the remainder fills the stack up to
                 ``resid_mid`` for sequential blocks or ``resid_pre`` for parallel blocks.
-                With ``apply_ln=True`` the LN scale of ln2 is used instead of ln1.
+                With ``apply_ln=True`` the scale of the norm feeding the MLP is used
+                (ln2, or ln1 on shared-norm parallel blocks).
                 The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
@@ -1490,7 +1505,8 @@ class ActivationCache:
                 The layer we're taking the input to. In [0, n_layers], n_layers means the unembed.
                 None maps to the n_layers case, ie the unembed.
             mlp_input:
-                Whether the input is to the MLP or attn (ie ln2 vs ln1). Defaults to False, ie ln1.
+                Whether the input is to the MLP or attention. The MLP uses ln2 when present,
+                or ln1 on shared-norm parallel blocks. Defaults to False, ie ln1.
                 If layer==n_layers, must be False, and we use ln_final
             pos_slice:
                 The slice to take of positions, if residual_stack is not over the full context, None
