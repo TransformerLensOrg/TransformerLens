@@ -271,3 +271,90 @@ def test_layernorm_edit_uses_weight_and_bias_despite_shared_rms_offset():
         torch.ones_like(x) * bridge.original_component.weight + bridge.original_component.bias
     )
     torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("kind", ["layernorm", "rmsnorm", "offset"])
+@pytest.mark.parametrize("hook_name", ["hook_scale", "hook_normalized"])
+@pytest.mark.parametrize("mode", ["grad", "no_grad", "inference"])
+@pytest.mark.parametrize("return_none", [False, True])
+def test_native_inplace_edits_match_replacements(kind, hook_name, mode, return_none):
+    bridge = _make_bridge(native=True, rms=kind == "rmsnorm", offset=kind == "offset")
+    x = torch.randn(2, 3, 16, requires_grad=mode == "grad")
+    context = {
+        "grad": torch.enable_grad,
+        "no_grad": torch.no_grad,
+        "inference": torch.inference_mode,
+    }[mode]
+    point = getattr(bridge, hook_name)
+    with context():
+        point.add_hook(lambda value, hook: value * 2)
+        with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+            expected = bridge(x)
+        point.remove_hooks()
+
+        def edit(value, hook):
+            value.mul_(2)
+            return None if return_none else value
+
+        point.add_hook(edit)
+        with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+            actual = bridge(x)
+        point.remove_hooks()
+        torch.testing.assert_close(actual, expected)
+    if mode == "grad":
+        parameters = (x, *bridge.original_component.parameters())
+        probe = torch.randn_like(actual)
+        expected_grads = torch.autograd.grad(expected, parameters, probe)
+        actual_grads = torch.autograd.grad(actual, parameters, probe)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            torch.testing.assert_close(actual_grad, expected_grad)
+
+
+@pytest.mark.parametrize("mode", ["grad", "no_grad", "inference"])
+@pytest.mark.parametrize("return_input", [False, True])
+def test_native_observers_keep_exact_output_and_gradients(mode, return_input):
+    bridge = _make_bridge(native=True)
+    x = torch.randn(2, 3, 16, requires_grad=mode == "grad")
+    context = {
+        "grad": torch.enable_grad,
+        "no_grad": torch.no_grad,
+        "inference": torch.inference_mode,
+    }[mode]
+    with context():
+        expected = bridge.original_component(x)
+
+        def observe(value, hook):
+            return value if return_input else None
+
+        bridge.hook_scale.add_hook(observe)
+        bridge.hook_normalized.add_hook(observe)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = bridge(x)
+        bridge.hook_scale.remove_hooks()
+        bridge.hook_normalized.remove_hooks()
+        assert torch.equal(actual, expected)
+    if mode == "grad":
+        parameters = (x, *bridge.original_component.parameters())
+        probe = torch.randn_like(actual)
+        expected_grads = torch.autograd.grad(expected, parameters, probe)
+        actual_grads = torch.autograd.grad(actual, parameters, probe)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            assert torch.equal(actual_grad, expected_grad)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf")])
+def test_native_inference_observers_do_not_treat_nonfinite_values_as_edits(invalid):
+    bridge = _make_bridge(native=True)
+    with torch.inference_mode():
+        x = torch.randn(2, 3, 16)
+        x[..., 0] = invalid
+        expected = bridge.original_component(x)
+        bridge.hook_scale.add_hook(lambda value, hook: None)
+        bridge.hook_normalized.add_hook(lambda value, hook: None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = bridge(x)
+        bridge.hook_scale.remove_hooks()
+        bridge.hook_normalized.remove_hooks()
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)

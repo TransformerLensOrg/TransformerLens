@@ -10,7 +10,7 @@ import torch
 
 from transformer_lens.model_bridge import TransformerBridge
 
-MODEL_NAME = "trl-internal-testing/tiny-Qwen3_5ForConditionalGeneration"
+MODEL_NAME = "trl-internal-testing/tiny-Qwen3_5ForConditionalGeneration-NoThink"
 
 
 def _gate_hooks(bridge) -> list[str]:
