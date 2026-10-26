@@ -1063,6 +1063,28 @@ def test_intervention_hooks_use_bridge_names_and_run(
         assert not torch.allclose(intervened, baseline)
 
 
+def test_ablation_hooks_remove_every_direction_of_non_orthogonal_tokens(
+    toy_model: _ToyBridge, fitted_lens: JacobianLens
+) -> None:
+    tokens = [3, 5, 7]
+    layer = 1
+    vectors = fitted_lens.lens_vectors(toy_model, tokens, layer)
+    units = vectors / vectors.norm(dim=-1, keepdim=True)
+    off_diagonal = (units @ units.T)[~torch.eye(len(tokens), dtype=torch.bool)]
+    assert off_diagonal.abs().max() > 0.1  # one-at-a-time removal would leave a component
+
+    [(_, hook)] = fitted_lens.ablation_hooks(toy_model, tokens, layers=[layer])
+    activation = torch.randn(2, SEQ_LEN, D_MODEL, generator=torch.Generator().manual_seed(0))
+    ablated = hook(activation.clone(), SimpleNamespace(name=f"blocks.{layer}.hook_out"))
+
+    torch.testing.assert_close(
+        ablated @ vectors.T, torch.zeros(2, SEQ_LEN, len(tokens)), atol=1e-4, rtol=0
+    )
+    # Only the span of the vectors changes
+    projector = vectors.T @ torch.linalg.pinv(vectors.T)
+    torch.testing.assert_close(ablated, activation - activation @ projector, atol=1e-5, rtol=0)
+
+
 @pytest.mark.parametrize("intervention", ["steering", "ablation", "swap"])
 def test_intervention_negative_position_is_normalized(
     intervention: str, toy_model: _ToyBridge

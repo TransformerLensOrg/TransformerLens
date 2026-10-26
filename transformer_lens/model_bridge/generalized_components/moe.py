@@ -6,7 +6,12 @@ This module contains the bridge component for Mixture of Experts layers.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+import warnings
+from functools import wraps
+from inspect import currentframe, getclosurevars
+from threading import Lock
+from types import CodeType, FunctionType, MethodType
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import torch
 from torch import nn
@@ -28,6 +33,157 @@ from transformer_lens.model_bridge.generalized_components.mlp import (
 _BATCHED_INPUT_PROJECTIONS = frozenset({"gate_up_proj", "gate_proj", "up_proj"})
 _BATCHED_OUTPUT_PROJECTIONS = frozenset({"down_proj"})
 _BATCHED_PROJECTIONS = _BATCHED_INPUT_PROJECTIONS | _BATCHED_OUTPUT_PROJECTIONS
+
+_MPS_OUTPUT_SLICE_RESULTS: Dict[Tuple[torch.device, torch.dtype], bool] = {}
+_MPS_OUTPUT_SLICE_LOCK = Lock()
+_MPS_EXPERTS_WARNED = False
+_MPS_EXPERTS_WARNING_LOCK = Lock()
+
+
+def _warn_mps_experts_once() -> None:
+    """Warn once at the first caller outside the model and runtime-checking libraries."""
+    global _MPS_EXPERTS_WARNED
+    with _MPS_EXPERTS_WARNING_LOCK:
+        if _MPS_EXPERTS_WARNED:
+            return
+        _MPS_EXPERTS_WARNED = True
+    frame = None
+    emitted = False
+    try:
+        frame = currentframe()
+        stacklevel = 1
+        while frame is not None:
+            module = frame.f_globals.get("__name__", "")
+            if not any(
+                module == prefix or module.startswith(prefix + ".")
+                for prefix in ("transformer_lens", "transformers", "torch", "jaxtyping", "beartype")
+            ):
+                break
+            frame = frame.f_back
+            stacklevel += 1
+        warnings.warn(
+            "Using eager experts on MPS after detecting incorrect "
+            "matmul output-slice writes; expert execution may be slower.",
+            RuntimeWarning,
+            stacklevel=stacklevel,
+        )
+        emitted = True
+    finally:
+        del frame
+        if not emitted:
+            with _MPS_EXPERTS_WARNING_LOCK:
+                _MPS_EXPERTS_WARNED = False
+
+
+def _probe_mps_output_slice_writes(device: torch.device, dtype: torch.dtype) -> bool:
+    """Check for incorrect nonzero-offset matmul output writes using isolated tensors."""
+    with torch.no_grad(), torch.autocast(device_type=device.type, enabled=False):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        inputs = torch.randn(10, 64, generator=generator).to(device=device, dtype=dtype)
+        weights = torch.randn(4, 64, 32, generator=generator).to(device=device, dtype=dtype)
+        output = torch.zeros(10, 32, device=device, dtype=dtype)
+        expected = inputs[5:] @ weights[3]
+        torch.mm(inputs[5:], weights[3], out=output[5:])
+        rtol = max(1e-5, 2 * torch.finfo(dtype).eps)
+        prefix_intact = torch.count_nonzero(output[:5]).item() == 0
+        products_match = torch.allclose(output[5:], expected, rtol=rtol, atol=1e-5)
+        return not (prefix_intact and products_match)
+
+
+def _mps_output_slice_writes_are_broken(device: torch.device, dtype: torch.dtype) -> bool:
+    """Cache the primitive check once per device and dtype, including concurrent first use."""
+    key = (device, dtype)
+    with _MPS_OUTPUT_SLICE_LOCK:
+        if key not in _MPS_OUTPUT_SLICE_RESULTS:
+            try:
+                _MPS_OUTPUT_SLICE_RESULTS[key] = _probe_mps_output_slice_writes(device, dtype)
+            except (RuntimeError, TypeError) as error:
+                raise RuntimeError(
+                    f"Cannot verify MPS matmul output-slice writes on {device} with {dtype}. "
+                    "Select eager experts explicitly or use CPU execution."
+                ) from error
+        return _MPS_OUTPUT_SLICE_RESULTS[key]
+
+
+def _mps_experts_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
+    """Dispatch locally, without changing the config shared by other expert layers."""
+    hidden_states = args[0] if args else kwargs.get("hidden_states")
+    forward = type(experts).forward
+    config: Any = getattr(experts, "config", None)
+    eager = None
+    if (
+        isinstance(hidden_states, torch.Tensor)
+        and hidden_states.device.type == "mps"
+        and getattr(config, "_experts_implementation", None) == "grouped_mm"
+    ):
+        eager = _hf_eager_experts_forward(forward)
+        if eager is not None:
+            dtypes = {
+                parameter.dtype
+                for parameter in experts.parameters(recurse=False)
+                if parameter.ndim == 3 and parameter.is_floating_point()
+            } or {hidden_states.dtype}
+            if any(
+                _mps_output_slice_writes_are_broken(hidden_states.device, dtype) for dtype in dtypes
+            ):
+                _warn_mps_experts_once()
+                return eager(experts, *args, **kwargs)
+    return forward(experts, *args, **kwargs)
+
+
+def _hf_eager_experts_forward(forward: Any) -> Optional[Callable[..., Any]]:
+    """Recognize HF's shared grouped dispatcher and recover its original eager forward."""
+    from transformers.integrations.moe import (
+        ExpertsInterface,
+        grouped_mm_experts_forward,
+        use_experts_implementation,
+    )
+
+    if not isinstance(forward, FunctionType):
+        return None
+    if not any(
+        forward.__code__ is candidate
+        for wrapper in use_experts_implementation.__code__.co_consts
+        if isinstance(wrapper, CodeType) and wrapper.co_name == "wrapper"
+        for candidate in wrapper.co_consts
+        if isinstance(candidate, CodeType) and candidate.co_name == "forward"
+    ):
+        return None
+    closure = getclosurevars(forward).nonlocals
+    original = closure.get("original_forward")
+    interface = closure.get("experts_interface")
+    if (
+        not callable(original)
+        or original is not getattr(forward, "__wrapped__", None)
+        or not isinstance(interface, ExpertsInterface)
+        or interface.get_interface("grouped_mm", original) is not grouped_mm_experts_forward
+    ):
+        return None
+    return original
+
+
+def _guard_mps_experts(component: nn.Module) -> None:
+    """Install instance-local dispatch only for HF's shared grouped expert implementation.
+
+    The bound method preserves the forward signature, nn.Module hooks, and deepcopy
+    semantics. Configs and global dispatch tables remain untouched, including during
+    concurrent forwards.
+    """
+    experts = getattr(component, "experts", None)
+    if not isinstance(experts, nn.Module):
+        return
+    experts = unwrap_bridge(experts)
+    forward = type(experts).forward
+    if getattr(experts.forward, "__func__", None) is not forward:
+        return
+    if _hf_eager_experts_forward(forward) is None:
+        return
+
+    @wraps(forward)
+    def guarded_forward(experts: nn.Module, *args: Any, **kwargs: Any) -> Any:
+        return _mps_experts_forward(experts, *args, **kwargs)
+
+    setattr(experts, "forward", MethodType(guarded_forward, experts))
 
 
 class UnfoldableMoEParameter(Exception):
@@ -431,6 +587,7 @@ class MoEBridge(GeneralizedComponent):
         elif "hidden_states" in kwargs:
             hooked = self.hook_in(kwargs["hidden_states"])
             kwargs = {**kwargs, "hidden_states": hooked}
+        _guard_mps_experts(self.original_component)
         output = self.original_component(*args, **kwargs)
         if isinstance(output, tuple):
             if not output:

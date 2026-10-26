@@ -18,6 +18,7 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     _active_mask,
     _gradient_pursuit_extend,
     _linalg_on_cpu_if_mps,
+    _project_onto_span,
     _validate_nnls_kkt,
     get_sparse_decomposition,
 )
@@ -278,11 +279,7 @@ def _validate_decomposition(
     if not _close(local_vectors[1] + local_vectors[2], target, span_condition):
         raise ValueError("precomputed decomposition is incompatible with activation")
     if selected_atoms is not None:
-        expected_component = _linalg_on_cpu_if_mps(
-            lambda atoms, vector: atoms @ (torch.linalg.pinv(atoms) @ vector),
-            selected_atoms,
-            target,
-        )
+        expected_component = _project_onto_span(selected_atoms, target)
     else:
         expected_component = torch.zeros_like(target)
     if not _close(local_vectors[1], expected_component, span_condition):

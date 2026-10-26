@@ -1315,11 +1315,37 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         plain layer indices. Encoder-decoder models register ``encoder_blocks``
         and ``decoder_blocks`` instead; those are concatenated into one index
         space, matching ``HookedEncoderDecoder``'s ``chain(encoder, decoder)``.
+
+        Non-standard architectures (e.g. Raven/Huginn's ``prelude`` /
+        ``core_block`` / ``coda``) register block lists under other names
+        entirely, so ``_BLOCK_LIST_ATTRS`` alone would silently enumerate zero
+        blocks for them (#1791). After the known names, any other
+        ``nn.ModuleList`` in ``_modules`` whose items are *all* list-item
+        components (``is_list_item``, which ``setup_components`` sets on every
+        block of a stack it builds) is discovered structurally and appended in
+        registration order, so a new adapter's block lists are picked up
+        automatically without a name to add here. This is the same criterion the
+        named path accepts, so block types that never set
+        ``hook_out_is_single_residual_stream`` (T5, AltUp, T5Gemma, DeepSeek V4)
+        are enumerated regardless of the name they are registered under. A list
+        mixing blocks with other modules is skipped whole rather than partly
+        enumerated.
         """
         pairs: List[Tuple[int, Any]] = []
+        modules = self.__dict__.get("_modules") or {}
+        known_names = set(_BLOCK_LIST_ATTRS)
         for list_name in _BLOCK_LIST_ATTRS:
-            block_list = self._modules.get(list_name)
+            block_list = modules.get(list_name)
             if not isinstance(block_list, nn.ModuleList):
+                continue
+            for block in block_list:
+                pairs.append((len(pairs), block))
+        for list_name, block_list in modules.items():
+            if list_name in known_names or not isinstance(block_list, nn.ModuleList):
+                continue
+            if len(block_list) == 0 or not all(
+                getattr(block, "is_list_item", False) for block in block_list
+            ):
                 continue
             for block in block_list:
                 pairs.append((len(pairs), block))
