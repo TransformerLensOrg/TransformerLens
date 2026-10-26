@@ -259,9 +259,10 @@ def boot(
         n_devices, device_map, device, max_memory
     )
     if resolved_device_map is None:
-        if device is None:
+        # hf_model is never moved; without device= cfg.device is read from it below.
+        if device is None and hf_model is None:
             device = get_device()
-        adapter.cfg.device = str(device)
+        adapter.cfg.device = None if device is None else str(device)
     else:
         # cfg.device set from hf_device_map after the model is loaded; provisionally None.
         adapter.cfg.device = None
