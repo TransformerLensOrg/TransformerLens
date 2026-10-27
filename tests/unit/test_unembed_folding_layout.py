@@ -69,3 +69,46 @@ def test_fold_final_affine_uses_model_axis(layout, vocab_size, center, norm, fol
     identity = torch.zeros_like(gamma) if norm == "offset_rms" else torch.ones_like(gamma)
     torch.testing.assert_close(state[gamma_key], identity)
     torch.testing.assert_close(state[beta_key], torch.zeros_like(beta) if folded_beta else beta)
+
+
+@pytest.mark.parametrize("layout", ["tl", "hf", "converted", "legacy"])
+@pytest.mark.parametrize("vocab_size,configured_vocab", [(4, 4), (7, 7), (7, 5)])
+@pytest.mark.parametrize("with_config", [False, True])
+def test_center_unembed_preserves_log_probs(layout, vocab_size, configured_vocab, with_config):
+    weight = torch.arange(4 * vocab_size, dtype=torch.float64).reshape(4, vocab_size).square() / 100
+    bias = torch.arange(vocab_size, dtype=torch.float64) / 10
+    adapter = None if layout == "tl" else Mock(spec=ArchitectureAdapter)
+    if adapter is not None:
+        adapter.weight_processing_conversions = {}
+    if layout == "converted":
+        adapter.weight_processing_conversions["unembed.weight"] = ParamProcessingConversion(
+            tensor_conversion=TransposeTensorConversion()
+        )
+    elif layout == "legacy":
+        adapter.weight_processing_conversions["unembed.weight"] = "lm_head.weight"
+    w_key = ProcessWeights._get_param_key("unembed.W_U", adapter)
+    b_key = ProcessWeights._get_param_key("unembed.b_U", adapter)
+    state = {w_key: weight.clone() if layout == "tl" else weight.T.clone(), b_key: bias.clone()}
+    original_weight = state[w_key].clone()
+    config = TransformerBridgeConfig(
+        d_model=4,
+        d_vocab=configured_vocab,
+        d_head=2,
+        n_heads=2,
+        n_layers=1,
+        n_ctx=8,
+        act_fn="relu",
+    )
+    result = ProcessWeights.center_unembed(
+        state, cfg=config if with_config else None, adapter=adapter
+    )
+    actual = result[w_key] if layout == "tl" else result[w_key].T
+    torch.testing.assert_close(actual, weight - weight.mean(-1, keepdim=True))
+    torch.testing.assert_close(result[b_key], bias - bias.mean())
+    residual = torch.tensor([[1.0, -2.0, 3.0, 0.5], [-0.5, 1.0, 0.0, 2.0]], dtype=torch.float64)
+    torch.testing.assert_close(
+        (residual @ actual + result[b_key]).log_softmax(-1),
+        (residual @ weight + bias).log_softmax(-1),
+    )
+    torch.testing.assert_close(state[w_key], original_weight)
+    torch.testing.assert_close(state[b_key], bias)

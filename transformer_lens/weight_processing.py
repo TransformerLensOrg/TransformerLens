@@ -978,7 +978,7 @@ class ProcessWeights:
         return state_dict
 
     @staticmethod
-    def _unembed_model_axis(weight: torch.Tensor, d_model: int, adapter=None) -> int:
+    def _unembed_model_axis(weight: torch.Tensor, d_model: Optional[int], adapter=None) -> int:
         """Resolve the hidden axis after conversion, including square readouts."""
         if adapter is not None:
             conversions = getattr(adapter, "weight_processing_conversions", None) or {}
@@ -986,7 +986,7 @@ class ProcessWeights:
             if conversion is not None and not isinstance(conversion, str):
                 # An explicit conversion produces TL [d_model, d_vocab].
                 return 0
-        if weight.shape[0] != weight.shape[1]:
+        if d_model is not None and weight.shape[0] != weight.shape[1]:
             if weight.shape[0] == d_model:
                 return 0
             if weight.shape[1] == d_model:
@@ -1406,7 +1406,7 @@ class ProcessWeights:
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of the model.
-            cfg: Model configuration (used to determine d_vocab for correct centering dimension).
+            cfg: Model configuration (used to identify the hidden axis for legacy layouts).
             adapter: Optional architecture adapter for parameter key translation.
 
         Returns:
@@ -1427,18 +1427,8 @@ class ProcessWeights:
         )
         assert W_U is not None, f"Unembed weight not found at key {unembed_W_U_key}"
 
-        # Detect W_U format to center along correct dim (wrong dim corrupts output)
-        vocab_dim = -1  # Default: TL format [d_model, d_vocab]
-        if cfg is not None:
-            d_vocab = getattr(cfg, "d_vocab", None)
-            d_model = getattr(cfg, "d_model", None)
-            if d_vocab is not None and W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
-                # HF format [d_vocab, d_model] — center along dim=0
-                vocab_dim = 0
-            elif d_model is not None and W_U.shape[-1] == d_model and W_U.shape[0] != d_model:
-                # Padded-vocab checkpoints (e.g. HyenaDNA pads 12→16 rows) defeat
-                # the d_vocab match; the d_model axis is unambiguous.
-                vocab_dim = 0
+        model_axis = ProcessWeights._unembed_model_axis(W_U, getattr(cfg, "d_model", None), adapter)
+        vocab_dim = 1 - model_axis
         W_U = W_U - W_U.mean(vocab_dim, keepdim=True)
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, W_U, None, adapter, None

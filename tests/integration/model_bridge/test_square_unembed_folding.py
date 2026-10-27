@@ -4,7 +4,9 @@ import pytest
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
+from transformer_lens.config.transformer_bridge_config import TransformerBridgeConfig
 from transformer_lens.model_bridge.sources import build_bridge_from_module
+from transformer_lens.model_bridge.transformer_bridge import TransformerBridge
 
 
 @pytest.mark.parametrize("vocab_size", [16, 17])
@@ -52,3 +54,38 @@ def test_final_ln_folding_preserves_logits(vocab_size, affine):
     torch.testing.assert_close(bridge.unembed.b_U, bias + beta @ weight, atol=1e-7, rtol=1e-6)
     torch.testing.assert_close(after, before, atol=1e-6, rtol=1e-5)
     torch.testing.assert_close(after.log_softmax(-1), before.log_softmax(-1), atol=1e-6, rtol=1e-5)
+
+
+@pytest.mark.parametrize("vocab_size", [16, 17])
+@pytest.mark.parametrize("fold_ln", [False, True])
+def test_default_compatibility_preserves_native_log_probs(vocab_size, fold_ln):
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        bridge = TransformerBridge.boot_native(
+            TransformerBridgeConfig(
+                d_model=16,
+                d_head=4,
+                n_heads=4,
+                d_vocab=vocab_size,
+                n_layers=1,
+                n_ctx=8,
+                act_fn="gelu",
+                init_weights=True,
+                device="cpu",
+            )
+        ).eval()
+        assert "unembed.weight" not in bridge.adapter.weight_processing_conversions
+        tokens = torch.tensor([[1, 2, 3, 4], [4, 3, 2, 1]])
+        with torch.no_grad():
+            bridge.ln_final.weight.copy_(torch.linspace(0.3, 2.0, 16))
+            bridge.ln_final.bias.copy_(torch.linspace(-0.2, 0.3, 16))
+            before = bridge(tokens).log_softmax(-1)
+            bridge.enable_compatibility_mode(fold_ln=fold_ln)
+            after = bridge(tokens).log_softmax(-1)
+    torch.testing.assert_close(after, before, atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(
+        bridge.unembed.W_U.mean(-1),
+        torch.zeros(16),
+        atol=1e-7,
+        rtol=0,
+    )
