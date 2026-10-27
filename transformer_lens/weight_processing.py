@@ -978,6 +978,24 @@ class ProcessWeights:
         return state_dict
 
     @staticmethod
+    def _unembed_model_axis(weight: torch.Tensor, d_model: int, adapter=None) -> int:
+        """Resolve the hidden axis after conversion, including square readouts."""
+        if adapter is not None:
+            conversions = getattr(adapter, "weight_processing_conversions", None) or {}
+            conversion = conversions.get("unembed.weight", conversions.get("unembed"))
+            if conversion is not None and not isinstance(conversion, str):
+                # An explicit conversion produces TL [d_model, d_vocab].
+                return 0
+        if weight.shape[0] != weight.shape[1]:
+            if weight.shape[0] == d_model:
+                return 0
+            if weight.shape[1] == d_model:
+                return 1
+            raise ValueError(f"Unembedding shape {weight.shape} has no d_model={d_model} axis")
+        # Without conversion metadata, Bridge weights are HF; adapter-free inputs are TL.
+        return 0 if adapter is None else 1
+
+    @staticmethod
     def _fold_unembed_layer_norm(
         state_dict: Dict[str, torch.Tensor], cfg, fold_biases: bool, center_weights: bool, adapter
     ) -> Dict[str, torch.Tensor]:
@@ -1010,14 +1028,11 @@ class ProcessWeights:
         rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
         effective_ln_weight = (1.0 + ln_weight) if rmsnorm_uses_offset else ln_weight
         if len(unembed_weight.shape) == 2 and len(ln_weight.shape) == 1:
-            if unembed_weight.shape[1] == ln_weight.shape[0]:
-                new_unembed_weight = unembed_weight * effective_ln_weight[None, :]
-            elif unembed_weight.shape[0] == ln_weight.shape[0]:
+            model_axis = ProcessWeights._unembed_model_axis(unembed_weight, len(ln_weight), adapter)
+            if model_axis == 0:
                 new_unembed_weight = unembed_weight * effective_ln_weight[:, None]
             else:
-                raise ValueError(
-                    f"Cannot broadcast unembedding weight {unembed_weight.shape} with layer norm weight {ln_weight.shape}"
-                )
+                new_unembed_weight = unembed_weight * effective_ln_weight[None, :]
         else:
             raise ValueError(
                 f"Unexpected tensor shapes: unembedding {unembed_weight.shape}, layer norm {ln_weight.shape}"
@@ -1047,22 +1062,12 @@ class ProcessWeights:
                 unembed_weight_centered is not None
             ), f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight_centered.shape) == 2:
-                # Center along d_model: detect TL vs HF format
-                d_vocab = getattr(cfg, "d_vocab", None) if cfg is not None else None
-                if (
-                    d_vocab is not None
-                    and unembed_weight_centered.shape[0] == d_vocab
-                    and unembed_weight_centered.shape[-1] != d_vocab
-                ):
-                    # HF format [d_vocab, d_model] — center along dim=-1
-                    unembed_weight_centered = (
-                        unembed_weight_centered - unembed_weight_centered.mean(-1, keepdim=True)
-                    )
-                else:
-                    # TL format [d_model, d_vocab] — center along dim=0
-                    unembed_weight_centered = (
-                        unembed_weight_centered - unembed_weight_centered.mean(0, keepdim=True)
-                    )
+                model_axis = ProcessWeights._unembed_model_axis(
+                    unembed_weight_centered, len(ln_weight), adapter
+                )
+                unembed_weight_centered = unembed_weight_centered - unembed_weight_centered.mean(
+                    model_axis, keepdim=True
+                )
                 state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
                     unembed_W_U_key, unembed_weight_centered, cfg, adapter, None
                 )
@@ -1102,14 +1107,13 @@ class ProcessWeights:
             ln_bias = state_dict[ln_final_b_key]
             assert unembed_weight is not None, f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight.shape) == 2 and len(ln_bias.shape) == 1:
-                if unembed_weight.shape[1] == ln_bias.shape[0]:
-                    bias_contribution = (unembed_weight * ln_bias[None, :]).sum(dim=-1)
-                elif unembed_weight.shape[0] == ln_bias.shape[0]:
+                model_axis = ProcessWeights._unembed_model_axis(
+                    unembed_weight, len(ln_bias), adapter
+                )
+                if model_axis == 0:
                     bias_contribution = (unembed_weight * ln_bias[:, None]).sum(dim=-2)
                 else:
-                    raise ValueError(
-                        f"Cannot broadcast unembedding weight {unembed_weight.shape} with layer norm bias {ln_bias.shape}"
-                    )
+                    bias_contribution = (unembed_weight * ln_bias[None, :]).sum(dim=-1)
             else:
                 raise ValueError(
                     f"Unexpected tensor shapes: unembedding {unembed_weight.shape}, layer norm bias {ln_bias.shape}"
