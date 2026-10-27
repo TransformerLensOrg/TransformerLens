@@ -1,5 +1,5 @@
 """BART adapter and the shared BART-family encoder-decoder base (BART, Marian,
-MBart, Pegasus, Blenderbot, M2M100/NLLB); per-member differences are declarative."""
+MBart, Pegasus, Blenderbot, M2M100/NLLB, Whisper); per-member differences are declarative."""
 
 from typing import Any, Dict
 
@@ -31,8 +31,10 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
     # layernorm_embedding after the token+position embeds (BART, MBart).
     has_layernorm_embedding: bool = False
     # Trailing per-stack layer_norm — the pre-LN members (MBart, Pegasus,
-    # Blenderbot, M2M100).
+    # Blenderbot, M2M100, Whisper).
     has_final_stack_norm: bool = False
+    # Output projection; Whisper names it proj_out.
+    unembed_name: str = "lm_head"
 
     def __init__(self, cfg: Any) -> None:
         """Validate the config, set family flags, and build the mapping."""
@@ -156,13 +158,18 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
             },
         )
 
-    def _build_component_mapping(self) -> Dict[str, GeneralizedComponent]:
+    def _encoder_embeddings(self) -> Dict[str, GeneralizedComponent]:
+        """Encoder input stage seam; Whisper swaps in its audio conv front end."""
         mapping: Dict[str, GeneralizedComponent] = {
             "embed": EmbeddingBridge(name="model.encoder.embed_tokens"),
             "pos_embed": PosEmbedBridge(name="model.encoder.embed_positions"),
         }
         if self.has_layernorm_embedding:
             mapping["embed_ln"] = self._norm("model.encoder.layernorm_embedding")
+        return mapping
+
+    def _build_component_mapping(self) -> Dict[str, GeneralizedComponent]:
+        mapping = self._encoder_embeddings()
         mapping["encoder_blocks"] = self._encoder_block()
         if self.has_final_stack_norm:
             mapping["encoder_ln_final"] = self._norm("model.encoder.layer_norm")
@@ -173,7 +180,7 @@ class BartFamilyArchitectureAdapter(ArchitectureAdapter):
         mapping["decoder_blocks"] = self._decoder_block()
         if self.has_final_stack_norm:
             mapping["decoder_ln_final"] = self._norm("model.decoder.layer_norm")
-        mapping["unembed"] = UnembeddingBridge(name="lm_head")
+        mapping["unembed"] = UnembeddingBridge(name=self.unembed_name)
         return mapping
 
     def setup_hook_compatibility(self, bridge: Any) -> None:

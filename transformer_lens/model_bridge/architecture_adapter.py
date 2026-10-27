@@ -96,6 +96,10 @@ class ArchitectureAdapter:
     # Whether Bridge's shifted next-token cross-entropy is meaningful.
     supports_causal_loss: bool = True
 
+    # Keyword the wrapped HF forward takes audio under. Read by the audio seq2seq
+    # forward path (cfg.is_audio_seq2seq), e.g. Whisper's log-mel "input_features".
+    audio_input_name: str = "input_values"
+
     # HF-style 4D boolean attention masks keep positions marked True. Override
     # for architectures whose forward path uses True to block attention.
     bool_4d_mask_is_keep: bool = True

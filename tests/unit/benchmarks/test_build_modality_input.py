@@ -44,6 +44,18 @@ def test_spectrogram_dimensions_are_not_hardcoded() -> None:
     assert got.shape == (3, 512, 64)
 
 
+def test_audio_seq2seq_uses_log_mel_window() -> None:
+    """Whisper takes channel-first [batch, n_mels, 2 * n_frames]; conv2 halves the frames."""
+    bridge = _bridge(
+        hf_config=SimpleNamespace(num_mel_bins=80, max_source_positions=1500),
+        is_audio_model=True,
+        is_audio_seq2seq=True,
+    )
+    got = build_modality_input(bridge, batch_size=2)
+    assert got is not None
+    assert got.shape == (2, 80, 3000)
+
+
 def test_waveform_audio_without_mel_bins() -> None:
     """num_mel_bins is what separates a spectrogram encoder from a waveform one."""
     bridge = _bridge(hf_config=SimpleNamespace(), is_audio_model=True)

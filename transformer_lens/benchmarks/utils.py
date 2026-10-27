@@ -137,6 +137,12 @@ def build_modality_input(
             batch_size, num_channels, image_size, image_size, device=device, dtype=dtype
         )
 
+    if getattr(cfg, "is_audio_seq2seq", False):
+        # Whisper-style log-mel window [batch, n_mels, 2 * n_frames]: conv2 has stride 2.
+        n_mels = _from_config("num_mel_bins", 80)
+        n_frames = _from_config("max_source_positions", 1500)
+        return torch.randn(batch_size, n_mels, 2 * n_frames, device=device, dtype=dtype)
+
     if getattr(cfg, "is_audio_model", False):
         # num_mel_bins is what distinguishes a spectrogram encoder from a waveform one.
         num_mel_bins = getattr(hf_config, "num_mel_bins", None) if hf_config is not None else None
