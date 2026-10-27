@@ -14,7 +14,9 @@
 
 ## Demos
 
-### Getting started
+### Core Demos
+
+The two core notebooks, which pair with the links in [Where To Start](#where-to-start) above.
 
 - [**Main Demo**](https://colab.research.google.com/github/TransformerLensOrg/TransformerLens/blob/main/demos/Main_Demo.ipynb) - The main demo. This is where to start if you're new to TransformerLens. Shows a lot of great features for getting started, including available models, how to access model activations, and generally useful features you should know about.
 
