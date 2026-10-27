@@ -38,6 +38,7 @@ class BlockBridge(GeneralizedComponent):
 
     is_list_item: bool = True
     hook_out_is_single_residual_stream: bool = True
+    mlp_input_includes_attn: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
     # fire on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
     # blocks); see __init__. The normalized mlp input stays at block.mlp.hook_in.
@@ -465,6 +466,8 @@ class ParallelBlockBridge(BlockBridge):
     when ``cfg.parallel_attn_mlp=True``. Type-level distinction means a reader
     of the adapter sees ``ParallelBlockBridge`` and knows the hook is absent.
     """
+
+    mlp_input_includes_attn: bool = False
 
     def __init__(
         self,
