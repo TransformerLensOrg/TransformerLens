@@ -2106,7 +2106,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 feed back on the next call for incremental decoding.
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
-            padding_side: Which side to pad on
+            padding_side: Which side to pad on when tokenizing a list of strings. For a
+                token tensor, the side it was already padded on: the attention mask is
+                then read off the pad token. Pass ``attention_mask`` instead when the pad
+                id also occurs as a real token.
             labels: Explicit language-model targets. Encoder-decoder models require
                 labels for loss; decoder-only models fall back to input IDs when omitted.
             past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
@@ -2240,14 +2243,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 isinstance(input_ids, torch.Tensor) and input_ids.is_floating_point()
             )
 
+            # A token tensor carries no record of its padding. As in generate(), an
+            # explicit padding_side says how it was padded, so the mask is read off
+            # the pad token; without one the tensor is used as given.
+            _is_padded_tokens = (
+                padding_side is not None
+                and isinstance(input, torch.Tensor)
+                and not _is_inputs_embeds
+            )
+
             # Left padding needs a mask and corrected positions. Right padding is
             # harmless for causal real-token positions and remains unmasked to
             # match HookedTransformer; bidirectional/encoder inputs still need it.
             if (
-                _is_batched_list
+                (_is_batched_list or _is_padded_tokens)
                 and attention_mask is None
-                and self.tokenizer is not None
-                and self.tokenizer.pad_token_id is not None
                 and not _is_inputs_embeds
                 and (
                     _resolved_padding_side == "left"
@@ -2256,20 +2266,35 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     or getattr(self.cfg, "attention_dir", "causal") != "causal"
                 )
             ):
-                attention_mask = utils.get_attention_mask(
-                    self.tokenizer,
-                    input_ids,
-                    prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
-                    padding_side=_resolved_padding_side,
-                ).to(self.cfg.device)
-                # Gated on the target for the same reason the derivation below is:
-                # a fixed-signature forward raises TypeError on the kwarg, and a
-                # model that owns its own position derivation is overridden by it
-                # (#1626).
-                if "position_ids" not in kwargs and self._accepts_derived_position_ids():
-                    position_ids = attention_mask.long().cumsum(-1) - 1
-                    position_ids.masked_fill_(attention_mask == 0, 1)
-                    kwargs["position_ids"] = position_ids
+                if self.tokenizer is None or self.tokenizer.pad_token_id is None:
+                    if _is_padded_tokens:
+                        raise ValueError(
+                            "padding_side=... on token input reads the padding off the "
+                            "pad token, which needs a tokenizer with a pad_token_id. "
+                            "Pass attention_mask=... to state the padding directly instead."
+                        )
+                else:
+                    attention_mask = utils.get_attention_mask(
+                        self.tokenizer,
+                        input_ids,
+                        prepend_bos=(
+                            getattr(self.cfg, "default_prepend_bos", True)
+                            if prepend_bos is None
+                            else prepend_bos
+                        ),
+                        padding_side=_resolved_padding_side,
+                    ).to(self.cfg.device)
+                    # An unpadded tensor keeps the unmasked path it had before.
+                    if _is_padded_tokens and bool(attention_mask.all()):
+                        attention_mask = None
+                    # Gated on the target for the same reason the derivation below is:
+                    # a fixed-signature forward raises TypeError on the kwarg, and a
+                    # model that owns its own position derivation is overridden by it
+                    # (#1626).
+                    elif "position_ids" not in kwargs and self._accepts_derived_position_ids():
+                        position_ids = attention_mask.long().cumsum(-1) - 1
+                        position_ids.masked_fill_(attention_mask == 0, 1)
+                        kwargs["position_ids"] = position_ids
 
             # Any masked-out token shifts the absolute position of every real token
             # after it, so positions must be derived from the mask rather than left
