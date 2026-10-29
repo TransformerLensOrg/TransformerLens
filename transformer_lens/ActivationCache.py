@@ -1015,6 +1015,71 @@ class ActivationCache:
             return _call(single, layer)
         return self._over_ssm_layers(_call, mixer_type=state_mixers)
 
+    def _post_norm_map(
+        self, layer: int, norm_name: str, pos_slice: Slice
+    ) -> Optional[Tuple[torch.Tensor, Optional[torch.Tensor], bool, Optional[torch.Tensor]]]:
+        """The cached-scale linear map of a post-sublayer norm (``ln1_post``/``ln2_post``).
+
+        A post-norm block adds ``norm(out)`` rather than ``out`` to the residual stream. With the
+        cached scale ``s`` the norm is affine, ``norm(x) = center(x) / s * w + b``, so each
+        component of ``out`` contributes ``center(x_i) / s * w`` and the block adds ``b`` once.
+        Returns ``(s, w, centers, b)`` with ``s`` sliced by ``pos_slice``, or None without one.
+        """
+        norm = self.model.blocks[layer]._modules.get(norm_name)
+        if norm is None:
+            return None
+        scale = pos_slice.apply(self[f"blocks.{layer}.{norm_name}.hook_scale"], dim=-2)
+        weight = getattr(norm, "weight", None)
+        if weight is not None and getattr(norm, "uses_weight_offset", False):
+            weight = 1.0 + weight
+        centers = not getattr(norm, "uses_rms_norm", False)
+        return scale, weight, centers, getattr(norm, "bias", None)
+
+    @staticmethod
+    def _apply_post_norm_map(
+        x: torch.Tensor, scale: torch.Tensor, weight: Optional[torch.Tensor], centers: bool
+    ) -> torch.Tensor:
+        """``center(x) / scale * weight`` over the last (d_model) axis; ``scale`` broadcasts."""
+        if centers:
+            x = x - x.mean(dim=-1, keepdim=True)
+        x = x / scale
+        return x * weight if weight is not None else x
+
+    def _post_norm_bias_correction(
+        self, layer: int, mlp_input: bool, include_mlp_biases: bool, pos_slice: Slice
+    ) -> Optional[torch.Tensor]:
+        """Per-position change to ``accumulated_bias`` from blocks with post-sublayer norms.
+
+        ``accumulated_bias`` adds each output bias as is; a post-norm block adds
+        ``norm_map(bias) + norm_bias`` instead, which depends on the position through the scale.
+        """
+        correction: Optional[torch.Tensor] = None
+        sublayers = [(l, "attn") for l in range(layer)]
+        if include_mlp_biases:
+            sublayers += [(l, "mlp") for l in range(layer)]
+        if mlp_input and layer < self.model.cfg.n_layers and self._mlp_input_includes_attn(layer):
+            sublayers.append((layer, "attn"))
+        for l, kind in sublayers:
+            post = self._post_norm_map(l, "ln1_post" if kind == "attn" else "ln2_post", pos_slice)
+            if post is None:
+                continue
+            scale, weight, centers, norm_bias = post
+            block = self.model.blocks[l]
+            if kind == "attn":
+                # Same lookup as accumulated_bias, so the raw bias it added is the one replaced.
+                out_bias = getattr(self.model, "_get_block_variant_bias")(block)
+            else:
+                out_bias = getattr(block.mlp, "b_out", None) if "mlp" in block._modules else None
+            raw = torch.zeros(self.model.cfg.d_model, device=scale.device, dtype=scale.dtype)
+            if out_bias is not None:
+                raw = out_bias.to(device=scale.device, dtype=scale.dtype)
+            mapped = self._apply_post_norm_map(raw, scale, weight, centers)
+            if norm_bias is not None:
+                mapped = mapped + norm_bias.to(device=scale.device)
+            delta = (mapped - raw) * getattr(block, "residual_contribution_scale", 1.0)
+            correction = delta if correction is None else correction + delta
+        return correction
+
     def stack_head_results(
         self,
         layer: int = -1,
@@ -1061,7 +1126,12 @@ class ActivationCache:
         labels = []
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
-            components.append(pos_slice.apply(self[("result", l, "attn")], dim=-3))
+            result = pos_slice.apply(self[("result", l, "attn")], dim=-3)
+            post = self._post_norm_map(l, "ln1_post", pos_slice)
+            if post is not None:
+                scale, weight, centers, _ = post
+                result = self._apply_post_norm_map(result, scale.unsqueeze(-2), weight, centers)
+            components.append(result)
             labels.extend([f"L{l}H{h}" for h in range(self.model.cfg.n_heads)])
         if components:
             components = torch.cat(components, dim=-2)
@@ -1181,6 +1251,12 @@ class ActivationCache:
             W_out = neuron_slice.apply(W_out, dim=0)
         if contribution_scale != 1.0:
             neuron_acts = neuron_acts * contribution_scale
+        post = self._post_norm_map(layer, "ln2_post", pos_slice)
+        if post is not None:
+            scale, weight, centers, _ = post
+            # center(a_n W_out_n) / s * w = (a_n / s) * center(W_out_n) * w
+            W_out = self._apply_post_norm_map(W_out, torch.ones(()), weight, centers)
+            neuron_acts = neuron_acts / scale
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
@@ -1277,6 +1353,12 @@ class ActivationCache:
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
+            post = self._post_norm_map(l, "ln2_post", pos_slice)
+            if post is not None:
+                post_scale, post_weight, post_centers, _ = post
+                W_out_l = self._apply_post_norm_map(
+                    W_out_l, torch.ones(()), post_weight, post_centers
+                )
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
             if apply_centering:
@@ -1290,6 +1372,8 @@ class ActivationCache:
             a_l = self[("post", l, "mlp")]
             a_l = pos_slice.apply(a_l, dim=-2)
             a_l = neuron_slice.apply(a_l, dim=-1)
+            if post is not None:
+                a_l = a_l / post_scale
             # (a_l / s)[..., None] is [..., d_mlp, 1]; broadcast with lin_form_l [d_mlp, n_outs]
             components.append((a_l / scale)[..., None] * lin_form_l)
         if not components:
@@ -1702,11 +1786,19 @@ class ActivationCache:
             components.append(pos_embed)
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
         bias_full = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
+        bias_correction = self._post_norm_bias_correction(
+            layer, mlp_input, include_mlp_biases=expand_neurons, pos_slice=pos_slice
+        )
         if ln_folded:
             # Expand bias to per-position d_model shape so LN can center, then project.
             expand_shape: tuple = (1,) + tuple(head_stack.shape[1:-1]) + (self.model.cfg.d_model,)
-            bias = _ln_then_project(bias_full.expand(expand_shape))
+            bias_d_model = bias_full.expand(expand_shape)
+            if bias_correction is not None:
+                bias_d_model = bias_d_model + bias_correction
+            bias = _ln_then_project(bias_d_model)
         else:
+            if bias_correction is not None:
+                bias_full = bias_full + bias_correction
             if project_2d is not None:
                 # Bias is [d_model], so project post-hoc for shape compatibility — no memory win here.
                 bias_full = bias_full @ project_2d
