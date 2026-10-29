@@ -2262,8 +2262,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 or getattr(self.cfg, "attention_dir", "causal") != "causal"
             )
             # The loss is the exception: it must skip the transitions into the pads
-            # whichever side they are on.
-            _loss_needs_mask = _is_padded_tokens and return_type in ("loss", "both")
+            # whichever side they are on, for strings and token input alike.
+            _loss_needs_mask = (_is_batched_list or _is_padded_tokens) and return_type in (
+                "loss",
+                "both",
+            )
             _loss_attention_mask: Optional[torch.Tensor] = None
             if (
                 (_is_batched_list or _is_padded_tokens)

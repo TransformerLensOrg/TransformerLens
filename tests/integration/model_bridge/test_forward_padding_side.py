@@ -12,8 +12,6 @@ id, so the last leading pad is only a real BOS when one was prepended.
 
 from __future__ import annotations
 
-import copy
-
 import pytest
 import torch
 
@@ -139,14 +137,15 @@ def test_prepend_bos_false_keeps_every_pad_masked(distilgpt2_bridge, as_tokens) 
     torch.testing.assert_close(_real_row(logits, 1, alone.shape[0]), alone, rtol=1e-4, atol=1e-4)
 
 
-def test_padding_side_without_a_tokenizer_is_an_error(distilgpt2_bridge, padded) -> None:
+def test_padding_side_without_a_tokenizer_is_an_error(
+    distilgpt2_bridge, padded, monkeypatch
+) -> None:
     """With no tokenizer the argument can't be honored; ignoring it would bring back
     the wrong logits silently."""
-    bridge = copy.copy(distilgpt2_bridge)
-    bridge.tokenizer = None
+    monkeypatch.setattr(distilgpt2_bridge, "_tokenizer", None)
 
     with pytest.raises(ValueError, match="attention_mask"):
-        bridge(padded, padding_side="left")
+        distilgpt2_bridge(padded, padding_side="left")
 
 
 def test_padding_side_without_a_pad_token_is_an_error(distilgpt2_bridge, padded) -> None:
@@ -160,15 +159,17 @@ def test_padding_side_without_a_pad_token_is_an_error(distilgpt2_bridge, padded)
         tokenizer.pad_token_id = original_pad
 
 
-def test_right_padded_loss_ignores_the_pads(distilgpt2_bridge) -> None:
+@pytest.mark.parametrize("as_tokens", [False, True])
+def test_right_padded_loss_ignores_the_pads(distilgpt2_bridge, as_tokens) -> None:
     """Causal right padding leaves the real-token logits alone, but the loss must
-    still skip the transitions into the pads."""
+    still skip the transitions into the pads, from strings and tokens alike."""
     padded = distilgpt2_bridge.to_tokens(PROMPTS, padding_side="right")
     n_real = distilgpt2_bridge.to_tokens(PROMPTS[1]).shape[1]
     mask = torch.ones_like(padded)
     mask[1, n_real:] = 0
+    batch = padded if as_tokens else PROMPTS
     with torch.no_grad():
-        derived = distilgpt2_bridge(padded, return_type="loss", padding_side="right")
+        derived = distilgpt2_bridge(batch, return_type="loss", padding_side="right")
         explicit = distilgpt2_bridge(padded, return_type="loss", attention_mask=mask)
 
     torch.testing.assert_close(derived, explicit)
