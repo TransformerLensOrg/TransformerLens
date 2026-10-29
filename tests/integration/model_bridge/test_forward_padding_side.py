@@ -158,3 +158,28 @@ def test_padding_side_without_a_pad_token_is_an_error(distilgpt2_bridge, padded)
             distilgpt2_bridge(padded, padding_side="left")
     finally:
         tokenizer.pad_token_id = original_pad
+
+
+def test_right_padded_loss_ignores_the_pads(distilgpt2_bridge) -> None:
+    """Causal right padding leaves the real-token logits alone, but the loss must
+    still skip the transitions into the pads."""
+    padded = distilgpt2_bridge.to_tokens(PROMPTS, padding_side="right")
+    n_real = distilgpt2_bridge.to_tokens(PROMPTS[1]).shape[1]
+    mask = torch.ones_like(padded)
+    mask[1, n_real:] = 0
+    with torch.no_grad():
+        derived = distilgpt2_bridge(padded, return_type="loss", padding_side="right")
+        explicit = distilgpt2_bridge(padded, return_type="loss", attention_mask=mask)
+
+    torch.testing.assert_close(derived, explicit)
+
+
+def test_right_padded_logits_still_run_unmasked(distilgpt2_bridge) -> None:
+    """The loss mask must not reach the model: return_type="both" gives the same
+    logits as return_type="logits", pad positions included."""
+    padded = distilgpt2_bridge.to_tokens(PROMPTS, padding_side="right")
+    with torch.no_grad():
+        logits = distilgpt2_bridge(padded, padding_side="right")
+        both_logits, _ = distilgpt2_bridge(padded, return_type="both", padding_side="right")
+
+    torch.testing.assert_close(both_logits, logits, rtol=0, atol=0)

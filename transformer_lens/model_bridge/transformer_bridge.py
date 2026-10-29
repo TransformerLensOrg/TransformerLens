@@ -2255,16 +2255,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # Left padding needs a mask and corrected positions. Right padding is
             # harmless for causal real-token positions and remains unmasked to
             # match HookedTransformer; bidirectional/encoder inputs still need it.
+            _layout_needs_mask = (
+                _resolved_padding_side == "left"
+                or is_encoder_decoder
+                or not self.adapter.supports_causal_loss
+                or getattr(self.cfg, "attention_dir", "causal") != "causal"
+            )
+            # The loss is the exception: it must skip the transitions into the pads
+            # whichever side they are on.
+            _loss_needs_mask = _is_padded_tokens and return_type in ("loss", "both")
+            _loss_attention_mask: Optional[torch.Tensor] = None
             if (
                 (_is_batched_list or _is_padded_tokens)
                 and attention_mask is None
                 and not _is_inputs_embeds
-                and (
-                    _resolved_padding_side == "left"
-                    or is_encoder_decoder
-                    or not self.adapter.supports_causal_loss
-                    or getattr(self.cfg, "attention_dir", "causal") != "causal"
-                )
+                and (_layout_needs_mask or _loss_needs_mask)
             ):
                 if self.tokenizer is None or self.tokenizer.pad_token_id is None:
                     if _is_padded_tokens:
@@ -2274,7 +2279,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                             "Pass attention_mask=... to state the padding directly instead."
                         )
                 else:
-                    attention_mask = utils.get_attention_mask(
+                    derived_mask = utils.get_attention_mask(
                         self.tokenizer,
                         input_ids,
                         prepend_bos=(
@@ -2285,16 +2290,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         padding_side=_resolved_padding_side,
                     ).to(self.cfg.device)
                     # An unpadded tensor keeps the unmasked path it had before.
-                    if _is_padded_tokens and bool(attention_mask.all()):
-                        attention_mask = None
-                    # Gated on the target for the same reason the derivation below is:
-                    # a fixed-signature forward raises TypeError on the kwarg, and a
-                    # model that owns its own position derivation is overridden by it
-                    # (#1626).
-                    elif "position_ids" not in kwargs and self._accepts_derived_position_ids():
-                        position_ids = attention_mask.long().cumsum(-1) - 1
-                        position_ids.masked_fill_(attention_mask == 0, 1)
-                        kwargs["position_ids"] = position_ids
+                    _is_unpadded = _is_padded_tokens and bool(derived_mask.all())
+                    if not _is_unpadded and not _layout_needs_mask:
+                        # Causal right padding: the model still runs unmasked, so the
+                        # logits are unchanged, and only the loss reads the mask.
+                        _loss_attention_mask = derived_mask
+                    elif not _is_unpadded:
+                        attention_mask = derived_mask
+                        # Gated on the target for the same reason the derivation below
+                        # is: a fixed-signature forward raises TypeError on the kwarg,
+                        # and a model that owns its own position derivation is
+                        # overridden by it (#1626).
+                        if "position_ids" not in kwargs and self._accepts_derived_position_ids():
+                            position_ids = attention_mask.long().cumsum(-1) - 1
+                            position_ids.masked_fill_(attention_mask == 0, 1)
+                            kwargs["position_ids"] = position_ids
 
             # Any masked-out token shifts the absolute position of every real token
             # after it, so positions must be derived from the mask rather than left
@@ -2478,7 +2488,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 return_type,
                 logits,
                 input_ids,
-                attention_mask=attention_mask,
+                attention_mask=(
+                    attention_mask if attention_mask is not None else _loss_attention_mask
+                ),
                 labels=labels,
                 is_audio_model=getattr(self.cfg, "is_audio_model", False),
                 is_visual_model=getattr(self.cfg, "is_visual_model", False),
