@@ -64,6 +64,9 @@ from transformer_lens.model_bridge.generalized_components.block import (
     _VARIANT_SUBMODULE_SET,
     VARIANT_SUBMODULE_NAMES,
 )
+from transformer_lens.model_bridge.generalized_components.mlp import (
+    weight_layout_in_out,
+)
 from transformer_lens.model_bridge.generalized_components.moe import (
     fold_scale_into_moe_block,
     has_batched_experts,
@@ -795,6 +798,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 # Clone the unembed weight to break the tie
                 state_dict[unembed_key] = state_dict[unembed_key].clone()
 
+        if adapter is not None:
+            # A square weight's shape cannot tell Conv1D's [in, out] from nn.Linear's
+            # [out, in], so record the [in, out] ones for the layout-sensitive folds.
+            adapter._in_out_weight_keys = {
+                key
+                for key in state_dict
+                if key.endswith(".weight") and self._stores_weight_in_out(key[: -len(".weight")])
+            }
+
         if adapter and hasattr(adapter, "preprocess_weights"):
             adapter._fold_ln_requested = fold_ln  # type: ignore[union-attr]
             state_dict = adapter.preprocess_weights(state_dict)
@@ -843,6 +855,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             self._fold_layer_norms_into_batched_experts()
         if adapter is not None:
             adapter.postprocess_weights(self)
+
+    def _stores_weight_in_out(self, module_name: str) -> bool:
+        """Whether the component at module_name wraps a Conv1D-style [in, out] weight."""
+        try:
+            module = self.get_submodule(module_name)
+        except AttributeError:
+            return False
+        return weight_layout_in_out(module) is True
 
     def _fold_layer_norms_into_batched_experts(self) -> None:
         """Fold each batched-expert MoE layer's ln2 into the weights that read it.

@@ -122,6 +122,8 @@ class ArchitectureAdapter:
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
         self._fold_ln_requested: bool = True
+        # State-dict keys of weights stored [in, out] (Conv1D), set before weight processing.
+        self._in_out_weight_keys: set[str] = set()
         self._merge_default_config()
 
     def _check_required_libraries(self) -> None:
