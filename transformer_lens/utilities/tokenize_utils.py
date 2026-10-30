@@ -287,7 +287,7 @@ def get_tokens_with_bos_removed(
 
 
 def get_attention_mask(
-    tokenizer: PreTrainedTokenizerBase,
+    tokenizer: PreTrainedTokenizerBase | None,
     tokens: torch.Tensor,
     prepend_bos: bool,
     padding_side: str | None = None,
@@ -310,7 +310,7 @@ def get_attention_mask(
 
     # Default to attending every token; pad positions are zeroed below.
     attention_mask = torch.ones_like(tokens)
-    if tokenizer is None:
+    if tokenizer is None or tokenizer.pad_token_id is None:
         return attention_mask
     if padding_side is None:
         padding_side = tokenizer.padding_side

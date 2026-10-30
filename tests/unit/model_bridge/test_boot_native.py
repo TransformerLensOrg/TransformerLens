@@ -7,6 +7,8 @@ import sys
 import pytest
 import torch
 import torch.nn as nn
+from tokenizers import Tokenizer, models
+from transformers import TokenizersBackend
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
@@ -118,6 +120,30 @@ def test_boot_native_input_to_embed_round_trip():
     assert torch.equal(returned_tokens, tokens)
     assert shortformer_pos_embed is None
     torch.testing.assert_close(actual, expected)
+
+
+def test_input_to_embed_without_pad_id_attends_every_token():
+    bridge = TransformerBridge.boot_native(_cfg(device="cpu"))
+    bridge.eval()
+    bridge.tokenizer = TokenizersBackend(
+        tokenizer_object=Tokenizer(models.WordLevel({str(i): i for i in range(16)})),
+        padding_side="left",
+    )
+    assert bridge.tokenizer.pad_token_id is None
+    tokens = torch.tensor([[1, 2, 3], [4, 5, 6]])
+
+    with torch.no_grad():
+        residual, returned_tokens, _, attention_mask = bridge.input_to_embed(tokens)
+        expected_residual, _, _, _ = bridge.input_to_embed(
+            tokens, attention_mask=torch.ones_like(tokens)
+        )
+        logits = bridge(tokens)
+        expected_logits = bridge(tokens, attention_mask=torch.ones_like(tokens))
+
+    assert torch.equal(returned_tokens, tokens)
+    torch.testing.assert_close(attention_mask, torch.ones_like(tokens))
+    torch.testing.assert_close(residual, expected_residual)
+    torch.testing.assert_close(logits, expected_logits)
 
 
 def test_native_state_dict_round_trip_restores_parameters():

@@ -37,6 +37,35 @@ def test_attention_mask_uses_explicit_padding_side(gpt2_tokenizer) -> None:
     assert torch.equal(mask, torch.tensor([[0, 1, 1, 1], [1, 1, 1, 1]]))
 
 
+@pytest.mark.parametrize("padding_side", ["left", "right"])
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_attention_mask_without_pad_id_attends_every_token(padding_side, dtype) -> None:
+    tokenizer = _tokenizer(bos_token_id=7, pad_token_id=None, padding_side=padding_side)
+    tokens = torch.tensor([[7, 8, 9], [3, 4, 5]], dtype=dtype)
+
+    mask = utils.get_attention_mask(tokenizer, tokens, prepend_bos=True)
+
+    torch.testing.assert_close(mask, torch.ones_like(tokens))
+
+
+def test_attention_mask_preserves_bos_when_bos_is_pad() -> None:
+    tokenizer = _tokenizer(bos_token_id=0, pad_token_id=0, padding_side="left")
+    tokens = torch.tensor([[0, 0, 10, 11], [0, 20, 21, 22]])
+
+    mask = utils.get_attention_mask(tokenizer, tokens, prepend_bos=True)
+
+    assert torch.equal(mask, torch.tensor([[0, 1, 1, 1], [1, 1, 1, 1]]))
+
+
+def test_attention_mask_masks_trailing_pads_on_right() -> None:
+    tokenizer = _tokenizer(bos_token_id=1, pad_token_id=0, padding_side="right")
+    tokens = torch.tensor([[1, 10, 0, 0], [1, 20, 21, 22]])
+
+    mask = utils.get_attention_mask(tokenizer, tokens, prepend_bos=True)
+
+    assert torch.equal(mask, torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]]))
+
+
 def test_bos_removal_uses_explicit_padding_side(gpt2_tokenizer) -> None:
     tokenizer = deepcopy(gpt2_tokenizer)
     tokenizer.pad_token = tokenizer.eos_token
