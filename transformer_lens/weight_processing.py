@@ -746,12 +746,15 @@ class ProcessWeights:
             # rmsnorm_uses_offset: effective scale is (1+w), identity is 0.0
             rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
             effective_ln2_w = (1.0 + ln2_w) if rmsnorm_uses_offset else ln2_w
-            if mlp_W_in.shape[1] == effective_ln2_w.shape[0]:
+            model_axis = ProcessWeights._mlp_model_axis(
+                mlp_W_in_key, mlp_W_in, effective_ln2_w.shape[0], adapter, reads_residual=True
+            )
+            if model_axis == 1:
                 ln2_w_broadcast = effective_ln2_w[None, :]
                 sum_dim = -1
                 if ln2_b is not None:
                     ln2_b_broadcast = ln2_b[None, :]
-            elif mlp_W_in.shape[0] == effective_ln2_w.shape[0]:
+            elif model_axis == 0:
                 ln2_w_broadcast = effective_ln2_w[:, None]
                 sum_dim = -2
                 if ln2_b is not None:
@@ -837,18 +840,13 @@ class ProcessWeights:
             assert mlp_W_in_centered is not None, f"MLP W_in not found at key {mlp_W_in_key}"
             # Center along d_model: TL [d_model, d_mlp] or HF [d_mlp, d_model]
             d_model = cfg.d_model if cfg is not None else None
-            if (
-                d_model is not None
-                and mlp_W_in_centered.shape[0] == d_model
-                and mlp_W_in_centered.shape[-1] != d_model
-            ):
+            model_axis = ProcessWeights._mlp_model_axis(
+                mlp_W_in_key, mlp_W_in_centered, d_model, adapter, reads_residual=True
+            )
+            if model_axis == 0:
                 # TL format [d_model, d_mlp]
                 mlp_W_in_centered = mlp_W_in_centered - mlp_W_in_centered.mean(0, keepdim=True)
-            elif (
-                d_model is not None
-                and mlp_W_in_centered.shape[-1] == d_model
-                and mlp_W_in_centered.shape[0] != d_model
-            ):
+            elif model_axis == 1:
                 # HF format [d_mlp, d_model]
                 mlp_W_in_centered = mlp_W_in_centered - mlp_W_in_centered.mean(-1, keepdim=True)
             else:
@@ -994,6 +992,40 @@ class ProcessWeights:
             raise ValueError(f"Unembedding shape {weight.shape} has no d_model={d_model} axis")
         # Without conversion metadata, Bridge weights are HF; adapter-free inputs are TL.
         return 0 if adapter is None else 1
+
+    @staticmethod
+    def _mlp_model_axis(
+        key: str, weight: torch.Tensor, d_model: Optional[int], adapter, reads_residual: bool
+    ) -> Optional[int]:
+        """Resolve the d_model axis of a dense MLP weight after conversion, or None if absent.
+
+        When d_mlp == d_model the shape is ambiguous, so the layout decides: TL holds
+        W_in as [d_model, d_mlp] and W_out as [d_mlp, d_model], as do explicit
+        conversions and Conv1D ([in, out]); unconverted nn.Linear holds [out, in].
+        """
+        if d_model is None:
+            return None
+        if weight.shape[0] != weight.shape[1]:
+            if weight.shape[0] == d_model:
+                return 0
+            if weight.shape[1] == d_model:
+                return 1
+            return None
+        if weight.shape[0] != d_model:
+            return None
+        tl_axis = 0 if reads_residual else 1
+        if adapter is None:
+            return tl_axis
+        conversions = getattr(adapter, "weight_processing_conversions", None) or {}
+        placeholder = re.sub(r"blocks\.(\d+)\.", "blocks.{i}.", key)
+        conversion = conversions.get(
+            placeholder, conversions.get(placeholder.removesuffix(".weight"))
+        )
+        if conversion is not None and not isinstance(conversion, str):
+            return tl_axis
+        if key in getattr(adapter, "_in_out_weight_keys", ()):
+            return tl_axis
+        return 1 - tl_axis
 
     @staticmethod
     def _fold_unembed_layer_norm(
@@ -1367,9 +1399,12 @@ class ProcessWeights:
                     # Center along d_model dimension. In TL format W_out is [d_mlp, d_model]
                     # so d_model is dim=-1. But bridge adapters may keep HF format
                     # [d_model, d_mlp] where d_model is dim=0. Detect via cfg.d_model.
-                    if mlp_W_out.shape[-1] == cfg.d_model:
+                    model_axis = ProcessWeights._mlp_model_axis(
+                        mlp_W_out_key, mlp_W_out, cfg.d_model, adapter, reads_residual=False
+                    )
+                    if model_axis == 1:
                         mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
-                    elif mlp_W_out.shape[0] == cfg.d_model:
+                    elif model_axis == 0:
                         mlp_W_out = mlp_W_out - mlp_W_out.mean(0, keepdim=True)
                     else:
                         mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
