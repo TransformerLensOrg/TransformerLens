@@ -37,7 +37,7 @@ available hooks, and the meaning of the selected tensor axes.
 | DLA | Targets TransformerBridge in 4.0. Enable compatibility mode and use the standard attention/MLP residual decomposition; Mamba/SSM/Mixer/LinearAttention hybrid layouts are rejected, as are bridges whose readout is not `ln_final -> unembed` on the last block (multi-stream AltUp blocks, a head transform such as BERT's `mlm_head`). When DLA runs the prompt, the model and all submodules must be in evaluation mode, or it raises `ValueError` before the forward; a supplied cache is accepted as is. | One cached forward pass, or reuse of a suitable cache. Head decomposition can require additional per-head results. |
 | Activation Patching | Any bridge whose activation names resolve (`resid_pre`, `attn_out`, `mlp_out`, `z`, `q`/`k`/`v`, `pattern`). The metric returns a scalar by default and a `[batch]` tensor under `reduce="mean"` or `"none"`; several metrics can be passed as a mapping and share one sweep. Run the model in evaluation mode. | One forward of the corrupted batch per swept cell (plus one for `baseline=True`); per-example storage is `cells × batch` floats per metric. Statistics are computed afterwards from the stored values and add no forwards. |
 | Attribution Patching | Targets TransformerBridge. Clean/corrupt inputs must be `[batch, seq]` token tensors with matching shapes and aligned positions. The required embedding, head, and MLP hook aliases must exist. Edge granularity additionally requires attention bridges that support per-head results and a pre-Q/K/V residual fork. On GQA/MQA models, where any attention layer's K/V head count (`per_layer_num_key_value_heads` where set, else `n_key_value_heads`) differs from `n_heads`, edge granularity and faithfulness raise `ValueError` before any forward; node granularity remains available. Edge granularity and faithfulness are unsupported on post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1), where per-head outputs are normalized, scaled or joined by an unmodeled mixer before the residual add; both raise there, and node granularity remains available. Edge sweeps temporarily enable the required writer and reader hooks, then restore the caller's hook flags. Run the model and all nested stochastic modules in evaluation mode. The metric must return a differentiable scalar, and the current backward-cache path requires an active autograd graph; fully frozen models are not yet supported. | Two forwards and one backward **per prompt pair**; activation and gradient caches. For a uniform-head decoder, the number of edge scores grows as `O(seq_len × (n_layers × n_heads)²)`, while the cache also gains per-head `[batch, seq, n_heads, d_model]` tensors. Pair scores are averaged across the batch. |
-| Direct Path Patching | Requires a TransformerBridge whose attention layers have the pre-Q/K/V residual fork that `use_split_qkv_input` enables (the joint-QKV and position-embedding attention bridges, e.g. GPT-2, Pythia, Llama, Mistral, Qwen2); attention without it, such as GPT-J, GPT-Neo, OPT, BERT or a bridge built with `TransformerBridge.boot_native`, raises `NotImplementedError`. The supplied caches must hold the source layer's `hook_z`. The function turns the fork flag on for the sweep and restores the caller's `use_split_qkv_input` and `use_attn_in`; LayerNorm need not be folded. On GQA/MQA models, direct Q-path patching remains available, but `component="k"` and `"v"` require `n_key_value_heads == n_heads` and raise `ValueError` otherwise, since K/V inputs are per K/V head rather than per query head. Every block from the source layer on must have an `attn` component; SSM, mixer, linear-attention and AltUp blocks raise `ValueError` before any forward. Source blocks must add the head outputs to the residual unchanged: post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1) raise `ValueError` before any forward, since a head's residual write there is not `hook_z @ W_O`. Run the model and all submodules in evaluation mode; both entry points raise `ValueError` before any forward otherwise. | Clean/corrupt caching, then one forward of the corrupted batch per later destination head. While the fork is on, every attention layer normalizes a `[batch, pos, n_heads, d_model]` residual copy for each of Q, K and V, about `3 × n_heads` times the usual attention-input activation memory. Sweeping all source heads adds another sweep dimension. |
+| Direct Path Patching | Requires a TransformerBridge whose attention layers have the pre-Q/K/V residual fork that `use_split_qkv_input` enables (the joint-QKV and position-embedding attention bridges, e.g. GPT-2, Pythia, Llama, Mistral, Qwen2); attention without it, such as GPT-J, GPT-Neo, OPT, BERT or a bridge built with `TransformerBridge.boot_native`, raises `NotImplementedError`. The supplied caches must hold the source layer's `hook_z`. The function turns the fork flag on for the sweep and restores the caller's `use_split_qkv_input` and `use_attn_in`; LayerNorm need not be folded. Q destinations use query heads; K/V destinations use native KV heads, shared by groups of query heads on GQA/MQA. K/V sweeps require a uniform KV count across destination layers (`per_layer_num_key_value_heads` where set, else `n_key_value_heads` or `n_heads`), and raise `ValueError` before any forward if those counts differ. Every block from the source layer on must have an `attn` component; SSM, mixer, linear-attention and AltUp blocks raise `ValueError` before any forward. Source blocks must add the head outputs to the residual unchanged: post-norm blocks (such as Gemma 2/3, OLMo 2/3 and GLM-4), scaled-residual blocks (such as Granite) and parallel attention/SSM blocks (such as Falcon-H1) raise `ValueError` before any forward, since a head's residual write there is not `hook_z @ W_O`. Run the model and all submodules in evaluation mode; both entry points raise `ValueError` before any forward otherwise. | Clean/corrupt caching, then one forward of the corrupted batch per later destination query head or KV group. While the fork is on, every attention layer normalizes `n_heads` Q copies and `n_kv_heads` copies each for K and V, about `n_heads + 2 × n_kv_heads` times the usual attention-input activation memory. Sweeping all source heads adds another sweep dimension. |
 | Logit Lens | Targets TransformerBridge, raw or compatibility mode. Needs a decoder with an `ln_final` component (or no final norm) and `W_U`; encoder-decoder and encoder-only bridges are rejected, as are quantized unembeddings and bridges whose readout is not `ln_final -> unembed` on the last block (multi-stream AltUp blocks, a head transform such as BERT's `mlm_head`; a prompt run with `apply_ln=True` is also checked against the model's own output, a supplied cache only structurally). Hybrid SSM stacks work with `incl_mid=False`. Run the model in evaluation mode. | One cached forward pass over the residual hooks, or reuse of a cache. Logits are produced in chunks of `chunk_size` rows; full-vocabulary output is materialized only when no `targets`, `top_k` or `vocab` selector is given. |
 | Jacobian Lens | Requires a fresh, causal decoder-only Bridge with raw HF weights, without compatibility mode or weight processing. Validate the lens against the model. Run the model and all submodules in evaluation mode; fitting and every call that runs the model raise `ValueError` otherwise. | Loading an existing artifact avoids fitting. The ordinary fitting estimator uses one forward and `ceil(d_model / dim_batch)` backwards per prompt; larger batches increase memory. |
 | Interchange Interventions | Any model with the hook API (TransformerBridge or `HookedRootModule`). Activations at the hook must be `[batch, d_model]`, or `[batch, pos, d_model]` with one position index per example; base and source rows are paired. | One forward pass per `batch_size` sources to collect activations, then one per `batch_size` bases per intervention with `intervened_logits`; both run without gradients, so memory is bounded by `batch_size`. `run_with_intervention` is a single differentiable pass over all the bases it is given. DAS adds a forward and backward pass per batch per epoch; `micro_batch_size` bounds its memory. |
@@ -205,15 +205,16 @@ API: {func}`~transformer_lens.tools.analysis.attribution_patching.faithfulness`.
 ### Direct Path Patching: patch one edge exactly
 
 `get_act_patch_direct_path` (in `transformer_lens.patching`, also importable from
-`transformer_lens.tools.analysis`) fixes a source head and sweeps every later head,
-patching only the path from the source into that head's Q, K, or V input. The source
+`transformer_lens.tools.analysis`) fixes a source query/output head and sweeps later Q
+heads or K/V groups, patching only the selected input branch. The source
 head's residual write on each run is its cached `hook_z` times `W_O`. For each
 destination, the corrupted prompt is rerun with the clean-minus-corrupted write added,
 at every position, to the destination head's own copy of the residual, before its
 LayerNorm. The norm and projection are recomputed on that copy and every other reader
 still sees the corrupted output, so on pre-norm blocks the score is the exact edge
-intervention, with LayerNorm folded or not. It equals ablating the same per-position
-edges with the edge-ablation hook behind `faithfulness()`. A source block that
+intervention, with LayerNorm folded or not. On MHA it equals ablating the same per-position
+edges with the edge-ablation hook behind `faithfulness()`; that tool's separate GQA
+restriction is unchanged. A source block that
 normalizes, scales or joins its attention output before the residual add (post-norm,
 scaled-residual or parallel-mixer blocks) is refused, since the head's write there is
 not `hook_z @ W_O`.
@@ -222,12 +223,59 @@ That per-head copy is the `hook_q_input`/`hook_k_input`/`hook_v_input` fork, whi
 fires only while `use_split_qkv_input` is on. The function turns the flag on for the
 sweep (and `use_attn_in` off, since the two are exclusive) and restores both on
 return or error, so you set neither. While it is on, each attention layer normalizes a
-separate residual copy per head for each of Q, K and V; budget activation memory for
+separate residual copy per Q head and per KV group; budget activation memory for
 long prompts or many heads accordingly.
 
 Interpret a score relative to the unpatched corrupt metric. Entries at or before the
 source layer are zero placeholders, not measured interventions. State the source head,
 destination input, prompt pair, and normalization convention when reporting a path.
+
+For Q, the result is `[n_layers, n_heads]`. For K/V it is
+`[n_layers, n_kv_heads]`: with four query heads and two KV heads, destination group 0
+feeds query heads 0 and 1, and group 1 feeds heads 2 and 3. Patching one group is one
+shared-branch intervention, not two independent query-head effects. On MHA each group
+has one head. All-sources results keep query/output-head source indices and have shape
+`[n_layers, n_heads, n_layers, n_kv_heads]` for K/V. Only the destination layers must
+agree on KV count; earlier source layers do not set that axis.
+
+For example, this raw-weight SmolLM2 sweep uses the default pre-norm fork. It needs
+the checkpoint/tokenizer downloaded (source `.env` first). The revision is pinned so
+the clean/corrupt baselines can be reproduced.
+
+```python
+import torch
+from transformer_lens import TransformerBridge
+from transformer_lens.patching import get_act_patch_direct_path
+
+model = TransformerBridge.boot_transformers(
+    "HuggingFaceTB/SmolLM2-135M",
+    revision="93efa2f097d58c2a74874c7e644dbc9b0cee75a2",
+    device="cpu",
+).eval()
+clean = model.to_tokens("The capital of France is")
+corrupt = model.to_tokens("The capital of Germany is")
+assert clean.shape == corrupt.shape
+paris = model.to_single_token(" Paris")
+berlin = model.to_single_token(" Berlin")
+
+def metric(logits):
+    return (logits[:, -1, paris] - logits[:, -1, berlin]).mean()
+
+with torch.no_grad():
+    clean_logits, clean_cache = model.run_with_cache(clean)
+    corrupt_logits, corrupt_cache = model.run_with_cache(corrupt)
+    scores = get_act_patch_direct_path(
+        model, corrupt, clean_cache, corrupt_cache, metric,
+        src_layer=5, src_head=0, component="k", verbose=False,
+    )
+print("clean/corrupt:", metric(clean_logits).item(), metric(corrupt_logits).item())
+print(scores.shape)  # [30, 3]: destination layers and KV groups
+print(scores[12])    # paths from L5H0 into layer 12's K groups 0, 1 and 2
+```
+
+Each SmolLM2 KV group feeds three of its nine query heads. Compare the scores with
+the corrupt baseline and repeat over prompt pairs to evaluate a hypothesis about
+that path's task role.
 
 API: {func}`~transformer_lens.patching.get_act_patch_direct_path`.
 
