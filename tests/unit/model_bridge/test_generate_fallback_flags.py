@@ -112,6 +112,31 @@ def test_hf_generate_normalizes_eos_sequence_to_list(monkeypatch):
     assert captured["eos_token_id"] == [5, 7]
 
 
+@pytest.mark.parametrize("do_sample", [False, True])
+def test_hf_generate_sends_temperature_only_when_sampling(monkeypatch, do_sample):
+    """Whisper's generate samples whenever it is given a temperature above 0, so a
+    greedy hf_generate call must not send one."""
+    bridge = _tiny_bridge()
+    bridge.tokenizer = SimpleNamespace(eos_token_id=0)
+    captured: dict = {}
+
+    def spy(input_ids, **kwargs):
+        captured.update(kwargs)
+        return input_ids
+
+    monkeypatch.setattr(bridge.original_model, "generate", spy)
+    bridge.hf_generate(
+        torch.tensor([[1, 2]]),
+        max_new_tokens=1,
+        do_sample=do_sample,
+        temperature=0.7,
+        return_type="tokens",
+    )
+    assert ("temperature" in captured) is do_sample
+    if do_sample:
+        assert captured["temperature"] == 0.7
+
+
 @pytest.mark.parametrize("penalty", [0.8, 1.0, 1.5])
 def test_stateful_fallback_forwards_repetition_penalty(monkeypatch, penalty):
     bridge = _tiny_bridge()
