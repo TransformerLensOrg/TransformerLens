@@ -4,7 +4,7 @@ A module for patching activations in a transformer model, and measuring the effe
 the output. This implements the activation patching technique for a range of types of activation.
 The structure is to have a single :func:`generic_activation_patch` function that does everything,
 and to have a range of specialised functions for specific types of activation.
-:func:`get_act_patch_direct_path` patches one head's output into a single later head's Q/K/V input.
+:func:`get_act_patch_direct_path` patches a head's output into a later Q-head or K/V-group input.
 
 Context:
 
@@ -1222,8 +1222,8 @@ def get_act_patch_block_every(
 
 
 # %%
-def _check_direct_path_support(model: Any, src_layers: Sequence[int], component: str) -> None:
-    """Refuse missing attention, source writes other than ``z @ W_O``, and K/V on GQA/MQA."""
+def _check_direct_path_support(model: Any, src_layers: Sequence[int], component: str) -> int:
+    """Validate the path structure and return the uniform destination head count."""
     # Lazy import: the tools.analysis package imports this module, so top level would be circular.
     from transformer_lens.tools.analysis.attribution_patching import (
         _attention_write_obstruction,
@@ -1246,21 +1246,25 @@ def _check_direct_path_support(model: Any, src_layers: Sequence[int], component:
             "hook_z @ W_O and direct path patching is unsupported here."
         )
     if component == "q":
-        return
+        return cfg.n_heads
     n_heads = cfg.n_heads
     scalar_kv = getattr(cfg, "n_key_value_heads", None)
     per_layer_kv = getattr(cfg, "per_layer_num_key_value_heads", None) or []
     # Only destinations are K/V-patched; the source is read via hook_z and W_O, per query head.
-    for layer in range(src_layer + 1, cfg.n_layers):
+    destination_counts = []
+    # A last-layer source has no destinations, but its zero result still needs the KV axis.
+    for layer in range(min(src_layer + 1, cfg.n_layers - 1), cfg.n_layers):
         kv = per_layer_kv[layer] if layer < len(per_layer_kv) else None
         if kv is None:
             kv = scalar_kv
-        if kv is not None and kv != n_heads:
-            raise ValueError(
-                f"component={component!r} is unsupported here: blocks.{layer} has "
-                f"n_key_value_heads={kv} for n_heads={n_heads} (GQA/MQA), so per-query-head "
-                'K/V semantics are undefined. component="q" is available.'
-            )
+        destination_counts.append(n_heads if kv is None else kv)
+    if len(set(destination_counts)) > 1:
+        raise ValueError(
+            f"component={component!r} is unsupported here: destination layers disagree on KV count "
+            f"({destination_counts}). A rectangular direct-path result requires a uniform "
+            "n_key_value_heads across destination layers."
+        )
+    return destination_counts[0]
 
 
 @contextmanager
@@ -1307,8 +1311,8 @@ def get_act_patch_direct_path(
     src_head: int,
     component: Literal["q", "k", "v"] = "q",
     verbose: bool = True,
-) -> Float[torch.Tensor, "n_layers n_heads"]:
-    """Patch one source head's output into each later head's Q, K or V input alone.
+) -> Float[torch.Tensor, "n_layers n_dest_heads"]:
+    """Patch one source head's output into later Q-head or K/V-group inputs alone.
 
     Direct path patching (Wang et al. 2022) isolates the edge A -> B: A's clean-minus-corrupted
     write (``z @ W_O``) is added at every position to B's own pre-``ln1`` copy of the residual,
@@ -1316,7 +1320,7 @@ def get_act_patch_direct_path(
     intervention, folded LayerNorm or not.
 
     The sweep temporarily enables ``cfg.use_split_qkv_input`` (restoring the caller's flags on
-    exit), which costs about ``3 * n_heads`` times the usual ``ln1`` activation memory per forward.
+    exit), which costs about ``n_heads + 2 * n_kv_heads`` times the usual ``ln1`` activation memory.
 
     Args:
         model: A ``TransformerBridge`` whose attention exposes the pre-Q/K/V fork.
@@ -1326,29 +1330,31 @@ def get_act_patch_direct_path(
         patching_metric: Maps the patched logits to a scalar.
         src_layer: Layer of the source head.
         src_head: Index of the source head.
-        component: Destination input to patch: ``"q"`` (default), ``"k"`` or ``"v"``.
+        component: Destination input: ``"q"`` (default), ``"k"`` or ``"v"``. K/V destinations
+            are native KV heads; on GQA/MQA each is shared by a group of query heads.
 
     Returns:
-        ``[n_layers, n_heads]``: ``results[l, h]`` is the metric with the path into head
-        ``(l, h)`` patched. Rows ``l <= src_layer`` are 0.0 placeholders, not measurements.
+        ``[n_layers, n_dest_heads]``: ``n_dest_heads`` is ``n_heads`` for Q and the uniform
+        destination KV count for K/V (``n_heads`` on MHA). ``results[l, h]`` measures the path
+        into that head/group. Source indices remain query-head indices. Rows ``l <= src_layer``
+        are 0.0 placeholders, not measurements.
 
     Raises:
         ValueError: if a block from ``src_layer`` on has no attention, if the source block
             normalises, scales or joins its attention output before the residual add (post-norm,
-            scaled-residual or parallel-mixer blocks), if ``component`` is ``"k"`` or ``"v"`` on
-            a GQA/MQA model, or if any module is in training mode.
+            scaled-residual or parallel-mixer blocks), if K/V destination layers disagree on
+            KV count, or if any module is in training mode.
         NotImplementedError: if a destination layer's attention has no pre-Q/K/V fork.
     """
     # Lazy import: the tools.analysis package imports this module, so top level would be circular.
     from transformer_lens.tools.analysis._model_state import require_eval_mode
 
-    _check_direct_path_support(model, [src_layer], component)
+    n_dest_heads = _check_direct_path_support(model, [src_layer], component)
     require_eval_mode(model, operation="get_act_patch_direct_path()")
 
     n_layers = model.cfg.n_layers
-    n_heads = model.cfg.n_heads
-    results = torch.zeros(n_layers, n_heads, device=model.cfg.device)
-    dst_pairs = [(dl, dh) for dl in range(src_layer + 1, n_layers) for dh in range(n_heads)]
+    results = torch.zeros(n_layers, n_dest_heads, device=model.cfg.device)
+    dst_pairs = [(dl, dh) for dl in range(src_layer + 1, n_layers) for dh in range(n_dest_heads)]
 
     bridge = cast(Any, model)
     W_O = bridge.blocks[src_layer].attn.W_O[src_head]
@@ -1386,22 +1392,24 @@ def get_act_patch_direct_path_all_sources(
     patching_metric: Callable[[torch.Tensor], torch.Tensor],
     component: Literal["q", "k", "v"] = "q",
     verbose: bool = True,
-) -> Float[torch.Tensor, "n_layers n_heads n_layers n_heads"]:
+) -> Float[torch.Tensor, "n_layers n_heads n_layers n_dest_heads"]:
     """Run :func:`get_act_patch_direct_path` from every source head.
 
-    ``results[sl, sh, dl, dh]`` is the metric with the path from head ``(sl, sh)`` into head
-    ``(dl, dh)`` patched, and 0.0 where ``dl <= sl``. One forward per (source, later destination)
+    ``results[sl, sh, dl, dh]`` is the metric with the path from query/output head ``(sl, sh)``
+    into Q head or K/V group ``(dl, dh)`` patched, and 0.0 where ``dl <= sl``. The destination
+    axis is ``n_heads`` for Q and the uniform destination KV count for K/V. Destination layers
+    with different KV counts are refused before any forward. One forward per (source, destination)
     pair, so it suits small models or targeted sub-sweeps.
     """
     # Lazy import: the tools.analysis package imports this module, so top level would be circular.
     from transformer_lens.tools.analysis._model_state import require_eval_mode
 
-    _check_direct_path_support(model, range(model.cfg.n_layers), component)
+    n_dest_heads = _check_direct_path_support(model, range(model.cfg.n_layers), component)
     require_eval_mode(model, operation="get_act_patch_direct_path_all_sources()")
 
     n_layers = model.cfg.n_layers
     n_heads = model.cfg.n_heads
-    results = torch.zeros(n_layers, n_heads, n_layers, n_heads, device=model.cfg.device)
+    results = torch.zeros(n_layers, n_heads, n_layers, n_dest_heads, device=model.cfg.device)
     src_pairs = [(sl, sh) for sl in range(n_layers) for sh in range(n_heads)]
     for src_layer, src_head in tqdm(
         src_pairs,
