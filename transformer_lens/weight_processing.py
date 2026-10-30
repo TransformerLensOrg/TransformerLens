@@ -14,7 +14,10 @@ import torch
 import transformer_lens.utilities as utils
 from transformer_lens.config.transformer_lens_config import TransformerLensConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.architecture_adapter import (
+    ArchitectureAdapter,
+    ResidualLayout,
+)
 from transformer_lens.utilities import filter_dict_by_prefix
 from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 
@@ -1210,6 +1213,79 @@ class ProcessWeights:
         return state_dict
 
     @staticmethod
+    def fold_layer_norm_with_layout(
+        state_dict: Dict[str, torch.Tensor], layout: ResidualLayout, center_weights: bool = True
+    ) -> Dict[str, torch.Tensor]:
+        """Fold each norm into the linears ``layout.norm_readers`` lists for it.
+
+        A reader computes ``W(γ ⊙ x̂ + β) + b = (W diag γ) x̂ + (b + Wβ)``, so γ and β move
+        into the reader and the norm keeps only the normalization (γ = 1, β = 0). For
+        LayerNorm, x̂ has zero mean, so the reader's weights are also centered over
+        their input axis (``center_weights``).
+        """
+        state_dict = dict(state_dict)
+        for norm, readers in layout.norm_readers.items():
+            gamma = state_dict[f"{norm}.weight"]
+            beta = state_dict.get(f"{norm}.bias")
+            for reader in readers:
+                weight = state_dict[f"{reader}.weight"]
+                if beta is not None:
+                    bias_key = f"{reader}.bias"
+                    if bias_key in state_dict:
+                        state_dict[bias_key] = state_dict[bias_key] + weight @ beta
+                    elif reader not in layout.key_projections:
+                        raise ValueError(
+                            f"{reader} has no bias to receive the folded bias of {norm}."
+                        )
+                weight = weight * gamma
+                if center_weights:
+                    weight = weight - weight.mean(dim=1, keepdim=True)
+                state_dict[f"{reader}.weight"] = weight
+            state_dict[f"{norm}.weight"] = torch.ones_like(gamma)
+            if beta is not None:
+                state_dict[f"{norm}.bias"] = torch.zeros_like(beta)
+        return state_dict
+
+    @staticmethod
+    def center_writing_weights_with_layout(
+        state_dict: Dict[str, torch.Tensor], layout: ResidualLayout
+    ) -> Dict[str, torch.Tensor]:
+        """Center every write ``layout`` lists over d_model. The streams are read only
+        through LayerNorms, which remove the mean, so the output is unchanged."""
+        state_dict = dict(state_dict)
+        for writer in layout.residual_writers:
+            weight = state_dict[f"{writer}.weight"]
+            state_dict[f"{writer}.weight"] = weight - weight.mean(dim=0, keepdim=True)
+            bias_key = f"{writer}.bias"
+            if bias_key in state_dict:
+                state_dict[bias_key] = state_dict[bias_key] - state_dict[bias_key].mean()
+        for table in layout.embedding_writers:
+            weight = state_dict[f"{table}.weight"]
+            state_dict[f"{table}.weight"] = weight - weight.mean(dim=1, keepdim=True)
+        return state_dict
+
+    @staticmethod
+    def fold_value_biases_with_layout(
+        state_dict: Dict[str, torch.Tensor], layout: ResidualLayout, center_outputs: bool = False
+    ) -> Dict[str, torch.Tensor]:
+        """Move each attention's value bias into its output bias. Attention weights sum
+        to 1, so the value bias reaches the output unchanged, as ``W_O b_V``."""
+        state_dict = dict(state_dict)
+        for value, output in layout.value_output_pairs:
+            value_bias = state_dict.get(f"{value}.bias")
+            if value_bias is None:
+                continue
+            output_bias_key = f"{output}.bias"
+            if output_bias_key not in state_dict:
+                raise ValueError(f"{output} has no bias to receive the value bias of {value}.")
+            output_bias = state_dict[output_bias_key] + state_dict[f"{output}.weight"] @ value_bias
+            if center_outputs:
+                output_bias = output_bias - output_bias.mean()
+            state_dict[output_bias_key] = output_bias
+            state_dict[f"{value}.bias"] = torch.zeros_like(value_bias)
+        return state_dict
+
+    @staticmethod
     def center_writing_weights(
         state_dict: Dict[str, torch.Tensor], cfg, adapter=None
     ) -> Dict[str, torch.Tensor]:
@@ -1694,6 +1770,10 @@ class ProcessWeights:
                 if v.dtype != torch.float64:
                     state_dict[k] = v.float()
 
+        # Architectures the decoder-only blocks.{i} walk misses declare their layout.
+        layout = adapter.residual_layout() if hasattr(adapter, "residual_layout") else None
+        is_layer_norm = getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]
+
         # Skip fold_ln for adapters that don't support it (e.g., post-LN architectures
         # like BERT where LN placement means folding goes into the wrong sublayer).
         if fold_ln and adapter and not getattr(adapter, "supports_fold_ln", True):
@@ -1705,7 +1785,11 @@ class ProcessWeights:
                 UserWarning,
             )
             fold_ln = False
-        if fold_ln:
+        if fold_ln and layout is not None:
+            state_dict = ProcessWeights.fold_layer_norm_with_layout(
+                state_dict, layout, center_weights=is_layer_norm
+            )
+        elif fold_ln:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
                 state_dict = ProcessWeights.fold_layer_norm(
                     state_dict, cfg, fold_biases=True, center_weights=True, adapter=adapter
@@ -1739,11 +1823,17 @@ class ProcessWeights:
             and getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]
             and not getattr(cfg, "final_rms", False)
         )
-        if should_center_writing_weights:
+        if should_center_writing_weights and layout is not None:
+            state_dict = ProcessWeights.center_writing_weights_with_layout(state_dict, layout)
+        elif should_center_writing_weights:
             state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
             state_dict = ProcessWeights.center_unembed(state_dict, cfg=cfg, adapter=adapter)
-        if fold_value_biases:
+        if fold_value_biases and layout is not None:
+            state_dict = ProcessWeights.fold_value_biases_with_layout(
+                state_dict, layout, center_outputs=should_center_writing_weights
+            )
+        elif fold_value_biases:
             state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
             if should_center_writing_weights:
                 for layer_idx in range(cfg.n_layers):
@@ -1757,7 +1847,15 @@ class ProcessWeights:
                         state_dict[b_O_key] = ProcessWeights.convert_tensor_to_hf_format(
                             b_O_key, b_O, cfg, adapter, layer_idx
                         )
-        if refactor_factored_attn_matrices:
+        if refactor_factored_attn_matrices and layout is not None:
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support refactor_factored_attn_matrices; "
+                "attention matrices stay as they are.",
+                UserWarning,
+            )
+        elif refactor_factored_attn_matrices:
             state_dict = ProcessWeights.refactor_factored_attn_matrices(
                 state_dict, cfg, adapter=adapter
             )

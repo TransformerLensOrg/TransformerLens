@@ -465,9 +465,122 @@ class TestWhisperTinyErrors:
         with pytest.raises(ValueError, match="input_values"):
             bridge(features, input_values=features, decoder_input=decoder_ids)
 
-    def test_compatibility_mode_not_supported(self, bridge):
-        with pytest.raises(NotImplementedError, match="audio seq2seq"):
-            bridge.enable_compatibility_mode()
+
+def _compat_pair():
+    """Fresh tiny Whisper with non-trivial LayerNorm affine and q/v biases (so folding
+    has something to move), an unwrapped copy, and a bridge over the original."""
+    torch.manual_seed(3)
+    cfg = WhisperConfig(
+        vocab_size=128,
+        num_mel_bins=N_MELS,
+        d_model=D_MODEL,
+        encoder_layers=ENC_LAYERS,
+        decoder_layers=DEC_LAYERS,
+        encoder_attention_heads=4,
+        decoder_attention_heads=4,
+        encoder_ffn_dim=64,
+        decoder_ffn_dim=64,
+        max_source_positions=N_FRAMES,
+        max_target_positions=24,
+        pad_token_id=0,
+        bos_token_id=1,
+        eos_token_id=2,
+        decoder_start_token_id=DECODER_START,
+    )
+    cfg.architectures = [ARCH]
+    model = AutoModelForSpeechSeq2Seq.from_config(cfg, attn_implementation="eager").eval()
+    model.generation_config.suppress_tokens = None
+    model.generation_config.begin_suppress_tokens = None
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if "layer_norm" in name or name.endswith(("q_proj.bias", "v_proj.bias")):
+                param.add_(0.3 * torch.randn_like(param))
+    reference = copy.deepcopy(model)
+    bridge_cfg = build_bridge_config_from_hf(model.config, ARCH, "whisper-compat", torch.float32)
+    tokenizer = _Tok()
+    tokenizer.eos_token_id = 2
+    tokenizer.pad_token_id = 0
+    bridge = TransformerBridge(model, WhisperArchitectureAdapter(bridge_cfg), tokenizer=tokenizer)
+    return bridge, reference
+
+
+def _centered(logits):
+    return logits - logits.mean(dim=-1, keepdim=True)
+
+
+class TestWhisperTinyCompatibilityMode:
+    @pytest.fixture(scope="class")
+    def processed(self, features, decoder_ids):
+        bridge, reference = _compat_pair()
+        with torch.no_grad():
+            expected = reference(input_features=features, decoder_input_ids=decoder_ids).logits
+        bridge.enable_compatibility_mode(disable_warnings=True)
+        return bridge, reference, expected
+
+    def test_logits_match_hf_up_to_a_per_position_constant(self, processed, features, decoder_ids):
+        """center_unembed shifts each position's logits by a constant; nothing else moves."""
+        bridge, _, expected = processed
+        with torch.no_grad():
+            logits = bridge(features, decoder_input=decoder_ids)
+        assert (_centered(logits) - _centered(expected)).abs().max().item() < 1e-5
+
+    def test_norms_folded_into_their_readers(self, processed):
+        bridge, _, _ = processed
+        hf = bridge.original_model.model
+        norms = [hf.encoder.layer_norm, hf.decoder.layer_norm]
+        for layer in hf.encoder.layers:
+            norms += [layer.self_attn_layer_norm, layer.final_layer_norm]
+        for layer in hf.decoder.layers:
+            norms += [
+                layer.self_attn_layer_norm,
+                layer.encoder_attn_layer_norm,
+                layer.final_layer_norm,
+            ]
+        for norm in norms:
+            assert torch.equal(norm.weight, torch.ones(D_MODEL))
+            assert torch.equal(norm.bias, torch.zeros(D_MODEL))
+
+    def test_value_biases_moved_and_writes_centered(self, processed):
+        bridge, _, _ = processed
+        hf = bridge.original_model.model
+        attentions = [layer.self_attn for layer in hf.encoder.layers]
+        attentions += [
+            a for layer in hf.decoder.layers for a in (layer.self_attn, layer.encoder_attn)
+        ]
+        for attn in attentions:
+            assert attn.v_proj.bias.abs().max() == 0
+            assert attn.out_proj.weight.mean(dim=0).abs().max() < 1e-6
+        for layer in [*hf.encoder.layers, *hf.decoder.layers]:
+            assert layer.fc2.weight.mean(dim=0).abs().max() < 1e-6
+        for table in (
+            hf.encoder.embed_positions,
+            hf.decoder.embed_tokens,
+            hf.decoder.embed_positions,
+        ):
+            assert table.weight.mean(dim=1).abs().max() < 1e-6
+
+    def test_unembed_untied_from_decoder_embed(self, processed):
+        bridge, _, _ = processed
+        unembed = bridge.unembed.original_component.weight
+        embed = bridge.decoder_embed.original_component.weight
+        assert unembed.data_ptr() != embed.data_ptr()
+        assert unembed.mean(dim=0).abs().max() < 1e-6
+
+    def test_greedy_generate_unchanged(self, processed, features):
+        bridge, reference, _ = processed
+        prompt = torch.tensor([[DECODER_START]])
+        tokens = bridge.generate(
+            features, decoder_input=prompt, do_sample=False, max_new_tokens=5, verbose=False
+        )
+        assert torch.equal(tokens, _hf_generate(reference, features, prompt, 5))
+
+    def test_no_processing_is_exact(self, features, decoder_ids):
+        bridge, reference = _compat_pair()
+        bridge.enable_compatibility_mode(no_processing=True, disable_warnings=True)
+        with torch.no_grad():
+            logits = bridge(features, decoder_input=decoder_ids)
+            expected = reference(input_features=features, decoder_input_ids=decoder_ids).logits
+        assert (logits - expected).abs().max().item() < 1e-5
 
 
 class TestWhisperTinyPhase1Benchmarks:
