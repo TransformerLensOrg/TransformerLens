@@ -119,6 +119,68 @@ def test_placebo_moves_as_far_as_the_reference_inside_its_own_subspace():
     assert outside.abs().max() < 1e-5
 
 
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_placebo_zero_reference_distance_is_an_identity(dtype):
+    base = torch.tensor([[1.0, 2.0], [0.0, 0.0]], dtype=dtype)
+    source = torch.tensor([[1.0, 5.0], [0.0, 0.0]], dtype=dtype)
+    reference = SubspaceInterchange(neuron_basis(2, [0]))
+    out = NormMatchedPlacebo(reference, neuron_basis(2, [1]))(base, source)
+    assert out.dtype == dtype
+    assert torch.equal(out, base)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_placebo_refuses_zero_projection_with_nonzero_reference_distance(dtype):
+    base = torch.zeros(2, 4, dtype=dtype)
+    source = base.clone()
+    source[1, 0] = 2.0
+    reference = SubspaceInterchange(neuron_basis(4, [0]))
+    placebo_basis = random_neuron_basis(4, 1, seed=0, exclude=[0])
+    with pytest.raises(ValueError, match="zero.*projection"):
+        NormMatchedPlacebo(reference, placebo_basis)(base, source)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+@pytest.mark.parametrize("projection", [1e-5, 1.0, 300.0])
+def test_placebo_normalizes_small_and_large_projections(dtype, projection):
+    base = torch.zeros(2, 3, dtype=dtype)
+    source = torch.tensor([[2.0, projection, 0.0], [0.0, 0.0, 0.0]], dtype=dtype)
+    reference = SubspaceInterchange(neuron_basis(3, [0]), strength=-0.5)
+    out = NormMatchedPlacebo(reference, neuron_basis(3, [1]))(base, source)
+    expected = torch.tensor([[0.0, 1.0, 0.0], [0.0, 0.0, 0.0]], dtype=dtype)
+    assert out.dtype == dtype
+    torch.testing.assert_close(out, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_placebo_matches_distance_even_below_the_old_epsilon(dtype):
+    base = torch.zeros(1, 2, dtype=dtype)
+    source = torch.tensor([[1.0, 1e-12]], dtype=dtype)
+    reference = SubspaceInterchange(neuron_basis(2, [0]))
+    out = NormMatchedPlacebo(reference, neuron_basis(2, [1]))(base, source)
+    torch.testing.assert_close(out, torch.tensor([[0.0, 1.0]], dtype=dtype))
+
+
+def test_placebo_reference_norm_does_not_overflow_float16():
+    base = torch.zeros(1, 4, dtype=torch.float16)
+    source = torch.tensor([[50000.0, 50000.0, 1.0, 1.0]], dtype=torch.float16)
+    reference = SubspaceInterchange(neuron_basis(4, [0, 1]))
+    out = NormMatchedPlacebo(reference, neuron_basis(4, [2, 3]))(base, source)
+    expected = torch.zeros_like(base)
+    expected[:, 2:] = source[:, :2]
+    torch.testing.assert_close(out, expected)
+
+
+def test_placebo_keeps_finite_gradients_with_an_identity_row():
+    base = torch.zeros(2, 3, requires_grad=True)
+    source = torch.tensor([[2.0, 1.0, 0.0], [0.0, 0.0, 0.0]], requires_grad=True)
+    reference = SubspaceInterchange(neuron_basis(3, [0]))
+    out = NormMatchedPlacebo(reference, neuron_basis(3, [1]))(base, source)
+    base_grad, source_grad = torch.autograd.grad(out.sum(), (base, source))
+    assert torch.isfinite(base_grad).all()
+    assert torch.isfinite(source_grad).all()
+
+
 def test_a_full_interchange_reproduces_the_source_output():
     model = _Toy()
     base, source = torch.randn(5, D_MODEL), torch.randn(5, D_MODEL)
