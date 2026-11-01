@@ -44,6 +44,7 @@ def copy_demos(_app: Optional[Any] = None):
         "Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb",
         "Jacobian_Lens_Decomposition_Demo.ipynb",
         "Main_Demo.ipynb",
+        "Natural_Language_Autoencoders_Demo.ipynb",
         "SVD_Circuits_Demo.ipynb",
         "SwiGLU_Gate_Sign_Demo.ipynb",
     ]

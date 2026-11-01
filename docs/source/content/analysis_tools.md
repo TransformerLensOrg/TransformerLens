@@ -310,6 +310,11 @@ small early residual. Pair a lens trajectory with patching or DLA before making 
 causal claim. For a fitted per-layer map instead of the identity, see
 [Jacobian Lens](#jacobian-lens-distinguish-readout-reconstruction-and-intervention).
 
+The [Natural Language Autoencoders demo](../generated/demos/Natural_Language_Autoencoders_Demo.ipynb)
+reads a single residual activation as text with a released, trained verbalizer and
+reconstructs it from that text. A high reconstruction score shows that the text
+preserves the vector's direction, not that every claim in the explanation is true.
+
 ### Jacobian Lens: distinguish readout, reconstruction, and intervention
 
 Start with a matching published artifact when possible and call
