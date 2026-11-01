@@ -7,6 +7,10 @@ import sys
 import pytest
 import torch
 import torch.nn as nn
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import Whitespace
+from transformers import PreTrainedTokenizerFast
 
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
@@ -202,6 +206,24 @@ def test_boot_native_accepts_dict_config():
     bridge = TransformerBridge.boot_native(cfg_dict)
     assert bridge.cfg.d_model == 32
     assert bridge.cfg.architecture == "TransformerLensNative"
+
+
+def test_boot_native_accepts_in_memory_tokenizer():
+    """A tokenizer built from a tokenizers object has no hub or disk origin to reload from."""
+    raw = Tokenizer(
+        WordLevel({"UNK": 0, "BOS": 1, "EOS": 2, "hello": 3, "world": 4}, unk_token="UNK")
+    )
+    raw.pre_tokenizer = Whitespace()
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=raw, bos_token="BOS", eos_token="EOS", unk_token="UNK"
+    )
+
+    bridge = TransformerBridge.boot_native(_cfg(d_vocab=5), tokenizer=tokenizer)
+
+    assert bridge.cfg.tokenizer_prepends_bos
+    assert bridge.to_tokens("hello world").tolist() == [[1, 3, 4]]
+    assert bridge.to_tokens("hello world", prepend_bos=False).tolist() == [[3, 4]]
+    assert tokenizer("hello world")["input_ids"] == [3, 4]
 
 
 def test_boot_native_rejects_legacy_config_with_actionable_error():
