@@ -252,8 +252,7 @@ DATASET_LOADERS = [
 # %%
 @torch.inference_mode()
 def evaluate_on_dataset(model, data_loader, truncate=100, device=None):
-    # Default to where the model actually is. cfg.device is always populated, so
-    # a hardcoded "cuda" sends batches to a device the model may not be on.
+    # None defaults to the model's own device, a hardcoded "cuda" would crash CPU/MPS callers.
     if device is None:
         device = model.cfg.device
     warn_if_mps(device)

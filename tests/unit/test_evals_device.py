@@ -7,11 +7,11 @@ the model was not on. `cfg.device` already holds the right answer, which is what
 `mmlu_eval` in the same module uses.
 """
 
-import inspect
 from typing import Any, Dict, List
 
 import torch
 
+from transformer_lens import evals
 from transformer_lens.evals import evaluate, evaluate_on_dataset, induction_loss
 
 
@@ -55,28 +55,46 @@ def test_evaluate_on_dataset_uses_the_models_device() -> None:
 
 
 def test_evaluate_on_dataset_honours_an_explicit_device() -> None:
-    """An explicit argument still wins over cfg.device."""
-    model = StubModel(device="cpu")
+    """An explicit argument wins over cfg.device. The stub claims to live on
+    "meta", so this fails if the argument is ignored."""
+    model = StubModel(device="meta")
 
     evaluate_on_dataset(model, make_loader(), truncate=1, device="cpu")
-
-    assert all(device.type == "cpu" for device in model.seen_devices)
-
-
-def test_induction_loss_builds_tokens_on_the_models_device() -> None:
-    """Before the fix the random sequence was always allocated on "cuda"."""
-    model = StubModel(device="cpu")
-
-    induction_loss(model, batch_size=2, subseq_len=3)
 
     assert model.seen_devices
     assert all(device.type == "cpu" for device in model.seen_devices)
 
 
-def test_eval_helpers_no_longer_hardcode_cuda() -> None:
-    """None means "ask the model"; a literal "cuda" default cannot be overridden
-    by `evaluate`, which is how the bug reached callers."""
-    for function in (evaluate_on_dataset, induction_loss, evaluate):
-        parameter = inspect.signature(function).parameters.get("device")
-        assert parameter is not None, f"{function.__name__} takes no device argument"
-        assert parameter.default is None, f"{function.__name__} defaults device to a fixed device"
+def test_induction_loss_builds_tokens_on_the_models_device() -> None:
+    """Before the fix the random sequence was always allocated on "cuda". A
+    "meta" cfg.device can't match any hardcoded default, so the tokens only
+    land there if the helper reads cfg.device."""
+    model = StubModel(device="meta")
+
+    induction_loss(model, batch_size=2, subseq_len=3)
+
+    assert model.seen_devices
+    assert all(device.type == "meta" for device in model.seen_devices)
+
+
+def test_induction_loss_honours_an_explicit_device() -> None:
+    """An explicit argument wins over cfg.device."""
+    model = StubModel(device="meta")
+
+    induction_loss(model, batch_size=2, subseq_len=3, device="cpu")
+
+    assert model.seen_devices
+    assert all(device.type == "cpu" for device in model.seen_devices)
+
+
+def test_evaluate_forwards_its_device_to_evaluate_on_dataset(monkeypatch) -> None:
+    """`evaluate` used to drop the device, so check it reaches the batches."""
+    monkeypatch.setattr(evals, "DATASET_NAMES", ["stub"])
+    monkeypatch.setattr(evals, "DATASET_LOADERS", [lambda tokenizer, batch_size: make_loader()])
+    model = StubModel(device="meta")
+
+    losses = evaluate(model, truncate=1, tokenizer=object(), device="cpu")
+
+    assert set(losses) == {"stub_loss"}
+    assert model.seen_devices
+    assert all(device.type == "cpu" for device in model.seen_devices)
