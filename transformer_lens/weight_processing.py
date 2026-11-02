@@ -1688,9 +1688,11 @@ class ProcessWeights:
         original_dtypes: Dict[str, torch.dtype] = {}
         original_keys = set(state_dict)
         for k, v in state_dict.items():
-            if isinstance(v, torch.Tensor) and v.is_floating_point() and v.dtype != torch.float32:
+            if isinstance(v, torch.Tensor) and v.is_floating_point():
                 original_dtypes[k] = v.dtype
-                state_dict[k] = v.float()
+                # float64 is kept: casting it would round every processed weight to float32.
+                if v.dtype != torch.float64:
+                    state_dict[k] = v.float()
 
         # Skip fold_ln for adapters that don't support it (e.g., post-LN architectures
         # like BERT where LN placement means folding goes into the wrong sublayer).
