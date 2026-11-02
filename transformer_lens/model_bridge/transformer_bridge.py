@@ -2795,7 +2795,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         forced_eos_token_id: Optional[int] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
-        """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
+        """Core generation loop. Yields (sampled_tokens, raw_logits, all_finished) per step.
 
         Owns the forward pass, sampling, stop handling (EOS and any
         ``stopping_criteria_list``), token accumulation, and KV cache management. Callers
@@ -2985,7 +2985,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     if use_past_kv_cache and hasattr(self, "_last_hf_cache"):
                         _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
                         del self._last_hf_cache
-                final_logits = logits[:, -1, :]
+                raw_logits = logits[:, -1, :]
+                # Keep model output separate from scores modified by decoding constraints.
+                final_logits = raw_logits
 
                 # Sample next token
                 penalty_tokens = (
@@ -3093,7 +3095,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
                 all_finished = bool(any_stop_active and finished_sequences.all().item())
 
-            yield sampled_tokens, final_logits, all_finished
+            yield sampled_tokens, raw_logits, all_finished
 
             if all_finished:
                 return
@@ -3197,7 +3199,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 correct generation behavior. Defaults to None (tokenizer default).
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
-            output_logits: If True, return a ModelOutput with sequences and logits tuple
+            output_logits: If True, return a ModelOutput with sequences and a tuple of raw
+                per-step model logits, before decoding constraints or sampling transforms.
             return_cache: If True, also return an ActivationCache for the full prompt +
                 generated sequence, identical to ``run_with_cache(output)`` with the
                 effective prompt attention mask extended over the generated tokens. The call
@@ -3631,7 +3634,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
 
         try:
-            for sampled_tokens, final_logits, all_finished in self._generate_tokens(
+            for sampled_tokens, raw_logits, all_finished in self._generate_tokens(
                 current_tokens,
                 input_tokens,
                 batch_size,
@@ -3670,7 +3673,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
-                    logits_seq_list.append(final_logits.clone())
+                    logits_seq_list.append(raw_logits.clone())
                 if all_finished:
                     break
         finally:
