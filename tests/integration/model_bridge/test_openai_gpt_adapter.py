@@ -56,13 +56,12 @@ class TestOpenAIGPTHooks:
         def grab(tensor, hook):
             captured[hook.name] = tuple(tensor.shape)
 
-        # GPT-1's Block returns a list, so the block-level hook_out does not
-        # fire; the post-MLP ln_2 output is the block's effective output.
         hooks = [
             "hook_embed",
             "blocks.0.attn.hook_out",
             "blocks.0.mlp.hook_out",
             "blocks.11.ln2.hook_out",
+            "blocks.11.hook_out",
         ]
         with torch.no_grad():
             bridge.run_with_hooks(sample_tokens, fwd_hooks=[(name, grab) for name in hooks])
@@ -71,6 +70,36 @@ class TestOpenAIGPTHooks:
         assert captured["blocks.0.attn.hook_out"] == (1, seq, d_model)
         assert captured["blocks.0.mlp.hook_out"] == (1, seq, d_model)
         assert captured["blocks.11.ln2.hook_out"] == (1, seq, d_model)
+        assert captured["blocks.11.hook_out"] == (1, seq, d_model)
+
+    def test_block_hook_out_is_cached(self, bridge, sample_tokens):
+        """HF's block returns a list, which must still reach hook_out."""
+        with torch.no_grad():
+            logits, cache = bridge.run_with_cache(sample_tokens)
+        assert "blocks.0.hook_out" in cache
+        assert "blocks.0.hook_resid_post" in cache
+        # There is no ln_final, so the last block's output is what unembed reads.
+        assert torch.allclose(bridge.unembed(cache["blocks.11.hook_out"]), logits)
+
+    def test_zeroing_the_last_block_hook_out_changes_the_logits(self, bridge, sample_tokens):
+        def zero(tensor, *, hook):
+            return torch.zeros_like(tensor)
+
+        with torch.no_grad():
+            clean = bridge(sample_tokens)
+            edited = bridge.run_with_hooks(sample_tokens, fwd_hooks=[("blocks.11.hook_out", zero)])
+        assert not torch.allclose(edited, clean)
+
+    def test_edit_on_the_last_block_hook_out_reaches_a_stopped_run(self, bridge, sample_tokens):
+        def zero(tensor, *, hook):
+            return torch.zeros_like(tensor)
+
+        with torch.no_grad():
+            residual = bridge.run_with_hooks(
+                sample_tokens, stop_at_layer=12, fwd_hooks=[("blocks.11.hook_out", zero)]
+            )
+        assert isinstance(residual, torch.Tensor)
+        assert torch.count_nonzero(residual) == 0
 
 
 class TestOpenAIGPTGeneration:
