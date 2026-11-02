@@ -73,8 +73,8 @@ class TestWhisperConfig:
     def test_declares_input_features(self, adapter):
         assert adapter.audio_input_name == "input_features"
 
-    def test_generation_and_weight_processing_disabled(self, adapter):
-        assert adapter.supports_generation is False
+    def test_generation_on_weight_processing_off(self, adapter):
+        assert adapter.supports_generation is True
         assert adapter.supports_fold_ln is False
         assert adapter.supports_center_writing_weights is False
 
