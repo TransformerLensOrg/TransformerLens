@@ -31,6 +31,7 @@ import torch
 import tqdm
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.hooks import RemovableHandle
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
@@ -115,6 +116,11 @@ def _storage_group_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
             continue
         by_storage.setdefault(tensor.untyped_storage().data_ptr(), []).append(key)
     return {key for keys in by_storage.values() if len(keys) > 1 for key in keys}
+
+
+def _stop_on_block_exit(module: nn.Module, args: Any, output: Any) -> None:
+    """Module forward hook ending the run with the residual a block just returned."""
+    raise StopAtLayerException(output[0] if isinstance(output, (tuple, list)) else output)
 
 
 def _extend_prompt_attention_mask(prompt_mask: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
@@ -2144,7 +2150,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
-            stop_at_layer: Layer to stop forward pass at. Only supported on the
+            stop_at_layer: Layer to stop forward pass at, returning the residual stream
+                entering block ``k``. ``n_layers`` returns what leaves the last block,
+                before the final norm and unembed, and a value outside
+                ``[-n_layers, n_layers]`` raises ``ValueError``. Only supported on the
                 standard ``blocks`` stack; architectures that register no ``blocks``
                 (e.g. Raven's ``prelude``/``core_block``/``coda``) raise
                 ``NotImplementedError`` rather than running to completion.
@@ -2188,18 +2197,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if labels is not None:
             kwargs["labels"] = labels
 
-        if start_at_layer is not None:
-            input = self._setup_start_at_layer(input, start_at_layer)
-        # Set stop_at_layer flag on all blocks if requested
+        # Resolved before start_at_layer is armed, so a bad value leaves nothing to tear down.
+        effective_stop_at_layer: Optional[int] = None
         if stop_at_layer is not None:
             if not self._has_registered_blocks():
                 raise NotImplementedError(
                     "stop_at_layer requires a 'blocks' stack; this architecture "
                     "does not register one."
                 )
-            effective_stop_at_layer = (
-                len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
-            )
+            effective_stop_at_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
+        if start_at_layer is not None:
+            input = self._setup_start_at_layer(input, start_at_layer)
+        # Set stop_at_layer flag on all blocks if requested
+        if effective_stop_at_layer is not None:
             for block in self.blocks:
                 block._stop_at_layer_idx = effective_stop_at_layer
 
@@ -2224,7 +2234,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if _resolved_padding_side is None and self.tokenizer is not None:
             _resolved_padding_side = getattr(self.tokenizer, "padding_side", "right")
 
+        final_stop_handle: Optional[RemovableHandle] = None
         try:
+            # Blocks stop on entry and nothing follows the last one, so that stop fires as it
+            # exits. On the module rather than hook_out: raising in a HookPoint's forward hook
+            # would cut off its backward hooks, and not every block's output reaches hook_out.
+            if effective_stop_at_layer is not None and effective_stop_at_layer == len(self.blocks):
+                final_stop_handle = self.blocks[-1].register_forward_hook(_stop_on_block_exit)
             if isinstance(input, (str, list)):
                 if getattr(self.cfg, "is_audio_seq2seq", False):
                     raise ValueError(
@@ -2525,6 +2541,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return e.layer_output
         finally:
             # Clean up state that may be inconsistent after StopAtLayerException
+            if final_stop_handle is not None:
+                final_stop_handle.remove()
             if stop_at_layer is not None:
                 for bl_name in (
                     "blocks",
