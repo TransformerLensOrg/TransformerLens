@@ -128,3 +128,41 @@ class TestWhisperHooks:
         assert cache["encoder_blocks.3.hook_out"].shape == (1, 1500, 384)
         assert cache["decoder_blocks.0.cross_attn.hook_pattern"].shape == (1, 6, dec_len, 1500)
         assert cache["decoder_blocks.3.hook_out"].shape == (1, dec_len, 384)
+
+
+class TestWhisperGenerate:
+    @pytest.fixture(scope="class")
+    def two_clips(self, bridge, features):
+        t = np.arange(16000) / 16000.0
+        audio = (0.5 * np.sin(2 * np.pi * 220.0 * t)).astype(np.float32)
+        extractor = bridge.processor.feature_extractor
+        second = extractor(audio, sampling_rate=16000, return_tensors="pt").input_features
+        return torch.cat([features, second])
+
+    def test_greedy_matches_hf_whisper_generate(self, bridge, hf_eager, two_clips):
+        """Same tokens as HF's Whisper generate, which also suppresses the checkpoint's
+        suppress_tokens / begin_suppress_tokens and strips the prompt and end-of-text."""
+        prompt = torch.tensor([bridge.processor.tokenizer.convert_tokens_to_ids(PROMPT)])
+        eot = bridge.tokenizer.eos_token_id
+        tokens = bridge.generate(
+            two_clips, decoder_input=prompt, do_sample=False, max_new_tokens=20, verbose=False
+        )
+        with torch.no_grad():
+            expected = hf_eager.generate(
+                two_clips, language="en", task="transcribe", do_sample=False, max_new_tokens=20
+            )
+        expected = expected if isinstance(expected, torch.Tensor) else expected.sequences
+        for ours, theirs in zip(tokens[:, prompt.shape[1] :].tolist(), expected.tolist()):
+            ours = ours[: ours.index(eot)] if eot in ours else ours
+            assert ours == [t for t in theirs if t != eot]
+
+    def test_hf_generate_passes_features_through(self, bridge, hf_eager, features):
+        with torch.no_grad():
+            ours = bridge.hf_generate(
+                features, language="en", task="transcribe", do_sample=False, max_new_tokens=20
+            )
+            expected = hf_eager.generate(
+                features, language="en", task="transcribe", do_sample=False, max_new_tokens=20
+            )
+        expected = expected if isinstance(expected, torch.Tensor) else expected.sequences
+        assert torch.equal(ours, expected)

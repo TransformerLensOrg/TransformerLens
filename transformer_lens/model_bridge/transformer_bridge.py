@@ -31,6 +31,7 @@ import torch
 import tqdm
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.hooks import RemovableHandle
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
@@ -115,6 +116,11 @@ def _storage_group_keys(state_dict: dict[str, torch.Tensor]) -> set[str]:
             continue
         by_storage.setdefault(tensor.untyped_storage().data_ptr(), []).append(key)
     return {key for keys in by_storage.values() if len(keys) > 1 for key in keys}
+
+
+def _stop_on_block_exit(module: nn.Module, args: Any, output: Any) -> None:
+    """Module forward hook ending the run with the residual a block just returned."""
+    raise StopAtLayerException(output[0] if isinstance(output, (tuple, list)) else output)
 
 
 def _extend_prompt_attention_mask(prompt_mask: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
@@ -2144,7 +2150,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
-            stop_at_layer: Layer to stop forward pass at. Only supported on the
+            stop_at_layer: Layer to stop forward pass at, returning the residual stream
+                entering block ``k``. ``n_layers`` returns what leaves the last block,
+                before the final norm and unembed, and a value outside
+                ``[-n_layers, n_layers]`` raises ``ValueError``. Only supported on the
                 standard ``blocks`` stack; architectures that register no ``blocks``
                 (e.g. Raven's ``prelude``/``core_block``/``coda``) raise
                 ``NotImplementedError`` rather than running to completion.
@@ -2188,18 +2197,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if labels is not None:
             kwargs["labels"] = labels
 
-        if start_at_layer is not None:
-            input = self._setup_start_at_layer(input, start_at_layer)
-        # Set stop_at_layer flag on all blocks if requested
+        # Resolved before start_at_layer is armed, so a bad value leaves nothing to tear down.
+        effective_stop_at_layer: Optional[int] = None
         if stop_at_layer is not None:
             if not self._has_registered_blocks():
                 raise NotImplementedError(
                     "stop_at_layer requires a 'blocks' stack; this architecture "
                     "does not register one."
                 )
-            effective_stop_at_layer = (
-                len(self.blocks) + stop_at_layer if stop_at_layer < 0 else stop_at_layer
-            )
+            effective_stop_at_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
+        if start_at_layer is not None:
+            input = self._setup_start_at_layer(input, start_at_layer)
+        # Set stop_at_layer flag on all blocks if requested
+        if effective_stop_at_layer is not None:
             for block in self.blocks:
                 block._stop_at_layer_idx = effective_stop_at_layer
 
@@ -2224,7 +2234,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if _resolved_padding_side is None and self.tokenizer is not None:
             _resolved_padding_side = getattr(self.tokenizer, "padding_side", "right")
 
+        final_stop_handle: Optional[RemovableHandle] = None
         try:
+            # Blocks stop on entry and nothing follows the last one, so that stop fires as it
+            # exits. On the module rather than hook_out: raising in a HookPoint's forward hook
+            # would cut off its backward hooks, and not every block's output reaches hook_out.
+            if effective_stop_at_layer is not None and effective_stop_at_layer == len(self.blocks):
+                final_stop_handle = self.blocks[-1].register_forward_hook(_stop_on_block_exit)
             if isinstance(input, (str, list)):
                 if getattr(self.cfg, "is_audio_seq2seq", False):
                     raise ValueError(
@@ -2525,6 +2541,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             return e.layer_output
         finally:
             # Clean up state that may be inconsistent after StopAtLayerException
+            if final_stop_handle is not None:
+                final_stop_handle.remove()
             if stop_at_layer is not None:
                 for bl_name in (
                     "blocks",
@@ -2563,6 +2581,40 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             f"{name} has batch size {ids.shape[0]} but the audio features have {n_clips}; "
             "pass one row per clip, or a single row shared by every clip."
         )
+
+    def _audio_generation_inputs(
+        self, input: Any, kwargs: Dict[str, Any], max_new_tokens: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Audio features and decoder prompt for audio seq2seq generation.
+
+        The prompt is ``decoder_input`` if given, else the tokenizer's prefix tokens
+        (Whisper: <|startoftranscript|>, the language and task set with
+        ``tokenizer.set_prefix_tokens``, <|notimestamps|>), else decoder_start alone.
+        """
+        if not (isinstance(input, torch.Tensor) and input.is_floating_point()):
+            raise ValueError(
+                "Audio seq2seq generation takes the audio features tensor (e.g. Whisper's "
+                "log-mel input_features) as input, not text or token ids. Pass the "
+                "decoder prompt as decoder_input."
+            )
+        features = input.to(self.cfg.device)
+        prompt = kwargs.pop("decoder_input", None)
+        if prompt is None:
+            prompt = kwargs.pop("decoder_input_ids", None)
+        if prompt is None:
+            prefix = getattr(self.tokenizer, "prefix_tokens", None) or [
+                self.cfg.decoder_start_token_id
+            ]
+            prompt = torch.tensor([prefix])
+        prompt = self._align_decoder_batch(
+            torch.as_tensor(prompt, device=self.cfg.device), features.shape[0], "decoder_input"
+        )
+        if prompt.shape[1] + max_new_tokens > self.cfg.n_ctx:
+            raise ValueError(
+                f"The decoder prompt ({prompt.shape[1]} tokens) plus max_new_tokens "
+                f"({max_new_tokens}) exceeds the decoder's {self.cfg.n_ctx} positions."
+            )
+        return features, prompt
 
     def _setup_start_at_layer(self, input: Any, start_at_layer: int) -> torch.Tensor:
         """Arm residual-stream injection at block ``start_at_layer``.
@@ -2708,16 +2760,50 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         )
         return value if isinstance(value, int) else None
 
+    def _encdec_suppress_processors(self, prompt_length: int) -> list[Any]:
+        """generation_config.suppress_tokens / begin_suppress_tokens as transformers'
+        own processors. HF applies both by default; Whisper sets them so greedy
+        decoding neither emits its non-speech symbols nor ends before any text."""
+        generation_config = getattr(self.original_model, "generation_config", None)
+        device = str(self.cfg.device or "cpu")
+        processors: list[Any] = []
+        suppress = getattr(generation_config, "suppress_tokens", None)
+        if suppress:
+            from transformers.generation.logits_process import (
+                SuppressTokensLogitsProcessor,
+            )
+
+            processors.append(SuppressTokensLogitsProcessor(suppress, device=device))
+        begin_suppress = getattr(generation_config, "begin_suppress_tokens", None)
+        if begin_suppress:
+            from transformers.generation.logits_process import (
+                SuppressTokensAtBeginLogitsProcessor,
+            )
+
+            processors.append(
+                SuppressTokensAtBeginLogitsProcessor(begin_suppress, prompt_length, device=device)
+            )
+        return processors
+
     def _encoder_decoder_setup(
-        self, input_tokens: torch.Tensor, forced_bos_token_id: Optional[int]
+        self,
+        input_tokens: torch.Tensor,
+        forced_bos_token_id: Optional[int],
+        decoder_prompt: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, Optional[int]]:
-        """Share decoder initialization and length defaults across generation paths."""
+        """Share decoder initialization and length defaults across generation paths.
+
+        ``decoder_prompt`` replaces the decoder_start seed (audio seq2seq models start
+        from a multi-token prompt such as Whisper's <|startoftranscript|> prefix).
+        """
         config = self.original_model.config
         generation_config = getattr(self.original_model, "generation_config", None)
         if forced_bos_token_id is None:
             # HF defaults such as bart-large-cnn's forced BOS apply to both loops.
             forced_bos_token_id = getattr(generation_config, "forced_bos_token_id", None)
         min_decoder_length = getattr(generation_config, "min_length", None)
+        if decoder_prompt is not None:
+            return decoder_prompt, min_decoder_length
         start = getattr(config, "decoder_start_token_id", None)
         if start is None:
             # HF falls back to BOS, then EOS; IndicBART starts decoding from EOS.
@@ -2776,8 +2862,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         ngram_processor: Optional[Any] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         forced_eos_token_id: Optional[int] = None,
+        suppress_processors: Sequence[Any] = (),
+        encoder_outputs: Optional[Any] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
-        """Core generation loop. Yields (sampled_tokens, final_logits, all_finished) per step.
+        """Core generation loop. Yields (sampled_tokens, raw_logits, all_finished) per step.
 
         Owns the forward pass, sampling, stop handling (EOS and any
         ``stopping_criteria_list``), token accumulation, and KV cache management. Callers
@@ -2833,6 +2921,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         encdec_kwargs["attention_mask"] = encoder_attention_mask.to(
                             encoder_input.device
                         )
+                    if encoder_outputs is not None:
+                        encdec_kwargs["encoder_outputs"] = encoder_outputs
                     logits = self(
                         encoder_input,
                         return_type="logits",
@@ -2967,7 +3057,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     if use_past_kv_cache and hasattr(self, "_last_hf_cache"):
                         _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
                         del self._last_hf_cache
-                final_logits = logits[:, -1, :]
+                raw_logits = logits[:, -1, :]
+                # Keep model output separate from scores modified by decoding constraints.
+                final_logits = raw_logits
 
                 # Sample next token
                 penalty_tokens = (
@@ -2980,6 +3072,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 # decoding falls into a BOS attractor and emits nothing).
                 if ngram_processor is not None and decoder_tokens is not None:
                     final_logits = ngram_processor(decoder_tokens, final_logits)
+                if decoder_tokens is not None:
+                    for processor in suppress_processors:
+                        final_logits = processor(decoder_tokens, final_logits)
                 # HF's generate() suppresses EOS below generation_config.min_length
                 # (bart-large-cnn pins 56); without this the loop can EOS on step
                 # one and emit an empty summary.
@@ -3075,7 +3170,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
                 all_finished = bool(any_stop_active and finished_sequences.all().item())
 
-            yield sampled_tokens, final_logits, all_finished
+            yield sampled_tokens, raw_logits, all_finished
 
             if all_finished:
                 return
@@ -3152,7 +3247,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         This implementation is based on HookedTransformer.generate() to ensure consistent behavior.
 
         Args:
-            input: Text string, list of strings, or tensor of tokens
+            input: Text string, list of strings, or tensor of tokens. Audio seq2seq models
+                (e.g. Whisper) take the audio features tensor instead and decode from
+                ``decoder_input`` (one row, shared by every clip, or one per clip), which
+                defaults to the tokenizer's prefix tokens. The audio is encoded once per
+                call, so encoder hooks fire once and decoder hooks fire every step. The
+                default return is the decoder tokens, prompt included, and
+                ``return_type="str"`` gives the transcripts.
             max_new_tokens: Maximum number of tokens to generate
             stop_at_eos: If True, stop generating tokens when the model outputs eos_token
             eos_token_id: The token ID to use for end of sentence
@@ -3179,7 +3280,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 correct generation behavior. Defaults to None (tokenizer default).
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
-            output_logits: If True, return a ModelOutput with sequences and logits tuple
+            output_logits: If True, return a ModelOutput with sequences and a tuple of raw
+                per-step model logits, before decoding constraints or sampling transforms.
             return_cache: If True, also return an ActivationCache for the full prompt +
                 generated sequence, identical to ``run_with_cache(output)`` with the
                 effective prompt attention mask extended over the generated tokens. The call
@@ -3269,7 +3371,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         _encdec_early = hasattr(self.original_model, "config") and getattr(
             self.original_model.config, "is_encoder_decoder", False
         )
-        if isinstance(input, str):
+        audio_decoder_prompt: Optional[torch.Tensor] = None
+        if getattr(self.cfg, "is_audio_seq2seq", False):
+            input_tokens, audio_decoder_prompt = self._audio_generation_inputs(
+                input, multimodal_kwargs, max_new_tokens
+            )
+            input_type = "audio"
+        elif isinstance(input, str):
             if _encdec_early:
                 # Deliberate divergence: prepend_bos is IGNORED for enc-dec
                 # string/list input. Encoder input follows the tokenizer's own
@@ -3606,14 +3714,29 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         # For encoder-decoder models, keep encoder input fixed and grow decoder input
         min_decoder_length = None
+        suppress_processors: list[Any] = []
+        audio_encoder_outputs = None
         if is_encoder_decoder:
             encoder_input = input_tokens.clone()
             decoder_tokens, min_decoder_length = self._encoder_decoder_setup(
-                input_tokens, forced_bos_token_id
+                input_tokens, forced_bos_token_id, decoder_prompt=audio_decoder_prompt
             )
+            suppress_processors = self._encdec_suppress_processors(decoder_tokens.shape[1])
+            if audio_decoder_prompt is not None:
+                # Encode the audio once, as HF's generate does: re-encoding every frame
+                # for each new token dominates the cost. Encoder hooks fire on this pass.
+                # output_attentions=False stops HF from holding every layer's
+                # [frames, frames] attention weights until the pass ends; the bridge's
+                # attention hooks capture their patterns regardless.
+                with torch.no_grad():
+                    encoder = getattr(self.original_model, "get_encoder")()
+                    audio_encoder_outputs = encoder(
+                        **{self.adapter.audio_input_name: encoder_input},
+                        output_attentions=False,
+                    )
 
         try:
-            for sampled_tokens, final_logits, all_finished in self._generate_tokens(
+            for sampled_tokens, raw_logits, all_finished in self._generate_tokens(
                 current_tokens,
                 input_tokens,
                 batch_size,
@@ -3649,10 +3772,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 forced_eos_token_id=(
                     self._encdec_forced_eos_token_id() if is_encoder_decoder else None
                 ),
+                suppress_processors=suppress_processors,
+                encoder_outputs=audio_encoder_outputs,
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
-                    logits_seq_list.append(final_logits.clone())
+                    logits_seq_list.append(raw_logits.clone())
                 if all_finished:
                     break
         finally:
@@ -3879,6 +4004,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             the uncached loop, as generate() does; custom stopping criteria are unsupported.
         """
         self._ensure_generation_supported("generate_stream")
+        if getattr(self.cfg, "is_audio_seq2seq", False):
+            raise NotImplementedError(
+                "generate_stream() is not supported for audio seq2seq models yet; use "
+                "generate(input_features, decoder_input=...) instead."
+            )
         # --- Input parsing (mirrors generate()) ---
         _is_batched_list = isinstance(input, list) and len(input) > 1
         use_past_kv_cache = self._resolve_generation_caching(use_past_kv_cache, _is_batched_list)
@@ -4100,6 +4230,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     forced_eos_token_id=(
                         self._encdec_forced_eos_token_id() if _encdec_early else None
                     ),
+                    suppress_processors=(
+                        self._encdec_suppress_processors(decoder_tokens.shape[1])
+                        if decoder_tokens is not None
+                        else ()
+                    ),
                 )
             ):
                 new_tokens = sampled_tokens.unsqueeze(-1)
@@ -4241,10 +4376,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             {
                 "max_new_tokens": max_new_tokens,
                 "do_sample": do_sample,
-                "temperature": temperature,
                 "pad_token_id": self.tokenizer.eos_token_id,
             }
         )
+        # Temperature only matters when sampling. Whisper's generate samples whenever a
+        # temperature above 0 is passed, so a greedy call must not send one.
+        if do_sample:
+            generation_kwargs["temperature"] = temperature
 
         if top_k is not None:
             generation_kwargs["top_k"] = top_k

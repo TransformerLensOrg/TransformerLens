@@ -26,6 +26,10 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
     (set the language and task with ``bridge.tokenizer.set_prefix_tokens``). Returns
     decoder logits under teacher forcing.
 
+    Transcription: ``bridge.generate(input_features, return_type="str")`` decodes from
+    the same prefix (or ``decoder_input``), applying the checkpoint's
+    ``suppress_tokens`` and ``begin_suppress_tokens`` as HF's generate does.
+
     Encoder front end (channel-first, so its hooks declare position on dim 2):
 
     - ``conv1`` / ``conv2``: the two ``nn.Conv1d`` layers. HF applies GELU outside
@@ -52,10 +56,8 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
     has_final_stack_norm = True
     unembed_name = "proj_out"
     audio_input_name = "input_features"
-    # generate() is a follow-up; it needs the audio-conditioned decode loop.
-    supports_generation = False
-    # P1 (component + forward parity vs HF) only: P2/P4 need generate() and P3
-    # needs weight processing, both follow-ups.
+    # P1 (component + forward parity vs HF) only: P2-P4 drive the model with text
+    # prompts, and P3 also needs weight processing, a follow-up.
     applicable_phases = [1]
 
     def __init__(self, cfg: Any) -> None:

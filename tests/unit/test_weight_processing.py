@@ -1133,7 +1133,7 @@ BIAS_CREATING_CONFIGS = {
 }
 
 
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float64])
 @pytest.mark.parametrize("architecture", sorted(BIAS_CREATING_CONFIGS))
 def test_process_weights_created_biases_keep_model_dtype(architecture, dtype):
     """Biases created by folding take the dtype of the projection they are added to."""
@@ -1179,3 +1179,28 @@ def test_compat_gated_mlp_follows_dtype_change(architecture, dtype):
     assert logits.dtype == dtype
     # gate.hook_in fires only off the processed path.
     assert "blocks.0.mlp.gate.hook_in" not in cache
+
+
+FLOAT64_CONFIGS = {
+    "GPT2LMHeadModel": dict(model_type="gpt2", n_embd=32, n_layer=2, n_head=4),
+    "GPTJForCausalLM": BIAS_CREATING_CONFIGS["GPTJForCausalLM"],
+}
+
+
+@pytest.mark.parametrize("architecture", sorted(FLOAT64_CONFIGS))
+def test_process_weights_keeps_float64_precision(architecture):
+    """A float64 model is processed in float64, not rounded through float32."""
+    hf_config = AutoConfig.for_model(vocab_size=64, **FLOAT64_CONFIGS[architecture])
+    hf_config.architectures = [architecture]
+    hf_model = AutoModelForCausalLM.from_config(hf_config).to(torch.float64).eval()
+    tokens = torch.tensor([[1, 2, 3, 4]])
+    with torch.no_grad():
+        expected = hf_model(tokens).logits.log_softmax(-1)
+    bridge = build_bridge_from_module(hf_model, architecture, hf_config=hf_config)
+
+    bridge.enable_compatibility_mode()
+
+    with torch.no_grad():
+        actual = bridge(tokens).log_softmax(-1)
+    # Weights rounded to float32 put the log-probs about 1e-8 off.
+    torch.testing.assert_close(actual, expected, rtol=0, atol=1e-12)

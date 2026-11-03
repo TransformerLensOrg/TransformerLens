@@ -261,11 +261,15 @@ SPECIAL_TOKENS = [
 ]
 
 
-@pytest.fixture
-def prompt_bridge(tmp_path):
-    """Tiny Whisper with a real byte-level WhisperTokenizer, built without a download.
+SUPPRESS_TOKENS = [10, 11, 12]
 
-    Saved and reloaded so it carries the from_pretrained metadata the boot path relies on.
+
+@pytest.fixture
+def prompt_pair(tmp_path):
+    """Tiny Whisper with a real byte-level WhisperTokenizer, built without a download, plus
+    an unwrapped HF copy. The tokenizer is saved and reloaded so it carries the
+    from_pretrained metadata the boot path relies on; the generation config sets
+    suppress_tokens and begin_suppress_tokens, as Whisper checkpoints do.
     """
     from transformers import WhisperTokenizer
     from transformers.convert_slow_tokenizer import bytes_to_unicode
@@ -300,10 +304,44 @@ def prompt_bridge(tmp_path):
         decoder_start_token_id=vocab["<|startoftranscript|>"],
     )
     cfg.architectures = [ARCH]
+    torch.manual_seed(0)
     model = AutoModelForSpeechSeq2Seq.from_config(cfg, attn_implementation="eager").eval()
+    model.generation_config.suppress_tokens = SUPPRESS_TOKENS
+    model.generation_config.begin_suppress_tokens = [eot]
+    reference = copy.deepcopy(model)
     bridge_cfg = build_bridge_config_from_hf(model.config, ARCH, "whisper-tok", torch.float32)
     adapter = WhisperArchitectureAdapter(bridge_cfg)
-    return TransformerBridge(model, adapter, tokenizer=configure_tokenizer(tokenizer, adapter.cfg))
+    bridge = TransformerBridge(
+        model, adapter, tokenizer=configure_tokenizer(tokenizer, adapter.cfg)
+    )
+    return bridge, reference
+
+
+@pytest.fixture
+def prompt_bridge(prompt_pair):
+    return prompt_pair[0]
+
+
+@pytest.fixture
+def clips():
+    torch.manual_seed(2)
+    return torch.randn(2, N_MELS, 2 * N_FRAMES)
+
+
+def _hf_generate(reference, clips, prompt, max_new_tokens):
+    """HF's own generation loop (GenerationMixin, which applies the generation config's
+    suppress processors) on the unwrapped copy."""
+    from transformers import GenerationMixin
+
+    with torch.no_grad():
+        out = GenerationMixin.generate(
+            reference,
+            input_features=clips,
+            decoder_input_ids=prompt.repeat(clips.shape[0], 1),
+            do_sample=False,
+            max_new_tokens=max_new_tokens,
+        )
+    return out if isinstance(out, torch.Tensor) else out.sequences
 
 
 class TestWhisperTinyDecoderPrompt:
@@ -330,6 +368,90 @@ class TestWhisperTinyDecoderPrompt:
         assert logits.shape == (3, prompt.shape[1], prompt_bridge.cfg.d_vocab)
 
 
+class TestWhisperTinyGenerate:
+    def test_greedy_matches_hf_generate(self, prompt_pair, clips):
+        """Default prompt is the tokenizer prefix; output keeps it, as HF's does."""
+        bridge, reference = prompt_pair
+        prompt = torch.tensor([bridge.tokenizer.prefix_tokens])
+        tokens = bridge.generate(clips, do_sample=False, max_new_tokens=8, verbose=False)
+        assert torch.equal(tokens, _hf_generate(reference, clips, prompt, 8))
+        assert torch.equal(tokens[:, : prompt.shape[1]], prompt.repeat(2, 1))
+
+    def test_explicit_decoder_input_matches_hf_generate(self, prompt_pair, clips):
+        bridge, reference = prompt_pair
+        prompt = bridge.to_tokens(" a")
+        tokens = bridge.generate(
+            clips, decoder_input=prompt, do_sample=False, max_new_tokens=6, verbose=False
+        )
+        assert torch.equal(tokens, _hf_generate(reference, clips, prompt, 6))
+
+    def test_suppressed_tokens_are_never_generated(self, prompt_pair, clips):
+        bridge, reference = prompt_pair
+        generation_config = bridge.original_model.generation_config
+        prompt_len = len(bridge.tokenizer.prefix_tokens)
+        generation_config.suppress_tokens = None
+        generation_config.begin_suppress_tokens = None
+        free = bridge.generate(clips, do_sample=False, max_new_tokens=4, verbose=False)
+        favourite = int(free[0, prompt_len])
+        generation_config.suppress_tokens = [favourite]
+        generation_config.begin_suppress_tokens = [int(free[0, prompt_len + 1])]
+        reference.generation_config.suppress_tokens = [favourite]
+        reference.generation_config.begin_suppress_tokens = [int(free[0, prompt_len + 1])]
+        tokens = bridge.generate(clips, do_sample=False, max_new_tokens=4, verbose=False)
+        assert favourite not in tokens[:, prompt_len:].tolist()[0]
+        assert int(tokens[0, prompt_len]) != int(free[0, prompt_len + 1])
+        prompt = torch.tensor([bridge.tokenizer.prefix_tokens])
+        assert torch.equal(tokens, _hf_generate(reference, clips, prompt, 4))
+
+    def test_return_type_str_gives_transcripts(self, prompt_bridge, clips):
+        tokens = prompt_bridge.generate(clips, do_sample=False, max_new_tokens=5, verbose=False)
+        texts = prompt_bridge.generate(
+            clips, do_sample=False, max_new_tokens=5, verbose=False, return_type="str"
+        )
+        expected = [prompt_bridge.tokenizer.decode(t, skip_special_tokens=True) for t in tokens]
+        assert texts == expected
+        single = prompt_bridge.generate(
+            clips[:1], do_sample=False, max_new_tokens=5, verbose=False, return_type="str"
+        )
+        assert single == expected[0]
+
+    def test_encoder_runs_once_decoder_every_step(self, prompt_bridge, clips):
+        calls = {"encoder": 0, "pattern": 0, "decoder": 0}
+
+        def count(name):
+            def hook(tensor, hook):
+                calls[name] += 1
+                return tensor
+
+            return hook
+
+        fwd_hooks = [
+            ("encoder_blocks.0.hook_out", count("encoder")),
+            ("encoder_blocks.0.attn.hook_pattern", count("pattern")),
+            ("decoder_blocks.0.hook_out", count("decoder")),
+        ]
+        with prompt_bridge.hooks(fwd_hooks=fwd_hooks):
+            tokens = prompt_bridge.generate(
+                clips, do_sample=False, max_new_tokens=5, stop_at_eos=False, verbose=False
+            )
+        prompt_len = len(prompt_bridge.tokenizer.prefix_tokens)
+        assert calls["encoder"] == 1
+        assert calls["pattern"] == 1
+        assert calls["decoder"] == tokens.shape[1] - prompt_len
+
+    def test_text_input_rejected(self, prompt_bridge):
+        with pytest.raises(ValueError, match="audio features"):
+            prompt_bridge.generate("hello", verbose=False)
+
+    def test_too_many_new_tokens_rejected(self, prompt_bridge, clips):
+        with pytest.raises(ValueError, match="positions"):
+            prompt_bridge.generate(clips, max_new_tokens=prompt_bridge.cfg.n_ctx, verbose=False)
+
+    def test_generate_stream_not_supported(self, prompt_bridge, clips):
+        with pytest.raises(NotImplementedError, match="generate_stream"):
+            next(prompt_bridge.generate_stream(clips, verbose=False))
+
+
 class TestWhisperTinyErrors:
     def test_decoder_input_required(self, bridge, features):
         with pytest.raises(ValueError, match="decoder_input"):
@@ -342,10 +464,6 @@ class TestWhisperTinyErrors:
     def test_input_values_rejected(self, bridge, features, decoder_ids):
         with pytest.raises(ValueError, match="input_values"):
             bridge(features, input_values=features, decoder_input=decoder_ids)
-
-    def test_generate_not_supported(self, bridge, features):
-        with pytest.raises(NotImplementedError):
-            bridge.generate(features, max_new_tokens=2, verbose=False)
 
     def test_compatibility_mode_not_supported(self, bridge):
         with pytest.raises(NotImplementedError, match="audio seq2seq"):

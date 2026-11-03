@@ -18,6 +18,15 @@ def sample_tokens(bridge):
     return bridge.tokenizer("the capital of france is", return_tensors="pt").input_ids
 
 
+class TestOpenAIGPTStopAtLayer:
+    def test_stop_after_the_last_block(self, bridge, sample_tokens):
+        """HF's block returns a list here; there is no ln_final, so unembed gives the logits."""
+        with torch.no_grad():
+            residual = bridge(sample_tokens, stop_at_layer=12)
+            assert residual.shape[-1] == bridge.cfg.d_model
+            assert torch.allclose(bridge.unembed(residual), bridge(sample_tokens))
+
+
 class TestOpenAIGPTBridgeCreation:
     def test_adapter_and_structure(self, bridge):
         from transformer_lens.model_bridge.supported_architectures.openai_gpt import (

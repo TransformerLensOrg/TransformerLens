@@ -1139,6 +1139,19 @@ class BridgeCore:
         )
 
     @staticmethod
+    def _resolve_stop_at_layer(stop_at_layer: int, n_blocks: int) -> int:
+        """Map ``stop_at_layer`` to ``[0, n_blocks]``, with ``n_blocks`` past the last block.
+
+        Any other value would run to completion and return logits as if it had stopped.
+        """
+        resolved = n_blocks + stop_at_layer if stop_at_layer < 0 else stop_at_layer
+        if not 0 <= resolved <= n_blocks:
+            raise ValueError(
+                f"stop_at_layer={stop_at_layer} out of range [{-n_blocks}, {n_blocks}]."
+            )
+        return resolved
+
+    @staticmethod
     def _remove_temporary_hook(
         hook_point: HookPoint, direction: Literal["fwd", "bwd"], handle: LensHandle
     ) -> None:
@@ -1275,10 +1288,7 @@ class BridgeCore:
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                effective_stop_layer = len(self.blocks) + stop_at_layer
-            else:
-                effective_stop_layer = stop_at_layer
+            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
         effective_start_layer = None
         if start_at_layer is not None and hasattr(self, "blocks"):
             effective_start_layer = (
@@ -1535,10 +1545,20 @@ class BridgeCore:
         hook_dict = self.hook_dict
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                effective_stop_layer = len(self.blocks) + stop_at_layer
+            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
+            if effective_stop_layer == len(self.blocks):
+                # No block follows the last for a hook_in to stop on; forward stops on its exit.
+                kwargs["stop_at_layer"] = effective_stop_layer
             else:
-                effective_stop_layer = stop_at_layer
+                # Stop at the beginning of the specified block, not at the end of the previous block
+                block_hook_name = f"blocks.{effective_stop_layer}.hook_in"
+                if block_hook_name in hook_dict:
+
+                    def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                        raise StopAtLayerException(tensor)
+
+                    stop_hook_point = hook_dict[block_hook_name]
+                    stop_hook_fn = stop_hook
         effective_start_layer = None
         if start_at_layer is not None and hasattr(self, "blocks"):
             effective_start_layer = (
@@ -1600,21 +1620,6 @@ class BridgeCore:
                 input_ids = input_ids.to(target_device)
             kwargs["input_ids"] = input_ids
             del kwargs["input"]
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                stop_at_layer = len(self.blocks) + stop_at_layer
-            last_layer_to_process = stop_at_layer - 1
-
-            def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor)
-
-            if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
-                # Stop at the beginning of the specified block, not at the end of the previous block
-                block_hook_name = f"blocks.{stop_at_layer}.hook_in"
-                hook_dict = self.hook_dict
-                if block_hook_name in hook_dict:
-                    stop_hook_point = hook_dict[block_hook_name]
-                    stop_hook_fn = stop_hook
         filtered_kwargs = kwargs.copy()
         # ``cache_device`` is honored by ``make_cache_hook`` above (``tensor.detach().to(cache_device)``);
         # the model and inputs stay where the caller put them, matching ``ActivationCache.to``.
