@@ -131,6 +131,16 @@ def _phases_to_run(arch: str, phases: list[int]) -> list[int]:
     return [p for p in phases if p in applicable or p in MODALITY_PHASES]
 
 
+def _runs_phase_4(candidates: list["ModelCandidate"], phases: Optional[list[int]]) -> bool:
+    """Whether any candidate runs Phase 4, so the text-quality judge is needed."""
+    for candidate in candidates:
+        arch = candidate.architecture_id
+        requested = phases if phases is not None else _default_phases_for_architecture(arch)
+        if 4 in _phases_to_run(arch, requested):
+            return True
+    return False
+
+
 def _full_and_core_phases(arch: str) -> tuple[set[int], set[int]]:
     """``(full verification set, core subset)`` for this architecture -- the single
     source for both default phase selection and the status-writing decision."""
@@ -954,10 +964,11 @@ def verify_models(
     # phases stays None = full verification for the model.
 
     # Pre-load the Phase-4 judge so it persists across all models in the batch
-    # instead of being loaded and destroyed for each one.
+    # instead of being loaded and destroyed for each one. Only when some model
+    # runs Phase 4: otherwise it holds ~2.3 GB the models need.
     _judge_model = None
     _judge_tokenizer = None
-    if phases is None or 4 in phases:
+    if _runs_phase_4(candidates, phases):
         try:
             from transformer_lens.benchmarks.text_quality import (
                 JUDGE_MODEL_ID,

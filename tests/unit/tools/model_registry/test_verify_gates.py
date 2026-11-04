@@ -18,11 +18,13 @@ from types import SimpleNamespace
 from transformer_lens.benchmarks.component_outputs import _is_ssm_mixer_internal
 from transformer_lens.benchmarks.utils import BenchmarkSeverity
 from transformer_lens.tools.model_registry.verify_models import (
+    ModelCandidate,
     _check_phase_scores,
     _default_phases_for_architecture,
     _full_and_core_phases,
     _measured_nothing,
     _phases_to_run,
+    _runs_phase_4,
 )
 
 SSM_ARCHS = ["MambaForCausalLM", "Mamba2ForCausalLM", "NemotronHForCausalLM"]
@@ -47,7 +49,7 @@ class TestPhasesToRun:
         assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [1, 9]
 
     def test_whisper_runs_phase_1_only(self):
-        # P2/P4 need generate() and P3 weight processing; both are follow-ups.
+        # P2-P4 drive the model with text prompts; Whisper's encoder needs audio features.
         assert _phases_to_run("WhisperForConditionalGeneration", [1, 2, 3, 4]) == [1]
 
     def test_unknown_architecture_defaults_to_all_phases(self):
@@ -220,3 +222,24 @@ class TestPublishedParamCount:
 
         monkeypatch.setattr(huggingface_hub, "HfApi", _Boom)
         assert verify_models.published_param_count("any/model") is None
+
+
+class TestRunsPhase4:
+    """The Phase-4 judge (~2.3 GB) is pre-loaded only when some model runs Phase 4."""
+
+    @staticmethod
+    def _candidates(*archs):
+        return [ModelCandidate(model_id=f"m{i}", architecture_id=a) for i, a in enumerate(archs)]
+
+    def test_text_model_needs_the_judge(self):
+        assert _runs_phase_4(self._candidates("GPT2LMHeadModel"), None)
+
+    def test_phase_1_only_architecture_does_not(self):
+        assert not _runs_phase_4(self._candidates("WhisperForConditionalGeneration"), None)
+
+    def test_any_model_in_a_batch_that_runs_phase_4_needs_it(self):
+        batch = self._candidates("WhisperForConditionalGeneration", "GPT2LMHeadModel")
+        assert _runs_phase_4(batch, None)
+
+    def test_requested_phases_without_4_do_not(self):
+        assert not _runs_phase_4(self._candidates("GPT2LMHeadModel"), [1, 2])
