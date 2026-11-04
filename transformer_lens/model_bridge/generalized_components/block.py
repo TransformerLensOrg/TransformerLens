@@ -277,7 +277,7 @@ class BlockBridge(GeneralizedComponent):
         """Hook the primary tensor in the output and return the result.
 
         Args:
-            output: Raw output from the original component (tensor or tuple).
+            output: Raw output from the original component (tensor, tuple or list).
             wrap_single_element: If True, single-element tuples stay as tuples after
                 hooking (default, required by most HF models). If False, single-element
                 tuples are unwrapped to a bare tensor (Bloom convention).
@@ -294,6 +294,9 @@ class BlockBridge(GeneralizedComponent):
                     return (first,) if wrap_single_element else first
                 output = (first,) + output[1:]
             return output
+        # OpenAI GPT's block returns a list, and its parent model indexes it.
+        if isinstance(output, list) and len(output) > 0 and isinstance(output[0], torch.Tensor):
+            return [self.hook_out(output[0]), *output[1:]]
         if isinstance(output, torch.Tensor):
             output = self.hook_out(output)
             if force_tuple_for_bare_tensor and wrap_single_element:
