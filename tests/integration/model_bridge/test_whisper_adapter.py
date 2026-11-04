@@ -168,6 +168,79 @@ class TestWhisperGenerate:
         assert torch.equal(ours, expected)
 
 
+class TestWhisperPromptAndTimestamps:
+    """generate() builds HF's prompt; long audio goes through hf_generate, under the hooks."""
+
+    @staticmethod
+    def _generated(tokens, prompt_len, eot):
+        rows = []
+        for row in tokens[:, prompt_len:].tolist():
+            rows.append(row[: row.index(eot)] if eot in row else row)
+        return rows
+
+    def test_default_prompt_detects_the_language_as_hf_does(self, bridge, hf_eager, features):
+        tokens = bridge.generate(features, do_sample=False, max_new_tokens=20, verbose=False)
+        detected = hf_eager.detect_language(input_features=features).tolist()
+        tokenizer = bridge.processor.tokenizer
+        prompt = [tokenizer.convert_tokens_to_ids("<|startoftranscript|>"), detected[0]]
+        prompt += tokenizer.convert_tokens_to_ids(["<|transcribe|>", "<|notimestamps|>"])
+        assert tokens[0, :4].tolist() == prompt
+        with torch.no_grad():
+            expected = hf_eager.generate(features, do_sample=False, max_new_tokens=20)
+        eot = bridge.tokenizer.eos_token_id
+        assert self._generated(tokens, 4, eot) == [
+            [t for t in row if t != eot] for row in expected.tolist()
+        ]
+
+    def test_timestamps_match_hf(self, bridge, hf_eager, features):
+        tokens = bridge.generate(
+            features,
+            language="en",
+            return_timestamps=True,
+            do_sample=False,
+            max_new_tokens=20,
+            verbose=False,
+        )
+        with torch.no_grad():
+            expected = hf_eager.generate(
+                features, language="en", return_timestamps=True, do_sample=False, max_new_tokens=20
+            )
+        expected = expected if isinstance(expected, torch.Tensor) else expected["sequences"]
+        eot = bridge.tokenizer.eos_token_id
+        assert self._generated(tokens, 3, eot) == [
+            [t for t in row if t != eot] for row in expected.tolist()
+        ]
+
+    def test_long_form_hf_generate_fires_the_hooks_on_every_window(self, bridge, hf_eager):
+        """45 s of audio: HF's sequential long-form decoding, which runs through the
+        bridge's components, matches the unwrapped model."""
+        t = np.arange(45 * 16000) / 16000.0
+        audio = (0.5 * np.sin(2 * np.pi * (220.0 + 10.0 * t) * t)).astype(np.float32)
+        inputs = bridge.processor(
+            audio,
+            sampling_rate=16000,
+            return_tensors="pt",
+            truncation=False,
+            padding="longest",
+            return_attention_mask=True,
+        )
+        assert inputs.input_features.shape[-1] > 3000
+        kwargs = dict(
+            attention_mask=inputs.attention_mask,
+            language="en",
+            return_timestamps=True,
+            do_sample=False,
+        )
+        calls = []
+        hook = ("encoder_blocks.0.hook_out", lambda tensor, hook: calls.append(1))
+        with torch.no_grad(), bridge.hooks(fwd_hooks=[hook]):
+            ours = bridge.hf_generate(inputs.input_features, **kwargs)
+        with torch.no_grad():
+            expected = hf_eager.generate(inputs.input_features, **kwargs)
+        assert torch.equal(ours, expected)
+        assert len(calls) >= 2
+
+
 class TestWhisperCompatibilityMode:
     """Folded, centered weights on whisper-tiny: same predictions as HF."""
 

@@ -2602,12 +2602,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
     def _audio_generation_inputs(
         self, input: Any, kwargs: Dict[str, Any], max_new_tokens: int
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Audio features and decoder prompt for audio seq2seq generation.
+    ) -> tuple[torch.Tensor, torch.Tensor, bool]:
+        """Audio features, decoder prompt and timestamp flag for audio seq2seq generation.
 
-        The prompt is ``decoder_input`` if given, else the tokenizer's prefix tokens
-        (Whisper: <|startoftranscript|>, the language and task set with
-        ``tokenizer.set_prefix_tokens``, <|notimestamps|>), else decoder_start alone.
+        The prompt is ``decoder_input`` if given. Otherwise it is built as HF's Whisper
+        generate builds it: <|startoftranscript|>, the language (``language``, else
+        detected from the audio on a multilingual checkpoint), the task (``task``,
+        default transcribe), and <|notimestamps|> unless ``return_timestamps``. A
+        tokenizer whose prefix already names a language (``tokenizer.set_prefix_tokens``)
+        supplies the prompt instead, as does a checkpoint without language tokens.
         """
         if not (isinstance(input, torch.Tensor) and input.is_floating_point()):
             raise ValueError(
@@ -2616,14 +2619,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 "decoder prompt as decoder_input."
             )
         features = input.to(self.cfg.device)
+        language = kwargs.pop("language", None)
+        task = kwargs.pop("task", None)
+        return_timestamps = bool(kwargs.pop("return_timestamps", False))
         prompt = kwargs.pop("decoder_input", None)
         if prompt is None:
             prompt = kwargs.pop("decoder_input_ids", None)
+        if prompt is not None and (language is not None or task is not None):
+            raise ValueError(
+                "Pass the decoder prompt either as decoder_input or through language and "
+                "task, not both."
+            )
         if prompt is None:
-            prefix = getattr(self.tokenizer, "prefix_tokens", None) or [
-                self.cfg.decoder_start_token_id
-            ]
-            prompt = torch.tensor([prefix])
+            prompt = self._audio_decoder_prompt(features, language, task, return_timestamps)
         prompt = self._align_decoder_batch(
             torch.as_tensor(prompt, device=self.cfg.device), features.shape[0], "decoder_input"
         )
@@ -2632,7 +2640,117 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 f"The decoder prompt ({prompt.shape[1]} tokens) plus max_new_tokens "
                 f"({max_new_tokens}) exceeds the decoder's {self.cfg.n_ctx} positions."
             )
-        return features, prompt
+        return features, prompt, return_timestamps
+
+    def _audio_decoder_prompt(
+        self,
+        features: torch.Tensor,
+        language: Optional[Union[str, Sequence[str]]],
+        task: Optional[str],
+        return_timestamps: bool,
+    ) -> torch.Tensor:
+        """The default decoder prompt for audio seq2seq generation; see
+        :meth:`_audio_generation_inputs`."""
+        generation_config = getattr(self.original_model, "generation_config", None)
+        lang_to_id = getattr(generation_config, "lang_to_id", None) or {}
+        task_to_id = getattr(generation_config, "task_to_id", None) or {}
+        no_timestamps = getattr(generation_config, "no_timestamps_token_id", None)
+        start = getattr(generation_config, "decoder_start_token_id", None)
+        if start is None:
+            start = self.cfg.decoder_start_token_id
+        if start is None:
+            raise ValueError("Audio seq2seq generation needs a decoder_start_token_id.")
+        tokenizer_language = getattr(self.tokenizer, "language", None)
+
+        if (language is not None or task is not None) and not lang_to_id:
+            raise ValueError(
+                "This checkpoint's generation config has no language tokens (an English-only "
+                "model), so language and task do not apply."
+            )
+        if not lang_to_id or (language is None and task is None and tokenizer_language):
+            prefix = list(getattr(self.tokenizer, "prefix_tokens", None) or [start])
+            if return_timestamps and prefix and prefix[-1] == no_timestamps:
+                prefix = prefix[:-1]
+            return torch.tensor([prefix])
+
+        if task is not None and task not in task_to_id:
+            raise ValueError(f"task must be one of {sorted(task_to_id)}, got {task!r}")
+
+        # HF's rules (WhisperGenerationMixin._retrieve_init_tokens): with neither language
+        # nor task, the checkpoint's forced_decoder_ids extend the prompt; real checkpoints
+        # force [[1, None], [2, <|transcribe|>]], where None means detect the language.
+        init: list[Optional[int]] = [start]
+        if language is None and task is None:
+            forced = getattr(generation_config, "forced_decoder_ids", None) or getattr(
+                self.original_model.config, "forced_decoder_ids", None
+            )
+            for position, token in forced or []:
+                if position != len(init):
+                    break
+                init.append(token)
+
+        batch = features.shape[0]
+        if language is not None:
+            languages = [language] * batch if isinstance(language, str) else list(language)
+            if len(languages) != batch:
+                raise ValueError(
+                    f"language has {len(languages)} entries but the audio features have "
+                    f"{batch} clips; pass one language, or one per clip."
+                )
+            lang_ids = [self._whisper_language_id(lang, lang_to_id) for lang in languages]
+        elif len(init) <= 1 or init[1] is None:
+            detected = self._detect_audio_language(features, start, list(lang_to_id.values()))
+            lang_ids = detected.tolist()
+        else:
+            lang_ids = [cast(int, init[1])] * batch
+
+        task_ids = set(task_to_id.values())
+        rows = []
+        for lang_id in lang_ids:
+            row = [start, lang_id] + init[2:]
+            if task is not None:
+                if any(token in task_ids for token in row):
+                    row = [task_to_id[task] if token in task_ids else token for token in row]
+                else:
+                    row.append(task_to_id[task])
+            elif language is not None and "transcribe" in task_to_id:
+                if not any(token in task_ids for token in row):
+                    row.append(task_to_id["transcribe"])
+            if not return_timestamps and no_timestamps is not None and row[-1] != no_timestamps:
+                row.append(no_timestamps)
+            elif return_timestamps and row[-1] == no_timestamps:
+                row = row[:-1]
+            rows.append([token for token in row if token is not None])
+        return torch.tensor(rows)
+
+    @staticmethod
+    def _whisper_language_id(language: str, lang_to_id: Dict[str, int]) -> int:
+        """A language token id from a code ("en"), a name ("english") or a token ("<|en|>")."""
+        from transformers.models.whisper.tokenization_whisper import TO_LANGUAGE_CODE
+
+        name = language.lower()
+        if name in lang_to_id:
+            token = name
+        elif name in TO_LANGUAGE_CODE:
+            token = f"<|{TO_LANGUAGE_CODE[name]}|>"
+        else:
+            token = f"<|{name}|>"
+        if token not in lang_to_id:
+            raise ValueError(f"Unsupported language {language!r} for this checkpoint.")
+        return lang_to_id[token]
+
+    def _detect_audio_language(
+        self, features: torch.Tensor, start: int, language_ids: list[int]
+    ) -> torch.Tensor:
+        """The most likely language token per clip after <|startoftranscript|>, as HF's
+        Whisper ``detect_language`` picks it. One forward pass through the bridge, so
+        the encoder and decoder hooks fire on it too."""
+        start_ids = torch.full((features.shape[0], 1), start, device=features.device)
+        with torch.no_grad():
+            logits = self(features, decoder_input=start_ids)[:, -1]
+        allowed = torch.full_like(logits, float("-inf"))
+        allowed[:, language_ids] = 0.0
+        return (logits + allowed).argmax(dim=-1)
 
     def _setup_start_at_layer(self, input: Any, start_at_layer: int) -> torch.Tensor:
         """Arm residual-stream injection at block ``start_at_layer``.
@@ -2802,6 +2920,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 SuppressTokensAtBeginLogitsProcessor(begin_suppress, prompt_length, device=device)
             )
         return processors
+
+    def _whisper_timestamp_processor(self, prompt_length: int) -> Any:
+        """transformers' Whisper timestamp rules, as HF's Whisper generate applies them
+        with return_timestamps: timestamps come in pairs, never decrease, and the first
+        is at most max_initial_timestamp_index."""
+        generation_config = getattr(self.original_model, "generation_config", None)
+        if (
+            generation_config is None
+            or getattr(generation_config, "no_timestamps_token_id", None) is None
+        ):
+            raise ValueError(
+                "return_timestamps needs generation_config.no_timestamps_token_id, which "
+                "this checkpoint does not set."
+            )
+        from transformers.generation.logits_process import (
+            WhisperTimeStampLogitsProcessor,
+        )
+
+        return WhisperTimeStampLogitsProcessor(generation_config, begin_index=prompt_length)
 
     def _encoder_decoder_setup(
         self,
@@ -3276,11 +3413,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Args:
             input: Text string, list of strings, or tensor of tokens. Audio seq2seq models
                 (e.g. Whisper) take the audio features tensor instead and decode from
-                ``decoder_input`` (one row, shared by every clip, or one per clip), which
-                defaults to the tokenizer's prefix tokens. The audio is encoded once per
-                call, so encoder hooks fire once and decoder hooks fire every step. The
-                default return is the decoder tokens, prompt included, and
-                ``return_type="str"`` gives the transcripts.
+                ``decoder_input`` (one row, shared by every clip, or one per clip). Without
+                it, the prompt is built as HF's Whisper generate builds it, from the
+                ``language`` (a code, name or token, or one per clip; detected from the
+                audio when omitted on a multilingual checkpoint) and ``task``
+                ("transcribe" or "translate") keyword arguments; ``return_timestamps=True``
+                drops <|notimestamps|> and applies Whisper's timestamp rules. The audio is
+                encoded once per call, so encoder hooks fire once (twice when the language
+                is detected) and decoder hooks fire every step. The default return is the
+                decoder tokens, prompt included, and ``return_type="str"`` gives the
+                transcripts. For audio longer than one 30-second window, use
+                :meth:`hf_generate` with the processor's untruncated features and
+                attention mask: HF's long-form decoding runs through the bridge's
+                components, so their hooks fire on every window.
             max_new_tokens: Maximum number of tokens to generate
             stop_at_eos: If True, stop generating tokens when the model outputs eos_token
             eos_token_id: The token ID to use for end of sentence
@@ -3399,10 +3544,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             self.original_model.config, "is_encoder_decoder", False
         )
         audio_decoder_prompt: Optional[torch.Tensor] = None
+        audio_timestamps = False
         if getattr(self.cfg, "is_audio_seq2seq", False):
-            input_tokens, audio_decoder_prompt = self._audio_generation_inputs(
-                input, multimodal_kwargs, max_new_tokens
-            )
+            (
+                input_tokens,
+                audio_decoder_prompt,
+                audio_timestamps,
+            ) = self._audio_generation_inputs(input, multimodal_kwargs, max_new_tokens)
             input_type = "audio"
         elif isinstance(input, str):
             if _encdec_early:
@@ -3749,6 +3897,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 input_tokens, forced_bos_token_id, decoder_prompt=audio_decoder_prompt
             )
             suppress_processors = self._encdec_suppress_processors(decoder_tokens.shape[1])
+            if audio_timestamps:
+                suppress_processors.append(
+                    self._whisper_timestamp_processor(decoder_tokens.shape[1])
+                )
             if audio_decoder_prompt is not None:
                 # Encode the audio once, as HF's generate does: re-encoding every frame
                 # for each new token dominates the cost. Encoder hooks fire on this pass.
