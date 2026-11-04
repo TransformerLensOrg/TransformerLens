@@ -357,7 +357,7 @@ class ActivationCache:
             batch_slice = Slice(batch_slice)
         batch_slice = cast(Slice, batch_slice)  # mypy can't seem to infer this
         assert (
-            self.has_batch_dim or batch_slice.mode == "empty"
+            self.has_batch_dim or batch_slice.mode == "identity"
         ), "Cannot index into a cache without a batch dim"
         still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
         batch_size = self._batch_size()
