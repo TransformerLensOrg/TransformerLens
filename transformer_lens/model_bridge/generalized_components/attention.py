@@ -585,8 +585,9 @@ class AttentionBridge(GeneralizedComponent):
         """Apply causal and optional attention masking to reconstructed scores.
 
         HuggingFace-style 4D masks already encode causal semantics, so they are
-        treated as authoritative. Lower-rank masks do not, so the local causal
-        mask is still applied before adding the caller-provided padding mask.
+        treated as authoritative. Lower-rank masks and 4D masks broadcast over the
+        query rows ([batch, 1, 1, kv_seq_len], as GPT-1 passes) do not, so the local
+        causal mask is still applied before adding the caller-provided padding mask.
 
         Args:
             attn_scores: Attention scores [batch, heads, q_seq_len, kv_seq_len].
@@ -599,7 +600,11 @@ class AttentionBridge(GeneralizedComponent):
             q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
         mask_value = -torch.inf if self.compatibility_mode else min_dtype
-        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
+        use_direct_hf_mask = (
+            attention_mask is not None
+            and attention_mask.ndim >= 4
+            and attention_mask.shape[-2] != 1
+        )
         # Bidirectional attention (encoders) and cross-attention have no causal
         # structure, so only synthesize the triangular mask for causal self-attention.
         apply_causal = self.is_causal and not self.is_cross_attention

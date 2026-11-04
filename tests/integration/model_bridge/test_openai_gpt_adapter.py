@@ -1,9 +1,13 @@
 """Integration tests for the OpenAI GPT-1 architecture adapter."""
 
+import copy
+
 import pytest
 import torch
+from transformers import OpenAIGPTConfig, OpenAIGPTLMHeadModel
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources import build_bridge_from_module
 
 MODEL = "openai-community/openai-gpt"
 
@@ -80,3 +84,48 @@ class TestOpenAIGPTGeneration:
         )
         assert isinstance(out, str)
         assert len(out) > len("the capital of france is")
+
+
+@pytest.fixture(scope="module")
+def tiny_models():
+    """A tiny random bridge and an unwrapped copy: the bridge wraps the blocks it is given."""
+    torch.manual_seed(0)
+    config = OpenAIGPTConfig(vocab_size=64, n_embd=32, n_layer=2, n_head=4, n_positions=16)
+    config.architectures = ["OpenAIGPTLMHeadModel"]
+    hf_model = OpenAIGPTLMHeadModel(config).eval()
+    reference = copy.deepcopy(hf_model)
+    return build_bridge_from_module(hf_model, "OpenAIGPTLMHeadModel", hf_config=config), reference
+
+
+class TestOpenAIGPTAttentionMask:
+    """GPT-1 hands its blocks a [batch, 1, 1, seq] padding mask, with the causal
+    mask left to the attention module."""
+
+    PAD = 63
+
+    def test_right_padded_batch_matches_hf(self, tiny_models):
+        bridge, reference = tiny_models
+        tokens = torch.tensor([[11, 12, 13, 14], [21, 22, self.PAD, self.PAD]])
+        mask = (tokens != self.PAD).long()
+        with torch.no_grad():
+            logits = bridge(tokens, attention_mask=mask, prepend_bos=False)
+            expected = reference(tokens, attention_mask=mask).logits
+        assert torch.allclose(logits, expected, atol=1e-5)
+
+    def test_left_padded_row_matches_the_row_alone(self, tiny_models):
+        bridge, reference = tiny_models
+        tokens = torch.tensor([[11, 12, 13, 14], [self.PAD, self.PAD, 21, 22]])
+        with torch.no_grad():
+            logits = bridge(tokens, attention_mask=(tokens != self.PAD).long(), prepend_bos=False)
+            expected = reference(torch.tensor([[21, 22]])).logits
+        assert torch.allclose(logits[1, 2:], expected[0], atol=1e-5)
+
+    def test_mask_does_not_open_attention_to_later_tokens(self, tiny_models):
+        bridge, _ = tiny_models
+        tokens = torch.tensor([[11, 12, 13, 14]])
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(
+                tokens, attention_mask=torch.ones_like(tokens), prepend_bos=False
+            )
+        pattern = cache["blocks.0.attn.hook_pattern"]
+        assert torch.all(pattern.triu(diagonal=1) == 0)
