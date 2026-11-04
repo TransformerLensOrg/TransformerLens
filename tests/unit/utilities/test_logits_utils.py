@@ -136,6 +136,33 @@ class TestSampleLogitsTemperature:
         out = sample_logits(logits, temperature=0.0, repetition_penalty=100.0, tokens=tokens)
         assert out.tolist() == [2]
 
+    @pytest.mark.parametrize("temperature", [-1.0, -0.001])
+    def test_negative_temperature_raises(self, temperature):
+        # A negative temperature used to flip the logits and sample the least likely token.
+        with pytest.raises(ValueError, match="temperature must be non-negative"):
+            sample_logits(torch.tensor([[10.0, 0.0, -10.0]]), temperature=temperature)
+
+
+class TestSampleLogitsRepetitionPenalty:
+    @pytest.mark.parametrize("temperature", [1.0, 0.0])
+    @pytest.mark.parametrize("penalty", [0.0, -2.0])
+    def test_non_positive_penalty_raises(self, temperature, penalty):
+        tokens = torch.zeros((1, 3), dtype=torch.long)
+        with pytest.raises(ValueError, match="repetition_penalty must be positive"):
+            sample_logits(
+                torch.randn(1, 4),
+                temperature=temperature,
+                repetition_penalty=penalty,
+                tokens=tokens,
+            )
+
+    def test_penalty_below_one_is_allowed(self):
+        # Values in (0, 1) encourage repetition (as in HuggingFace) and stay valid.
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        tokens = torch.tensor([[1]])
+        out = sample_logits(logits, temperature=0.0, repetition_penalty=0.5, tokens=tokens)
+        assert out.tolist() == [1]  # seen token 1 goes 2.0 -> 4.0 and beats token 2
+
 
 class TestSampleLogitsTopP:
     def test_top_p_keeps_dominant_token(self):
