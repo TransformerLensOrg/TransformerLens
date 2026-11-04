@@ -438,6 +438,7 @@ jobs:
           # - "Interactive_Neuroscope"
           - "Jacobian_Lens_Coordinate_Patch_Benchmark_Demo"
           - "Main_Demo"
+          - "Natural_Language_Autoencoders_Demo"
           # - "No_Position_Experiment"
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"

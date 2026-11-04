@@ -40,7 +40,7 @@ The two core notebooks, which pair with the links in [Where To Start](#where-to-
 
 - [**SVD Interpreter Demo**](https://colab.research.google.com/github/TransformerLensOrg/TransformerLens/blob/main/demos/SVD_Interpreter_Demo.ipynb) - Based on the [Conjecture post](https://www.lesswrong.com/posts/mkbGjzxD8d8XqKHzA/the-singular-value-decompositions-of-transformer-weight#Directly_editing_SVD_representations) about how the singular value decompositions of transformer matrices are surprisingly interpretable, this demo shows how to use TransformerLens to reproduce this and investigate further.
 
-The Backward Lens, Jacobian Lens and SVD Circuits notebooks are linked from [Choosing an analysis tool](analysis_tools.md) and [Fitting a Jacobian lens](jacobian_lens_fitting.md), and the SwiGLU Gate-Sign notebook from [The Hook System](hook_system.md).
+The Backward Lens, Jacobian Lens, Natural Language Autoencoders and SVD Circuits notebooks are linked from [Choosing an analysis tool](analysis_tools.md) and [Fitting a Jacobian lens](jacobian_lens_fitting.md), and the SwiGLU Gate-Sign notebook from [The Hook System](hook_system.md).
 
 ### Models and architectures
 
