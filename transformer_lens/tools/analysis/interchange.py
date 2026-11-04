@@ -26,8 +26,11 @@ controls to train the same way: :func:`arbitrary_targets` for an arbitrary-label
 learned subspace with both, and with the placebo and the baselines.
 
 Works with any model exposing the hook API (``TransformerBridge`` or a ``HookedRootModule``).
-Activations at the hook must be ``[batch, d_model]``, or ``[batch, pos, d_model]`` with one
-position index per example.
+Activations at the hook must be ``[batch, d_model]``, or ``[batch, pos, d_model]`` with positions
+to intervene on: one index per example (``[batch]``), or several (``[batch, k]``, padded with
+:data:`PAD_POSITION`).
+Several positions are aligned by default, base position ``j`` taking the source's position ``j``;
+with ``pool="mean"`` each row names a span instead, and the intervention acts on the span's mean.
 """
 
 from __future__ import annotations
@@ -35,7 +38,17 @@ from __future__ import annotations
 import copy
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Callable, Hashable, Iterator, Optional, Sequence, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    Iterator,
+    Literal,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 import numpy as np
 import torch
@@ -55,7 +68,22 @@ TaskLogits = Callable[[torch.Tensor], Float[torch.Tensor, "batch n_classes"]]
 ``lambda tokens: model(tokens)[:, -1, answer_token_ids]``."""
 
 Intervention = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
-"""Maps (base activations, source activations), both ``[batch, d_model]``, to new base activations."""
+"""Maps (base activations, source activations), both ``[n, d_model]``, to new base activations: one
+row per example, or per (example, position) pair with several aligned positions."""
+
+Positions = Union[Int[torch.Tensor, "batch"], Int[torch.Tensor, "batch k"]]
+"""Positions to intervene on in ``[batch, pos, d_model]`` activations: one index per example, or a
+row of ``k`` per example padded with :data:`PAD_POSITION`."""
+
+PAD_POSITION = torch.iinfo(torch.int32).min
+"""Padding in ``[batch, k]`` positions, for rows with fewer than ``k`` positions. It is never a
+valid index, and fits int32 and int64 position tensors. Other negative indices are rejected in
+``[batch, k]`` positions, so -1, the last position in ``[batch]`` positions, cannot be mistaken
+for padding."""
+
+Pool = Optional[Literal["mean"]]
+"""``None`` aligns ``[batch, k]`` positions slot by slot; ``"mean"`` treats each row as a span and
+intervenes on its mean."""
 
 
 def random_basis(d_model: int, rank: int, seed: int) -> Float[torch.Tensor, "d_model rank"]:
@@ -278,8 +306,48 @@ class NormMatchedPlacebo:
         return (base_work + direction * distance).to(base.dtype)
 
 
-def _select(act: torch.Tensor, positions: Optional[torch.Tensor]) -> torch.Tensor:
+def _check_pool(pool: object) -> None:
+    """Callers outside a type checker can pass any value; reject all but the two modes."""
+    if pool not in (None, "mean"):
+        raise ValueError(f'pool must be None or "mean", got {pool!r}')
+
+
+def _slots(positions: torch.Tensor, act: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """For ``[batch, k]`` positions: the indices with padding set to 0, and the mask of real slots."""
+    if positions.ndim != 2 or positions.shape[0] != act.shape[0]:
+        raise ValueError(
+            f"positions must be [batch] or [batch, k] with batch {act.shape[0]}; "
+            f"got shape {tuple(positions.shape)}"
+        )
+    index = positions.to(act.device).long()
+    real = index != PAD_POSITION
+    if (index[real] < 0).any():
+        raise ValueError(
+            "[batch, k] positions must be non-negative: -1 means the last position only in [batch] "
+            f"positions. Pad shorter rows with PAD_POSITION; got {positions.tolist()}"
+        )
+    n_pos = act.shape[1]
+    if (index[real] >= n_pos).any():
+        raise ValueError(
+            f"[batch, k] positions must be below the sequence length {n_pos}; "
+            f"got {positions.tolist()}"
+        )
+    if not real.any(1).all():
+        raise ValueError("every row of [batch, k] positions needs at least one position")
+    # Fill padding with distinct negatives so only repeated real positions compare equal
+    fill = -1 - torch.arange(index.shape[1], device=index.device).expand_as(index)
+    ordered = torch.where(real, index, fill).sort(1).values
+    if (ordered[:, 1:] == ordered[:, :-1]).any():
+        raise ValueError(f"a row of [batch, k] positions repeats a position: {positions.tolist()}")
+    return index.masked_fill(~real, 0), real
+
+
+def _select(
+    act: torch.Tensor, positions: Optional[torch.Tensor], pool: Pool = None
+) -> torch.Tensor:
     if positions is None:
+        if pool is not None:
+            raise ValueError("pool needs [batch, k] positions naming a span per example")
         if act.ndim != 2:
             raise ValueError(
                 f"activation has shape {tuple(act.shape)}; pass one position index per example"
@@ -290,19 +358,77 @@ def _select(act: torch.Tensor, positions: Optional[torch.Tensor]) -> torch.Tenso
             f"with positions, the activation must be [batch, pos, d_model]; "
             f"got shape {tuple(act.shape)}"
         )
-    if positions.shape != (act.shape[0],):
-        raise ValueError(
-            f"positions must hold one index per example, shape ({act.shape[0]},); "
-            f"got {tuple(positions.shape)}"
-        )
-    return act[torch.arange(act.shape[0], device=act.device), positions.to(act.device)]
+    if positions.ndim == 1:
+        if pool is not None:
+            raise ValueError("pool needs [batch, k] positions naming a span per example")
+        if positions.shape != (act.shape[0],):
+            raise ValueError(
+                f"positions must hold one index per example, shape ({act.shape[0]},); "
+                f"got {tuple(positions.shape)}"
+            )
+        return act[torch.arange(act.shape[0], device=act.device), positions.to(act.device)]
+    index, real = _slots(positions, act)
+    gathered = act[torch.arange(act.shape[0], device=act.device)[:, None], index]
+    if pool == "mean":
+        return _span_mean(gathered, real)
+    # Padded slots are NaN, so a run can check that base and source pad the same slots
+    return gathered.masked_fill(~real[..., None], float("nan"))
 
 
-def _write(act: torch.Tensor, positions: Optional[torch.Tensor], new: torch.Tensor) -> torch.Tensor:
-    if positions is None:
-        return new
+def _span_mean(gathered: torch.Tensor, real: torch.Tensor) -> torch.Tensor:
+    weights = real.to(gathered.dtype)[..., None]
+    return (gathered * weights).sum(1) / weights.sum(1)
+
+
+def _intervene(
+    act: torch.Tensor,
+    positions: Optional[torch.Tensor],
+    pool: Pool,
+    intervention: Intervention,
+    source: torch.Tensor,
+) -> torch.Tensor:
+    """``act`` with ``intervention`` applied at ``positions``, given the source's activations."""
+    if positions is None or positions.ndim == 1:
+        selected = _select(act, positions, pool)
+        if source.ndim > selected.ndim:
+            raise ValueError(
+                f"source_activations have shape {tuple(source.shape)}; with one position or none "
+                "per base they must be [batch, d_model]"
+            )
+        new = intervention(selected, source)
+        if positions is None:
+            return new
+        out = act.clone()
+        out[torch.arange(act.shape[0], device=act.device), positions.to(act.device)] = new
+        return out
+
+    index, real = _slots(positions, act)
+    rows = torch.arange(act.shape[0], device=act.device)[:, None].expand_as(index)
+    at_rows, at_positions = rows[real], index[real]
     out = act.clone()
-    out[torch.arange(act.shape[0], device=act.device), positions.to(act.device)] = new
+    if pool == "mean":
+        base_mean = _span_mean(act[rows, index], real)
+        if source.shape != base_mean.shape:
+            raise ValueError(
+                f"with pool, source_activations must be the source spans' means, "
+                f"{tuple(base_mean.shape)}; got {tuple(source.shape)}"
+            )
+        # Every position in the span moves by the same amount, the change in the span's mean
+        shift = intervention(base_mean, source) - base_mean
+        out[at_rows, at_positions] = act[at_rows, at_positions] + shift[at_rows]
+        return out
+    expected = (*index.shape, act.shape[-1])
+    if tuple(source.shape) != expected:
+        raise ValueError(
+            f"with [batch, k] positions, source_activations must be {expected}, collected with "
+            f"[batch, k] source positions; got {tuple(source.shape)}"
+        )
+    if not torch.equal(source.isnan().all(-1), ~real):
+        raise ValueError(
+            "source_activations must be padded in the same slots as positions: pad base and source "
+            "positions alike"
+        )
+    out[at_rows, at_positions] = intervention(act[at_rows, at_positions], source[real])
     return out
 
 
@@ -324,20 +450,25 @@ def collect_activations(
     inputs: torch.Tensor,
     task_logits: TaskLogits,
     *,
-    positions: Optional[Int[torch.Tensor, "batch"]] = None,
+    positions: Optional[Positions] = None,
+    pool: Pool = None,
     batch_size: int = 256,
-) -> Float[torch.Tensor, "batch d_model"]:
-    """Activations at ``hook_name``, at one position per example if given, returned on the CPU.
+) -> Union[Float[torch.Tensor, "batch d_model"], Float[torch.Tensor, "batch k d_model"]]:
+    """Activations at ``hook_name``, at the given positions if any, returned on the CPU.
 
     Args:
         model: A model exposing the hook API.
         inputs: Model inputs, one row per example.
         task_logits: Runs the model on a batch of inputs.
-        positions: For ``[batch, pos, d_model]`` activations, the position to read per example.
+        positions: For ``[batch, pos, d_model]`` activations, the positions to read: one index per
+            example (``[batch]``), or a row of indices per example (``[batch, k]``) padded with
+            :data:`PAD_POSITION`.
+        pool: With ``[batch, k]`` positions, ``"mean"`` treats each row as a span and returns its mean.
         batch_size: Rows per forward pass.
 
     Returns:
-        Activations, ``[batch, d_model]``.
+        Activations, ``[batch, d_model]``; ``[batch, k, d_model]`` for ``[batch, k]`` positions
+        without ``pool``, NaN in the padded slots.
 
     Raises:
         ValueError: If any part of the model is in training mode, or the activation does not match
@@ -345,6 +476,7 @@ def collect_activations(
         RuntimeError: If the hook does not fire exactly once per forward pass.
     """
     require_eval_mode(model, operation="collect_activations")
+    _check_pool(pool)
     out = []
     for idx in _chunks(len(inputs), batch_size):
         store: list[torch.Tensor] = []
@@ -352,7 +484,7 @@ def collect_activations(
         def grab(
             act: torch.Tensor, hook: Any, _positions: Optional[torch.Tensor] = _at(positions, idx)
         ) -> None:
-            store.append(_select(act, _positions).detach().cpu())
+            store.append(_select(act, _positions, pool).detach().cpu())
 
         with model.hooks(fwd_hooks=[(hook_name, grab)]):
             task_logits(inputs[idx])
@@ -367,24 +499,36 @@ def run_with_intervention(
     hook_name: str,
     intervention: Intervention,
     base_inputs: torch.Tensor,
-    source_activations: Float[torch.Tensor, "batch d_model"],
+    source_activations: Union[
+        Float[torch.Tensor, "batch d_model"], Float[torch.Tensor, "batch k d_model"]
+    ],
     task_logits: TaskLogits,
     *,
-    positions: Optional[Int[torch.Tensor, "batch"]] = None,
+    positions: Optional[Positions] = None,
+    pool: Pool = None,
 ) -> Float[torch.Tensor, "batch n_classes"]:
     """Task logits for ``base_inputs`` with ``intervention`` applied at ``hook_name``, in one pass.
 
     Differentiable with respect to any parameters of ``intervention``, for training an
     intervention. To evaluate one over many pairs in bounded memory, use :func:`intervened_logits`.
 
+    With ``[batch, k]`` positions, each (base, slot) pair is one row of the intervention, and base
+    slot ``j`` takes the source's slot ``j``: base and source positions must be padded in the
+    same slots. With ``pool="mean"``, the intervention maps the base span's mean and the source
+    span's mean to a new mean, and every base position in the span moves by the change in the
+    mean, so base and source spans may differ in length.
+
     Args:
         model: A model exposing the hook API.
         intervention: Maps base and source activations to new base activations, e.g. a
             :class:`SubspaceInterchange`.
         source_activations: Activations from the source inputs at the same hook point, one row per
-            base, e.g. from :func:`collect_activations`.
+            base, e.g. from :func:`collect_activations` with the matching positions and ``pool``.
         task_logits: Runs the model on a batch of inputs.
-        positions: For ``[batch, pos, d_model]`` activations, the position to intervene on per base.
+        positions: For ``[batch, pos, d_model]`` activations, the positions to intervene on: one index per
+            base (``[batch]``), or a row of indices per base (``[batch, k]``) padded with
+            :data:`PAD_POSITION`.
+        pool: With ``[batch, k]`` positions, ``"mean"`` treats each row as a span and moves it by the change in its mean.
 
     Returns:
         Task logits under the intervention.
@@ -393,14 +537,14 @@ def run_with_intervention(
         ValueError: If the activation does not match the positions given (or not given).
         RuntimeError: If the hook does not fire exactly once in the forward pass.
     """
+    _check_pool(pool)
     calls = 0
 
     def hook(act: torch.Tensor, hook: Any) -> torch.Tensor:
         nonlocal calls
         calls += 1
-        selected = _select(act, positions)
         source = source_activations.to(act.device, act.dtype)
-        return _write(act, positions, intervention(selected, source))
+        return _intervene(act, positions, pool, intervention, source)
 
     with model.hooks(fwd_hooks=[(hook_name, hook)]):
         logits = task_logits(base_inputs)
@@ -416,10 +560,13 @@ def intervened_logits(
     hook_name: str,
     intervention: Intervention,
     base_inputs: torch.Tensor,
-    source_activations: Float[torch.Tensor, "batch d_model"],
+    source_activations: Union[
+        Float[torch.Tensor, "batch d_model"], Float[torch.Tensor, "batch k d_model"]
+    ],
     task_logits: TaskLogits,
     *,
-    positions: Optional[Int[torch.Tensor, "batch"]] = None,
+    positions: Optional[Positions] = None,
+    pool: Pool = None,
     batch_size: int = 256,
 ) -> Float[torch.Tensor, "batch n_classes"]:
     """Task logits under ``intervention``, in batches without gradients, returned on the CPU.
@@ -433,7 +580,10 @@ def intervened_logits(
         source_activations: Activations from the source inputs at the same hook point, one row per
             base.
         task_logits: Runs the model on a batch of inputs.
-        positions: For ``[batch, pos, d_model]`` activations, the position to intervene on per base.
+        positions: For ``[batch, pos, d_model]`` activations, the positions to intervene on: one index per
+            base (``[batch]``), or a row of indices per base (``[batch, k]``) padded with
+            :data:`PAD_POSITION`.
+        pool: With ``[batch, k]`` positions, ``"mean"`` treats each row as a span and moves it by the change in its mean.
         batch_size: Rows per forward pass.
 
     Returns:
@@ -455,6 +605,7 @@ def intervened_logits(
             source_activations[idx],
             task_logits,
             positions=_at(positions, idx),
+            pool=pool,
         )
         out.append(logits.detach().cpu())
     return torch.cat(out)
@@ -494,8 +645,9 @@ def fit_das(
     task_logits: TaskLogits,
     *,
     rank: int,
-    base_positions: Optional[Int[torch.Tensor, "batch"]] = None,
-    source_positions: Optional[Int[torch.Tensor, "batch"]] = None,
+    base_positions: Optional[Positions] = None,
+    source_positions: Optional[Positions] = None,
+    pool: Pool = None,
     epochs: int = 20,
     batch_size: int = 128,
     lr: float = 1e-2,
@@ -523,8 +675,13 @@ def fit_das(
         targets: The high-level model's output class for each pair under the interchange.
         task_logits: Runs the model on a batch of inputs and returns task logits.
         rank: Dimension of the subspace.
-        base_positions: For ``[batch, pos, d_model]`` activations, the base position per pair.
-        source_positions: Likewise for the sources.
+        base_positions: For ``[batch, pos, d_model]`` activations, the base positions per pair: one
+            index (``[batch]``) or a row of indices (``[batch, k]``, padded with
+            :data:`PAD_POSITION`). One subspace is learned for all ``k`` positions.
+        source_positions: Likewise for the sources; padded in the same slots as the bases, unless
+            ``pool`` is set.
+        pool: ``"mean"`` treats each row of positions as a span and interchanges the spans' means,
+            as in :func:`run_with_intervention`.
         epochs: Passes over the pairs.
         batch_size: Pairs per optimisation step.
         lr: Adam learning rate.
@@ -548,13 +705,19 @@ def fit_das(
     rng = np.random.default_rng(seed)
     micro = micro_batch_size or batch_size
     source_acts = collect_activations(
-        model, hook_name, source_inputs, task_logits, positions=source_positions, batch_size=micro
+        model,
+        hook_name,
+        source_inputs,
+        task_logits,
+        positions=source_positions,
+        pool=pool,
+        batch_size=micro,
     )
     # The subspace is built on the CPU, so seed only the CPU generator, inside a fork that restores
     # it; torch.manual_seed would also reseed every CUDA, MPS and XPU generator
     with torch.random.fork_rng(devices=[]):
         torch.default_generator.manual_seed(seed)
-        subspace = LearnedSubspace(source_acts.shape[1], rank)
+        subspace = LearnedSubspace(source_acts.shape[-1], rank)
     subspace = subspace.to(device if device is not None else _model_device(model))
     step = SubspaceInterchange(subspace, strength)
     optimizer = torch.optim.Adam(subspace.parameters(), lr=lr)
@@ -580,6 +743,7 @@ def fit_das(
                         source_acts[idx],
                         task_logits,
                         positions=_at(base_positions, idx),
+                        pool=pool,
                     )
                     # Summed, then divided by the whole batch, so split batches give equal gradients
                     loss = F.cross_entropy(

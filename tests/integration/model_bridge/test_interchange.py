@@ -201,3 +201,27 @@ def test_the_neuron_a_sparse_probe_selects_carries_subject_number(gpt2_bridge):
     assert accuracy(neuron_basis(d_mlp, probe.selected_features)) >= 0.9
     placebo = random_neuron_basis(d_mlp, 1, seed=0, exclude=probe.selected_features)
     assert accuracy(placebo) <= 0.2
+
+
+def test_subject_number_is_carried_jointly_by_two_positions(gpt2_bridge):
+    """At block 4, the subject and the preposition after it carry subject number together:
+    patching the whole residual at either alone moves few predictions, at both moves all."""
+    answers = [gpt2_bridge.to_single_token(" is"), gpt2_bridge.to_single_token(" are")]
+    task_logits = lambda toks: gpt2_bridge(toks)[:, -1, answers]
+    hook = "blocks.4.hook_out"
+    base, source, targets = _number_pairs(gpt2_bridge, NOUNS)
+    subject = torch.full((len(base),), 2)
+    both = torch.stack([subject, subject + 1], dim=1)
+    full = SubspaceInterchange(torch.eye(gpt2_bridge.cfg.d_model))
+
+    def accuracy(at, pool=None):
+        acts = collect_activations(gpt2_bridge, hook, source, task_logits, positions=at, pool=pool)
+        logits = intervened_logits(
+            gpt2_bridge, hook, full, base, acts, task_logits, positions=at, pool=pool
+        )
+        return (logits.argmax(-1) == targets).float().mean().item()
+
+    assert accuracy(subject) <= 0.5
+    assert accuracy(subject + 1) <= 0.5
+    assert accuracy(both) == 1.0
+    assert accuracy(both, pool="mean") >= 0.9
