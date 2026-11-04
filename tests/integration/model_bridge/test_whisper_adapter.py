@@ -166,3 +166,40 @@ class TestWhisperGenerate:
             )
         expected = expected if isinstance(expected, torch.Tensor) else expected.sequences
         assert torch.equal(ours, expected)
+
+
+class TestWhisperCompatibilityMode:
+    """Folded, centered weights on whisper-tiny: same predictions as HF."""
+
+    @pytest.fixture(scope="class")
+    def compat_bridge(self):
+        bridge = TransformerBridge.boot_transformers(MODEL, device="cpu", dtype=torch.float32)
+        bridge.enable_compatibility_mode(disable_warnings=True)
+        return bridge
+
+    def test_logits_match_hf_up_to_a_per_position_constant(
+        self, compat_bridge, hf_eager, features, decoder_ids
+    ):
+        with torch.no_grad():
+            logits = compat_bridge(features, decoder_input=decoder_ids)
+            expected = hf_eager(input_features=features, decoder_input_ids=decoder_ids).logits
+
+        def centered(x):
+            return x - x.mean(dim=-1, keepdim=True)
+
+        torch.testing.assert_close(centered(logits), centered(expected), rtol=0.0, atol=PARITY_ATOL)
+
+    def test_transcription_unchanged(self, compat_bridge, hf_eager, features):
+        prompt = torch.tensor([compat_bridge.tokenizer.convert_tokens_to_ids(PROMPT)])
+        eot = compat_bridge.tokenizer.eos_token_id
+        tokens = compat_bridge.generate(
+            features, decoder_input=prompt, do_sample=False, max_new_tokens=20, verbose=False
+        )
+        with torch.no_grad():
+            expected = hf_eager.generate(
+                features, language="en", task="transcribe", do_sample=False, max_new_tokens=20
+            )
+        expected = expected if isinstance(expected, torch.Tensor) else expected.sequences
+        ours = tokens[0, prompt.shape[1] :].tolist()
+        ours = ours[: ours.index(eot)] if eot in ours else ours
+        assert ours == [t for t in expected[0].tolist() if t != eot]

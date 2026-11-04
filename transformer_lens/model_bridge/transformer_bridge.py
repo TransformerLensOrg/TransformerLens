@@ -622,14 +622,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "for the hook/component compatibility layer without the weight transforms."
                 )
 
-        if getattr(self.cfg, "is_audio_seq2seq", False):
-            raise NotImplementedError(
-                "enable_compatibility_mode() is not supported for audio seq2seq models "
-                "(e.g. Whisper) yet: weight processing for their audio encoder is not "
-                "implemented. Use the bridge's native hooks (run_with_cache / "
-                "run_with_hooks) directly."
-            )
-        if getattr(self.cfg, "is_audio_model", False):
+        if getattr(self.cfg, "is_audio_model", False) and not getattr(
+            self.cfg, "is_audio_seq2seq", False
+        ):
             # Audio encoders have no text embed/unembed for the legacy weight
             # processing to operate on; without this guard the processing path
             # dies later with an opaque KeyError ('embed.weight').
@@ -792,17 +787,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         state_dict = self.state_dict()
         adapter = self.adapter
 
-        # Untie embed/unembed weights (GPT-2) so centering affects only unembed
-        embed_key = "embed.weight"
+        # Untie the unembedding from the embedding it shares storage with (GPT-2's embed,
+        # Whisper's decoder_embed) so centering affects only unembed
         unembed_key = "unembed.weight"
-
-        if embed_key in state_dict and unembed_key in state_dict:
-            # Check if they point to the same tensor (weight tying)
-            if state_dict[embed_key].data_ptr() == state_dict[unembed_key].data_ptr():
-                if verbose:
-                    print("  Breaking weight tying between embed and unembed in state dict...")
-                # Clone the unembed weight to break the tie
-                state_dict[unembed_key] = state_dict[unembed_key].clone()
+        unembed = state_dict.get(unembed_key)
+        if unembed is not None and any(
+            key != unembed_key and value.data_ptr() == unembed.data_ptr()
+            for key, value in state_dict.items()
+        ):
+            if verbose:
+                print("  Breaking weight tying between embed and unembed in state dict...")
+            state_dict[unembed_key] = unembed.clone()
 
         if adapter is not None:
             # A square weight's shape cannot tell Conv1D's [in, out] from nn.Linear's
@@ -848,7 +843,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     suffix = key[len(hf_prefix) + 1 :]
                     new_key = f"{tl_prefix}.{suffix}"
                     break
-            normalized_state_dict[new_key] = value
+            normalized_state_dict[self._block_submodule_key_to_bridge(new_key)] = value
         state_dict = normalized_state_dict
 
         if verbose:
@@ -861,6 +856,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             self._fold_layer_norms_into_batched_experts()
         if adapter is not None:
             adapter.postprocess_weights(self)
+
+    def _block_submodule_key_to_bridge(self, key: str) -> str:
+        """Rename a block key's HF submodule segment to the bridge name that owns it.
+
+        Encoder-decoder state dicts keep HF names inside blocks
+        (``encoder_blocks.0.self_attn_layer_norm.weight``), but a block routes processed
+        weights to its subcomponents by bridge name (``ln1``). Keys already using a
+        bridge name, as on decoder-only models, are returned unchanged.
+        """
+        parts = key.split(".")
+        if len(parts) < 3 or not parts[1].isdigit() or not self.adapter.component_mapping:
+            return key
+        submodules = getattr(self.adapter.component_mapping.get(parts[0]), "submodules", None)
+        if not submodules or parts[2] in submodules:
+            return key
+        for bridge_name, submodule in submodules.items():
+            if submodule.name == parts[2]:
+                return ".".join([parts[0], parts[1], bridge_name, *parts[3:]])
+        return key
 
     def _stores_weight_in_out(self, module_name: str) -> bool:
         """Whether the component at module_name wraps a Conv1D-style [in, out] weight."""
@@ -4877,15 +4891,25 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 if tl_name != component.name and tl_name not in component.name.split("."):
                     attr_to_hf[tl_name] = component.name
 
-        # Map block-level components (ln1, ln2, attn, mlp) for all block lists
-        for bl_name in block_list_names:
+        # Map block-level components (ln1, ln2, attn, mlp) per block list: an encoder and
+        # a decoder can give one name different HF modules (BART-family ln2 is the
+        # encoder's final_layer_norm but the decoder's encoder_attn_layer_norm).
+        block_attr_to_hf: dict[str, dict[str, str]] = {}
+        for bl_name in sorted(block_list_names):
             blocks_component = component_mapping.get(bl_name)
             if blocks_component and hasattr(blocks_component, "submodules"):
-                for tl_subname, subcomponent in blocks_component.submodules.items():
-                    if subcomponent.name:
-                        # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
-                        if tl_subname != subcomponent.name:
-                            attr_to_hf[tl_subname] = subcomponent.name
+                names = {
+                    tl_subname: subcomponent.name
+                    for tl_subname, subcomponent in blocks_component.submodules.items()
+                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
+                    if subcomponent.name and tl_subname != subcomponent.name
+                }
+                attr_to_hf.update(names)
+                if blocks_component.name:
+                    block_attr_to_hf[blocks_component.name] = names
+        block_path = next((path for path in block_attr_to_hf if key.startswith(path + ".")), None)
+        if block_path is not None:
+            attr_to_hf = {**attr_to_hf, **block_attr_to_hf[block_path]}
 
         # Replace only these specific attribute names in the key
         # We need to be careful to only replace whole path components, not substrings

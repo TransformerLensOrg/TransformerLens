@@ -73,10 +73,10 @@ class TestWhisperConfig:
     def test_declares_input_features(self, adapter):
         assert adapter.audio_input_name == "input_features"
 
-    def test_generation_on_weight_processing_off(self, adapter):
+    def test_generation_and_weight_processing_on(self, adapter):
         assert adapter.supports_generation is True
-        assert adapter.supports_fold_ln is False
-        assert adapter.supports_center_writing_weights is False
+        assert adapter.supports_fold_ln is True
+        assert adapter.supports_center_writing_weights is True
 
     def test_scale_embedding_not_forced_on(self, adapter):
         assert not adapter.cfg.scale_embedding
@@ -168,6 +168,57 @@ class TestWhisperComponentMapping:
             "ln3",
             "mlp",
         }
+
+
+class TestWhisperResidualLayout:
+    """Where weight processing folds and centers, for 4 encoder / 2 decoder layers."""
+
+    @pytest.fixture(scope="class")
+    def layout(self, adapter):
+        return adapter.residual_layout()
+
+    def test_every_norm_listed_once(self, layout):
+        assert len(layout.norm_readers) == 4 * 2 + 2 * 3 + 2
+
+    def test_block_norms_feed_their_own_sublayers(self, layout):
+        assert layout.norm_readers["encoder_blocks.0.self_attn_layer_norm"] == [
+            "encoder_blocks.0.self_attn.q",
+            "encoder_blocks.0.self_attn.k",
+            "encoder_blocks.0.self_attn.v",
+        ]
+        assert layout.norm_readers["encoder_blocks.3.final_layer_norm"] == [
+            "encoder_blocks.3.mlp.in"
+        ]
+        assert layout.norm_readers["decoder_blocks.1.encoder_attn_layer_norm"] == [
+            "decoder_blocks.1.encoder_attn.q"
+        ]
+        assert layout.norm_readers["decoder_blocks.1.final_layer_norm"] == [
+            "decoder_blocks.1.mlp.in"
+        ]
+
+    def test_encoder_final_norm_feeds_every_cross_attention_key_and_value(self, layout):
+        assert sorted(layout.norm_readers["encoder_ln_final"]) == sorted(
+            f"decoder_blocks.{i}.encoder_attn.{p}" for i in range(2) for p in "kv"
+        )
+        assert layout.norm_readers["decoder_ln_final"] == ["unembed"]
+
+    def test_bias_free_keys_are_declared(self, layout):
+        keys = {
+            reader
+            for readers in layout.norm_readers.values()
+            for reader in readers
+            if reader.endswith(".k")
+        }
+        assert keys == layout.key_projections
+        assert len(keys) == 4 + 2 * 2
+
+    def test_writers_and_value_output_pairs(self, layout):
+        assert len(layout.residual_writers) == 4 * 2 + 2 * 3
+        assert set(layout.embedding_writers) == {"pos_embed", "decoder_embed", "decoder_pos_embed"}
+        assert len(layout.value_output_pairs) == 4 + 2 * 2
+        assert ("decoder_blocks.0.encoder_attn.v", "decoder_blocks.0.encoder_attn.o") in (
+            layout.value_output_pairs
+        )
 
 
 class TestWhisperRegistration:
