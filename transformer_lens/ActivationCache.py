@@ -1045,6 +1045,15 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
+        # Same contract as stack_neuron_results: layer=0 is the whole-model case (remainder reads
+        # resid_post of layer -1, the final layer). Anything below it would wrap the remainder
+        # target to an arbitrary late layer via __getitem__, silently returning the wrong
+        # residual stream with no heads in the stack.
+        if incl_remainder and layer < 0:
+            raise ValueError(
+                f"layer must be >= 0 with incl_remainder=True (-1/None mean n_layers); got {layer}."
+            )
+
         # Idempotent; cleans up stale Bridge entries without the 'already cached' warning,
         # which is only meaningful for direct compute_head_results callers.
         self._ensure_head_results()

@@ -730,6 +730,52 @@ def test_stack_neuron_results_rejects_out_of_contract_remainder_layer(
 
 
 @torch.no_grad()
+def test_stack_head_results_rejects_out_of_contract_remainder_layer(
+    activation_cache: ActivationCache,
+) -> None:
+    """Heads share the neuron contract: a layer below 0 raises instead of wrapping."""
+    with pytest.raises(ValueError, match="incl_remainder=True"):
+        activation_cache.stack_head_results(-2, incl_remainder=True)
+    # Without a remainder there is nothing to wrap, so the empty stack is still returned.
+    empty, empty_labels = activation_cache.stack_head_results(
+        -2, incl_remainder=False, return_labels=True
+    )
+    assert empty_labels == [] and empty.shape[0] == 0
+
+
+@torch.no_grad()
+def test_stack_head_results_negative_layer_no_longer_returns_a_wrapped_residual() -> None:
+    """On a deeper model layer=-2 used to return resid_post[1] silently, labelled as remainder."""
+    cfg = TransformerBridgeConfig(
+        n_layers=4,
+        d_model=16,
+        n_ctx=8,
+        d_head=4,
+        n_heads=4,
+        d_vocab=32,
+        act_fn="gelu",
+    )
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model = TransformerBridge.boot_native(cfg)
+    _, cache = model.run_with_cache(torch.tensor([[1, 2, 3, 4]]))
+    for layer in (-2, -3):
+        with pytest.raises(ValueError, match="incl_remainder=True"):
+            cache.stack_head_results(layer, incl_remainder=True)
+
+
+@torch.no_grad()
+def test_stack_head_results_layer_zero_remainder_is_the_whole_model(
+    activation_cache: ActivationCache,
+) -> None:
+    """``layer=0`` stays valid: no heads, remainder = resid_post[-1], matching the neuron stack."""
+    stack, labels = activation_cache.stack_head_results(0, incl_remainder=True, return_labels=True)
+    assert labels == ["remainder"]
+    n_layers = activation_cache.model.cfg.n_layers
+    torch.testing.assert_close(stack[0], activation_cache[("resid_post", n_layers - 1)])
+
+
+@torch.no_grad()
 def test_stack_neuron_results_layer_zero_remainder_is_the_whole_model(
     activation_cache: ActivationCache,
 ) -> None:
