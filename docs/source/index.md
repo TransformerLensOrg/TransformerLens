@@ -69,6 +69,7 @@ content/sparse_probing
 content/interchange_interventions
 generated/demos/SVD_Circuits_Demo
 generated/demos/SwiGLU_Gate_Sign_Demo
+generated/demos/Weight_Edit_Audit_Demo
 generated/demos/Backward_Lens_Demo
 generated/demos/Natural_Language_Autoencoders_Demo
 generated/demos/Main_Demo

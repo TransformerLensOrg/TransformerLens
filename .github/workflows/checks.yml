@@ -446,6 +446,7 @@ jobs:
           # - "stable_lm"
           - "SVD_Circuits_Demo"
           - "SwiGLU_Gate_Sign_Demo"
+          - "Weight_Edit_Audit_Demo"
           - "T5"
         requires_hf_token: [false]
         include:
