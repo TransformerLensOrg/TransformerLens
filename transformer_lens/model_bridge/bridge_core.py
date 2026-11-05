@@ -778,10 +778,16 @@ class BridgeCore:
         hook_fn: Callable,
         dir: Literal["fwd", "bwd"],
         is_permanent: bool,
+        level: Optional[int] = None,
+        prepend: bool = False,
     ) -> None:
         """Run the extension-point check, then attach the hook function."""
-        self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent)
-        hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+        self.check_hooks_to_add(
+            hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent, prepend=prepend
+        )
+        hook_point.add_hook(
+            hook_fn, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend
+        )
 
     def _gated_hook_reason(self, hook_point_name: str) -> Optional[str]:
         """Return the disabled setter name if hook_point_name is gated off, else None."""
@@ -814,6 +820,8 @@ class BridgeCore:
         hook_fn: Any,
         dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
+        level: Optional[int] = None,
+        prepend: bool = False,
     ) -> None:
         """Add a hook to a specific component or to all components matching a filter.
 
@@ -825,6 +833,9 @@ class BridgeCore:
             hook_fn: The hook function ``(activation, hook) -> activation | None``.
             dir: Hook direction, ``"fwd"`` or ``"bwd"``.
             is_permanent: If True the hook survives ``reset_hooks()`` calls.
+            level: Context level to tag the hook with, so that ``reset_hooks(level=...)``
+                removes it alone.
+            prepend: If True the hook runs before those already on the hook point.
         """
         if callable(name) and not isinstance(name, str):
             hook_dict = self.hook_dict
@@ -843,7 +854,9 @@ class BridgeCore:
                     if self._gated_hook_reason(hook_point.name or hook_name) is not None:
                         gated_names_skipped.append(hook_name)
                         continue
-                    self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
+                    self._add_fn_to_hook_point(
+                        hook_point, hook_name, hook_fn, dir, is_permanent, level, prepend
+                    )
             self._warn_gated_skipped("add_hook", gated_names_skipped)
             return
 
@@ -855,7 +868,9 @@ class BridgeCore:
         registry_hp = self._hook_registry.get(name)
         if registry_hp is not None:
             self._check_hook_fireable(name)
-            self._add_fn_to_hook_point(registry_hp, name, hook_fn, dir, is_permanent)
+            self._add_fn_to_hook_point(
+                registry_hp, name, hook_fn, dir, is_permanent, level, prepend
+            )
             return
         # Same alias resolution run_with_hooks uses, so HT-style names work here too.
         canonical = build_alias_to_canonical_map(self.hook_dict).get(name, name)
@@ -865,7 +880,9 @@ class BridgeCore:
             self._check_hook_fireable(name)
         registry_hp = self._hook_registry.get(canonical)
         if registry_hp is not None:
-            self._add_fn_to_hook_point(registry_hp, canonical, hook_fn, dir, is_permanent)
+            self._add_fn_to_hook_point(
+                registry_hp, canonical, hook_fn, dir, is_permanent, level, prepend
+            )
             return
 
         component: Any = self
@@ -879,7 +896,9 @@ class BridgeCore:
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
             if isinstance(hook_point, HookPoint):
-                self._add_fn_to_hook_point(hook_point, name, hook_fn, dir, is_permanent)
+                self._add_fn_to_hook_point(
+                    hook_point, name, hook_fn, dir, is_permanent, level, prepend
+                )
             else:
                 raise AttributeError(
                     f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}"
