@@ -438,28 +438,60 @@ class ActivationCache:
             for name in modules
         )
 
+    def _mixer_role(self, layer: int) -> Literal["attn", "mlp"]:
+        """Residual slot a non-attention block's mixer fills.
+
+        Single-mixer blocks (NemotronH) wrap attention, Mamba and MLP layers alike in one
+        passthrough ``mixer``; ``cfg.layers_block_type`` says which one it is.
+        """
+        block_types = getattr(self.model.cfg, "layers_block_type", None)
+        if isinstance(block_types, (list, tuple)) and layer < len(block_types):
+            if block_types[layer] in ("mlp", "moe"):
+                return "mlp"
+        return "attn"
+
+    def _mixer_label(self, layer: int, name: str) -> str:
+        """``{l}_mlp_out`` / ``{l}_attn_out`` for typed passthrough mixers, else ``{l}_{name}_out``."""
+        block_types = getattr(self.model.cfg, "layers_block_type", None)
+        block_type = (
+            block_types[layer]
+            if isinstance(block_types, (list, tuple)) and layer < len(block_types)
+            else None
+        )
+        if block_type in ("mlp", "moe"):
+            return f"{layer}_mlp_out"
+        if block_type in ("attention", "full_attention"):
+            return f"{layer}_attn_out"
+        return f"{layer}_{name}_out"
+
     def _mixer_stack(
         self, layer: int, pos_slice: Slice, subtract_bias: bool = False
     ) -> Tuple[List[torch.Tensor], List[str]]:
-        """Sequence-mixer outputs of a non-attention block, with labels like ``0_linear_attn_out``.
+        """Residual contributions of a non-attention block's mixer, e.g. ``0_linear_attn_out``.
 
-        ``subtract_bias`` drops the mixer's output bias, for decompositions that carry it in
-        their own ``bias`` row.
+        Scaled by the block's ``residual_contribution_scale`` (Granite's ``residual_multiplier``
+        is applied after ``hook_out``), matching the head and neuron paths. ``subtract_bias``
+        drops the mixer's output bias first, for decompositions that carry it in their own
+        ``bias`` row.
         """
         components: List[torch.Tensor] = []
         labels: List[str] = []
         names = self._mixer_out_names(layer)
+        block = self.model.blocks[layer]
+        scale = getattr(block, "residual_contribution_scale", 1.0)
         # Same bias accumulated_bias counts for this block, so the two cancel exactly.
         bias = None
         if subtract_bias and names:
             get_bias = getattr(self.model, "_get_block_variant_bias", None)
-            bias = get_bias(self.model.blocks[layer]) if callable(get_bias) else None
+            bias = get_bias(block) if callable(get_bias) else None
         for i, name in enumerate(names):
             out = pos_slice.apply(self[f"blocks.{layer}.{name}.hook_out"], dim=-2)
             if i == 0 and isinstance(bias, torch.Tensor):
                 out = out - bias.to(out.device, out.dtype)
+            if scale != 1.0:
+                out = out * scale
             components.append(out)
-            labels.append(f"{layer}_{name}_out")
+            labels.append(self._mixer_label(layer, name))
         return components, labels
 
     def accumulated_resid(
@@ -850,21 +882,27 @@ class ActivationCache:
                 components_list.append(self["hook_pos_embed"])
                 labels.append("pos_embed")
 
+        def add_mixer(l: int) -> None:
+            mixers, mixer_labels = self._mixer_stack(l, Slice(None))
+            components_list.extend(mixers)
+            labels.extend(mixer_labels)
+
         def add_attn_slot(l: int) -> None:
             if self._has_attn(l):
                 components_list.append(self[("attn_out", l)])
                 labels.append(f"{l}_attn_out")
-            else:
-                mixers, mixer_labels = self._mixer_stack(l, Slice(None))
-                components_list.extend(mixers)
-                labels.extend(mixer_labels)
+            elif self._mixer_role(l) == "attn":
+                add_mixer(l)
 
         for l in range(layer):
             if incl_attn:
                 add_attn_slot(l)
-            if incl_mlp and self._has_mlp(l):
-                components_list.append(self[("mlp_out", l)])
-                labels.append(f"{l}_mlp_out")
+            if incl_mlp:
+                if self._has_mlp(l):
+                    components_list.append(self[("mlp_out", l)])
+                    labels.append(f"{l}_mlp_out")
+                elif not self._has_attn(l) and self._mixer_role(l) == "mlp":
+                    add_mixer(l)
         if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
             add_attn_slot(layer)
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
@@ -1584,6 +1622,15 @@ class ActivationCache:
 
         # Mamba / NemotronH blocks without an MLP have no neurons.
         mlp_layers = [l for l in range(layer) if self._has_mlp(l)]
+        for l in mlp_layers:
+            modules = self._block_modules(l)
+            if modules is not None and "mlp" not in modules:
+                names = ", ".join(n for n in modules if not n.startswith(("hook", "_")))
+                raise NotImplementedError(
+                    f"blocks.{l} writes an MLP-side output without an `mlp` submodule "
+                    f"({names}), so its neurons cannot be expanded. Use "
+                    "expand_neurons=False or decompose_resid instead."
+                )
         labels = [f"L{l}N{h}" for l in mlp_layers for h in neuron_labels]
         if mlp_input and layer < self.model.cfg.n_layers:
             stream = "resid_mid" if self._mlp_input_includes_attn(layer) else "resid_pre"
@@ -1778,13 +1825,19 @@ class ActivationCache:
 
         The returned tensor stacks components along ``dim=0`` in this order:
 
-        1. Attention head results, layer-by-layer (``L * n_heads`` rows)
-        2. Neuron / MLP results (only if ``cfg.attn_only=False`` and
-           ``layer > 0``; ``L * d_mlp`` rows when ``expand_neurons=True``,
-           else ``L`` rows)
-        3. ``embed`` (1 row, including any post-embedding runtime multiplier)
-        4. ``pos_embed`` (1 row, if the model has positional embeddings)
-        5. ``bias`` (1 row, the accumulated layer biases)
+        1. Attention head results, layer-by-layer (``L * n_heads`` rows; attention
+           layers only on SSM / hybrid models)
+        2. Sequence-mixer results of blocks without attention heads (SSM / hybrid
+           models only; one row per mixer, e.g. ``0_linear_attn_out``, output bias
+           excluded since it is in the ``bias`` row). MLP-type passthrough mixers
+           (NemotronH) appear here only when ``expand_neurons=True``; otherwise they
+           are part of the MLP rows below.
+        3. Neuron / MLP results (only if ``cfg.attn_only=False`` and
+           ``layer > 0``; ``d_mlp`` rows per block with an MLP when
+           ``expand_neurons=True``, else one row per MLP output)
+        4. ``embed`` (1 row, including any post-embedding runtime multiplier)
+        5. ``pos_embed`` (1 row, if the model has positional embeddings)
+        6. ``bias`` (1 row, the accumulated layer biases)
 
         ``return_labels=True`` returns a list of strings in the same order, so
         ``labels[i]`` always names ``stack[i]``. If you need to extract a
@@ -1846,10 +1899,11 @@ class ActivationCache:
             head_stack = head_stack @ project_2d
         labels = head_labels
         components = [head_stack]
-        # SSM / linear-attention blocks have no heads: add each mixer output whole. Its output
-        # bias is dropped here because the `bias` row below already accumulates it.
-        mixer_layers = list(range(layer))
-        if mlp_input and self._mlp_input_includes_attn(layer):
+        # Blocks without attention heads: add each mixer output whole. Its output bias is dropped
+        # here because the `bias` row below already accumulates it. MLP-type mixers come from
+        # the MLP path when it is not expanded into neurons.
+        mixer_layers = [l for l in range(layer) if expand_neurons or self._mixer_role(l) == "attn"]
+        if mlp_input and self._mlp_input_includes_attn(layer) and self._mixer_role(layer) == "attn":
             mixer_layers.append(layer)
         mixer_list: List[torch.Tensor] = []
         for l in mixer_layers:

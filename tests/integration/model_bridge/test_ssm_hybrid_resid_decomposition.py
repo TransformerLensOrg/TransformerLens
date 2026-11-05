@@ -136,7 +136,45 @@ def _nemotronh():
     return _boot(AutoModelForCausalLM.from_config(c).eval(), "NemotronHForCausalLM")
 
 
-_FACTORIES = {"mamba2": _mamba2, "mamba2_bias": _mamba2_bias, "nemotron_h": _nemotronh}
+def _granite_dense():
+    """Dense GraniteMoeHybrid (shared MLP, no experts) with a non-unit residual_multiplier:
+    every sublayer output is scaled after its hook_out before the residual add."""
+    from transformers import AutoModelForCausalLM
+    from transformers.models.granitemoehybrid import GraniteMoeHybridConfig
+
+    torch.manual_seed(0)
+    c = GraniteMoeHybridConfig(
+        vocab_size=256,
+        hidden_size=64,
+        intermediate_size=32,
+        shared_intermediate_size=32,
+        num_hidden_layers=3,
+        num_attention_heads=8,
+        num_key_value_heads=4,
+        num_local_experts=0,
+        max_position_embeddings=64,
+        layer_types=["mamba", "attention", "mamba"],
+        mamba_n_heads=8,
+        mamba_n_groups=2,
+        mamba_d_state=16,
+        mamba_d_head=16,
+        mamba_d_conv=4,
+        mamba_expand=2,
+        mamba_chunk_size=16,
+        position_embedding_type="rope",
+        rope_parameters={"rope_type": "default", "rope_theta": 10000.0},
+        residual_multiplier=0.22,
+    )
+    c.architectures = ["GraniteMoeHybridForCausalLM"]
+    return _boot(AutoModelForCausalLM.from_config(c).eval(), "GraniteMoeHybridForCausalLM")
+
+
+_FACTORIES = {
+    "granite_dense": _granite_dense,
+    "mamba2": _mamba2,
+    "mamba2_bias": _mamba2_bias,
+    "nemotron_h": _nemotronh,
+}
 if _QWEN3_5_AVAILABLE:
     _FACTORIES["qwen3_5"] = _qwen35
 
@@ -187,14 +225,24 @@ class TestDecomposeResid:
         _, labels = cache.decompose_resid(return_labels=True)
         expected = {
             "qwen3_5": ["0_linear_attn_out", "0_mlp_out", "3_attn_out", "3_mlp_out"],
+            "granite_dense": ["0_mixer_out", "0_mlp_out", "1_attn_out", "1_mlp_out"],
             "mamba2": ["0_mixer_out", "1_mixer_out"],
             "mamba2_bias": ["0_mixer_out", "1_mixer_out"],
-            "nemotron_h": ["0_mixer_out", "1_mixer_out", "2_mixer_out", "3_mixer_out"],
+            # Passthrough mixers are labelled by cfg.layers_block_type.
+            "nemotron_h": ["0_mixer_out", "1_attn_out", "2_mixer_out", "3_mlp_out"],
         }[name]
-        for label in expected:
-            assert label in labels
-        if name != "qwen3_5":
+        assert labels[1:] == expected if name == "nemotron_h" else set(expected) <= set(labels)
+        if name in ("mamba2", "mamba2_bias"):
             assert not any(label.endswith("_mlp_out") for label in labels)
+
+    def test_mlp_type_mixers_fill_the_mlp_slot(self, bridge_and_cache):
+        name, bridge, cache = bridge_and_cache
+        if name != "nemotron_h":
+            pytest.skip("only NemotronH has MLP-type passthrough mixers")
+        _, mlp_labels = cache.decompose_resid(mode="mlp", incl_embeds=False, return_labels=True)
+        _, attn_labels = cache.decompose_resid(mode="attn", incl_embeds=False, return_labels=True)
+        assert mlp_labels == ["3_mlp_out"]
+        assert attn_labels == ["0_mixer_out", "1_attn_out", "2_mixer_out"]
 
     def test_mlp_input_sums_to_resid_mid(self, bridge_and_cache):
         name, bridge, cache = bridge_and_cache
@@ -240,7 +288,12 @@ class TestHeadResults:
 class TestFullResidDecomposition:
     @pytest.mark.parametrize("expand_neurons", [False, True])
     def test_sums_to_final_residual(self, bridge_and_cache, expand_neurons):
-        _, bridge, cache = bridge_and_cache
+        name, bridge, cache = bridge_and_cache
+        if name == "granite_dense" and expand_neurons:
+            # Its MLP is `shared_mlp`, outside the `mlp` slot neuron expansion reads.
+            with pytest.raises(NotImplementedError, match="shared_mlp"):
+                cache.get_full_resid_decomposition(expand_neurons=True)
+            return
         stack, labels = cache.get_full_resid_decomposition(
             expand_neurons=expand_neurons, return_labels=True
         )
@@ -251,7 +304,12 @@ class TestFullResidDecomposition:
     def test_ln_and_projection_sum_to_projected_scaled_residual(
         self, bridge_and_cache, expand_neurons
     ):
-        _, bridge, cache = bridge_and_cache
+        name, bridge, cache = bridge_and_cache
+        if name == "granite_dense" and expand_neurons:
+            # Its MLP is `shared_mlp`, outside the `mlp` slot neuron expansion reads.
+            with pytest.raises(NotImplementedError, match="shared_mlp"):
+                cache.get_full_resid_decomposition(expand_neurons=True)
+            return
         torch.manual_seed(1)
         directions = torch.randn(bridge.cfg.d_model, 3)
         stack = cache.get_full_resid_decomposition(
