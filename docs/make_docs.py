@@ -47,6 +47,7 @@ def copy_demos(_app: Optional[Any] = None):
         "Natural_Language_Autoencoders_Demo.ipynb",
         "SVD_Circuits_Demo.ipynb",
         "SwiGLU_Gate_Sign_Demo.ipynb",
+        "Weight_Edit_Audit_Demo.ipynb",
     ]
 
     if copy_to_dir.exists():
