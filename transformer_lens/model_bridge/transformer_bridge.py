@@ -2840,6 +2840,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             seed = torch.cat([seed, forced], dim=1)
         return seed, min_decoder_length
 
+    def _left_padded_prompt_mask(
+        self, prompts: List[str], tokens: torch.Tensor, prepend_bos: Optional[bool]
+    ) -> torch.Tensor:
+        """Attention mask for ``prompts`` left-padded into ``tokens``, from each one's length.
+
+        The tokens alone can't give this when the pad id is also a real token, as BOS is on
+        GPT-2-style tokenizers: a row's last pad and a leading BOS look the same.
+        """
+        mask = torch.zeros_like(tokens)
+        for row, prompt in enumerate(prompts):
+            n_real = self.to_tokens(
+                prompt, prepend_bos=prepend_bos, move_to_device=False, truncate=False
+            ).shape[-1]
+            # An empty prompt keeps its last pad as context, and -0 would select the whole row.
+            mask[row, -max(n_real, 1) :] = 1
+        return mask
+
     def _generate_tokens(
         self,
         current_tokens: torch.Tensor,
@@ -2862,7 +2879,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         mamba_cache: Any,
         mamba_conv_kernel: int,
         is_encoder_decoder: bool,
-        _is_batched_list: bool,
+        batched_prompt_mask: Optional[torch.Tensor],
         _generate_from_embeds: bool,
         encoder_input: Optional[torch.Tensor],
         decoder_tokens: Optional[torch.Tensor],
@@ -2957,18 +2974,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         forward_kwargs["attention_mask"] = running_attention_mask
                     # Compute attention mask and position_ids for batched
                     # inputs with padding.
-                    if (
-                        initial_attention_mask is None
-                        and _is_batched_list
-                        and self.tokenizer is not None
-                        and self.tokenizer.pad_token_id is not None
-                    ):
-                        attn_mask = utils.get_attention_mask(
-                            self.tokenizer,
-                            current_tokens,
-                            prepend_bos=getattr(self.cfg, "default_prepend_bos", True),
-                            padding_side="left",
-                        ).to(self.cfg.device)
+                    if initial_attention_mask is None and batched_prompt_mask is not None:
+                        attn_mask = _extend_prompt_attention_mask(
+                            batched_prompt_mask, current_tokens
+                        )
                         forward_kwargs["attention_mask"] = attn_mask
                         # Same target gate as the forward() path: the mask is safe
                         # for every model, the derived positions are not (#1626).
@@ -3770,7 +3779,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 mamba_cache=mamba_cache,
                 mamba_conv_kernel=mamba_conv_kernel,
                 is_encoder_decoder=is_encoder_decoder,
-                _is_batched_list=_is_batched_list,
+                batched_prompt_mask=(
+                    self._left_padded_prompt_mask(input, input_tokens, prepend_bos)
+                    if _is_batched_list and isinstance(input, list) and not is_encoder_decoder
+                    else None
+                ),
                 _generate_from_embeds=_generate_from_embeds,
                 encoder_input=encoder_input if is_encoder_decoder else None,
                 decoder_tokens=decoder_tokens if is_encoder_decoder else None,
@@ -4228,7 +4241,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     mamba_cache=None,
                     mamba_conv_kernel=0,
                     is_encoder_decoder=_encdec_early,
-                    _is_batched_list=_is_batched_list,
+                    batched_prompt_mask=(
+                        self._left_padded_prompt_mask(input, input_tokens, prepend_bos)
+                        if _is_batched_list and isinstance(input, list) and not _encdec_early
+                        else None
+                    ),
                     _generate_from_embeds=False,
                     encoder_input=encoder_input,
                     decoder_tokens=decoder_tokens,
