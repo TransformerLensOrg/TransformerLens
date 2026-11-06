@@ -379,6 +379,121 @@ class ActivationCache:
             getattr(self.model.blocks[layer], "mlp_input_includes_attn", True)
         )
 
+    def _block_modules(self, layer: int) -> Optional[Dict[str, Any]]:
+        """Bridged submodules of block ``layer``, or None when the model exposes none."""
+        blocks = getattr(self.model, "blocks", None)
+        if blocks is None or layer >= len(blocks):
+            return None
+        modules = getattr(blocks[layer], "_modules", None)
+        return modules if isinstance(modules, dict) else None
+
+    def _has_attn(self, layer: int) -> bool:
+        """Whether block ``layer`` has attention (and so ``hook_attn_out`` / per-head hooks)."""
+        from transformer_lens.model_bridge.generalized_components.block import (
+            VARIANT_SUBMODULE_NAMES,
+        )
+
+        modules = self._block_modules(layer)
+        # Blocks declaring no sequence-mixer slot keep the attention default.
+        return (
+            modules is None
+            or "attn" in modules
+            or not any(name in modules for name in VARIANT_SUBMODULE_NAMES)
+        )
+
+    def _mixer_out_names(self, layer: int) -> List[str]:
+        """Variant slots (``linear_attn``, ``mixer``, …) of a block without attention.
+
+        Hybrid and SSM blocks write their sequence-mixer output in place of
+        ``hook_attn_out``; empty for attention blocks.
+        """
+        from transformer_lens.model_bridge.generalized_components.block import (
+            VARIANT_SUBMODULE_NAMES,
+        )
+
+        if self._has_attn(layer):
+            return []
+        modules = self._block_modules(layer) or {}
+        return [name for name in VARIANT_SUBMODULE_NAMES if name in modules]
+
+    def _has_mlp(self, layer: int) -> bool:
+        """Whether block ``layer`` writes an MLP output separate from its mixer."""
+        from transformer_lens.model_bridge.generalized_components.block import (
+            _BLOCK_INTERNAL_MODULES,
+            _NORM_PREFIXES,
+            _VARIANT_SUBMODULE_SET,
+        )
+
+        if self.model.cfg.attn_only:
+            return False
+        modules = self._block_modules(layer)
+        if modules is None or "mlp" in modules:
+            return True
+        # Mamba / NemotronH blocks hold only norms and a mixer. Anything else that writes to the
+        # residual stream (e.g. a MoE without an `mlp` slot) keeps the `mlp_out` contract.
+        return any(
+            name not in _VARIANT_SUBMODULE_SET
+            and name not in _BLOCK_INTERNAL_MODULES
+            and not name.startswith(_NORM_PREFIXES)
+            for name in modules
+        )
+
+    def _mixer_role(self, layer: int) -> Literal["attn", "mlp"]:
+        """Residual slot a non-attention block's mixer fills.
+
+        Single-mixer blocks (NemotronH) wrap attention, Mamba and MLP layers alike in one
+        passthrough ``mixer``; ``cfg.layers_block_type`` says which one it is.
+        """
+        block_types = getattr(self.model.cfg, "layers_block_type", None)
+        if isinstance(block_types, (list, tuple)) and layer < len(block_types):
+            if block_types[layer] in ("mlp", "moe"):
+                return "mlp"
+        return "attn"
+
+    def _mixer_label(self, layer: int, name: str) -> str:
+        """``{l}_mlp_out`` / ``{l}_attn_out`` for typed passthrough mixers, else ``{l}_{name}_out``."""
+        block_types = getattr(self.model.cfg, "layers_block_type", None)
+        block_type = (
+            block_types[layer]
+            if isinstance(block_types, (list, tuple)) and layer < len(block_types)
+            else None
+        )
+        if block_type in ("mlp", "moe"):
+            return f"{layer}_mlp_out"
+        if block_type in ("attention", "full_attention"):
+            return f"{layer}_attn_out"
+        return f"{layer}_{name}_out"
+
+    def _mixer_stack(
+        self, layer: int, pos_slice: Slice, subtract_bias: bool = False
+    ) -> Tuple[List[torch.Tensor], List[str]]:
+        """Residual contributions of a non-attention block's mixer, e.g. ``0_linear_attn_out``.
+
+        Scaled by the block's ``residual_contribution_scale`` (Granite's ``residual_multiplier``
+        is applied after ``hook_out``), matching the head and neuron paths. ``subtract_bias``
+        drops the mixer's output bias first, for decompositions that carry it in their own
+        ``bias`` row.
+        """
+        components: List[torch.Tensor] = []
+        labels: List[str] = []
+        names = self._mixer_out_names(layer)
+        block = self.model.blocks[layer]
+        scale = getattr(block, "residual_contribution_scale", 1.0)
+        # Same bias accumulated_bias counts for this block, so the two cancel exactly.
+        bias = None
+        if subtract_bias and names:
+            get_bias = getattr(self.model, "_get_block_variant_bias", None)
+            bias = get_bias(block) if callable(get_bias) else None
+        for i, name in enumerate(names):
+            out = pos_slice.apply(self[f"blocks.{layer}.{name}.hook_out"], dim=-2)
+            if i == 0 and isinstance(bias, torch.Tensor):
+                out = out - bias.to(out.device, out.dtype)
+            if scale != 1.0:
+                out = out * scale
+            components.append(out)
+            labels.append(self._mixer_label(layer, name))
+        return components, labels
+
     def accumulated_resid(
         self,
         layer: Optional[int] = None,
@@ -727,7 +842,10 @@ class ActivationCache:
             mode:
                 Values are "all", "mlp" or "attn". "all" returns all
                 components, "mlp" returns only the MLP components, and "attn" returns only the
-                attention components. Defaults to "all".
+                attention components. Defaults to "all". On SSM / hybrid models, blocks without
+                attention contribute their sequence-mixer output (e.g. ``0_linear_attn_out``,
+                ``0_mixer_out``) in the attention slot, and blocks without an MLP contribute no
+                ``mlp_out``.
             apply_ln:
                 Whether to apply LayerNorm to the stack.
             pos_slice:
@@ -764,18 +882,38 @@ class ActivationCache:
                 components_list.append(self["hook_pos_embed"])
                 labels.append("pos_embed")
 
-        for l in range(layer):
-            if incl_attn:
+        def add_mixer(l: int) -> None:
+            mixers, mixer_labels = self._mixer_stack(l, Slice(None))
+            components_list.extend(mixers)
+            labels.extend(mixer_labels)
+
+        def add_attn_slot(l: int) -> None:
+            if self._has_attn(l):
                 components_list.append(self[("attn_out", l)])
                 labels.append(f"{l}_attn_out")
+            elif self._mixer_role(l) == "attn":
+                add_mixer(l)
+
+        for l in range(layer):
+            if incl_attn:
+                add_attn_slot(l)
             if incl_mlp:
-                components_list.append(self[("mlp_out", l)])
-                labels.append(f"{l}_mlp_out")
+                if self._has_mlp(l):
+                    components_list.append(self[("mlp_out", l)])
+                    labels.append(f"{l}_mlp_out")
+                elif not self._has_attn(l) and self._mixer_role(l) == "mlp":
+                    add_mixer(l)
         if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
-            components_list.append(self[("attn_out", layer)])
-            labels.append(f"{layer}_attn_out")
+            add_attn_slot(layer)
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
-        components = torch.stack(components_list, dim=0)
+        if components_list:
+            components = torch.stack(components_list, dim=0)
+        else:
+            # e.g. mode="mlp" on a model whose blocks have no MLP: an empty, stackable result.
+            empty_src = pos_slice.apply(self[("resid_pre", 0)], dim=-2)
+            components = torch.zeros(
+                0, *empty_src.shape, dtype=empty_src.dtype, device=empty_src.device
+            )
         if apply_ln:
             components = self.apply_ln_to_stack(
                 components, layer, pos_slice=pos_slice, mlp_input=mlp_input
@@ -812,6 +950,9 @@ class ActivationCache:
         expected_ndim = 4 if self.has_batch_dim else 3
         all_cached = True
         for layer in range(self.model.cfg.n_layers):
+            # SSM / linear-attention blocks have no heads.
+            if not self._has_attn(layer):
+                continue
             result_key = f"blocks.{layer}.attn.hook_result"
             cached_result = self.cache_dict.get(result_key)
             # Batchless per-head results are valid 3D tensors.
@@ -1109,7 +1250,8 @@ class ActivationCache:
         Returns a stack of all head results (ie residual stream contribution) up to layer L. A good
         way to decompose the outputs of attention layers into attribution by specific heads. Note
         that the num_components axis has length layer x n_heads ((layer head_index) in einops
-        notation).
+        notation). On SSM / hybrid models only attention layers contribute heads; the other
+        blocks' outputs are part of the remainder.
 
         Args:
             layer:
@@ -1147,6 +1289,9 @@ class ActivationCache:
         components: Any = []
         labels = []
         for l in range(layer):
+            # SSM / linear-attention blocks have no heads; their output lands in the remainder.
+            if not self._has_attn(l):
+                continue
             # Note that this has shape batch x pos x head_index x d_model
             result = pos_slice.apply(self[("result", l, "attn")], dim=-3)
             post = self._post_norm_map(l, "ln1_post", pos_slice)
@@ -1372,6 +1517,8 @@ class ActivationCache:
 
         components: list = []
         for l in range(layer):
+            if not self._has_mlp(l):
+                continue
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
@@ -1495,7 +1642,18 @@ class ActivationCache:
         assert d_mlp is not None, "model.cfg.d_mlp must be set"
         neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
-        labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
+        # Mamba / NemotronH blocks without an MLP have no neurons.
+        mlp_layers = [l for l in range(layer) if self._has_mlp(l)]
+        for l in mlp_layers:
+            modules = self._block_modules(l)
+            if modules is not None and "mlp" not in modules:
+                names = ", ".join(n for n in modules if not n.startswith(("hook", "_")))
+                raise NotImplementedError(
+                    f"blocks.{l} writes an MLP-side output without an `mlp` submodule "
+                    f"({names}), so its neurons cannot be expanded. Use "
+                    "expand_neurons=False or decompose_resid instead."
+                )
+        labels = [f"L{l}N{h}" for l in mlp_layers for h in neuron_labels]
         if mlp_input and layer < self.model.cfg.n_layers:
             stream = "resid_mid" if self._mlp_input_includes_attn(layer) else "resid_pre"
             remainder_target = (stream, layer)
@@ -1522,7 +1680,7 @@ class ActivationCache:
                 labels.append("remainder")
         else:
             per_layer: list = []
-            for l in range(layer):
+            for l in mlp_layers:
                 per_layer.append(
                     self.get_neuron_results(
                         l,
@@ -1689,13 +1847,19 @@ class ActivationCache:
 
         The returned tensor stacks components along ``dim=0`` in this order:
 
-        1. Attention head results, layer-by-layer (``L * n_heads`` rows)
-        2. Neuron / MLP results (only if ``cfg.attn_only=False`` and
-           ``layer > 0``; ``L * d_mlp`` rows when ``expand_neurons=True``,
-           else ``L`` rows)
-        3. ``embed`` (1 row, including any post-embedding runtime multiplier)
-        4. ``pos_embed`` (1 row, if the model has positional embeddings)
-        5. ``bias`` (1 row, the accumulated layer biases)
+        1. Attention head results, layer-by-layer (``L * n_heads`` rows; attention
+           layers only on SSM / hybrid models)
+        2. Sequence-mixer results of blocks without attention heads (SSM / hybrid
+           models only; one row per mixer, e.g. ``0_linear_attn_out``, output bias
+           excluded since it is in the ``bias`` row). MLP-type passthrough mixers
+           (NemotronH) appear here only when ``expand_neurons=True``; otherwise they
+           are part of the MLP rows below.
+        3. Neuron / MLP results (only if ``cfg.attn_only=False`` and
+           ``layer > 0``; ``d_mlp`` rows per block with an MLP when
+           ``expand_neurons=True``, else one row per MLP output)
+        4. ``embed`` (1 row, including any post-embedding runtime multiplier)
+        5. ``pos_embed`` (1 row, if the model has positional embeddings)
+        6. ``bias`` (1 row, the accumulated layer biases)
 
         ``return_labels=True`` returns a list of strings in the same order, so
         ``labels[i]`` always names ``stack[i]``. If you need to extract a
@@ -1757,6 +1921,24 @@ class ActivationCache:
             head_stack = head_stack @ project_2d
         labels = head_labels
         components = [head_stack]
+        # Blocks without attention heads: add each mixer output whole. Its output bias is dropped
+        # here because the `bias` row below already accumulates it. MLP-type mixers come from
+        # the MLP path when it is not expanded into neurons.
+        mixer_layers = [l for l in range(layer) if expand_neurons or self._mixer_role(l) == "attn"]
+        if mlp_input and self._mlp_input_includes_attn(layer) and self._mixer_role(layer) == "attn":
+            mixer_layers.append(layer)
+        mixer_list: List[torch.Tensor] = []
+        for l in mixer_layers:
+            mixers, mixer_labels = self._mixer_stack(l, pos_slice, subtract_bias=True)
+            mixer_list.extend(mixers)
+            labels.extend(mixer_labels)
+        if mixer_list:
+            mixer_stack = torch.stack(mixer_list, dim=0)
+            if ln_folded:
+                mixer_stack = _ln_then_project(mixer_stack)
+            elif project_2d is not None:
+                mixer_stack = mixer_stack @ project_2d
+            components.append(mixer_stack)
         if not self.model.cfg.attn_only and layer > 0:
             if expand_neurons:
                 # Only ask stack_neuron_results to apply LN when we want the fused analytical
