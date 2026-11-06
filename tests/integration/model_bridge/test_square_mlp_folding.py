@@ -7,6 +7,7 @@ W_out must still act on the d_model axis of each.
 """
 
 import copy
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -14,11 +15,25 @@ from transformers import (
     AutoModelForCausalLM,
     Gemma2Config,
     GPT2Config,
+    GPTNeoConfig,
     GPTNeoXConfig,
     LlamaConfig,
 )
 
+from transformer_lens.conversion_utils.conversion_steps import (
+    ChainTensorConversion,
+    RearrangeTensorConversion,
+    SplitTensorConversion,
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.model_bridge.sources import build_bridge_from_module
+from transformer_lens.model_bridge.supported_architectures.neo import (
+    NeoLinearTransposeConversion,
+)
+from transformer_lens.weight_processing import ProcessWeights
 
 _LLAMA_LIKE = dict(
     hidden_size=16,
@@ -36,6 +51,20 @@ CASES = [
             n_embd=16, n_layer=2, n_head=4, n_inner=d_mlp, n_positions=32, vocab_size=32
         ),
         id="gpt2",
+    ),
+    pytest.param(
+        "GPTNeoForCausalLM",
+        GPTNeoConfig,
+        lambda d_mlp: dict(
+            hidden_size=16,
+            num_layers=2,
+            num_heads=4,
+            intermediate_size=d_mlp,
+            attention_types=[[["global", "local"], 1]],
+            max_position_embeddings=32,
+            vocab_size=32,
+        ),
+        id="gpt_neo",
     ),
     pytest.param(
         "GPTNeoXForCausalLM",
@@ -88,3 +117,63 @@ def test_compatibility_mode_matches_hf_with_square_mlp(
         with torch.no_grad():
             actual = bridge(tokens).log_softmax(-1)
     torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+
+
+_SPLIT_GATE_UP = ParamProcessingConversion(
+    tensor_conversion=SplitTensorConversion(1, 2),
+    source_key="model.layers.{i}.mlp.gate_up_proj.weight",
+)
+
+
+@pytest.mark.parametrize(
+    "key,conversion,reads_residual,expected_axis",
+    [
+        # A split leaves nn.Linear's [d_mlp, d_model], as Phi-3's fused gate/up does.
+        pytest.param("blocks.0.mlp.in.weight", _SPLIT_GATE_UP, True, 1, id="split_w_in"),
+        pytest.param(
+            "blocks.0.mlp.in.weight",
+            ParamProcessingConversion(TransposeTensorConversion()),
+            True,
+            0,
+            id="transpose",
+        ),
+        pytest.param(
+            "blocks.0.mlp.in.weight",
+            ParamProcessingConversion(NeoLinearTransposeConversion()),
+            True,
+            0,
+            id="neo_transpose",
+        ),
+        pytest.param(
+            "blocks.0.mlp.in.weight",
+            ParamProcessingConversion(
+                ChainTensorConversion(
+                    [TransposeTensorConversion(), RearrangeTensorConversion("a b -> a b")]
+                )
+            ),
+            True,
+            0,
+            id="chain_with_transpose",
+        ),
+        pytest.param(
+            "blocks.0.mlp.in.weight",
+            ParamProcessingConversion(
+                ChainTensorConversion([TransposeTensorConversion(), TransposeTensorConversion()])
+            ),
+            True,
+            1,
+            id="chain_double_transpose",
+        ),
+    ],
+)
+def test_square_mlp_axis_follows_whether_the_conversion_transposes(
+    key, conversion, reads_residual, expected_axis
+):
+    placeholder = key.replace("blocks.0.", "blocks.{i}.")
+    if isinstance(conversion.tensor_conversion, SplitTensorConversion):
+        placeholder = placeholder.removesuffix(".weight")
+    adapter = SimpleNamespace(
+        weight_processing_conversions={placeholder: conversion}, _in_out_weight_keys=set()
+    )
+    axis = ProcessWeights._mlp_model_axis(key, torch.zeros(16, 16), 16, adapter, reads_residual)
+    assert axis == expected_axis

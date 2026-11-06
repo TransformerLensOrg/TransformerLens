@@ -81,12 +81,11 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
         final norm feeds the unembedding. Encoder writes are the attention and MLP
         outputs plus the sinusoidal positions; the GELU'd conv output is not linear
         in any weight, so it stays uncentered (centering is exact either way, since
-        every read is through a LayerNorm). Key projections have no bias.
+        every read is through a LayerNorm).
         """
         encoder_layers = getattr(self.cfg, "encoder_layers", None) or self.cfg.n_layers
         decoder_layers = self.cfg.n_layers
         norm_readers: Dict[str, list[str]] = {}
-        key_projections: set[str] = set()
         residual_writers: list[str] = []
         value_output_pairs: list[tuple[str, str]] = []
         for i in range(encoder_layers):
@@ -94,7 +93,6 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
             attn = f"{block}.self_attn"
             norm_readers[f"{block}.self_attn_layer_norm"] = [f"{attn}.{p}" for p in "qkv"]
             norm_readers[f"{block}.final_layer_norm"] = [f"{block}.mlp.in"]
-            key_projections.add(f"{attn}.k")
             residual_writers += [f"{attn}.o", f"{block}.mlp.out"]
             value_output_pairs.append((f"{attn}.v", f"{attn}.o"))
         cross_kv: list[str] = []
@@ -105,7 +103,6 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
             norm_readers[f"{block}.encoder_attn_layer_norm"] = [f"{cross_attn}.q"]
             norm_readers[f"{block}.final_layer_norm"] = [f"{block}.mlp.in"]
             cross_kv += [f"{cross_attn}.k", f"{cross_attn}.v"]
-            key_projections.update({f"{self_attn}.k", f"{cross_attn}.k"})
             residual_writers += [f"{self_attn}.o", f"{cross_attn}.o", f"{block}.mlp.out"]
             value_output_pairs += [
                 (f"{self_attn}.v", f"{self_attn}.o"),
@@ -115,7 +112,6 @@ class WhisperArchitectureAdapter(BartFamilyArchitectureAdapter):
         norm_readers["decoder_ln_final"] = ["unembed"]
         return ResidualLayout(
             norm_readers=norm_readers,
-            key_projections=frozenset(key_projections),
             residual_writers=residual_writers,
             embedding_writers=["pos_embed", "decoder_embed", "decoder_pos_embed"],
             value_output_pairs=value_output_pairs,

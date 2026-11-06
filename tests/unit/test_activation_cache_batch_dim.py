@@ -3,7 +3,8 @@
 T5-style caches mix genuinely batched activations with entries whose leading dim
 is not the batch: broadcast entries (leading 1) and position-indexed entries
 (leading dim = seq len, e.g. relative position bias). remove_batch_dim and
-apply_slice_to_batch_dim must not corrupt those.
+apply_slice_to_batch_dim must not corrupt those. A cache whose batch dim was
+already removed must still accept an identity slice and reject a real one.
 """
 
 from __future__ import annotations

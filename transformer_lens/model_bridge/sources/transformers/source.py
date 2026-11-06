@@ -93,7 +93,8 @@ def boot(
             adapter is selected automatically (e.g., BertForNextSentencePrediction).
         hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
-            When provided, load_weights is ignored.
+            When provided, load_weights is ignored, and without ``device=`` the bridge reads
+            ``cfg.device`` from the model's weights.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
             dispatched inference. Explicit maps may include CPU and disk targets; meta targets
             are still rejected when ``load_weights=True`` (meta has no real data to offload from,

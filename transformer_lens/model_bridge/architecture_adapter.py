@@ -43,22 +43,19 @@ from transformer_lens.utilities.attn_implementation import force_eager_attention
 class ResidualLayout:
     """Where each LayerNorm's output goes and what writes to each residual stream.
 
-    For pre-LN architectures the decoder-only weight processing (``blocks.{i}``)
-    cannot walk, such as encoder-decoders with cross-attention. Entries are
+    Covers pre-LN architectures the decoder-only ``blocks.{i}`` weight-processing walk
+    cannot handle, such as encoder-decoders with cross-attention. Entries are
     state-dict prefixes of components with HF ``nn.Linear`` / ``nn.Embedding``
     layout (``[out, in]`` weights, ``[n, d_model]`` tables).
 
     Attributes:
         norm_readers: Each LayerNorm prefix mapped to the linears that read its output.
-        key_projections: Attention key linears. Softmax ignores a key bias, so a norm
-            bias folded into a key linear without a bias parameter is dropped exactly.
         residual_writers: Linears whose output is added to a residual stream.
         embedding_writers: Embedding tables whose rows are added to a residual stream.
         value_output_pairs: ``(value, output)`` linears of each attention.
     """
 
     norm_readers: Dict[str, list[str]]
-    key_projections: frozenset[str] = field(default_factory=frozenset)
     residual_writers: list[str] = field(default_factory=list)
     embedding_writers: list[str] = field(default_factory=list)
     value_output_pairs: list[tuple[str, str]] = field(default_factory=list)

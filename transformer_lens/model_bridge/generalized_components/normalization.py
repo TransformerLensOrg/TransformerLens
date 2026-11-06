@@ -31,13 +31,11 @@ def _run_intermediate_hook(point: HookPoint, value: torch.Tensor) -> tuple[torch
         result = point(value)
         return result, result is not value
     hook_input = value.clone()
-    # Inference tensors have no version counter; compare a snapshot only on that path.
-    before = hook_input.clone() if torch.is_inference(hook_input) else hook_input._version
+    # Compare values, not _version: writes through .data skip the version counter
+    # and inference tensors have none.
+    before = hook_input.detach().clone()
     result = point(hook_input)
-    if isinstance(before, torch.Tensor):
-        mutated = not torch.allclose(hook_input, before, rtol=0, atol=0, equal_nan=True)
-    else:
-        mutated = hook_input._version != before
+    mutated = not torch.allclose(hook_input, before, rtol=0, atol=0, equal_nan=True)
     return result, result is not hook_input or mutated
 
 
@@ -139,10 +137,11 @@ class NormalizationBridge(GeneralizedComponent):
             hidden_states = hidden_states.float()
         if not self.uses_rms_norm:
             hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
+        # sqrt saves its output for backward; the clone keeps in-place hook edits off it.
         scale = self.hook_scale(
-            (
-                hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05)
-            ).sqrt()
+            (hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05))
+            .sqrt()
+            .clone()
         )
         hidden_states = self.hook_normalized(hidden_states / scale)
         return self._apply_weight_and_bias(hidden_states, input_dtype)

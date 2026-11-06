@@ -861,10 +861,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def _block_submodule_key_to_bridge(self, key: str) -> str:
         """Rename a block key's HF submodule segment to the bridge name that owns it.
 
-        Encoder-decoder state dicts keep HF names inside blocks
-        (``encoder_blocks.0.self_attn_layer_norm.weight``), but a block routes processed
-        weights to its subcomponents by bridge name (``ln1``). Keys already using a
-        bridge name, as on decoder-only models, are returned unchanged.
+        Encoder-decoder state dicts keep HF names inside blocks (``self_attn_layer_norm``),
+        but a block routes processed weights by bridge name (``ln1``); bridge names pass through.
         """
         parts = key.split(".")
         if len(parts) < 3 or not parts[1].isdigit() or not self.adapter.component_mapping:
@@ -1788,7 +1786,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """Sum of variant + MLP output biases through the residual stream up to `layer`.
 
         Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
-        to target its MLP input: the current variant bias is included only for sequential blocks.
+        to target ``layer``'s MLP input, adding its variant bias unless the block is parallel.
         """
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
@@ -2165,10 +2163,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
-            stop_at_layer: Layer to stop forward pass at, returning the residual stream
-                entering block ``k``. ``n_layers`` returns what leaves the last block,
-                before the final norm and unembed, and a value outside
-                ``[-n_layers, n_layers]`` raises ``ValueError``. Only supported on the
+            stop_at_layer: Return the residual stream entering this block instead of the
+                model output. ``n_layers`` returns what leaves the last block, before the
+                final norm and unembed, and a value outside ``[-n_layers, n_layers]``
+                raises ``ValueError``. Only supported on the
                 standard ``blocks`` stack; architectures that register no ``blocks``
                 (e.g. Raven's ``prelude``/``core_block``/``coda``) raise
                 ``NotImplementedError`` rather than running to completion.
@@ -2226,7 +2224,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             effective_stop_at_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
-        # Set stop_at_layer flag on all blocks if requested
         if effective_stop_at_layer is not None:
             for block in self.blocks:
                 block._stop_at_layer_idx = effective_stop_at_layer
@@ -2346,7 +2343,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         ),
                         padding_side=_resolved_padding_side,
                     ).to(self.cfg.device)
-                    # An unpadded tensor keeps the unmasked path it had before.
+                    # A tensor with no pads stays on the unmasked path, so its logits are unchanged.
                     _is_unpadded = _is_padded_tokens and bool(derived_mask.all())
                     if not _is_unpadded and not _layout_needs_mask:
                         # Causal right padding: the model still runs unmasked, so the
@@ -2479,6 +2476,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 if labels is not None:
                     labels = self._align_decoder_batch(labels, n_clips, "labels")
                     kwargs["labels"] = labels
+                decoder_attention_mask = kwargs.get("decoder_attention_mask")
+                if isinstance(decoder_attention_mask, torch.Tensor):
+                    kwargs["decoder_attention_mask"] = self._align_decoder_batch(
+                        decoder_attention_mask, n_clips, "decoder_attention_mask"
+                    )
                 kwargs[self.adapter.audio_input_name] = input
                 result = self._driver.forward(**kwargs)
             # Audio models use input_values (waveform), not input_ids
@@ -2584,7 +2586,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
     @staticmethod
     def _align_decoder_batch(ids: torch.Tensor, n_clips: int, name: str) -> torch.Tensor:
-        """Line decoder ids up with the audio batch: one row per clip, or one row shared by all.
+        """Line decoder ids or masks up with the audio batch: one row per clip, or one shared row.
 
         HF does not check this, and a single row against several clips returns one row
         of logits that matches none of them.
@@ -3085,8 +3087,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
                         del self._last_hf_cache
                 raw_logits = logits[:, -1, :]
-                # Keep model output separate from scores modified by decoding constraints.
-                final_logits = raw_logits
+                # Clone so processors may edit scores in place without leaking into raw_logits.
+                final_logits = raw_logits.clone()
 
                 # Sample next token
                 penalty_tokens = (
@@ -3112,7 +3114,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     and decoder_tokens.shape[1] < min_decoder_length
                     and stop_tokens
                 ):
-                    final_logits = final_logits.clone()
                     final_logits[:, stop_tokens] = float("-inf")
                 # Force EOS as the last allowed token, applied after the other
                 # processors so it wins — the same ordering HF uses for
@@ -3785,7 +3786,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 is_encoder_decoder=is_encoder_decoder,
                 batched_prompt_mask=(
                     self._left_padded_prompt_mask(input, input_tokens, prepend_bos)
-                    if _is_batched_list and isinstance(input, list) and not is_encoder_decoder
+                    if _is_batched_list
+                    and isinstance(input, list)
+                    and not is_encoder_decoder
+                    and initial_attention_mask is None
                     else None
                 ),
                 _generate_from_embeds=_generate_from_embeds,
@@ -4066,18 +4070,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 encoded = self.tokenizer(input, return_tensors="pt", padding=True)
                 input_tokens = encoded["input_ids"].to(self.cfg.device)
                 encoder_attention_mask = encoded.get("attention_mask")
-            elif _is_batched_list:
-                _orig_ps = self.tokenizer.padding_side
-                self.tokenizer.padding_side = "left"
-                try:
-                    input_tokens = self.to_tokens(
-                        input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
-                    )
-                finally:
-                    self.tokenizer.padding_side = _orig_ps
             else:
+                # Pass the side as a kwarg, as generate() does, instead of mutating the tokenizer.
                 input_tokens = self.to_tokens(
-                    input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
+                    input,
+                    prepend_bos=prepend_bos,
+                    padding_side="left" if _is_batched_list else None,
+                    move_to_device=True,
+                    truncate=False,
                 )
             input_type = "list"
         else:
@@ -4247,7 +4247,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     is_encoder_decoder=_encdec_early,
                     batched_prompt_mask=(
                         self._left_padded_prompt_mask(input, input_tokens, prepend_bos)
-                        if _is_batched_list and isinstance(input, list) and not _encdec_early
+                        if _is_batched_list
+                        and isinstance(input, list)
+                        and not _encdec_early
+                        and initial_attention_mask is None
                         else None
                     ),
                     _generate_from_embeds=False,
@@ -4399,7 +4402,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             input_type = "list"
         else:
             input_ids = input
-            if input_ids.device != self.cfg.device:
+            # cfg.device is a str; comparing it to a torch.device is always unequal.
+            if self.cfg.device is not None and input_ids.device != torch.device(self.cfg.device):
                 input_ids = input_ids.to(self.cfg.device)
             input_type = "tokens"
 
@@ -4922,7 +4926,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 names = {
                     tl_subname: subcomponent.name
                     for tl_subname, subcomponent in blocks_component.submodules.items()
-                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
                     if subcomponent.name and tl_subname != subcomponent.name
                 }
                 attr_to_hf.update(names)

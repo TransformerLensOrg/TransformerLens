@@ -22,7 +22,9 @@ def hf_model():
 
 def test_mlp_outputs_match(bridge_model, hf_model):
     """Bridge MLP must produce identical outputs to HF MLP for each layer."""
-    test_tensor = torch.randn(3, 5, bridge_model.cfg.d_model)
+    test_tensor = torch.randn(
+        3, 5, bridge_model.cfg.d_model, generator=torch.Generator().manual_seed(0)
+    )
 
     for layer_n in range(bridge_model.cfg.n_layers):
         bridge_out = bridge_model.blocks[layer_n].mlp(test_tensor)
@@ -35,7 +37,10 @@ def test_mlp_outputs_match(bridge_model, hf_model):
 
 def test_attention_outputs_match(bridge_model, hf_model):
     """Bridge attention must produce identical outputs to HF attention for each layer."""
-    input_tensor = torch.randn(3, 5, bridge_model.cfg.d_model)
+    # Outputs reach ~1e3, so fp32 rounding alone exceeds atol=1e-4 on about 6% of unseeded inputs
+    input_tensor = torch.randn(
+        3, 5, bridge_model.cfg.d_model, generator=torch.Generator().manual_seed(0)
+    )
 
     for layer_n in range(bridge_model.cfg.n_layers):
         bridge_out = bridge_model.blocks[layer_n].attn(hidden_states=input_tensor)

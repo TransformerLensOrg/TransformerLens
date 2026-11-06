@@ -183,7 +183,6 @@ def postprocess_weights(self, bridge: Any) -> None:
 `fold_ln`, `center_writing_weights` and `fold_value_biases` walk decoder-only `blocks.{i}` keys, so on encoder-decoders they find nothing; the BART family runs with them off. A pre-LN encoder-decoder can turn them on by returning a `ResidualLayout` (in [`../architecture_adapter.py`](../architecture_adapter.py)) from `residual_layout()` and setting `supports_fold_ln` / `supports_center_writing_weights` to `True`. The layout lists, as state-dict prefixes with HF `nn.Linear` layout:
 
 - `norm_readers`: each LayerNorm and the linears reading its output, including cross-stack reads (Whisper's `encoder_ln_final` feeds every decoder block's cross-attention `k`/`v`).
-- `key_projections`: bias-free key linears, which may drop a folded norm bias exactly (softmax ignores it).
 - `residual_writers` / `embedding_writers`: what is added to each residual stream.
 - `value_output_pairs`: each attention's value and output linears.
 

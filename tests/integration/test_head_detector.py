@@ -393,6 +393,12 @@ def test_detect_head_with_invalid_head_name():
     )
 
 
+@pytest.mark.parametrize("detection_pattern", ["previous_token_head", torch.ones(4, 4).tril()])
+def test_detect_head_with_empty_seq_list(detection_pattern):
+    with pytest.raises(ValueError, match="empty list"):
+        detect_head(model, [], detection_pattern)
+
+
 def test_detect_head_with_zero_sequence_length():
     with pytest.raises(AssertionError) as e:
         detect_head(model, "", "previous_token_head")

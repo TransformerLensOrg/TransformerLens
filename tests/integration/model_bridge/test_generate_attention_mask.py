@@ -13,8 +13,6 @@ or a pad id that also occurs as a real token.
 
 from __future__ import annotations
 
-import copy
-
 import pytest
 import torch
 
@@ -208,17 +206,18 @@ def test_mask_shape_must_match_the_prompt(distilgpt2_bridge, prompt) -> None:
         )
 
 
-def test_padding_side_without_a_tokenizer_is_an_error(distilgpt2_bridge, prompt) -> None:
+def test_padding_side_without_a_tokenizer_is_an_error(
+    distilgpt2_bridge, prompt, monkeypatch
+) -> None:
     """A bridge booted without a tokenizer has nothing to read the padding from, so
     padding_side would be inert — leaving exactly the bug this module is about, but
     silently. attention_mask still works there and the message must say so."""
-    bridge = copy.copy(distilgpt2_bridge)
-    bridge.tokenizer = None
-    assert bridge.tokenizer is None and distilgpt2_bridge.tokenizer is not None
     padded, _ = _left_pad(distilgpt2_bridge, prompt, 3)
+    monkeypatch.setattr(distilgpt2_bridge, "_tokenizer", None)
+    assert distilgpt2_bridge.tokenizer is None
 
     with pytest.raises(ValueError, match="this bridge has none"):
-        bridge.generate(padded, padding_side="left", **GREEDY)
+        distilgpt2_bridge.generate(padded, padding_side="left", **GREEDY)
 
 
 def test_padding_side_without_a_pad_token_is_an_error(distilgpt2_bridge, prompt) -> None:
@@ -235,15 +234,15 @@ def test_padding_side_without_a_pad_token_is_an_error(distilgpt2_bridge, prompt)
 
 
 def test_a_tokenizerless_bridge_still_accepts_an_explicit_mask(
-    distilgpt2_bridge, prompt, unpadded_continuation
+    distilgpt2_bridge, prompt, unpadded_continuation, monkeypatch
 ) -> None:
     """The alternative the error points at has to actually work."""
-    bridge = copy.copy(distilgpt2_bridge)
-    bridge.tokenizer = None
     n_pad = 3
     padded, mask = _left_pad(distilgpt2_bridge, prompt, n_pad)
+    monkeypatch.setattr(distilgpt2_bridge, "_tokenizer", None)
+    assert distilgpt2_bridge.tokenizer is None
 
-    out = bridge.generate(padded, attention_mask=mask, **GREEDY)
+    out = distilgpt2_bridge.generate(padded, attention_mask=mask, **GREEDY)
 
     assert out[0, n_pad + prompt.shape[1] :].tolist() == unpadded_continuation
 

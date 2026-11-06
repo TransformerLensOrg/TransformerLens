@@ -1018,17 +1018,31 @@ class ActivationCache:
     def _post_norm_map(
         self, layer: int, norm_name: str, pos_slice: Slice
     ) -> Optional[Tuple[torch.Tensor, Optional[torch.Tensor], bool, Optional[torch.Tensor]]]:
-        """The cached-scale linear map of a post-sublayer norm (``ln1_post``/``ln2_post``).
+        """Cached-scale affine map ``(s, w, centers, b)`` of a post-sublayer norm, or None.
 
-        A post-norm block adds ``norm(out)`` rather than ``out`` to the residual stream. With the
-        cached scale ``s`` the norm is affine, ``norm(x) = center(x) / s * w + b``, so each
-        component of ``out`` contributes ``center(x_i) / s * w`` and the block adds ``b`` once.
-        Returns ``(s, w, centers, b)`` with ``s`` sliced by ``pos_slice``, or None without one.
+        With ``s`` fixed, ``norm(x) = center(x) / s * w + b`` is affine, so each component of
+        the sublayer output contributes ``center(x_i) / s * w`` and the block adds ``b`` once.
         """
         norm = self.model.blocks[layer]._modules.get(norm_name)
         if norm is None:
             return None
-        scale = pos_slice.apply(self[f"blocks.{layer}.{norm_name}.hook_scale"], dim=-2)
+        key = f"blocks.{layer}.{norm_name}.hook_scale"
+        if norm._modules.get("hook_scale") is None:
+            # Leaving it unmapped would silently return pre-norm contributions.
+            raise KeyError(
+                f"blocks.{layer}.{norm_name} is a post-sublayer norm with no hook_scale (not "
+                f"bridged as a normalization component), so head and neuron contributions "
+                f"cannot be mapped through it on this architecture."
+            )
+        try:
+            cached_scale = self[key]
+        except KeyError as e:
+            raise KeyError(
+                f"Post-sublayer norm scale not found at '{key}'. Head and neuron decompositions "
+                f"on post-norm architectures divide by it; include it in run_with_cache's "
+                f"names_filter."
+            ) from e
+        scale = pos_slice.apply(cached_scale, dim=-2)
         weight = getattr(norm, "weight", None)
         if weight is not None and getattr(norm, "uses_weight_offset", False):
             weight = 1.0 + weight
@@ -1040,19 +1054,18 @@ class ActivationCache:
         x: torch.Tensor, scale: torch.Tensor, weight: Optional[torch.Tensor], centers: bool
     ) -> torch.Tensor:
         """``center(x) / scale * weight`` over the last (d_model) axis; ``scale`` broadcasts."""
+        input_dtype = x.dtype
         if centers:
             x = x - x.mean(dim=-1, keepdim=True)
         x = x / scale
-        return x * weight if weight is not None else x
+        x = x * weight if weight is not None else x
+        # The fp32 scale would otherwise promote half-precision stacks; the norm casts back too.
+        return x.to(input_dtype)
 
     def _post_norm_bias_correction(
         self, layer: int, mlp_input: bool, include_mlp_biases: bool, pos_slice: Slice
     ) -> Optional[torch.Tensor]:
-        """Per-position change to ``accumulated_bias`` from blocks with post-sublayer norms.
-
-        ``accumulated_bias`` adds each output bias as is; a post-norm block adds
-        ``norm_map(bias) + norm_bias`` instead, which depends on the position through the scale.
-        """
+        """Per-position ``accumulated_bias`` fix: post-norm blocks add ``norm_map(b) + norm_b``."""
         correction: Optional[torch.Tensor] = None
         sublayers = [(l, "attn") for l in range(layer)]
         if include_mlp_biases:
@@ -1265,7 +1278,7 @@ class ActivationCache:
             scale, weight, centers, _ = post
             # center(a_n W_out_n) / s * w = (a_n / s) * center(W_out_n) * w
             W_out = self._apply_post_norm_map(W_out, torch.ones(()), weight, centers)
-            neuron_acts = neuron_acts / scale
+            neuron_acts = (neuron_acts / scale).to(neuron_acts.dtype)
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]

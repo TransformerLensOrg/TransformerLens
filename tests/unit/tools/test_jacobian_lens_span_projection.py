@@ -75,10 +75,16 @@ def test_span_projection_is_invariant_to_atom_rescaling_and_zero_padding(scale: 
     torch.testing.assert_close(projected[3:], torch.zeros(4093))
 
 
+# Zero rows leave the problem unchanged, so the rank decision must not depend on d_model.
+@pytest.mark.parametrize("d_model", [3, 4096])
 @pytest.mark.parametrize("separation, retained", [(1e-5, True), (1e-10, False)])
-def test_span_projection_has_explicit_near_dependency_policy(separation: float, retained: bool):
-    atoms = torch.tensor([[1.0, 1.0], [0.0, separation], [0.0, 0.0]])
-    target = torch.tensor([0.0, 1.0, 0.0])
+def test_span_projection_has_explicit_near_dependency_policy(
+    separation: float, retained: bool, d_model: int
+):
+    atoms = torch.zeros(d_model, 2)
+    atoms[:2] = torch.tensor([[1.0, 1.0], [0.0, separation]])
+    target = torch.zeros(d_model)
+    target[1] = 1.0
     projected = _project_onto_span(atoms, target)
     expected = target if retained else torch.zeros_like(target)
     torch.testing.assert_close(projected, expected, atol=1e-8, rtol=1e-6)

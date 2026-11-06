@@ -130,12 +130,7 @@ def tokenize_and_concatenate(
 
 
 def _enable_bos_in_memory(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokenizerBase:
-    """Return a copy of an in-memory fast tokenizer that prepends BOS.
-
-    The original tokenizer is returned when BOS cannot be enabled without reloading:
-    slow tokenizers have no post-processor to rebuild, and ``TemplateProcessing``
-    rejects special tokens containing ':'.
-    """
+    """BOS-enabled copy of an in-memory fast tokenizer; unchanged if slow or a token has ':'."""
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
         return tokenizer
     tokenizer_with_bos = deepcopy(tokenizer)

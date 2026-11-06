@@ -95,7 +95,7 @@ def test_dispatch_does_not_mutate_shared_config(stub_dispatch):
 
 
 @pytest.mark.parametrize("policy", ["eager", "batched_mm", None])
-def test_other_policies_are_unchanged(policy):
+def test_other_policies_are_unchanged(stub_dispatch, policy):
     experts = _Experts(SimpleNamespace(_experts_implementation=policy))
     assert _mps_experts_forward(experts, torch.empty(1).as_subclass(_MpsInput)) == policy
 
@@ -267,7 +267,7 @@ def test_unexpected_probe_failure_propagates(monkeypatch):
     ]
     + [("mps", policy) for policy in ["eager", "batched_mm", None]],
 )
-def test_unaffected_calls_do_not_probe(monkeypatch, policy, device):
+def test_unaffected_calls_do_not_probe(monkeypatch, stub_dispatch, policy, device):
     class DeviceInput(torch.Tensor):
         @property
         def device(self):

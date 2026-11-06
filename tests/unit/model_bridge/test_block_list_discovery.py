@@ -134,8 +134,8 @@ def test_enumerate_blocks_ignores_components_that_are_not_list_items():
 
 
 def test_enumerate_blocks_skips_mixed_lists_instead_of_leaking_non_blocks():
-    """A ModuleList is only a block list if *every* item is a residual-stream
-    block. Checking just the first item let a mixed list through whole, leaking
+    """A ModuleList is only a block list if *every* item sets ``is_list_item``.
+    Checking just the first item let a mixed list through whole, leaking
     unrelated modules into every consumer of _enumerate_blocks()."""
     first_is_block = nn.ModuleList([_opaque_block_with_attn("mixed.0"), nn.Linear(2, 2)])
     last_is_block = nn.ModuleList([nn.Linear(2, 2), _opaque_block_with_attn("mixed2.1")])
