@@ -48,6 +48,23 @@ _BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "
 _SELF_ATTENTION_NAMES = {"attn": ("attn", "self_attn")}
 
 
+def _validate_execution_kwargs(kwargs: Mapping[str, Any], caller: str) -> None:
+    """Reject helper-only arguments before they can disappear into a driver's kwargs."""
+    for name in kwargs:
+        if name in ("fwd_hook", "bwd_hook"):
+            correct = f"{name}s"
+            hint = f"use run_with_hooks({correct}=...) or hooks({correct}=...)."
+        elif name in ("fwd_hooks", "bwd_hooks"):
+            hint = f"use run_with_hooks({name}=...) or hooks({name}=...)."
+        elif name in ("names_filter", "incl_bwd", "pos_slice", "return_cache_object"):
+            hint = f"use run_with_cache({name}=...) to scope caching."
+        elif name in ("reset_hooks_end", "clear_contexts", "remove_batch_dim"):
+            hint = f"use run_with_hooks({name}=...) or run_with_cache({name}=...)."
+        else:
+            continue
+        raise TypeError(f"{caller}() got an unexpected keyword argument {name!r}; {hint}")
+
+
 def _input_batch_size(*inputs: Any) -> Optional[int]:
     """The batch size of the first input that states it (a string, list of strings or tensor).
 
@@ -1298,12 +1315,7 @@ class BridgeCore:
         hooks the caller attached beforehand are left alone either way;
         ``clear_contexts`` also wipes the touched hook points' ``ctx``.
         """
-        if "names_filter" in kwargs:
-            # **kwargs would silently absorb it; fail loud.
-            raise TypeError(
-                "run_with_hooks() got an unexpected keyword argument 'names_filter'; "
-                "use run_with_cache(names_filter=...) to scope caching."
-            )
+        _validate_execution_kwargs(kwargs, "run_with_hooks")
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
@@ -1481,7 +1493,10 @@ class BridgeCore:
         ``clear_contexts`` also wipes the touched hook points' ``ctx``. ``device``
         offloads cached activations (matches ``ActivationCache.to``); the model and
         inputs stay where the caller put them.
+        To intervene while caching, use ``with model.hooks(fwd_hooks=...)``
+        around this call; hook lists passed directly here raise ``TypeError``.
         """
+        _validate_execution_kwargs(kwargs, "run_with_cache")
         if incl_bwd and stop_at_layer is not None:
             raise ValueError(
                 "incl_bwd=True cannot be combined with stop_at_layer: the run returns the "
