@@ -193,6 +193,13 @@ class TestMambaStopAtLayer:
                 stopped, expected
             ), f"stop_at_layer={stop}: max diff = {(stopped - expected).abs().max().item()}"
 
+    def test_stop_after_the_last_block(self, mamba_bridge, cached_resids):
+        """stop_at_layer=n_layers should return the residual stream leaving the last block."""
+        tokens, cache = cached_resids
+        with torch.no_grad():
+            stopped = mamba_bridge(tokens, stop_at_layer=24)
+        assert torch.allclose(stopped, cache["blocks.23.hook_out"])
+
     def test_output_shape_is_residual_not_logits(self, mamba_bridge):
         """When stopped mid-network, output is [batch, seq, d_model], not logits."""
         tokens = torch.tensor([[1, 2, 3, 4]])

@@ -357,7 +357,7 @@ class ActivationCache:
             batch_slice = Slice(batch_slice)
         batch_slice = cast(Slice, batch_slice)  # mypy can't seem to infer this
         assert (
-            self.has_batch_dim or batch_slice.mode == "empty"
+            self.has_batch_dim or batch_slice.mode == "identity"
         ), "Cannot index into a cache without a batch dim"
         still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
         batch_size = self._batch_size()
@@ -372,6 +372,12 @@ class ActivationCache:
             for name, param in self.cache_dict.items()
         }
         return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
+
+    def _mlp_input_includes_attn(self, layer: int) -> bool:
+        """Whether the target block's MLP reads the current attention contribution."""
+        return layer < self.model.cfg.n_layers and bool(
+            getattr(self.model.blocks[layer], "mlp_input_includes_attn", True)
+        )
 
     def accumulated_resid(
         self,
@@ -484,7 +490,8 @@ class ActivationCache:
                 immediately pre logits). The indices are taken such that this gives the accumulated
                 streams up to the input to layer l.
             incl_mid:
-                Whether to return `resid_mid` for all previous layers.
+                Whether to return `resid_mid` for previous sequential-residual layers.
+                Parallel-residual layers have no distinct mid stream.
             apply_ln:
                 Whether to apply the final layer norm to the stack. When True, applies
                 `model.ln_final`, which recomputes normalization statistics (mean and
@@ -493,8 +500,8 @@ class ActivationCache:
             pos_slice:
                 A slice object to apply to the pos dimension. Defaults to None, do nothing.
             mlp_input:
-                Whether to include resid_mid for the current layer. This essentially gives the MLP
-                input rather than the attention input.
+                Target the MLP input: include the current resid_mid for sequential blocks;
+                parallel blocks already expose this input as resid_pre.
             return_labels:
                 Whether to return a list of labels for the residual stream components. Useful for
                 labelling graphs.
@@ -518,7 +525,9 @@ class ActivationCache:
                 continue
             components_list.append(self[("resid_pre", l)])
             labels.append(f"{l}_pre")
-            if (incl_mid and l < layer) or (mlp_input and l == layer):
+            if ((incl_mid and l < layer) or (mlp_input and l == layer)) and (
+                self._mlp_input_includes_attn(l)
+            ):
                 components_list.append(self[("resid_mid", l)])
                 labels.append(f"{l}_mid")
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
@@ -713,9 +722,8 @@ class ActivationCache:
                 means just embed and pos_embed. The indices are taken such that this gives the
                 accumulated streams up to the input to layer l
             mlp_input:
-                Whether to include attn_out for the current
-                layer - essentially decomposing the residual stream that's input to the MLP input
-                rather than the Attn input.
+                Decompose the MLP input rather than the attention input. The current layer's
+                attention contribution is included only for sequential-residual blocks.
             mode:
                 Values are "all", "mlp" or "attn". "all" returns all
                 components, "mlp" returns only the MLP components, and "attn" returns only the
@@ -763,7 +771,7 @@ class ActivationCache:
             if incl_mlp:
                 components_list.append(self[("mlp_out", l)])
                 labels.append(f"{l}_mlp_out")
-        if mlp_input and incl_attn:
+        if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
             components_list.append(self[("attn_out", layer)])
             labels.append(f"{layer}_attn_out")
         components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
@@ -1007,6 +1015,71 @@ class ActivationCache:
             return _call(single, layer)
         return self._over_ssm_layers(_call, mixer_type=state_mixers)
 
+    def _post_norm_map(
+        self, layer: int, norm_name: str, pos_slice: Slice
+    ) -> Optional[Tuple[torch.Tensor, Optional[torch.Tensor], bool, Optional[torch.Tensor]]]:
+        """The cached-scale linear map of a post-sublayer norm (``ln1_post``/``ln2_post``).
+
+        A post-norm block adds ``norm(out)`` rather than ``out`` to the residual stream. With the
+        cached scale ``s`` the norm is affine, ``norm(x) = center(x) / s * w + b``, so each
+        component of ``out`` contributes ``center(x_i) / s * w`` and the block adds ``b`` once.
+        Returns ``(s, w, centers, b)`` with ``s`` sliced by ``pos_slice``, or None without one.
+        """
+        norm = self.model.blocks[layer]._modules.get(norm_name)
+        if norm is None:
+            return None
+        scale = pos_slice.apply(self[f"blocks.{layer}.{norm_name}.hook_scale"], dim=-2)
+        weight = getattr(norm, "weight", None)
+        if weight is not None and getattr(norm, "uses_weight_offset", False):
+            weight = 1.0 + weight
+        centers = not getattr(norm, "uses_rms_norm", False)
+        return scale, weight, centers, getattr(norm, "bias", None)
+
+    @staticmethod
+    def _apply_post_norm_map(
+        x: torch.Tensor, scale: torch.Tensor, weight: Optional[torch.Tensor], centers: bool
+    ) -> torch.Tensor:
+        """``center(x) / scale * weight`` over the last (d_model) axis; ``scale`` broadcasts."""
+        if centers:
+            x = x - x.mean(dim=-1, keepdim=True)
+        x = x / scale
+        return x * weight if weight is not None else x
+
+    def _post_norm_bias_correction(
+        self, layer: int, mlp_input: bool, include_mlp_biases: bool, pos_slice: Slice
+    ) -> Optional[torch.Tensor]:
+        """Per-position change to ``accumulated_bias`` from blocks with post-sublayer norms.
+
+        ``accumulated_bias`` adds each output bias as is; a post-norm block adds
+        ``norm_map(bias) + norm_bias`` instead, which depends on the position through the scale.
+        """
+        correction: Optional[torch.Tensor] = None
+        sublayers = [(l, "attn") for l in range(layer)]
+        if include_mlp_biases:
+            sublayers += [(l, "mlp") for l in range(layer)]
+        if mlp_input and layer < self.model.cfg.n_layers and self._mlp_input_includes_attn(layer):
+            sublayers.append((layer, "attn"))
+        for l, kind in sublayers:
+            post = self._post_norm_map(l, "ln1_post" if kind == "attn" else "ln2_post", pos_slice)
+            if post is None:
+                continue
+            scale, weight, centers, norm_bias = post
+            block = self.model.blocks[l]
+            if kind == "attn":
+                # Same lookup as accumulated_bias, so the raw bias it added is the one replaced.
+                out_bias = getattr(self.model, "_get_block_variant_bias")(block)
+            else:
+                out_bias = getattr(block.mlp, "b_out", None) if "mlp" in block._modules else None
+            raw = torch.zeros(self.model.cfg.d_model, device=scale.device, dtype=scale.dtype)
+            if out_bias is not None:
+                raw = out_bias.to(device=scale.device, dtype=scale.dtype)
+            mapped = self._apply_post_norm_map(raw, scale, weight, centers)
+            if norm_bias is not None:
+                mapped = mapped + norm_bias.to(device=scale.device)
+            delta = (mapped - raw) * getattr(block, "residual_contribution_scale", 1.0)
+            correction = delta if correction is None else correction + delta
+        return correction
+
     def stack_head_results(
         self,
         layer: int = -1,
@@ -1062,7 +1135,12 @@ class ActivationCache:
         labels = []
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
-            components.append(pos_slice.apply(self[("result", l, "attn")], dim=-3))
+            result = pos_slice.apply(self[("result", l, "attn")], dim=-3)
+            post = self._post_norm_map(l, "ln1_post", pos_slice)
+            if post is not None:
+                scale, weight, centers, _ = post
+                result = self._apply_post_norm_map(result, scale.unsqueeze(-2), weight, centers)
+            components.append(result)
             labels.extend([f"L{l}H{h}" for h in range(self.model.cfg.n_heads)])
         if components:
             components = torch.cat(components, dim=-2)
@@ -1182,6 +1260,12 @@ class ActivationCache:
             W_out = neuron_slice.apply(W_out, dim=0)
         if contribution_scale != 1.0:
             neuron_acts = neuron_acts * contribution_scale
+        post = self._post_norm_map(layer, "ln2_post", pos_slice)
+        if post is not None:
+            scale, weight, centers, _ = post
+            # center(a_n W_out_n) / s * w = (a_n / s) * center(W_out_n) * w
+            W_out = self._apply_post_norm_map(W_out, torch.ones(()), weight, centers)
+            neuron_acts = neuron_acts / scale
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
@@ -1208,16 +1292,30 @@ class ActivationCache:
         when the expected hook isn't in the cache (some non-decoder-only architectures expose
         LN scale at a different path or not at all).
         """
+        norm = "ln2" if mlp_input else "ln1"
+        blocks = getattr(self.model, "blocks", None)
+        block = (
+            blocks[layer]
+            if blocks is not None and layer is not None and layer != self.model.cfg.n_layers
+            else None
+        )
+        if (
+            mlp_input
+            and block is not None
+            and layer is not None
+            and not self._mlp_input_includes_attn(layer)
+            and getattr(block, "ln2", None) is None
+            and getattr(block, "ln2_post", None) is None
+        ):
+            # Shared-norm parallel blocks feed the MLP from ln1, not a separate ln2.
+            norm = "ln1"
         if layer == self.model.cfg.n_layers or layer is None:
             key = "ln_final.hook_scale"
         else:
-            key = f"blocks.{layer}.ln{2 if mlp_input else 1}.hook_scale"
+            key = f"blocks.{layer}.{norm}.hook_scale"
         try:
             scale = self[key]
         except KeyError as e:
-            norm = f"ln{2 if mlp_input else 1}"
-            blocks = getattr(self.model, "blocks", None)
-            block = blocks[layer] if blocks is not None and layer is not None else None
             if (
                 block is not None
                 and getattr(block, norm, None) is None
@@ -1251,8 +1349,8 @@ class ActivationCache:
 
         Analytical formula (LN models, cached scale ``s``):
             ``LN_s(a_n * W_out_n) @ p = (a_n / s) * (W_out_n @ p - mean(W_out_n) * sum_p)``
-        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the ln2
-        scale of ``layer`` when ``mlp_input`` is set, else the ln1 scale.
+        RMS models drop the ``mean(W_out_n) * sum_p`` term (no centering). ``s`` is the
+        MLP-input norm scale when ``mlp_input`` is set, else the ln1 scale.
         """
         scale = self._get_cached_ln_scale(layer, mlp_input=mlp_input, pos_slice=pos_slice)
 
@@ -1264,6 +1362,12 @@ class ActivationCache:
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
             contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
+            post = self._post_norm_map(l, "ln2_post", pos_slice)
+            if post is not None:
+                post_scale, post_weight, post_centers, _ = post
+                W_out_l = self._apply_post_norm_map(
+                    W_out_l, torch.ones(()), post_weight, post_centers
+                )
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
             W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
             if apply_centering:
@@ -1277,6 +1381,8 @@ class ActivationCache:
             a_l = self[("post", l, "mlp")]
             a_l = pos_slice.apply(a_l, dim=-2)
             a_l = neuron_slice.apply(a_l, dim=-1)
+            if post is not None:
+                a_l = a_l / post_scale
             # (a_l / s)[..., None] is [..., d_mlp, 1]; broadcast with lin_form_l [d_mlp, n_outs]
             components.append((a_l / scale)[..., None] * lin_form_l)
         if not components:
@@ -1343,8 +1449,10 @@ class ActivationCache:
             mlp_input:
                 Treat the stack as the input to ``layer``'s MLP rather than its attention, as in
                 ``decompose_resid``: with ``incl_remainder=True`` the remainder fills the stack up to
-                ``resid_mid`` instead of ``resid_pre``, and with ``apply_ln=True`` the LN scale of
-                ln2 is used instead of ln1. The neurons stacked are unchanged.
+                ``resid_mid`` for sequential blocks or ``resid_pre`` for parallel blocks.
+                With ``apply_ln=True`` the scale of the norm feeding the MLP is used
+                (ln2, or ln1 on shared-norm parallel blocks).
+                The neurons stacked are unchanged.
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1375,9 +1483,11 @@ class ActivationCache:
         neuron_labels = neuron_slice.apply(torch.arange(d_mlp), dim=0)
 
         labels = [f"L{l}N{h}" for l in range(layer) for h in neuron_labels]
-        # The remainder fills the stack up to the residual stream that layer's LN normalizes:
-        # resid_mid (the MLP input) with mlp_input, else resid_pre (resid_post of layer - 1).
-        remainder_target = ("resid_mid", layer) if mlp_input else ("resid_post", layer - 1)
+        if mlp_input and layer < self.model.cfg.n_layers:
+            stream = "resid_mid" if self._mlp_input_includes_attn(layer) else "resid_pre"
+            remainder_target = (stream, layer)
+        else:
+            remainder_target = ("resid_post", layer - 1)
         components: Any
         ln_folded = apply_ln and project_2d is not None
         if ln_folded:
@@ -1488,7 +1598,8 @@ class ActivationCache:
                 The layer we're taking the input to. In [0, n_layers], n_layers means the unembed.
                 None maps to the n_layers case, ie the unembed.
             mlp_input:
-                Whether the input is to the MLP or attn (ie ln2 vs ln1). Defaults to False, ie ln1.
+                Whether the input is to the MLP or attention. The MLP uses ln2 when present,
+                or ln1 on shared-norm parallel blocks. Defaults to False, ie ln1.
                 If layer==n_layers, must be False, and we use ln_final
             pos_slice:
                 The slice to take of positions, if residual_stack is not over the full context, None
@@ -1623,7 +1734,9 @@ class ActivationCache:
             return stack @ project_2d if project_2d is not None else stack
 
         head_stack, head_labels = self.stack_head_results(
-            layer + (1 if mlp_input else 0), pos_slice=pos_slice, return_labels=True
+            layer + int(mlp_input and self._mlp_input_includes_attn(layer)),
+            pos_slice=pos_slice,
+            return_labels=True,
         )
         if ln_folded:
             head_stack = _ln_then_project(head_stack)
@@ -1682,11 +1795,19 @@ class ActivationCache:
             components.append(pos_embed)
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
         bias_full = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
+        bias_correction = self._post_norm_bias_correction(
+            layer, mlp_input, include_mlp_biases=expand_neurons, pos_slice=pos_slice
+        )
         if ln_folded:
             # Expand bias to per-position d_model shape so LN can center, then project.
             expand_shape: tuple = (1,) + tuple(head_stack.shape[1:-1]) + (self.model.cfg.d_model,)
-            bias = _ln_then_project(bias_full.expand(expand_shape))
+            bias_d_model = bias_full.expand(expand_shape)
+            if bias_correction is not None:
+                bias_d_model = bias_d_model + bias_correction
+            bias = _ln_then_project(bias_d_model)
         else:
+            if bias_correction is not None:
+                bias_full = bias_full + bias_correction
             if project_2d is not None:
                 # Bias is [d_model], so project post-hoc for shape compatibility — no memory win here.
                 bias_full = bias_full @ project_2d

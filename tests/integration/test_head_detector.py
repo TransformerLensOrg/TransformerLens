@@ -258,6 +258,32 @@ def test_batched_unequal_lengths():
     assert torch.allclose(r3, (r1 + r2) / 2, atol=ATOL)
 
 
+def test_batched_tensor_detection_pattern():
+    seqs = [test_duplicated_sequence, test_duplicated_sequence2]
+    pattern = get_previous_token_head_detection_pattern(model.to_tokens(seqs[0]))
+
+    result = detect_head(model, seqs, pattern)
+    expected = torch.stack([detect_head(model, seq, pattern) for seq in seqs]).mean(0)
+
+    assert torch.allclose(result, expected, atol=ATOL)
+
+
+def test_batched_tensor_detection_pattern_forwards_kwargs():
+    seqs = [test_duplicated_sequence, test_duplicated_sequence2]
+    pattern = get_previous_token_head_detection_pattern(model.to_tokens(seqs[0]))
+    kwargs = {
+        "heads": [(0, 3)],
+        "exclude_bos": True,
+        "exclude_current_token": True,
+        "error_measure": "abs",
+    }
+
+    result = detect_head(model, seqs, pattern, **kwargs)
+    expected = torch.stack([detect_head(model, seq, pattern, **kwargs) for seq in seqs]).mean(0)
+
+    assert torch.allclose(result, expected, atol=ATOL)
+
+
 @pytest.mark.parametrize(
     "error_measure, expected",
     (

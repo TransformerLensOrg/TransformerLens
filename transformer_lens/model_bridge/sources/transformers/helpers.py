@@ -18,6 +18,7 @@ def get_hf_model_class_for_architecture(architecture: str):
     from transformer_lens.utilities.architectures import (
         AUDIO_ARCHITECTURES,
         AUDIO_CLASSIFICATION_ARCHITECTURES,
+        AUDIO_SEQ2SEQ_ARCHITECTURES,
         AUDIO_TEXT_ARCHITECTURES,
         BASE_AUTOMODEL_ARCHITECTURES,
         MASKED_LM_ARCHITECTURES,
@@ -27,7 +28,11 @@ def get_hf_model_class_for_architecture(architecture: str):
         VISION_CLASSIFICATION_ARCHITECTURES,
     )
 
-    if architecture in SEQ2SEQ_ARCHITECTURES or architecture in AUDIO_TEXT_ARCHITECTURES:
+    if architecture in AUDIO_SEQ2SEQ_ARCHITECTURES:
+        from transformers import AutoModelForSpeechSeq2Seq
+
+        return AutoModelForSpeechSeq2Seq
+    elif architecture in SEQ2SEQ_ARCHITECTURES or architecture in AUDIO_TEXT_ARCHITECTURES:
         return AutoModelForSeq2SeqLM
     elif architecture in MASKED_LM_ARCHITECTURES:
         return AutoModelForMaskedLM
@@ -64,12 +69,13 @@ def get_hf_model_class_for_architecture(architecture: str):
 
 
 # Modality flag → HF auto-loader class, applied in order. Last write wins on
-# bridge.processor: multimodal → audio → vision. The flags are disjoint today
-# (vit.py is the only is_visual_model adapter and it doesn't set is_multimodal),
-# but the order must be preserved for future dual-flag adapters.
+# bridge.processor: multimodal → audio → audio seq2seq → vision. Audio seq2seq
+# (Whisper) sets is_audio_model too and must follow it, so the full processor
+# (feature extractor + tokenizer) replaces the bare feature extractor.
 _MODALITY_PROCESSOR_LOADERS: list[tuple[str, str]] = [
     ("is_multimodal", "AutoProcessor"),
     ("is_audio_model", "AutoFeatureExtractor"),
+    ("is_audio_seq2seq", "AutoProcessor"),
     ("is_visual_model", "AutoImageProcessor"),
 ]
 

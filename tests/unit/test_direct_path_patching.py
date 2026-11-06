@@ -58,21 +58,33 @@ def _tiny_gpt2(fold_ln: bool = True) -> TransformerBridge:
     return model.eval()
 
 
-def _tiny_llama_gqa() -> TransformerBridge:
+def _tiny_llama_gqa(n_kv_heads=2, fold_ln=False) -> TransformerBridge:
     torch.manual_seed(0)
     hf_config = LlamaConfig(
         hidden_size=64,
         intermediate_size=128,
         num_hidden_layers=3,
         num_attention_heads=4,
-        num_key_value_heads=2,
+        num_key_value_heads=n_kv_heads,
         vocab_size=100,
         max_position_embeddings=16,
+        initializer_range=0.1,
     )
-    hf_model = LlamaForCausalLM(hf_config).eval()
+    hf_config._attn_implementation = "eager"
+    hf_model = LlamaForCausalLM(hf_config).to(torch.float64).eval()
+    with torch.no_grad():
+        for block in hf_model.model.layers:
+            block.input_layernorm.weight.copy_(torch.linspace(0.5, 1.5, 64))
     model = build_bridge_from_module(
-        hf_model, "LlamaForCausalLM", hf_config=hf_config, tokenizer=None, device="cpu"
+        hf_model,
+        "LlamaForCausalLM",
+        hf_config=hf_config,
+        tokenizer=None,
+        device="cpu",
+        dtype=torch.float64,
     )
+    if fold_ln:
+        model.enable_compatibility_mode()
     return model.eval()
 
 
@@ -381,14 +393,17 @@ def _sweep(model, tokens, cache, src_layer=0, component="q", metric=logit_diff):
 
 
 class TestSplitQkvFlags:
+    @pytest.mark.parametrize("component", ["q", "k", "v"])
     @pytest.mark.parametrize("fails", [False, True], ids=["returns", "raises"])
     @pytest.mark.parametrize(
         "split, attn_in",
         [(False, False), (True, False), (False, True)],
         ids=["off", "split", "attn_in"],
     )
-    def test_caller_flags_restored(self, split, attn_in, fails):
-        model, tokens, cache = _fresh_model_and_cache()
+    def test_caller_flags_restored(self, split, attn_in, fails, component):
+        model, tokens, cache = _fresh_model_and_cache(
+            _tiny_gpt2 if component == "q" else _tiny_llama_gqa
+        )
         model.set_use_split_qkv_input(split)
         model.set_use_attn_in(attn_in)
 
@@ -399,7 +414,7 @@ class TestSplitQkvFlags:
 
         raised = pytest.raises(RuntimeError, match="metric failed")
         with torch.no_grad(), raised if fails else contextlib.nullcontext():
-            _sweep(model, tokens, cache, metric=metric)
+            _sweep(model, tokens, cache, metric=metric, component=component)
         assert (model.cfg.use_split_qkv_input, model.cfg.use_attn_in) == (split, attn_in)
 
     def test_destination_without_fork_refused(self, monkeypatch):
@@ -428,22 +443,23 @@ class TestSplitQkvFlags:
         assert not model.cfg.use_split_qkv_input
 
 
-_GQA_REFUSAL = r'per-query-head K/V semantics are undefined\. component="q" is available'
-
-
 def _non_additive(detail: str) -> str:
     return rf"scaled before the residual add on this architecture \({detail}.*not hook_z @ W_O"
 
 
-class TestUnsupportedArchitectures:
+class TestArchitectureSupport:
     @pytest.mark.parametrize("component", ["k", "v"])
-    def test_gqa_kv_refused_before_any_forward(self, component):
+    def test_gqa_kv_uses_group_destinations(self, component):
         model, tokens, cache = _fresh_model_and_cache(_tiny_llama_gqa)
         forwards = _count_forwards(model)
-        with pytest.raises(ValueError, match=_GQA_REFUSAL):
-            _sweep(model, tokens, cache, component=component)
-        assert forwards == []
-        assert _sweep(model, tokens, cache, src_layer=2, component=component).eq(0).all()
+        with torch.no_grad():
+            result = _sweep(model, tokens, cache, component=component)
+            last = _sweep(model, tokens, cache, src_layer=2, component=component)
+        assert result.shape == (3, 2)
+        assert len(forwards) == 4
+        assert result[1:].isfinite().all()
+        assert last.shape == (3, 2)
+        assert last.eq(0).all()
 
     def test_gqa_q_still_runs(self):
         model, tokens, cache = _fresh_model_and_cache(_tiny_llama_gqa)
@@ -458,9 +474,11 @@ class TestUnsupportedArchitectures:
         model.cfg.per_layer_num_key_value_heads = [2, 2, 4]
         with torch.no_grad():
             _sweep(model, tokens, cache, src_layer=1, component="k")
-        model.cfg.per_layer_num_key_value_heads = [4, 4, 2]
-        with pytest.raises(ValueError, match=r"blocks\.2 has n_key_value_heads=2 for n_heads=4"):
-            _sweep(model, tokens, cache, src_layer=1, component="k")
+        model.cfg.per_layer_num_key_value_heads = [4, 2, 4]
+        forwards = _count_forwards(model)
+        with pytest.raises(ValueError, match="destination layers disagree on KV count"):
+            _sweep(model, tokens, cache, component="k")
+        assert forwards == []
 
     def test_block_without_attention_refused_before_any_forward(self, monkeypatch):
         model, tokens, cache = _fresh_model_and_cache()
@@ -519,11 +537,9 @@ class TestUnsupportedArchitectures:
     @pytest.mark.parametrize(
         "build, drop_attn, component, refusal",
         [
-            (_tiny_llama_gqa, False, "k", _GQA_REFUSAL),
-            (_tiny_llama_gqa, False, "v", _GQA_REFUSAL),
             (_tiny_gpt2, True, "q", r"blocks\.2 has no `attn` component"),
         ],
-        ids=["gqa-k", "gqa-v", "no-attn"],
+        ids=["no-attn"],
     )
     def test_all_sources_refuses_before_any_forward(
         self, monkeypatch, build, drop_attn, component, refusal
@@ -537,6 +553,155 @@ class TestUnsupportedArchitectures:
                 model, tokens, cache, cache, logit_diff, component, verbose=False
             )
         assert forwards == []
+
+
+@pytest.fixture(
+    scope="module", params=[(kv, folded) for kv in (1, 2, 4) for folded in (False, True)]
+)
+def kv_model_and_caches(request):
+    kv, folded = request.param
+    model = _tiny_llama_gqa(kv, folded)
+    return model, _tokens_and_caches(model, batch=2)
+
+
+@pytest.mark.parametrize("component", ["k", "v"])
+def test_kv_group_sweep_matches_projection_oracle(kv_model_and_caches, component):
+    model, (clean, corrupt, clean_cache, corrupt_cache) = kv_model_and_caches
+    kv = model.cfg.n_key_value_heads or model.cfg.n_heads
+    src_head, dst_layer = 3, 1
+    observations, current = [], {}
+
+    def observe(name):
+        def save(value, hook):
+            current[name] = value.detach().clone()
+
+        return save
+
+    def metric(logits):
+        observations.append(current.copy())
+        return (logits[:, -1, 17] - logits[:, -1, 42]).sum()
+
+    with model.hooks(
+        fwd_hooks=[
+            (f"blocks.{dst_layer}.attn.hook_{name}", observe(name)) for name in ("q", "k", "v", "z")
+        ]
+    ):
+        result = _direct_path(
+            model,
+            corrupt,
+            clean_cache,
+            corrupt_cache,
+            component=component,
+            src_head=src_head,
+            patching_metric=metric,
+        )
+    assert result.shape == (3, kv)
+    assert len(observations) == 2 * kv
+    assert result[0].eq(0).all()
+    delta = (
+        clean_cache["blocks.0.attn.hook_z"][:, :, src_head]
+        - corrupt_cache["blocks.0.attn.hook_z"][:, :, src_head]
+    ) @ model.blocks[0].attn.W_O[src_head]
+    with torch.no_grad():
+        normalized = model.blocks[dst_layer].ln1.original_component(
+            corrupt_cache[f"blocks.{dst_layer}.ln1.hook_in"] + delta
+        )
+        projection = getattr(model.blocks[dst_layer].attn, component).original_component
+        projected = projection(normalized).reshape(*corrupt.shape, kv, model.cfg.d_head)
+        for group in range(kv):
+
+            def replace(value, hook):
+                value = value.clone()
+                value[:, :, group] = projected[:, :, group]
+                return value
+
+            oracle = model.run_with_hooks(
+                corrupt, fwd_hooks=[(f"blocks.{dst_layer}.attn.hook_{component}", replace)]
+            )
+            expected = (oracle[:, -1, 17] - oracle[:, -1, 42]).sum()
+            torch.testing.assert_close(
+                result[dst_layer, group], expected.float(), atol=1e-6, rtol=0
+            )
+            snapshot = observations[group]
+            for branch in ("q", "v" if component == "k" else "k"):
+                torch.testing.assert_close(
+                    snapshot[branch],
+                    corrupt_cache[f"blocks.{dst_layer}.attn.hook_{branch}"],
+                    atol=1e-12,
+                    rtol=0,
+                )
+            others = [g for g in range(kv) if g != group]
+            torch.testing.assert_close(
+                snapshot[component][:, :, others],
+                corrupt_cache[f"blocks.{dst_layer}.attn.hook_{component}"][:, :, others],
+                atol=1e-12,
+                rtol=0,
+            )
+            heads_per_group = model.cfg.n_heads // kv
+            outside = [h for h in range(model.cfg.n_heads) if h // heads_per_group != group]
+            torch.testing.assert_close(
+                snapshot["z"][:, :, outside],
+                corrupt_cache[f"blocks.{dst_layer}.attn.hook_z"][:, :, outside],
+                atol=1e-12,
+                rtol=0,
+            )
+            assert (
+                snapshot[component][:, :, group]
+                - corrupt_cache[f"blocks.{dst_layer}.attn.hook_{component}"][:, :, group]
+            ).abs().max() > 1e-6
+    assert not model.cfg.use_split_qkv_input
+
+
+@pytest.mark.parametrize("component", ["k", "v"])
+def test_kv_all_sources_and_zero_delta(kv_model_and_caches, component):
+    model, (_, corrupt, clean_cache, corrupt_cache) = kv_model_and_caches
+    with torch.no_grad():
+        all_sources = get_act_patch_direct_path_all_sources(
+            model, corrupt, clean_cache, corrupt_cache, logit_diff, component, verbose=False
+        )
+        baseline = logit_diff(model(corrupt))
+        no_op = _direct_path(model, corrupt, corrupt_cache, corrupt_cache, component=component)
+    kv = model.cfg.n_key_value_heads or model.cfg.n_heads
+    assert all_sources.shape == (3, 4, 3, kv)
+    assert all_sources[2].eq(0).all()
+    single = _direct_path(
+        model, corrupt, clean_cache, corrupt_cache, src_head=3, component=component
+    )
+    torch.testing.assert_close(all_sources[0, 3], single, atol=0, rtol=0)
+    torch.testing.assert_close(no_op[1:], baseline.float().expand(2, kv), atol=1e-6, rtol=0)
+
+
+@pytest.mark.parametrize("component", ["k", "v"])
+def test_heterogeneous_kv_all_sources_refused_before_forward(component):
+    model, tokens, cache = _fresh_model_and_cache(_tiny_llama_gqa)
+    model.cfg.per_layer_num_key_value_heads = [2, 2, 1]
+    forwards = _count_forwards(model)
+    with pytest.raises(ValueError, match="destination layers disagree on KV count"):
+        get_act_patch_direct_path_all_sources(
+            model, tokens, cache, cache, logit_diff, component, verbose=False
+        )
+    assert forwards == []
+
+
+@pytest.mark.parametrize("component", ["q", "k", "v"])
+def test_uniform_destination_metadata_ignores_the_source_layer(component):
+    model, tokens, cache = _fresh_model_and_cache(_tiny_llama_gqa)
+    model.cfg.per_layer_num_key_value_heads = [1, None, 2]
+    with torch.no_grad():
+        result = get_act_patch_direct_path_all_sources(
+            model, tokens, cache, cache, logit_diff, component, verbose=False
+        )
+    expected = 4 if component == "q" else 2
+    assert result.shape == (3, 4, 3, expected)
+    assert result[2].eq(0).all()
+
+
+def test_q_destination_axis_does_not_require_uniform_kv_counts():
+    model, tokens, cache = _fresh_model_and_cache(_tiny_llama_gqa)
+    model.cfg.per_layer_num_key_value_heads = [2, 1, 2]
+    with torch.no_grad():
+        result = _sweep(model, tokens, cache, component="q")
+    assert result.shape == (3, 4)
 
 
 def _training_flags(model):

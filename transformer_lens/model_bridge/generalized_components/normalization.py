@@ -25,6 +25,22 @@ NATIVE_PATH_EDIT_FALLBACK_WARNING = (
 )
 
 
+def _run_intermediate_hook(point: HookPoint, value: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    """Detect replacement and tensor writes while protecting autograd's saved intermediates."""
+    if not point.fwd_hooks:
+        result = point(value)
+        return result, result is not value
+    hook_input = value.clone()
+    # Inference tensors have no version counter; compare a snapshot only on that path.
+    before = hook_input.clone() if torch.is_inference(hook_input) else hook_input._version
+    result = point(hook_input)
+    if isinstance(before, torch.Tensor):
+        mutated = not torch.allclose(hook_input, before, rtol=0, atol=0, equal_nan=True)
+    else:
+        mutated = hook_input._version != before
+    return result, result is not hook_input or mutated
+
+
 class NormalizationBridge(GeneralizedComponent):
     """Normalization bridge that wraps transformer normalization layers but implements the calculation from scratch.
 
@@ -159,8 +175,8 @@ class NormalizationBridge(GeneralizedComponent):
 
         When hooks only observe (return ``None``, e.g. ``run_with_cache``), the result is
         HF's own forward — bit-identical numerics and exact autograd. When a forward hook
-        edits ``hook_scale`` / ``hook_normalized``, the output is reconstructed from the
-        hooked values so the edit propagates; when backward hooks are attached, the whole
+        edits ``hook_scale`` / ``hook_normalized`` (including in-place edits), the output is
+        reconstructed from the hooked values so the edit propagates. With backward hooks, the whole
         computation takes the python-norm path so hook tensors stay in the autograd graph.
         Both fallbacks warn, since their numerics differ from HF's at rounding scale.
 
@@ -212,17 +228,16 @@ class NormalizationBridge(GeneralizedComponent):
             # (LlamaRMSNorm uses x * rsqrt(variance + eps)). Keep scale as sqrt
             # for hook_scale (denominator convention used by HookedTransformer).
             x_normalized = x_centered * inv_rms
-            hooked_scale = self.hook_scale(scale)
-            if hooked_scale is not scale:
+            hooked_scale, scale_edited = _run_intermediate_hook(self.hook_scale, scale)
+            if scale_edited:
                 # Edited scale: recompute with the denominator convention so the edit
                 # feeds hook_normalized, mirroring the python-norm path's ordering.
                 x_normalized = x_centered / hooked_scale
-            hooked_normalized = self.hook_normalized(x_normalized)
+            hooked_normalized, normalized_edited = _run_intermediate_hook(
+                self.hook_normalized, x_normalized
+            )
         input_dtype = x.dtype
-        # A hook returning None keeps the original tensor object (see HookPoint), so
-        # identity is the edit signal. Note in-place mutation of the hook value without
-        # returning it is NOT detected — return the tensor from the hook to edit.
-        if hooked_scale is scale and hooked_normalized is x_normalized:
+        if not scale_edited and not normalized_edited:
             result = self.original_component(x)
             if result.dtype != input_dtype:
                 result = result.to(input_dtype)

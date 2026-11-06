@@ -67,3 +67,18 @@ def test_apply_slice_to_batch_dim_skips_broadcast_entries() -> None:
     assert sliced["blocks.0.hook_resid_pre"].shape == (2, 5, 4)
     assert sliced["blocks.0.hook_mlp_out"].shape == (2, 5, 4)
     assert sliced["hook_pos_indices"].shape == (1, 5)
+
+
+def test_apply_slice_to_batch_dim_identity_on_batchless_cache_is_noop() -> None:
+    cache = ActivationCache(
+        {"blocks.0.hook_resid_post": torch.randn(1, 5, 16)}, model=None, has_batch_dim=True
+    )
+    cache.remove_batch_dim()
+    resid_before = cache["blocks.0.hook_resid_post"].clone()
+
+    sliced = cache.apply_slice_to_batch_dim(None)
+
+    assert not sliced.has_batch_dim
+    assert torch.equal(sliced["blocks.0.hook_resid_post"], resid_before)
+    with pytest.raises(AssertionError, match="without a batch dim"):
+        cache.apply_slice_to_batch_dim(0)

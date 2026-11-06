@@ -46,6 +46,10 @@ class TestPhasesToRun:
         # ViT/DeiT declare applicable_phases=[1]; phases 2-4 filter out, 1 and 9 stay.
         assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [1, 9]
 
+    def test_whisper_runs_phase_1_only(self):
+        # P2/P4 need generate() and P3 weight processing; both are follow-ups.
+        assert _phases_to_run("WhisperForConditionalGeneration", [1, 2, 3, 4]) == [1]
+
     def test_unknown_architecture_defaults_to_all_phases(self):
         assert _phases_to_run("NotARealArchitecture", [1, 2, 3, 4]) == [1, 2, 3, 4]
 

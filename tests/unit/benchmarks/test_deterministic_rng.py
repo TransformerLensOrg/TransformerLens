@@ -21,6 +21,10 @@ def device_generators(monkeypatch):
     monkeypatch.setattr(torch.cuda, "manual_seed", setter("cuda"))
     monkeypatch.setattr(torch.cuda, "manual_seed_all", setter("cuda"))
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    # As on Apple Silicon, MPS is the current accelerator
+    monkeypatch.setattr(
+        torch.accelerator, "current_accelerator", lambda *args, **kwargs: torch.device("mps")
+    )
     monkeypatch.setattr(torch.mps, "get_rng_state", lambda *args, **kwargs: state["mps"])
     monkeypatch.setattr(torch.mps, "set_rng_state", setter("mps"))
     monkeypatch.setattr(torch.mps, "manual_seed", setter("mps"))

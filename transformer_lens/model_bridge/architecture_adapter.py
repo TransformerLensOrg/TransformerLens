@@ -2,6 +2,7 @@
 
 This module contains the base class for architecture adapters that map between different model architectures.
 """
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, cast
 
 import torch
@@ -36,6 +37,31 @@ from transformer_lens.model_bridge.types import (
 )
 from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.attn_implementation import force_eager_attention
+
+
+@dataclass(frozen=True)
+class ResidualLayout:
+    """Where each LayerNorm's output goes and what writes to each residual stream.
+
+    For pre-LN architectures the decoder-only weight processing (``blocks.{i}``)
+    cannot walk, such as encoder-decoders with cross-attention. Entries are
+    state-dict prefixes of components with HF ``nn.Linear`` / ``nn.Embedding``
+    layout (``[out, in]`` weights, ``[n, d_model]`` tables).
+
+    Attributes:
+        norm_readers: Each LayerNorm prefix mapped to the linears that read its output.
+        key_projections: Attention key linears. Softmax ignores a key bias, so a norm
+            bias folded into a key linear without a bias parameter is dropped exactly.
+        residual_writers: Linears whose output is added to a residual stream.
+        embedding_writers: Embedding tables whose rows are added to a residual stream.
+        value_output_pairs: ``(value, output)`` linears of each attention.
+    """
+
+    norm_readers: Dict[str, list[str]]
+    key_projections: frozenset[str] = field(default_factory=frozenset)
+    residual_writers: list[str] = field(default_factory=list)
+    embedding_writers: list[str] = field(default_factory=list)
+    value_output_pairs: list[tuple[str, str]] = field(default_factory=list)
 
 
 class ArchitectureAdapter:
@@ -96,6 +122,10 @@ class ArchitectureAdapter:
     # Whether Bridge's shifted next-token cross-entropy is meaningful.
     supports_causal_loss: bool = True
 
+    # Keyword the wrapped HF forward takes audio under. Read by the audio seq2seq
+    # forward path (cfg.is_audio_seq2seq), e.g. Whisper's log-mel "input_features".
+    audio_input_name: str = "input_values"
+
     # HF-style 4D boolean attention masks keep positions marked True. Override
     # for architectures whose forward path uses True to block attention.
     bool_4d_mask_is_keep: bool = True
@@ -118,6 +148,8 @@ class ArchitectureAdapter:
         self.weight_processing_conversions: Dict[str, ParamProcessingConversion | str] | None = None
         self.uses_split_attention: bool = getattr(cfg, "uses_split_attention", False)
         self._fold_ln_requested: bool = True
+        # State-dict keys of weights stored [in, out] (Conv1D), set before weight processing.
+        self._in_out_weight_keys: set[str] = set()
         self._merge_default_config()
 
     def _check_required_libraries(self) -> None:
@@ -354,6 +386,11 @@ class ArchitectureAdapter:
             The modified state dictionary (default implementation returns unchanged)
         """
         return state_dict
+
+    def residual_layout(self) -> Optional[ResidualLayout]:
+        """Explicit norm/residual layout for weight processing, or None to use the
+        decoder-only ``blocks.{i}`` walk. Override for architectures that walk misses."""
+        return None
 
     def postprocess_weights(self, bridge: Any) -> None:
         """Apply architecture-specific updates after processed weights are installed.

@@ -44,7 +44,10 @@ from jaxtyping import Float, Int
 from torch import nn
 from torch.nn.utils.parametrizations import orthogonal
 
-from transformer_lens.tools.analysis._model_state import require_eval_mode
+from transformer_lens.tools.analysis._model_state import (
+    compute_dtype,
+    require_eval_mode,
+)
 from transformer_lens.tools.analysis.projection_kernel import orthonormal_subspace
 
 TaskLogits = Callable[[torch.Tensor], Float[torch.Tensor, "batch n_classes"]]
@@ -241,6 +244,10 @@ class NormMatchedPlacebo:
     An effect that the placebo also produces comes from displacing the activation by that much,
     not from the aligned subspace.
 
+    Zero reference displacement leaves the base unchanged. A zero placebo projection with a
+    nonzero reference displacement raises ``ValueError``: no projected direction can be rescaled
+    to match that distance. Normalization uses at least float32, and the output keeps base's dtype.
+
     Attributes:
         reference: The intervention whose displacement is matched.
         basis: Orthonormal basis of the placebo subspace, usually from :func:`random_basis` with
@@ -252,10 +259,19 @@ class NormMatchedPlacebo:
     basis: torch.Tensor
 
     def __call__(self, base: torch.Tensor, source: torch.Tensor) -> torch.Tensor:
-        distance = (self.reference(base, source) - base).norm(dim=-1, keepdim=True)
-        B = self.basis.to(base.device, base.dtype)
-        move = ((source - base) @ B) @ B.T
-        return base + move * (distance / move.norm(dim=-1, keepdim=True).clamp_min(1e-8))
+        dtype = compute_dtype(base.dtype)
+        base_work = base.to(dtype)
+        distance = (self.reference(base, source).to(dtype) - base_work).norm(dim=-1, keepdim=True)
+        B = self.basis.to(base.device, dtype)
+        move = ((source.to(dtype) - base_work) @ B) @ B.T
+        move_norm = move.norm(dim=-1, keepdim=True)
+        if ((move_norm == 0) & (distance != 0)).any():
+            raise ValueError(
+                "Cannot norm-match a zero placebo projection to a nonzero reference displacement."
+            )
+        # Divide before multiplying to avoid overflowing the distance-to-norm ratio.
+        direction = move / torch.where(move_norm == 0, torch.ones_like(move_norm), move_norm)
+        return (base_work + direction * distance).to(base.dtype)
 
 
 def _select(act: torch.Tensor, positions: Optional[torch.Tensor]) -> torch.Tensor:
