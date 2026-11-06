@@ -6,8 +6,8 @@ import einops
 import torch
 
 from transformer_lens.conversion_utils.conversion_steps import (
-    BaseTensorConversion,
     RearrangeTensorConversion,
+    TransposeTensorConversion,
 )
 from transformer_lens.conversion_utils.param_processing_conversion import (
     ParamProcessingConversion,
@@ -25,7 +25,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 
 
-class NeoLinearTransposeConversion(BaseTensorConversion):
+class NeoLinearTransposeConversion(TransposeTensorConversion):
     """Transpose Linear weights to Conv1D format and rearrange for GPT-Neo.
 
     GPT-Neo uses standard PyTorch Linear layers with weights shaped [out_features, in_features].
@@ -68,6 +68,9 @@ class NeoLinearTransposeConversion(BaseTensorConversion):
 
         # Transpose back: [in_features, out_features] -> [out_features, in_features]
         return result.T
+
+    def __repr__(self):
+        return f"NeoLinearTransposeConversion({self.rearrange_pattern!r})"
 
 
 class NeoArchitectureAdapter(ArchitectureAdapter):

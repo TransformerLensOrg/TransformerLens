@@ -136,7 +136,7 @@ def test_placebo_refuses_zero_projection_with_nonzero_reference_distance(dtype):
     source[1, 0] = 2.0
     reference = SubspaceInterchange(neuron_basis(4, [0]))
     placebo_basis = random_neuron_basis(4, 1, seed=0, exclude=[0])
-    with pytest.raises(ValueError, match="zero.*projection"):
+    with pytest.raises(ValueError, match=r"zero placebo projection.*: 1 of 2 rows .* basis or"):
         NormMatchedPlacebo(reference, placebo_basis)(base, source)
 
 
@@ -159,6 +159,16 @@ def test_placebo_matches_distance_even_below_the_old_epsilon(dtype):
     reference = SubspaceInterchange(neuron_basis(2, [0]))
     out = NormMatchedPlacebo(reference, neuron_basis(2, [1]))(base, source)
     torch.testing.assert_close(out, torch.tensor([[0.0, 1.0]], dtype=dtype))
+
+
+def test_placebo_subnormal_projection_norm_does_not_overflow_float32():
+    # distance / move_norm would be ~1e39, past float32's max.
+    base = torch.zeros(1, 3)
+    source = torch.tensor([[1e17, 1e-22, 0.0]])
+    reference = SubspaceInterchange(neuron_basis(3, [0]))
+    out = NormMatchedPlacebo(reference, neuron_basis(3, [1]))(base, source)
+    expected = torch.tensor([[0.0, 1e17, 0.0]])
+    torch.testing.assert_close(out, expected, rtol=5e-2, atol=1e-6)
 
 
 def test_placebo_reference_norm_does_not_overflow_float16():

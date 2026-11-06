@@ -5,7 +5,10 @@ import warnings
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
-from transformer_lens.model_bridge.bridge_core import BridgeCore
+from transformer_lens.model_bridge.bridge_core import (
+    BridgeCore,
+    _validate_execution_kwargs,
+)
 from transformer_lens.model_bridge.driver_protocol import (
     ForwardResult,
     TensorLike,
@@ -83,6 +86,8 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         Explicit ``labels`` use shifted causal loss; remote encoder-decoder loss
         is unsupported.
         """
+        # Drivers drop unknown kwargs, so a misplaced hook/cache option would be a silent no-op.
+        _validate_execution_kwargs(kwargs, "forward")
         # Early copy of _finalize_return's gate — fail before the wasted remote forward.
         self._check_loss_supported(return_type)
         self._reject_stop_at_layer(kwargs.pop("stop_at_layer", None))

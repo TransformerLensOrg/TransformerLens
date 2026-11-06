@@ -49,20 +49,38 @@ CASES = [
     pytest.param("LlamaForCausalLM", LlamaConfig, _TINY, id="llama"),
 ]
 
-_CACHE: dict[tuple[str, bool], tuple[Any, Any]] = {}
+_CACHE: dict[tuple[str, bool, torch.dtype, bool], tuple[Any, Any]] = {}
 
 
-def _run(hf_architecture: str, config_cls: Any, config_kwargs: dict[str, Any], attn_result=False):
+def _run(
+    hf_architecture: str,
+    config_cls: Any,
+    config_kwargs: dict[str, Any],
+    attn_result: bool = False,
+    dtype: torch.dtype = torch.float32,
+    o_bias: bool = False,
+):
     """Boot a seeded tiny bridge and cache one forward."""
-    key = (hf_architecture, attn_result)
+    key = (hf_architecture, attn_result, dtype, o_bias)
     if key not in _CACHE:
-        config = config_cls(**config_kwargs)
+        config = config_cls(**config_kwargs, **({"attention_bias": True} if o_bias else {}))
         config._attn_implementation = "eager"
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(42)
             hf = AutoModelForCausalLM.from_config(config).eval()
+            if o_bias:
+                # HF zero-inits biases, which would leave the bias correction unexercised.
+                with torch.no_grad():
+                    for layer in hf.model.layers:
+                        layer.self_attn.o_proj.bias.normal_(std=0.5)
+            hf = hf.to(dtype)
             bridge = build_bridge_from_module(
-                hf, hf_architecture, hf_config=copy.deepcopy(config), tokenizer=None, device="cpu"
+                hf,
+                hf_architecture,
+                hf_config=copy.deepcopy(config),
+                tokenizer=None,
+                device="cpu",
+                dtype=dtype,
             ).eval()
             if attn_result:
                 bridge.set_use_attn_result(True)
@@ -125,3 +143,48 @@ def test_projected_ln_decomposition_matches_unprojected(
         )
         dense = cache.apply_ln_to_stack(cache.get_full_resid_decomposition(layer=layer), layer)
         torch.testing.assert_close(projected, dense @ direction, atol=2e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "hf_architecture,config_cls",
+    [
+        pytest.param("Gemma2ForCausalLM", Gemma2Config, id="gemma2"),
+        pytest.param("Olmo2ForCausalLM", Olmo2Config, id="olmo2"),
+    ],
+)
+def test_output_bias_is_mapped_through_post_norm(hf_architecture: str, config_cls: Any) -> None:
+    """A post-norm block adds norm(b_O), not b_O, so the bias row needs the per-position fix."""
+    bridge, cache = _run(hf_architecture, config_cls, _TINY, o_bias=True)
+    assert bridge.blocks[0].attn.o.bias.abs().max() > 0.1
+    n_layers = bridge.cfg.n_layers
+    for layer in range(1, n_layers + 1):
+        for mlp_input in (False, True) if layer < n_layers else (False,):
+            full = cache.get_full_resid_decomposition(layer=layer, mlp_input=mlp_input)
+            torch.testing.assert_close(
+                full.sum(0), _target(cache, n_layers, layer, mlp_input), atol=2e-5, rtol=1e-5
+            )
+
+
+def test_half_precision_stacks_keep_model_dtype() -> None:
+    bridge, cache = _run("Gemma2ForCausalLM", Gemma2Config, _TINY, dtype=torch.bfloat16)
+    assert cache.stack_head_results().dtype == torch.bfloat16
+    assert cache.get_neuron_results(0).dtype == torch.bfloat16
+    n_layers = bridge.cfg.n_layers
+    target = _target(cache, n_layers, n_layers, False).float()
+    full = cache.get_full_resid_decomposition(layer=n_layers, expand_neurons=True)
+    torch.testing.assert_close(
+        full.float().sum(0), target, atol=2e-2 * target.abs().max().item(), rtol=0
+    )
+
+
+def test_filtered_cache_names_the_missing_post_norm_scale() -> None:
+    bridge, _ = _run("Gemma2ForCausalLM", Gemma2Config, _TINY)
+    tokens = torch.randint(
+        3, _TINY["vocab_size"], (1, 6), generator=torch.Generator().manual_seed(0)
+    )
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(
+            tokens, names_filter=lambda n: n.endswith(("hook_z", "hook_resid_post", "hook_embed"))
+        )
+    with pytest.raises(KeyError, match=r"blocks\.0\.ln1_post\.hook_scale.*names_filter"):
+        cache.stack_head_results()

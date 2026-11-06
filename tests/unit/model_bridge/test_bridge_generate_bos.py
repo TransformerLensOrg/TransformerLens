@@ -321,6 +321,29 @@ class TestBatchedPromptMask:
         prompts = [bos + prompt for prompt in self.PROMPTS]
         self._assert_rows_match_single_prompts(distilgpt2_bridge, stream, prompts, False)
 
+    def test_explicit_mask_skips_derived_mask(self, distilgpt2_bridge, stream, monkeypatch):
+        """The loop ignores the derived mask when one is passed, so it must not be built."""
+        bridge = distilgpt2_bridge
+        expected = self._run(bridge, stream, self.PROMPTS, False)
+        tokens = bridge.to_tokens(
+            self.PROMPTS, prepend_bos=False, padding_side="left", truncate=False
+        )
+        mask = bridge._left_padded_prompt_mask(self.PROMPTS, tokens, False)
+
+        def _fail(*args, **kwargs):
+            raise AssertionError("_left_padded_prompt_mask ran under an explicit attention_mask")
+
+        monkeypatch.setattr(bridge, "_left_padded_prompt_mask", _fail)
+        kwargs = {**self.KWARGS, "attention_mask": mask}
+        if stream:
+            chunks = bridge.generate_stream(
+                self.PROMPTS, prepend_bos=False, max_tokens_per_yield=100, **kwargs
+            )
+            out = torch.cat(list(chunks), dim=-1)
+        else:
+            out = bridge.generate(self.PROMPTS, prepend_bos=False, **kwargs)
+        assert torch.equal(out, expected)
+
 
 def test_empty_prompt_attends_only_its_last_pad(distilgpt2_bridge):
     prompts = ["", "Hello there friend"]

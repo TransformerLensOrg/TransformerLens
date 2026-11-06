@@ -850,8 +850,8 @@ class BridgeCore:
             hook_fn: The hook function ``(activation, hook) -> activation | None``.
             dir: Hook direction, ``"fwd"`` or ``"bwd"``.
             is_permanent: If True the hook survives ``reset_hooks()`` calls.
-            level: Context level to tag the hook with, so that ``reset_hooks(level=...)``
-                removes it alone.
+            level: Context level to tag the hook with; ``reset_hooks(level=...)`` removes only
+                the hooks tagged with that level.
             prepend: If True the hook runs before those already on the hook point.
         """
         if callable(name) and not isinstance(name, str):

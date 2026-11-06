@@ -202,15 +202,18 @@ class TestWhisperResidualLayout:
         )
         assert layout.norm_readers["decoder_ln_final"] == ["unembed"]
 
-    def test_bias_free_keys_are_declared(self, layout):
+    def test_every_key_projection_reads_a_norm(self, layout):
         keys = {
             reader
             for readers in layout.norm_readers.values()
             for reader in readers
             if reader.endswith(".k")
         }
-        assert keys == layout.key_projections
-        assert len(keys) == 4 + 2 * 2
+        assert keys == {f"encoder_blocks.{i}.self_attn.k" for i in range(4)} | {
+            f"decoder_blocks.{i}.{attn}.k"
+            for i in range(2)
+            for attn in ("self_attn", "encoder_attn")
+        }
 
     def test_writers_and_value_output_pairs(self, layout):
         assert len(layout.residual_writers) == 4 * 2 + 2 * 3

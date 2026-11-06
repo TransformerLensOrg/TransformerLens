@@ -29,8 +29,34 @@ def tiny_llama():
     return bridge, tokens, reference
 
 
+# Return None: returning value.data hands back a new tensor, which reads as a replacement.
+def _data_double(value, hook):
+    value.data.mul_(2)
+
+
+def _data_set_first_feature(value, hook):
+    value.data[..., 0] = 0.5
+
+
+def _replace_first_feature(value, hook):
+    edited = value.clone()
+    edited[..., 0] = 0.5
+    return edited
+
+
+# (replacement hook, equivalent in-place edit); `.data` writes skip the version counter.
+EDITS = {
+    "mul_": (lambda value, hook: value * 2, lambda value, hook: value.mul_(2)),
+    "data_mul_": (lambda value, hook: value * 2, _data_double),
+    "data_index": (_replace_first_feature, _data_set_first_feature),
+}
+
+
+@pytest.mark.parametrize("edit_kind", list(EDITS))
 @pytest.mark.parametrize(
-    "mode", [torch.no_grad, torch.inference_mode], ids=["no-grad", "inference"]
+    "mode",
+    [torch.enable_grad, torch.no_grad, torch.inference_mode],
+    ids=["grad", "no-grad", "inference"],
 )
 @pytest.mark.parametrize(
     "name",
@@ -41,20 +67,17 @@ def tiny_llama():
         "blocks.0.ln1.hook_scale",
     ],
 )
-def test_llama_inplace_norm_intervention_matches_replacement(tiny_llama, name, mode):
+def test_llama_inplace_norm_intervention_matches_replacement(tiny_llama, name, mode, edit_kind):
     bridge, tokens, reference = tiny_llama
+    replace, inplace = EDITS[edit_kind]
     with mode():
         assert torch.equal(bridge(tokens), reference)
         observed, _ = bridge.run_with_cache(tokens)
         assert torch.equal(observed, reference)
         with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
-            expected = bridge.run_with_hooks(
-                tokens, fwd_hooks=[(name, lambda value, hook: value * 2)]
-            )
+            expected = bridge.run_with_hooks(tokens, fwd_hooks=[(name, replace)])
         with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
-            actual = bridge.run_with_hooks(
-                tokens, fwd_hooks=[(name, lambda value, hook: value.mul_(2))]
-            )
+            actual = bridge.run_with_hooks(tokens, fwd_hooks=[(name, inplace)])
         torch.testing.assert_close(actual, expected)
         assert not torch.equal(actual, reference)
         assert torch.equal(bridge(tokens), reference)

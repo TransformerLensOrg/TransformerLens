@@ -44,31 +44,39 @@ docstring-test:
 	$(RUN) pytest transformer_lens/ $(RERUN_ARGS)
 
 notebook-test:
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Activation_Patching_in_TL_Demo.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/ARENA_Content.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Attribution_Patching_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/BERT.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Backward_Lens_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Bridge_Evals_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Exploratory_Analysis_Demo.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb $(RERUN_ARGS)
-
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Head_Detector_Demo.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Interactive_Neuroscope.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/LLaMA.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/No_Position_Experiment.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Natural_Language_Autoencoders_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Othello_GPT.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Qwen.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Patchscopes_Generation_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Santa_Coder.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/stable_lm.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SVD_Circuits_Demo.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SVD_Interpreter_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SwiGLU_Gate_Sign_Demo.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/T5.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Weight_Edit_Audit_Demo.ipynb $(RERUN_ARGS)
+
+	# Not in the CI notebook matrix
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Qwen.ipynb $(RERUN_ARGS)
+	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SVD_Interpreter_Demo.ipynb $(RERUN_ARGS)
 	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Tracr_to_Transformer_Lens_Demo.ipynb $(RERUN_ARGS)
 
-	# Contains failing cells
+	# Needs `uv sync --group quantization`
+	# $(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/LLaMA_GPU_Quantized.ipynb $(RERUN_ARGS)
 
-	# Causes CI to hang
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Activation_Patching_in_TL_Demo.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Attribution_Patching_Demo.ipynb $(RERUN_ARGS)
-	$(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb $(RERUN_ARGS)
+	# Disabled in the CI notebook matrix
+	# $(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb $(RERUN_ARGS)
+	# $(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Interactive_Neuroscope.ipynb $(RERUN_ARGS)
+	# $(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/No_Position_Experiment.ipynb $(RERUN_ARGS)
+	# $(RUN) pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/stable_lm.ipynb $(RERUN_ARGS)
 
 test-pr:
 	$(MAKE) unit-test

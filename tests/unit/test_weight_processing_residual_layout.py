@@ -49,28 +49,24 @@ def folded():
         k=_linear(D_MODEL, D_MODEL, bias=False),
         mlp_in=_linear(2 * D_MODEL, D_MODEL),
     )
-    layout = ResidualLayout(
-        norm_readers={"ln": ["q", "k", "mlp_in"]}, key_projections=frozenset({"k"})
-    )
+    layout = ResidualLayout(norm_readers={"ln": ["q", "k", "mlp_in"]})
     return state_dict, ProcessWeights.fold_layer_norm_with_layout(state_dict, layout)
 
 
 class TestFoldLayerNormWithLayout:
-    def test_readers_with_bias_are_unchanged(self, folded):
+    def test_readers_are_unchanged(self, folded):
         before, after = folded
         x = torch.randn(5, D_MODEL)
-        for reader in ("q", "mlp_in"):
+        for reader in ("q", "k", "mlp_in"):
             expected = _apply(before, reader, _layer_norm(before, "ln", x))
             actual = _apply(after, reader, _layer_norm(after, "ln", x))
             torch.testing.assert_close(actual, expected, rtol=0, atol=1e-5)
 
-    def test_bias_free_key_shifts_by_a_constant_softmax_ignores(self, folded):
+    def test_bias_free_reader_receives_the_folded_bias(self, folded):
         before, after = folded
-        x = torch.randn(5, D_MODEL)
-        diff = _apply(after, "k", _layer_norm(after, "ln", x)) - _apply(
-            before, "k", _layer_norm(before, "ln", x)
+        torch.testing.assert_close(
+            after["k.bias"], before["k.weight"] @ before["ln.bias"], rtol=0, atol=1e-5
         )
-        torch.testing.assert_close(diff, diff[:1].expand_as(diff), rtol=0, atol=1e-5)
 
     def test_norm_keeps_only_the_normalization(self, folded):
         _, after = folded
@@ -81,15 +77,6 @@ class TestFoldLayerNormWithLayout:
         _, after = folded
         for reader in ("q", "k", "mlp_in"):
             assert after[f"{reader}.weight"].mean(dim=1).abs().max() < 1e-6
-
-    def test_reader_without_bias_must_be_a_key(self):
-        state_dict = _state_dict(
-            ln={"weight": torch.ones(D_MODEL), "bias": torch.randn(D_MODEL)},
-            out=_linear(D_MODEL, D_MODEL, bias=False),
-        )
-        layout = ResidualLayout(norm_readers={"ln": ["out"]})
-        with pytest.raises(ValueError, match="out has no bias"):
-            ProcessWeights.fold_layer_norm_with_layout(state_dict, layout)
 
 
 class TestCenterWritingWeightsWithLayout:

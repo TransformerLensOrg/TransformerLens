@@ -169,6 +169,28 @@ class TestWhisperTinyForwardEquivalence:
         assert (logits - per_clip).abs().max().item() < 1e-5
         assert not torch.allclose(logits[0], logits[1])
 
+    def test_shared_decoder_mask_matches_per_clip_hf(self, bridge, reference_model, decoder_ids):
+        torch.manual_seed(3)
+        clips = torch.randn(3, N_MELS, 2 * N_FRAMES)
+        prompt = decoder_ids[:1]
+        mask = torch.tensor([[1, 1, 0, 1]])
+        with torch.no_grad():
+            logits = bridge(clips, decoder_input=prompt, decoder_attention_mask=mask)
+            unmasked = bridge(clips, decoder_input=prompt)
+            per_clip = torch.cat(
+                [
+                    reference_model(
+                        input_features=clips[i : i + 1],
+                        decoder_input_ids=prompt,
+                        decoder_attention_mask=mask,
+                    ).logits
+                    for i in range(clips.shape[0])
+                ]
+            )
+        assert logits.shape == per_clip.shape
+        assert (logits - per_clip).abs().max().item() < 1e-5
+        assert not torch.allclose(logits, unmasked)
+
     def test_mismatched_decoder_batch_rejected(self, bridge, features, decoder_ids):
         three_rows = torch.cat([decoder_ids, decoder_ids[:1]])
         with pytest.raises(ValueError, match="batch size 3 but the audio features have 2"):
@@ -392,14 +414,15 @@ class TestWhisperTinyGenerate:
         generation_config.suppress_tokens = None
         generation_config.begin_suppress_tokens = None
         free = bridge.generate(clips, do_sample=False, max_new_tokens=4, verbose=False)
-        favourite = int(free[0, prompt_len])
-        generation_config.suppress_tokens = [favourite]
-        generation_config.begin_suppress_tokens = [int(free[0, prompt_len + 1])]
-        reference.generation_config.suppress_tokens = [favourite]
-        reference.generation_config.begin_suppress_tokens = [int(free[0, prompt_len + 1])]
+        # Begin-suppressing the free run's first token makes a misplaced begin step change step one.
+        first = int(free[0, prompt_len])
+        later = next(int(t) for t in free[0, prompt_len:] if int(t) != first)
+        for config in (generation_config, reference.generation_config):
+            config.suppress_tokens = [later]
+            config.begin_suppress_tokens = [first]
         tokens = bridge.generate(clips, do_sample=False, max_new_tokens=4, verbose=False)
-        assert favourite not in tokens[:, prompt_len:].tolist()[0]
-        assert int(tokens[0, prompt_len]) != int(free[0, prompt_len + 1])
+        assert int(tokens[0, prompt_len]) != first
+        assert later not in tokens[:, prompt_len:].tolist()[0]
         prompt = torch.tensor([bridge.tokenizer.prefix_tokens])
         assert torch.equal(tokens, _hf_generate(reference, clips, prompt, 4))
 
@@ -559,12 +582,46 @@ class TestWhisperTinyCompatibilityMode:
         ):
             assert table.weight.mean(dim=1).abs().max() < 1e-6
 
+    def test_key_hooks_match_the_unprocessed_model(self, processed, features, decoder_ids):
+        """The folded norm bias lands in a created k bias rather than being dropped."""
+        bridge, _, _ = processed
+        unprocessed, _ = _compat_pair()
+        unprocessed.enable_compatibility_mode(no_processing=True, disable_warnings=True)
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(features, decoder_input=decoder_ids)
+            _, expected = unprocessed.run_with_cache(features, decoder_input=decoder_ids)
+        names = [name for name in expected.keys() if name.endswith("hook_k")]
+        assert len(names) == ENC_LAYERS + 2 * DEC_LAYERS
+        for name in names:
+            assert (cache[name] - expected[name]).abs().max().item() < 1e-5, name
+        hf = bridge.original_model.model
+        for layer in [*hf.encoder.layers, *hf.decoder.layers]:
+            assert isinstance(layer.self_attn.k_proj.bias, torch.nn.Parameter)
+
     def test_unembed_untied_from_decoder_embed(self, processed):
         bridge, _, _ = processed
         unembed = bridge.unembed.original_component.weight
         embed = bridge.decoder_embed.original_component.weight
         assert unembed.data_ptr() != embed.data_ptr()
         assert unembed.mean(dim=0).abs().max() < 1e-6
+
+    @pytest.mark.parametrize("fold_value_biases", [False, True])
+    def test_unembed_untied_when_nothing_rewrites_it(self, fold_value_biases):
+        """Without fold_ln or center_unembed, processing returns the tied tensor as is."""
+        bridge, _ = _compat_pair()
+        bridge.enable_compatibility_mode(
+            fold_ln=False,
+            center_writing_weights=False,
+            center_unembed=False,
+            fold_value_biases=fold_value_biases,
+            disable_warnings=True,
+        )
+        unembed = bridge.unembed.original_component.weight
+        embed = bridge.decoder_embed.original_component.weight
+        before = embed.detach().clone()
+        with torch.no_grad():
+            unembed.add_(1.0)
+        assert torch.equal(embed, before)
 
     def test_greedy_generate_unchanged(self, processed, features):
         bridge, reference, _ = processed

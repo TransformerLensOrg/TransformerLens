@@ -265,9 +265,13 @@ class NormMatchedPlacebo:
         B = self.basis.to(base.device, dtype)
         move = ((source.to(dtype) - base_work) @ B) @ B.T
         move_norm = move.norm(dim=-1, keepdim=True)
-        if ((move_norm == 0) & (distance != 0)).any():
+        unmatchable = (move_norm == 0) & (distance != 0)
+        if unmatchable.any():
             raise ValueError(
-                "Cannot norm-match a zero placebo projection to a nonzero reference displacement."
+                "Cannot norm-match a zero placebo projection to a nonzero reference displacement: "
+                f"{int(unmatchable.sum())} of {unmatchable.numel()} rows have no base-to-source "
+                "difference inside the placebo subspace. Try a different placebo basis or a "
+                "higher rank."
             )
         # Divide before multiplying to avoid overflowing the distance-to-norm ratio.
         direction = move / torch.where(move_norm == 0, torch.ones_like(move_norm), move_norm)

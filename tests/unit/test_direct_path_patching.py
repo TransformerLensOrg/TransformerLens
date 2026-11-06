@@ -7,6 +7,8 @@ import torch
 from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
+    GPTBigCodeConfig,
+    GPTBigCodeForCausalLM,
     GraniteConfig,
     GraniteForCausalLM,
     LlamaConfig,
@@ -85,6 +87,33 @@ def _tiny_llama_gqa(n_kv_heads=2, fold_ln=False) -> TransformerBridge:
     )
     if fold_ln:
         model.enable_compatibility_mode()
+    return model.eval()
+
+
+def _tiny_bigcode_mqa() -> TransformerBridge:
+    torch.manual_seed(0)
+    hf_config = GPTBigCodeConfig(
+        n_layer=3,
+        n_head=4,
+        n_embd=64,
+        vocab_size=100,
+        n_positions=16,
+        initializer_range=0.1,
+        multi_query=True,
+    )
+    hf_config._attn_implementation = "eager"
+    hf_model = GPTBigCodeForCausalLM(hf_config).to(torch.float64).eval()
+    with torch.no_grad():
+        for block in hf_model.transformer.h:
+            block.ln_1.weight.copy_(torch.linspace(0.5, 1.5, 64))
+    model = build_bridge_from_module(
+        hf_model,
+        "GPTBigCodeForCausalLM",
+        hf_config=hf_config,
+        tokenizer=None,
+        device="cpu",
+        dtype=torch.float64,
+    )
     return model.eval()
 
 
@@ -556,11 +585,16 @@ class TestArchitectureSupport:
 
 
 @pytest.fixture(
-    scope="module", params=[(kv, folded) for kv in (1, 2, 4) for folded in (False, True)]
+    scope="module",
+    params=[(kv, folded) for kv in (1, 2, 4) for folded in (False, True)] + ["bigcode_mqa"],
+    ids=lambda p: p if isinstance(p, str) else f"llama_kv{p[0]}{'_folded' if p[1] else ''}",
 )
 def kv_model_and_caches(request):
-    kv, folded = request.param
-    model = _tiny_llama_gqa(kv, folded)
+    # Joint-QKV bridges size and project the K/V fork separately from the Llama path
+    if request.param == "bigcode_mqa":
+        model = _tiny_bigcode_mqa()
+    else:
+        model = _tiny_llama_gqa(*request.param)
     return model, _tokens_and_caches(model, batch=2)
 
 

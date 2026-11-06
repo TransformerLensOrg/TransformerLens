@@ -13,6 +13,15 @@ import torch
 
 import transformer_lens.utilities as utils
 from transformer_lens.config.transformer_lens_config import TransformerLensConfig
+from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import (
+    ChainTensorConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.transpose_tensor_conversion import (
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.model_bridge.architecture_adapter import (
     ArchitectureAdapter,
@@ -984,8 +993,8 @@ class ProcessWeights:
         if adapter is not None:
             conversions = getattr(adapter, "weight_processing_conversions", None) or {}
             conversion = conversions.get("unembed.weight", conversions.get("unembed"))
-            if conversion is not None and not isinstance(conversion, str):
-                # An explicit conversion produces TL [d_model, d_vocab].
+            if ProcessWeights._conversion_transposes(conversion):
+                # Transposing HF [d_vocab, d_model] yields TL [d_model, d_vocab].
                 return 0
         if d_model is not None and weight.shape[0] != weight.shape[1]:
             if weight.shape[0] == d_model:
@@ -997,14 +1006,30 @@ class ProcessWeights:
         return 0 if adapter is None else 1
 
     @staticmethod
+    def _conversion_transposes(conversion: Any) -> bool:
+        """Whether a weight conversion swaps the two axes of a 2-D weight."""
+        if isinstance(conversion, ParamProcessingConversion):
+            conversion = conversion.tensor_conversion
+        if isinstance(conversion, TransposeTensorConversion):
+            return True
+        if isinstance(conversion, ChainTensorConversion):
+            # Two transposes cancel.
+            return (
+                sum(ProcessWeights._conversion_transposes(c) for c in conversion.conversions) % 2
+                == 1
+            )
+        return False
+
+    @staticmethod
     def _mlp_model_axis(
         key: str, weight: torch.Tensor, d_model: Optional[int], adapter, reads_residual: bool
     ) -> Optional[int]:
         """Resolve the d_model axis of a dense MLP weight after conversion, or None if absent.
 
         When d_mlp == d_model the shape is ambiguous, so the layout decides: TL holds
-        W_in as [d_model, d_mlp] and W_out as [d_mlp, d_model], as do explicit
-        conversions and Conv1D ([in, out]); unconverted nn.Linear holds [out, in].
+        W_in as [d_model, d_mlp] and W_out as [d_mlp, d_model], as do Conv1D ([in, out])
+        and nn.Linear weights whose conversion transposes; other nn.Linear weights, split
+        ones included, hold [out, in].
         """
         if d_model is None:
             return None
@@ -1024,7 +1049,7 @@ class ProcessWeights:
         conversion = conversions.get(
             placeholder, conversions.get(placeholder.removesuffix(".weight"))
         )
-        if conversion is not None and not isinstance(conversion, str):
+        if ProcessWeights._conversion_transposes(conversion):
             return tl_axis
         if key in getattr(adapter, "_in_out_weight_keys", ()):
             return tl_axis
@@ -1219,9 +1244,9 @@ class ProcessWeights:
         """Fold each norm into the linears ``layout.norm_readers`` lists for it.
 
         A reader computes ``W(γ ⊙ x̂ + β) + b = (W diag γ) x̂ + (b + Wβ)``, so γ and β move
-        into the reader and the norm keeps only the normalization (γ = 1, β = 0). For
-        LayerNorm, x̂ has zero mean, so the reader's weights are also centered over
-        their input axis (``center_weights``).
+        into the reader and the norm keeps only the normalization (γ = 1, β = 0); a
+        bias-free reader gets a created bias. For LayerNorm, x̂ has zero mean, so the
+        reader's weights are also centered over their input axis (``center_weights``).
         """
         state_dict = dict(state_dict)
         for norm, readers in layout.norm_readers.items():
@@ -1230,13 +1255,9 @@ class ProcessWeights:
             for reader in readers:
                 weight = state_dict[f"{reader}.weight"]
                 if beta is not None:
+                    # Dropping Wβ on a bias-free key would keep logits but offset hook_k.
                     bias_key = f"{reader}.bias"
-                    if bias_key in state_dict:
-                        state_dict[bias_key] = state_dict[bias_key] + weight @ beta
-                    elif reader not in layout.key_projections:
-                        raise ValueError(
-                            f"{reader} has no bias to receive the folded bias of {norm}."
-                        )
+                    state_dict[bias_key] = state_dict.get(bias_key, 0) + weight @ beta
                 weight = weight * gamma
                 if center_weights:
                     weight = weight - weight.mean(dim=1, keepdim=True)
