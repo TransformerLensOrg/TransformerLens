@@ -4,8 +4,10 @@ Modeling files loaded via ``trust_remote_code`` were mostly written against
 transformers 4.x and break under v5 in recurring ways: the meta-device
 load-then-materialise flow re-runs ``_init_weights`` over already-loaded
 modules, ``tie_weights`` calls ``.keys()`` on list-form ``_tied_weights_keys``,
-``all_tied_weights_keys`` lookups hit broken remote ``__getattr__``s, and the
-``ROPE_INIT_FUNCTIONS["default"]`` entry the remote code looks up was removed.
+``all_tied_weights_keys`` lookups hit broken remote ``__getattr__``s, the
+``ROPE_INIT_FUNCTIONS["default"]`` entry the remote code looks up was removed,
+module-level imports name ``transformers.utils`` helpers that no longer exist,
+and forwards written against the Cache API reject ``use_cache`` without one.
 The patch mechanics live here; each adapter's ``prepare_loading`` keeps the
 WHY — what its remote code gets wrong and which classes need patching.
 
@@ -14,13 +16,17 @@ the helpers are unit-tested directly in
 ``tests/unit/model_bridge/test_remote_code_compat.py``.
 """
 
+import functools
+import inspect
 import sys
 from collections.abc import Iterator
 from types import ModuleType
 from typing import Any
 
 import torch
+import transformers.utils.import_utils as hf_import_utils
 from transformers import PreTrainedModel
+from transformers.cache_utils import DynamicCache
 
 # Architectures whose prepare_loading force-imports the remote modeling file at
 # the caller's pinned revision (code_revision, falling back to the weights
@@ -36,6 +42,7 @@ REVISION_FORWARDING_ARCHITECTURES: frozenset[str] = frozenset(
         "GiddForDiffusionLM",
         "InternLM2ForCausalLM",
         "LLaDA2MoeModelLM",
+        "MiniCPMForCausalLM",
         "OpenELMForCausalLM",
         "OuroForCausalLM",
         "RavenForCausalLM",
@@ -136,6 +143,45 @@ def retie_weights_keys_v5(cls: Any, mapping: dict[str, str]) -> None:
     """
     if cls is not None and isinstance(getattr(cls, "_tied_weights_keys", None), list):
         cls._tied_weights_keys = mapping
+
+
+def backfill_is_torch_fx_available() -> None:
+    """Restore ``transformers.utils.import_utils.is_torch_fx_available``, removed in v5.
+
+    4.x modeling files import it at module level, so the import itself raises.
+    The stand-in reports False, which only skips their optional ``torch.fx.wrap``
+    registration. Process-global; a no-op when the name exists.
+    """
+    if not hasattr(hf_import_utils, "is_torch_fx_available"):
+        setattr(hf_import_utils, "is_torch_fx_available", lambda: False)
+
+
+def create_dynamic_cache_when_missing(cls: type[Any]) -> None:
+    """Make ``cls.forward`` build a ``DynamicCache`` when caching is on but none was passed.
+
+    Native v5 models create the cache lazily; some remote code instead raises on
+    ``use_cache=True`` without a ``Cache`` object — which is every plain forward
+    whose config defaults ``use_cache`` on, and the first step of cached
+    generation. ``use_cache`` resolves against ``self.config`` as the forward
+    does. Idempotent via the ``_tl_cache_patched`` sentinel.
+    """
+    if cls.__dict__.get("_tl_cache_patched", False):
+        return
+    original_forward = cls.forward
+    signature = inspect.signature(original_forward)
+
+    @functools.wraps(original_forward)
+    def forward(self: Any, *args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind_partial(self, *args, **kwargs)
+        use_cache = bound.arguments.get("use_cache")
+        if use_cache is None:
+            use_cache = getattr(self.config, "use_cache", False)
+        if use_cache and bound.arguments.get("past_key_values") is None:
+            bound.arguments["past_key_values"] = DynamicCache(config=self.config)
+        return original_forward(*bound.args, **bound.kwargs)
+
+    setattr(cls, "forward", forward)
+    setattr(cls, "_tl_cache_patched", True)
 
 
 def disable_tied_weights_lookup(cls: type[Any]) -> None:

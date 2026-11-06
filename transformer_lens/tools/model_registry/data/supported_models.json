@@ -6,9 +6,9 @@
     "min_downloads": 500,
     "scan_duration_seconds": 0.1
   },
-  "total_architectures": 147,
-  "total_models": 15753,
-  "total_verified": 1204,
+  "total_architectures": 148,
+  "total_models": 15755,
+  "total_verified": 1205,
   "total_provisional": 7,
   "models": [
     {
@@ -221819,6 +221819,37 @@
     {
       "architecture_id": "WhisperForConditionalGeneration",
       "model_id": "distil-whisper/distil-large-v3.5",
+      "status": 0,
+      "verified_date": null,
+      "metadata": null,
+      "note": null,
+      "phase1_score": null,
+      "phase2_score": null,
+      "phase3_score": null,
+      "phase4_score": null,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": null
+    },
+    {
+      "architecture_id": "MiniCPMForCausalLM",
+      "model_id": "openbmb/MiniCPM4-0.5B",
+      "status": 1,
+      "verified_date": "2026-11-06",
+      "metadata": null,
+      "note": "Core verification completed",
+      "p4_scoring_version": 2,
+      "phase1_score": 100.0,
+      "phase2_score": 100.0,
+      "phase3_score": 100.0,
+      "phase4_score": 95.6,
+      "phase7_score": null,
+      "phase8_score": null,
+      "phase9_score": null
+    },
+    {
+      "architecture_id": "MiniCPMForCausalLM",
+      "model_id": "openbmb/MiniCPM-1B-sft-bf16",
       "status": 0,
       "verified_date": null,
       "metadata": null,

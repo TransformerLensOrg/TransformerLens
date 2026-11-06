@@ -151,6 +151,9 @@ from transformer_lens.model_bridge.supported_architectures.mamba2 import Mamba2A
 from transformer_lens.model_bridge.supported_architectures.marian import MarianArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.mbart import MBartArchitectureAdapter
 from transformer_lens.model_bridge.supported_architectures.mingpt import MingptArchitectureAdapter
+from transformer_lens.model_bridge.supported_architectures.minicpm import (
+    MiniCPMArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.minimax_m2 import (
     MiniMaxM2ArchitectureAdapter,
 )
@@ -408,6 +411,7 @@ __all__ = [
     "MarianArchitectureAdapter",
     "MBartArchitectureAdapter",
     "MingptArchitectureAdapter",
+    "MiniCPMArchitectureAdapter",
     "MiniMaxM2ArchitectureAdapter",
     "MistralArchitectureAdapter",
     "Mistral3ArchitectureAdapter",
