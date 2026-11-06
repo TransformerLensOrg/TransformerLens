@@ -414,7 +414,7 @@ class TestWhisperTinyGenerate:
         generation_config.suppress_tokens = None
         generation_config.begin_suppress_tokens = None
         free = bridge.generate(clips, do_sample=False, max_new_tokens=4, verbose=False)
-        # Begin-suppressing the free run's first token makes a misplaced begin step change step one.
+        # Begin-suppress the free run's first token: a misplaced begin step leaves step one as is.
         first = int(free[0, prompt_len])
         later = next(int(t) for t in free[0, prompt_len:] if int(t) != first)
         for config in (generation_config, reference.generation_config):

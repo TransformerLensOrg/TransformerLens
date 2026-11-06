@@ -43,8 +43,8 @@ from transformer_lens.utilities.attn_implementation import force_eager_attention
 class ResidualLayout:
     """Where each LayerNorm's output goes and what writes to each residual stream.
 
-    For pre-LN architectures the decoder-only weight processing (``blocks.{i}``)
-    cannot walk, such as encoder-decoders with cross-attention. Entries are
+    Covers pre-LN architectures the decoder-only ``blocks.{i}`` weight-processing walk
+    cannot handle, such as encoder-decoders with cross-attention. Entries are
     state-dict prefixes of components with HF ``nn.Linear`` / ``nn.Embedding``
     layout (``[out, in]`` weights, ``[n, d_model]`` tables).
 

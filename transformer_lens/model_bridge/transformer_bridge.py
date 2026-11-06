@@ -861,10 +861,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     def _block_submodule_key_to_bridge(self, key: str) -> str:
         """Rename a block key's HF submodule segment to the bridge name that owns it.
 
-        Encoder-decoder state dicts keep HF names inside blocks
-        (``encoder_blocks.0.self_attn_layer_norm.weight``), but a block routes processed
-        weights to its subcomponents by bridge name (``ln1``). Keys already using a
-        bridge name, as on decoder-only models, are returned unchanged.
+        Encoder-decoder state dicts keep HF names inside blocks (``self_attn_layer_norm``),
+        but a block routes processed weights by bridge name (``ln1``); bridge names pass through.
         """
         parts = key.split(".")
         if len(parts) < 3 or not parts[1].isdigit() or not self.adapter.component_mapping:
@@ -1788,7 +1786,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """Sum of variant + MLP output biases through the residual stream up to `layer`.
 
         Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
-        to target its MLP input: the current variant bias is included only for sequential blocks.
+        to target ``layer``'s MLP input, adding its variant bias unless the block is parallel.
         """
         accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
         for i in range(layer):
@@ -2165,10 +2163,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
-            stop_at_layer: Layer to stop forward pass at, returning the residual stream
-                entering block ``k``. ``n_layers`` returns what leaves the last block,
-                before the final norm and unembed, and a value outside
-                ``[-n_layers, n_layers]`` raises ``ValueError``. Only supported on the
+            stop_at_layer: Return the residual stream entering this block instead of the
+                model output. ``n_layers`` returns what leaves the last block, before the
+                final norm and unembed, and a value outside ``[-n_layers, n_layers]``
+                raises ``ValueError``. Only supported on the
                 standard ``blocks`` stack; architectures that register no ``blocks``
                 (e.g. Raven's ``prelude``/``core_block``/``coda``) raise
                 ``NotImplementedError`` rather than running to completion.
@@ -2226,7 +2224,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             effective_stop_at_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
-        # Set stop_at_layer flag on all blocks if requested
         if effective_stop_at_layer is not None:
             for block in self.blocks:
                 block._stop_at_layer_idx = effective_stop_at_layer
@@ -2346,7 +2343,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         ),
                         padding_side=_resolved_padding_side,
                     ).to(self.cfg.device)
-                    # An unpadded tensor keeps the unmasked path it had before.
+                    # A tensor with no pads stays on the unmasked path, so its logits are unchanged.
                     _is_unpadded = _is_padded_tokens and bool(derived_mask.all())
                     if not _is_unpadded and not _layout_needs_mask:
                         # Causal right padding: the model still runs unmasked, so the
@@ -4929,7 +4926,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 names = {
                     tl_subname: subcomponent.name
                     for tl_subname, subcomponent in blocks_component.submodules.items()
-                    # Only map if the names differ (e.g., ln1 -> ln_1, but attn -> attn)
                     if subcomponent.name and tl_subname != subcomponent.name
                 }
                 attr_to_hf.update(names)

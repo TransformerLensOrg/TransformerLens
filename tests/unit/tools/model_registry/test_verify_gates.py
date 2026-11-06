@@ -47,7 +47,7 @@ class TestPhasesToRun:
         assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [1, 9]
 
     def test_whisper_runs_phase_1_only(self):
-        # P2/P4 need generate() and P3 weight processing; both are follow-ups.
+        # P2-P4 drive the model with text prompts, which Whisper's encoder can't take.
         assert _phases_to_run("WhisperForConditionalGeneration", [1, 2, 3, 4]) == [1]
 
     def test_unknown_architecture_defaults_to_all_phases(self):

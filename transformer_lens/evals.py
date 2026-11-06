@@ -257,7 +257,7 @@ def evaluate_on_dataset(
     truncate: int = 100,
     device: Optional[Union[str, torch.device]] = None,
 ) -> float:
-    # None defaults to the model's own device, a hardcoded "cuda" would crash CPU/MPS callers.
+    # Default to the model's device; a hardcoded "cuda" crashes CPU/MPS callers.
     if device is None:
         device = model.cfg.device
     warn_if_mps(device)

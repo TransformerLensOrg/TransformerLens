@@ -1018,12 +1018,10 @@ class ActivationCache:
     def _post_norm_map(
         self, layer: int, norm_name: str, pos_slice: Slice
     ) -> Optional[Tuple[torch.Tensor, Optional[torch.Tensor], bool, Optional[torch.Tensor]]]:
-        """The cached-scale linear map of a post-sublayer norm (``ln1_post``/``ln2_post``).
+        """Cached-scale affine map ``(s, w, centers, b)`` of a post-sublayer norm, or None.
 
-        A post-norm block adds ``norm(out)`` rather than ``out`` to the residual stream. With the
-        cached scale ``s`` the norm is affine, ``norm(x) = center(x) / s * w + b``, so each
-        component of ``out`` contributes ``center(x_i) / s * w`` and the block adds ``b`` once.
-        Returns ``(s, w, centers, b)`` with ``s`` sliced by ``pos_slice``, or None without one.
+        With ``s`` fixed, ``norm(x) = center(x) / s * w + b`` is affine, so each component of
+        the sublayer output contributes ``center(x_i) / s * w`` and the block adds ``b`` once.
         """
         norm = self.model.blocks[layer]._modules.get(norm_name)
         if norm is None:
@@ -1067,11 +1065,7 @@ class ActivationCache:
     def _post_norm_bias_correction(
         self, layer: int, mlp_input: bool, include_mlp_biases: bool, pos_slice: Slice
     ) -> Optional[torch.Tensor]:
-        """Per-position change to ``accumulated_bias`` from blocks with post-sublayer norms.
-
-        ``accumulated_bias`` adds each output bias as is; a post-norm block adds
-        ``norm_map(bias) + norm_bias`` instead, which depends on the position through the scale.
-        """
+        """Per-position ``accumulated_bias`` fix: post-norm blocks add ``norm_map(b) + norm_b``."""
         correction: Optional[torch.Tensor] = None
         sublayers = [(l, "attn") for l in range(layer)]
         if include_mlp_biases:

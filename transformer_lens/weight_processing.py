@@ -1024,13 +1024,7 @@ class ProcessWeights:
     def _mlp_model_axis(
         key: str, weight: torch.Tensor, d_model: Optional[int], adapter, reads_residual: bool
     ) -> Optional[int]:
-        """Resolve the d_model axis of a dense MLP weight after conversion, or None if absent.
-
-        When d_mlp == d_model the shape is ambiguous, so the layout decides: TL holds
-        W_in as [d_model, d_mlp] and W_out as [d_mlp, d_model], as do Conv1D ([in, out])
-        and nn.Linear weights whose conversion transposes; other nn.Linear weights, split
-        ones included, hold [out, in].
-        """
+        """d_model axis of a dense MLP weight after conversion, or None; square ones use layout."""
         if d_model is None:
             return None
         if weight.shape[0] != weight.shape[1]:
