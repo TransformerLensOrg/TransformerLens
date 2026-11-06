@@ -44,6 +44,7 @@ from transformer_lens.model_bridge.bridge_core import (
     _BLOCK_LIST_ATTRS,
     _SELF_ATTENTION_NAMES,
     BridgeCore,
+    _validate_execution_kwargs,
 )
 from transformer_lens.model_bridge.component_setup import (
     refresh_container_state_owners,
@@ -2181,12 +2182,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 (cfg.is_audio_seq2seq, e.g. Whisper) instead take their features as
                 ``input`` and require ``decoder_input`` (decoder token ids) or ``labels``,
                 with one row per clip or a single row shared by every clip.
-            **kwargs: Additional arguments passed to model
+            **kwargs: Additional arguments passed to the model. Hook/cache helper
+                options belong to run_with_hooks, run_with_cache or hooks, not forward;
+                misplaced options and singular fwd_hook/bwd_hook raise TypeError.
 
         Returns:
             Model output based on return_type
         """
 
+        _validate_execution_kwargs(kwargs, "forward")
         underlying_model = getattr(getattr(self, "_driver", None), "underlying_model", None)
         model_config = getattr(underlying_model, "config", None)
         is_encoder_decoder = bool(getattr(model_config, "is_encoder_decoder", False))
