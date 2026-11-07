@@ -13,7 +13,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    ClassVar,
     Dict,
     Iterator,
     List,
@@ -252,10 +251,54 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         super().__setstate__(state)
         self.cfg._bind_bridge(self)
 
-    # boot_transformers / list_supported_models / check_model_support are
-    # attached by sources.transformers.__init__ (setattr on this class) so the
-    # source package owns its own boot entry point.
-    boot_transformers: ClassVar[Callable[..., "TransformerBridge"]]
+    # Source packages attach these entry points at runtime. Declaring their
+    # signatures only while type checking keeps the bridge -> sources import
+    # direction intact while exposing the public API to typed callers.
+    if TYPE_CHECKING:
+
+        @staticmethod
+        def boot_transformers(
+            model_name: str,
+            hf_config_overrides: Optional[dict] = None,
+            device: Optional[Union[str, torch.device]] = None,
+            dtype: torch.dtype = torch.float32,
+            tokenizer: Optional[PreTrainedTokenizerBase] = None,
+            load_weights: bool = True,
+            trust_remote_code: bool = False,
+            model_class: Optional[Any] = None,
+            hf_model: Optional[Any] = None,
+            n_ctx: Optional[int] = None,
+            revision: Optional[str] = None,
+            code_revision: Optional[str] = None,
+            checkpoint_index: Optional[int] = None,
+            checkpoint_value: Optional[int] = None,
+            device_map: Optional[Union[str, dict[str, Union[str, int]]]] = None,
+            n_devices: Optional[int] = None,
+            max_memory: Optional[dict[Union[str, int], Union[str, int]]] = None,
+            offload_folder: Optional[str] = None,
+        ) -> "TransformerBridge":
+            ...
+
+        @staticmethod
+        def boot_native(
+            config: Union[TransformerBridgeConfig, dict[str, Any]],
+            tokenizer: Optional[Any] = None,
+            device: Optional[Union[str, torch.device]] = None,
+            dtype: Optional[torch.dtype] = None,
+            model_name: str = "native",
+        ) -> "TransformerBridge":
+            ...
+
+        @staticmethod
+        def boot_tl_legacy(
+            model_name: str,
+            checkpoint_index: Optional[int] = None,
+            checkpoint_value: Optional[int] = None,
+            device: Optional[Union[str, torch.device]] = None,
+            dtype: torch.dtype = torch.float32,
+            tokenizer: Optional[Any] = None,
+        ) -> "TransformerBridge":
+            ...
 
     @property
     def original_model(self) -> nn.Module:
