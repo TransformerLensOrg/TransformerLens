@@ -73,6 +73,12 @@ AUDIO_TEXT_ARCHITECTURES: set[str] = {
     "MusicFlamingoForConditionalGeneration",
 }
 
+# Audio encoder + text decoder (Whisper); load via AutoModelForSpeechSeq2Seq and
+# take log-mel input_features plus decoder token ids.
+AUDIO_SEQ2SEQ_ARCHITECTURES: set[str] = {
+    "WhisperForConditionalGeneration",
+}
+
 # Audio spectrogram models for classification
 AUDIO_CLASSIFICATION_ARCHITECTURES: set[str] = {
     "ASTForAudioClassification",
@@ -115,7 +121,7 @@ def classify_architecture(architecture: str) -> str:
 
     Returns one of: "seq2seq", "masked_lm", "multimodal", "audio", "vision", "causal_lm"
     """
-    if architecture in SEQ2SEQ_ARCHITECTURES:
+    if architecture in SEQ2SEQ_ARCHITECTURES or architecture in AUDIO_SEQ2SEQ_ARCHITECTURES:
         return "seq2seq"
     if architecture in MASKED_LM_ARCHITECTURES:
         return "masked_lm"

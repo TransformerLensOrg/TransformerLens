@@ -32,14 +32,16 @@ def cleanup_memory():
         torch.mps.empty_cache()
 
 
-@pytest.fixture(autouse=True, scope="class")
-def cleanup_class_memory():
-    """Clean up memory after each test class."""
-    yield
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Full collection only at class and module boundaries: a class-scoped autouse
+    fixture re-runs per test for module-level functions, which is most of the suite."""
+    if (
+        nextitem is not None
+        and getattr(nextitem, "cls", None) is getattr(item, "cls", None)
+        and getattr(nextitem, "module", None) is getattr(item, "module", None)
+    ):
+        return
     gc.collect()
 
 

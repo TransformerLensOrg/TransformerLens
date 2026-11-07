@@ -1,12 +1,19 @@
 """Tests for padding-side and sequence-axis tokenization semantics."""
 
 from copy import deepcopy
-from typing import cast
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
 import torch
-from transformers import PreTrainedTokenizerBase
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from tokenizers.pre_tokenizers import Whitespace
+from transformers import (
+    PreTrainedTokenizer,
+    PreTrainedTokenizerBase,
+    PreTrainedTokenizerFast,
+)
 
 from transformer_lens import utilities as utils
 
@@ -142,3 +149,72 @@ def test_bos_removal_left_padding_drops_leading_cls() -> None:
     result = utils.get_tokens_with_bos_removed(tokenizer, tokens)
 
     assert torch.equal(result, torch.tensor([[0, 11], [21, 22]]))
+
+
+def _in_memory_tokenizer(bos_token: str = "BOS", **kwargs: Any) -> PreTrainedTokenizerFast:
+    """A fast tokenizer built from a tokenizers object, with no hub or disk origin."""
+    raw = Tokenizer(
+        WordLevel({"UNK": 0, bos_token: 1, "EOS": 2, "hello": 3, "world": 4}, unk_token="UNK")
+    )
+    raw.pre_tokenizer = Whitespace()
+    return PreTrainedTokenizerFast(
+        tokenizer_object=raw, bos_token=bos_token, eos_token="EOS", unk_token="UNK", **kwargs
+    )
+
+
+def test_tokenizer_with_bos_enables_bos_on_in_memory_tokenizer() -> None:
+    tokenizer = _in_memory_tokenizer()
+    tokenizer.padding_side = "left"
+
+    result = utils.get_tokenizer_with_bos(tokenizer)
+
+    assert result is not tokenizer
+    assert result("hello world")["input_ids"] == [1, 3, 4]
+    assert result.padding_side == "left"
+    assert tokenizer("hello world")["input_ids"] == [3, 4]
+
+
+def test_tokenizer_with_bos_keeps_in_memory_tokenizer_that_already_adds_bos() -> None:
+    tokenizer = _in_memory_tokenizer(add_bos_token=True)
+
+    assert utils.get_tokenizer_with_bos(tokenizer) is tokenizer
+    assert tokenizer("hello world")["input_ids"] == [1, 3, 4]
+
+
+def test_tokenizer_with_bos_returns_in_memory_tokenizer_when_bos_is_inexpressible() -> None:
+    # TemplateProcessing rejects special tokens containing ':'.
+    tokenizer = _in_memory_tokenizer("<seed:bos>")
+
+    assert utils.get_tokenizer_with_bos(tokenizer) is tokenizer
+
+
+class _InMemorySlowTokenizer(PreTrainedTokenizer):
+    """A whitespace slow tokenizer with no hub or disk origin."""
+
+    def __init__(self) -> None:
+        self._vocab = {"UNK": 0, "BOS": 1, "EOS": 2, "hello": 3, "world": 4}
+        super().__init__(bos_token="BOS", eos_token="EOS", unk_token="UNK")
+
+    @property
+    def vocab_size(self) -> int:
+        return len(self._vocab)
+
+    def get_vocab(self) -> dict[str, int]:
+        return dict(self._vocab)
+
+    def _tokenize(self, text: str, **kwargs: Any) -> list[str]:
+        return text.split()
+
+    def _convert_token_to_id(self, token: str) -> int:
+        return self._vocab.get(token, 0)
+
+    def _convert_id_to_token(self, index: int) -> str:
+        return next(token for token, i in self._vocab.items() if i == index)
+
+
+def test_tokenizer_with_bos_returns_in_memory_slow_tokenizer_unchanged() -> None:
+    # A slow tokenizer has no post-processor, so a copy claiming add_bos_token would still omit BOS.
+    tokenizer = _InMemorySlowTokenizer()
+
+    assert utils.get_tokenizer_with_bos(tokenizer) is tokenizer
+    assert tokenizer("hello world")["input_ids"] == [3, 4]

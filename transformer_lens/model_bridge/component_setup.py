@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class _ContainerStateOwner(nn.Module):
-    """Registered view of state owned directly by an unwrapped container."""
+    """Registered view of one original module's unmapped direct state, leaf or container."""
 
     def __init__(self, original_container: nn.Module) -> None:
         super().__init__()
@@ -118,7 +118,7 @@ def set_original_components(
 
 
 def _register_unowned_container_state(bridge_module: nn.Module, original_model: nn.Module) -> None:
-    """Make direct container parameters and buffers reachable through the Bridge tree."""
+    """Register params and buffers of any module, leaves included, the Bridge tree misses."""
     registered_parameter_ids = {
         id(parameter)
         for module in bridge_module.modules()

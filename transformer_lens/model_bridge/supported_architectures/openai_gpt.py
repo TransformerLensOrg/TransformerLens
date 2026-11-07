@@ -25,6 +25,10 @@ class _OpenAIGPTJointQKVAttentionBridge(JointQKVAttentionBridge):
     """GPT-1's Block concatenates ``[h] + attn_outputs[1:]`` — it requires the
     attention module to return a list, not the tuple modern blocks accept."""
 
+    # OpenAIGPTModel hands its blocks a [batch, 1, 1, seq] padding mask; the
+    # causal mask lives in the attention module's ``bias`` buffer.
+    broadcast_mask_is_padding_only = True
+
     def _process_output(self, output: Any) -> Any:
         processed = super()._process_output(output)
         if isinstance(processed, tuple):

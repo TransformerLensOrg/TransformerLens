@@ -48,6 +48,23 @@ _BLOCK_LIST_ATTRS = ("blocks", "encoder_blocks", "decoder_blocks", "L_blocks", "
 _SELF_ATTENTION_NAMES = {"attn": ("attn", "self_attn")}
 
 
+def _validate_execution_kwargs(kwargs: Mapping[str, Any], caller: str) -> None:
+    """Reject helper-only arguments before they can disappear into a driver's kwargs."""
+    for name in kwargs:
+        if name in ("fwd_hook", "bwd_hook"):
+            correct = f"{name}s"
+            hint = f"use run_with_hooks({correct}=...) or hooks({correct}=...)."
+        elif name in ("fwd_hooks", "bwd_hooks"):
+            hint = f"use run_with_hooks({name}=...) or hooks({name}=...)."
+        elif name in ("names_filter", "incl_bwd", "pos_slice", "return_cache_object"):
+            hint = f"use run_with_cache({name}=...) to scope caching."
+        elif name in ("reset_hooks_end", "clear_contexts", "remove_batch_dim"):
+            hint = f"use run_with_hooks({name}=...) or run_with_cache({name}=...)."
+        else:
+            continue
+        raise TypeError(f"{caller}() got an unexpected keyword argument {name!r}; {hint}")
+
+
 def _input_batch_size(*inputs: Any) -> Optional[int]:
     """The batch size of the first input that states it (a string, list of strings or tensor).
 
@@ -778,10 +795,16 @@ class BridgeCore:
         hook_fn: Callable,
         dir: Literal["fwd", "bwd"],
         is_permanent: bool,
+        level: Optional[int] = None,
+        prepend: bool = False,
     ) -> None:
         """Run the extension-point check, then attach the hook function."""
-        self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent)
-        hook_point.add_hook(hook_fn, dir=dir, is_permanent=is_permanent)
+        self.check_hooks_to_add(
+            hook_point, name, hook_fn, dir=dir, is_permanent=is_permanent, prepend=prepend
+        )
+        hook_point.add_hook(
+            hook_fn, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend
+        )
 
     def _gated_hook_reason(self, hook_point_name: str) -> Optional[str]:
         """Return the disabled setter name if hook_point_name is gated off, else None."""
@@ -814,6 +837,8 @@ class BridgeCore:
         hook_fn: Any,
         dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
+        level: Optional[int] = None,
+        prepend: bool = False,
     ) -> None:
         """Add a hook to a specific component or to all components matching a filter.
 
@@ -825,6 +850,9 @@ class BridgeCore:
             hook_fn: The hook function ``(activation, hook) -> activation | None``.
             dir: Hook direction, ``"fwd"`` or ``"bwd"``.
             is_permanent: If True the hook survives ``reset_hooks()`` calls.
+            level: Context level to tag the hook with; ``reset_hooks(level=...)`` removes only
+                the hooks tagged with that level.
+            prepend: If True the hook runs before those already on the hook point.
         """
         if callable(name) and not isinstance(name, str):
             hook_dict = self.hook_dict
@@ -843,7 +871,9 @@ class BridgeCore:
                     if self._gated_hook_reason(hook_point.name or hook_name) is not None:
                         gated_names_skipped.append(hook_name)
                         continue
-                    self._add_fn_to_hook_point(hook_point, hook_name, hook_fn, dir, is_permanent)
+                    self._add_fn_to_hook_point(
+                        hook_point, hook_name, hook_fn, dir, is_permanent, level, prepend
+                    )
             self._warn_gated_skipped("add_hook", gated_names_skipped)
             return
 
@@ -855,7 +885,9 @@ class BridgeCore:
         registry_hp = self._hook_registry.get(name)
         if registry_hp is not None:
             self._check_hook_fireable(name)
-            self._add_fn_to_hook_point(registry_hp, name, hook_fn, dir, is_permanent)
+            self._add_fn_to_hook_point(
+                registry_hp, name, hook_fn, dir, is_permanent, level, prepend
+            )
             return
         # Same alias resolution run_with_hooks uses, so HT-style names work here too.
         canonical = build_alias_to_canonical_map(self.hook_dict).get(name, name)
@@ -865,7 +897,9 @@ class BridgeCore:
             self._check_hook_fireable(name)
         registry_hp = self._hook_registry.get(canonical)
         if registry_hp is not None:
-            self._add_fn_to_hook_point(registry_hp, canonical, hook_fn, dir, is_permanent)
+            self._add_fn_to_hook_point(
+                registry_hp, canonical, hook_fn, dir, is_permanent, level, prepend
+            )
             return
 
         component: Any = self
@@ -879,7 +913,9 @@ class BridgeCore:
         if hasattr(component, hook_name):
             hook_point = getattr(component, hook_name)
             if isinstance(hook_point, HookPoint):
-                self._add_fn_to_hook_point(hook_point, name, hook_fn, dir, is_permanent)
+                self._add_fn_to_hook_point(
+                    hook_point, name, hook_fn, dir, is_permanent, level, prepend
+                )
             else:
                 raise AttributeError(
                     f"'{hook_name}' is not a hook point. Found object of type: {type(hook_point)} with value: {hook_point}"
@@ -1139,6 +1175,19 @@ class BridgeCore:
         )
 
     @staticmethod
+    def _resolve_stop_at_layer(stop_at_layer: int, n_blocks: int) -> int:
+        """Map ``stop_at_layer`` to ``[0, n_blocks]``, with ``n_blocks`` past the last block.
+
+        Any other value would run to completion and return logits as if it had stopped.
+        """
+        resolved = n_blocks + stop_at_layer if stop_at_layer < 0 else stop_at_layer
+        if not 0 <= resolved <= n_blocks:
+            raise ValueError(
+                f"stop_at_layer={stop_at_layer} out of range [{-n_blocks}, {n_blocks}]."
+            )
+        return resolved
+
+    @staticmethod
     def _remove_temporary_hook(
         hook_point: HookPoint, direction: Literal["fwd", "bwd"], handle: LensHandle
     ) -> None:
@@ -1266,19 +1315,11 @@ class BridgeCore:
         hooks the caller attached beforehand are left alone either way;
         ``clear_contexts`` also wipes the touched hook points' ``ctx``.
         """
-        if "names_filter" in kwargs:
-            # **kwargs would silently absorb it; fail loud.
-            raise TypeError(
-                "run_with_hooks() got an unexpected keyword argument 'names_filter'; "
-                "use run_with_cache(names_filter=...) to scope caching."
-            )
+        _validate_execution_kwargs(kwargs, "run_with_hooks")
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                effective_stop_layer = len(self.blocks) + stop_at_layer
-            else:
-                effective_stop_layer = stop_at_layer
+            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
         effective_start_layer = None
         if start_at_layer is not None and hasattr(self, "blocks"):
             effective_start_layer = (
@@ -1452,7 +1493,10 @@ class BridgeCore:
         ``clear_contexts`` also wipes the touched hook points' ``ctx``. ``device``
         offloads cached activations (matches ``ActivationCache.to``); the model and
         inputs stay where the caller put them.
+        To intervene while caching, use ``with model.hooks(fwd_hooks=...)``
+        around this call; hook lists passed directly here raise ``TypeError``.
         """
+        _validate_execution_kwargs(kwargs, "run_with_cache")
         if incl_bwd and stop_at_layer is not None:
             raise ValueError(
                 "incl_bwd=True cannot be combined with stop_at_layer: the run returns the "
@@ -1535,10 +1579,20 @@ class BridgeCore:
         hook_dict = self.hook_dict
         effective_stop_layer = None
         if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                effective_stop_layer = len(self.blocks) + stop_at_layer
+            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
+            if effective_stop_layer == len(self.blocks):
+                # No block follows the last for a hook_in to stop on; forward stops on its exit.
+                kwargs["stop_at_layer"] = effective_stop_layer
             else:
-                effective_stop_layer = stop_at_layer
+                # Stop at the beginning of the specified block, not at the end of the previous block
+                block_hook_name = f"blocks.{effective_stop_layer}.hook_in"
+                if block_hook_name in hook_dict:
+
+                    def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
+                        raise StopAtLayerException(tensor)
+
+                    stop_hook_point = hook_dict[block_hook_name]
+                    stop_hook_fn = stop_hook
         effective_start_layer = None
         if start_at_layer is not None and hasattr(self, "blocks"):
             effective_start_layer = (
@@ -1600,21 +1654,6 @@ class BridgeCore:
                 input_ids = input_ids.to(target_device)
             kwargs["input_ids"] = input_ids
             del kwargs["input"]
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            if stop_at_layer < 0:
-                stop_at_layer = len(self.blocks) + stop_at_layer
-            last_layer_to_process = stop_at_layer - 1
-
-            def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                raise StopAtLayerException(tensor)
-
-            if stop_at_layer >= 0 and stop_at_layer < len(self.blocks):
-                # Stop at the beginning of the specified block, not at the end of the previous block
-                block_hook_name = f"blocks.{stop_at_layer}.hook_in"
-                hook_dict = self.hook_dict
-                if block_hook_name in hook_dict:
-                    stop_hook_point = hook_dict[block_hook_name]
-                    stop_hook_fn = stop_hook
         filtered_kwargs = kwargs.copy()
         # ``cache_device`` is honored by ``make_cache_hook`` above (``tensor.detach().to(cache_device)``);
         # the model and inputs stay where the caller put them, matching ``ActivationCache.to``.

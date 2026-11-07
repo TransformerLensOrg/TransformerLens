@@ -18,11 +18,13 @@ from types import SimpleNamespace
 from transformer_lens.benchmarks.component_outputs import _is_ssm_mixer_internal
 from transformer_lens.benchmarks.utils import BenchmarkSeverity
 from transformer_lens.tools.model_registry.verify_models import (
+    ModelCandidate,
     _check_phase_scores,
     _default_phases_for_architecture,
     _full_and_core_phases,
     _measured_nothing,
     _phases_to_run,
+    _runs_phase_4,
 )
 
 SSM_ARCHS = ["MambaForCausalLM", "Mamba2ForCausalLM", "NemotronHForCausalLM"]
@@ -45,6 +47,10 @@ class TestPhasesToRun:
     def test_vision_arch_runs_phases_1_and_9(self):
         # ViT/DeiT declare applicable_phases=[1]; phases 2-4 filter out, 1 and 9 stay.
         assert _phases_to_run("ViTModel", [1, 2, 3, 4, 9]) == [1, 9]
+
+    def test_whisper_runs_phase_1_only(self):
+        # P2-P4 drive the model with text prompts, which Whisper's encoder can't take.
+        assert _phases_to_run("WhisperForConditionalGeneration", [1, 2, 3, 4]) == [1]
 
     def test_unknown_architecture_defaults_to_all_phases(self):
         assert _phases_to_run("NotARealArchitecture", [1, 2, 3, 4]) == [1, 2, 3, 4]
@@ -216,3 +222,61 @@ class TestPublishedParamCount:
 
         monkeypatch.setattr(huggingface_hub, "HfApi", _Boom)
         assert verify_models.published_param_count("any/model") is None
+
+
+class TestRunsPhase4:
+    """The Phase-4 judge (~2.3 GB) is pre-loaded only when some model runs Phase 4."""
+
+    @staticmethod
+    def _candidates(*archs):
+        return [ModelCandidate(model_id=f"m{i}", architecture_id=a) for i, a in enumerate(archs)]
+
+    def test_text_model_needs_the_judge(self):
+        assert _runs_phase_4(self._candidates("GPT2LMHeadModel"), None)
+
+    def test_phase_1_only_architecture_does_not(self):
+        assert not _runs_phase_4(self._candidates("WhisperForConditionalGeneration"), None)
+
+    def test_any_model_in_a_batch_that_runs_phase_4_needs_it(self):
+        batch = self._candidates("WhisperForConditionalGeneration", "GPT2LMHeadModel")
+        assert _runs_phase_4(batch, None)
+
+    def test_requested_phases_without_4_do_not(self):
+        assert not _runs_phase_4(self._candidates("GPT2LMHeadModel"), [1, 2])
+
+
+class TestJudgePreloadCallSite:
+    """verify_models itself consults _runs_phase_4: the judge loads only for a batch
+    that runs Phase 4. Registry writes and the benchmark run are stubbed out."""
+
+    @staticmethod
+    def _judge_loads(monkeypatch, arch):
+        from transformer_lens.benchmarks import main_benchmark, text_quality
+        from transformer_lens.tools.model_registry import verify_models as vm
+
+        loads = []
+
+        def load_judge():
+            loads.append(1)
+            return object(), object()
+
+        monkeypatch.setattr(text_quality, "load_judge", load_judge)
+        monkeypatch.setattr(main_benchmark, "run_benchmark_suite", lambda *a, **k: [])
+        monkeypatch.setattr(vm, "is_incompatible_quantized", lambda _model_id: False)
+        monkeypatch.setattr(vm, "required_quant_library_for_model", lambda _model_id: None)
+        monkeypatch.setattr(vm, "estimate_model_params", lambda _model_id: 1_000_000)
+        for name in (
+            "update_model_status",
+            "add_verification_record",
+            "_save_checkpoint",
+            "_clear_hf_cache",
+        ):
+            monkeypatch.setattr(vm, name, lambda *a, **k: None)
+        vm.verify_models([ModelCandidate("org/model", arch)], max_memory_gb=64.0, quiet=True)
+        return len(loads)
+
+    def test_whisper_only_batch_never_loads_the_judge(self, monkeypatch):
+        assert self._judge_loads(monkeypatch, "WhisperForConditionalGeneration") == 0
+
+    def test_text_model_batch_loads_it_once(self, monkeypatch):
+        assert self._judge_loads(monkeypatch, "GPT2LMHeadModel") == 1

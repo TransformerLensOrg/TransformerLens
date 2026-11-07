@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import einops
 import numpy as np
 import torch
 from datasets.arrow_dataset import Dataset
 from datasets.iterable_dataset import IterableDataset
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from transformer_lens.utilities.hf_utils import keep_single_column
 from transformer_lens.utilities.tensors import get_cumsum_along_dim
@@ -129,6 +129,19 @@ def tokenize_and_concatenate(
     return tokenized_dataset
 
 
+def _enable_bos_in_memory(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokenizerBase:
+    """BOS-enabled copy of an in-memory fast tokenizer; unchanged if slow or a token has ':'."""
+    if not isinstance(tokenizer, PreTrainedTokenizerFast):
+        return tokenizer
+    tokenizer_with_bos = deepcopy(tokenizer)
+    try:
+        # The setter rebuilds the post-processor; the stubs declare the property read-only.
+        cast(Any, tokenizer_with_bos).add_bos_token = True
+    except ValueError:
+        return tokenizer
+    return tokenizer_with_bos
+
+
 def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedTokenizerBase:
     """
     Returns the tokenizer initialized with add_bos_token=True.
@@ -138,6 +151,9 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
 
     Note: For tokenizers without a BOS token (e.g., T5), this returns the original tokenizer
     unchanged since add_bos_token=True would fail in transformers v5+ when bos_token is None.
+
+    Note: For tokenizers built in memory (no ``name_or_path`` to reload from), BOS is enabled
+    on a copy of the tokenizer; the original is returned when that is not possible.
 
     Args:
         tokenizer (PreTrainedTokenizerBase): The tokenizer to initialize with add_bos_token=True.
@@ -152,13 +168,16 @@ def get_tokenizer_with_bos(tokenizer: PreTrainedTokenizerBase) -> PreTrainedToke
         return tokenizer
 
     init_kwargs = deepcopy(tokenizer.init_kwargs)
-    pretrained_model_name_or_path = init_kwargs.pop("name_or_path")
+    # Tokenizers built in memory have no ``name_or_path`` entry and nothing to reload.
+    pretrained_model_name_or_path = init_kwargs.pop("name_or_path", None) or tokenizer.name_or_path
     add_bos_token = init_kwargs.pop("add_bos_token", None)
     if add_bos_token is None:
         add_bos_token = getattr(tokenizer, "add_bos_token", False)
 
     if add_bos_token:
         tokenizer_with_bos = tokenizer
+    elif not pretrained_model_name_or_path:
+        return _enable_bos_in_memory(tokenizer)
     else:
         huggingface_token = os.environ.get("HF_TOKEN", "")
         try:

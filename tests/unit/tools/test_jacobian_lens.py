@@ -1063,10 +1063,11 @@ def test_intervention_hooks_use_bridge_names_and_run(
         assert not torch.allclose(intervened, baseline)
 
 
+# Repeated tokens make the vectors rank-deficient; the basis must not gain an unrelated direction.
+@pytest.mark.parametrize("tokens", [[3, 5, 7], [3, 3, 5], [3, 5, 7, 3]])
 def test_ablation_hooks_remove_every_direction_of_non_orthogonal_tokens(
-    toy_model: _ToyBridge, fitted_lens: JacobianLens
+    toy_model: _ToyBridge, fitted_lens: JacobianLens, tokens: list[int]
 ) -> None:
-    tokens = [3, 5, 7]
     layer = 1
     vectors = fitted_lens.lens_vectors(toy_model, tokens, layer)
     units = vectors / vectors.norm(dim=-1, keepdim=True)

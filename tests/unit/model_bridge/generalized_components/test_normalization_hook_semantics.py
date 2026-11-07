@@ -271,3 +271,133 @@ def test_layernorm_edit_uses_weight_and_bias_despite_shared_rms_offset():
         torch.ones_like(x) * bridge.original_component.weight + bridge.original_component.bias
     )
     torch.testing.assert_close(actual, expected)
+
+
+def _replace_first_feature(value: torch.Tensor) -> torch.Tensor:
+    edited = value.clone()
+    edited[..., 0] = 0.5
+    return edited
+
+
+def _data_set_first_feature(value: torch.Tensor) -> None:
+    value.data[..., 0] = 0.5
+
+
+# (replacement hook, equivalent in-place edit); `.data` writes skip the version counter.
+_INPLACE_EDITS = {
+    "mul_": (lambda value: value * 2, lambda value: value.mul_(2)),
+    "data_mul_": (lambda value: value * 2, lambda value: value.data.mul_(2)),
+    "data_index": (_replace_first_feature, _data_set_first_feature),
+}
+
+
+@pytest.mark.parametrize("kind", ["layernorm", "rmsnorm", "offset"])
+@pytest.mark.parametrize("hook_name", ["hook_scale", "hook_normalized"])
+@pytest.mark.parametrize("mode", ["grad", "no_grad", "inference"])
+@pytest.mark.parametrize("return_none", [False, True])
+@pytest.mark.parametrize("edit_kind", list(_INPLACE_EDITS))
+def test_native_inplace_edits_match_replacements(kind, hook_name, mode, return_none, edit_kind):
+    bridge = _make_bridge(native=True, rms=kind == "rmsnorm", offset=kind == "offset")
+    x = torch.randn(2, 3, 16, requires_grad=mode == "grad")
+    context = {
+        "grad": torch.enable_grad,
+        "no_grad": torch.no_grad,
+        "inference": torch.inference_mode,
+    }[mode]
+    replace, inplace = _INPLACE_EDITS[edit_kind]
+    point = getattr(bridge, hook_name)
+    with context():
+        point.add_hook(lambda value, hook: replace(value))
+        with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+            expected = bridge(x)
+        point.remove_hooks()
+
+        def edit(value, hook):
+            inplace(value)
+            return None if return_none else value
+
+        point.add_hook(edit)
+        with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+            actual = bridge(x)
+        point.remove_hooks()
+        torch.testing.assert_close(actual, expected)
+    # `.data` writes are invisible to autograd, so only the forward is comparable.
+    if mode == "grad" and not edit_kind.startswith("data"):
+        parameters = (x, *bridge.original_component.parameters())
+        probe = torch.randn_like(actual)
+        expected_grads = torch.autograd.grad(expected, parameters, probe)
+        actual_grads = torch.autograd.grad(actual, parameters, probe)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            torch.testing.assert_close(actual_grad, expected_grad)
+
+
+@pytest.mark.parametrize("kind", ["layernorm", "rmsnorm", "offset"])
+@pytest.mark.parametrize("hook_name", ["hook_scale", "hook_normalized"])
+def test_python_path_inplace_edits_keep_backward(kind, hook_name):
+    """sqrt saves its output for backward, so an in-place hook_scale edit broke it."""
+    bridge = _make_bridge(native=False, rms=kind == "rmsnorm", offset=kind == "offset")
+    x = torch.randn(2, 3, 16, requires_grad=True)
+    parameters = (x, *bridge.original_component.parameters())
+    probe = torch.randn(2, 3, 16)
+    point = getattr(bridge, hook_name)
+    point.add_hook(lambda value, hook: value * 2)
+    expected = bridge(x)
+    point.remove_hooks()
+    point.add_hook(lambda value, hook: value.mul_(2))
+    actual = bridge(x)
+    point.remove_hooks()
+    torch.testing.assert_close(actual, expected)
+    expected_grads = torch.autograd.grad(expected, parameters, probe)
+    actual_grads = torch.autograd.grad(actual, parameters, probe)
+    for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+        torch.testing.assert_close(actual_grad, expected_grad)
+
+
+@pytest.mark.parametrize("mode", ["grad", "no_grad", "inference"])
+@pytest.mark.parametrize("return_input", [False, True])
+def test_native_observers_keep_exact_output_and_gradients(mode, return_input):
+    bridge = _make_bridge(native=True)
+    x = torch.randn(2, 3, 16, requires_grad=mode == "grad")
+    context = {
+        "grad": torch.enable_grad,
+        "no_grad": torch.no_grad,
+        "inference": torch.inference_mode,
+    }[mode]
+    with context():
+        expected = bridge.original_component(x)
+
+        def observe(value, hook):
+            return value if return_input else None
+
+        bridge.hook_scale.add_hook(observe)
+        bridge.hook_normalized.add_hook(observe)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = bridge(x)
+        bridge.hook_scale.remove_hooks()
+        bridge.hook_normalized.remove_hooks()
+        assert torch.equal(actual, expected)
+    if mode == "grad":
+        parameters = (x, *bridge.original_component.parameters())
+        probe = torch.randn_like(actual)
+        expected_grads = torch.autograd.grad(expected, parameters, probe)
+        actual_grads = torch.autograd.grad(actual, parameters, probe)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            assert torch.equal(actual_grad, expected_grad)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf")])
+def test_native_inference_observers_do_not_treat_nonfinite_values_as_edits(invalid):
+    bridge = _make_bridge(native=True)
+    with torch.inference_mode():
+        x = torch.randn(2, 3, 16)
+        x[..., 0] = invalid
+        expected = bridge.original_component(x)
+        bridge.hook_scale.add_hook(lambda value, hook: None)
+        bridge.hook_normalized.add_hook(lambda value, hook: None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = bridge(x)
+        bridge.hook_scale.remove_hooks()
+        bridge.hook_normalized.remove_hooks()
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)

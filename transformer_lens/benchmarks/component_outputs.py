@@ -622,7 +622,9 @@ class ComponentBenchmarker:
             # For embedding components, generate the embedding input once
             shared_embed_input = None
             if component_path in ("embed", "encoder_embed", "decoder_embed"):
-                shared_embed_input = test_inputs.get("modality_input")
+                # Decoder embeddings take token ids even under an audio/vision encoder.
+                if component_path != "decoder_embed":
+                    shared_embed_input = test_inputs.get("modality_input")
                 if shared_embed_input is None:
                     batch, seq_len, _ = test_input.shape
                     shared_embed_input = torch.randint(

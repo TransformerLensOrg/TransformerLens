@@ -37,6 +37,7 @@ from transformer_lens.benchmarks.backward_gradients import (
 from transformer_lens.benchmarks.component_benchmark import benchmark_all_components
 from transformer_lens.benchmarks.forward_pass import (
     _compute_self_target_loss,
+    _get_decoder_input_ids,
     benchmark_forward_pass,
     benchmark_loss_equivalence,
 )
@@ -900,6 +901,9 @@ def run_benchmark_suite(
     _is_visual = bridge_unprocessed is not None and getattr(
         bridge_unprocessed.cfg, "is_visual_model", False
     )
+    _is_audio_seq2seq = bridge_unprocessed is not None and getattr(
+        bridge_unprocessed.cfg, "is_audio_seq2seq", False
+    )
     # Shared non-text input (spectrogram, waveform, or pixels) — the same tensor is used
     # for the HF reference capture and the bridge forward so they stay comparable.
     _test_modality_input = (
@@ -943,6 +947,14 @@ def run_benchmark_suite(
                     with torch.no_grad():
                         if _is_visual:
                             hf_out = hf_model(pixel_values=_test_modality_input)
+                        elif _is_audio_seq2seq:
+                            dec_ids = _get_decoder_input_ids(
+                                hf_model, _test_modality_input.shape[0]
+                            ).to(_test_modality_input.device)
+                            audio_kwargs = {
+                                bridge_unprocessed.adapter.audio_input_name: _test_modality_input
+                            }
+                            hf_out = hf_model(**audio_kwargs, decoder_input_ids=dec_ids)
                         else:
                             hf_out = hf_model(input_values=_test_modality_input)
                         # Bare encoders output last_hidden_state, not logits
@@ -1338,12 +1350,14 @@ def run_benchmark_suite(
             )
 
     # ========================================================================
-    # Phase 8: Audio Tests (only for audio encoder models)
+    # Phase 8: Audio Tests (only for audio encoder models; audio seq2seq models
+    # need decoder ids on every forward, and Phase 1 covers their audio path)
     # Runs before Phase 3 so we can reuse bridge_unprocessed before cleanup.
     # ========================================================================
     if (
         bridge_unprocessed is not None
         and getattr(bridge_unprocessed.cfg, "is_audio_model", False)
+        and not _is_audio_seq2seq
         and should_run_phase(8)
     ):
         current_phase[0] = 8

@@ -55,6 +55,10 @@ class AttentionBridge(GeneralizedComponent):
     supports_split_qkv_fork: bool = True
     # Reconstructed variants can opt in independently of Q/K/V input forks.
     supports_attn_result: bool = False
+    # A [batch, 1, 1, kv] 4D mask is normally a complete caller mask (HF applies
+    # it as given); set True where the wrapped HF module passes padding only and
+    # leaves causality to the attention module (GPT-1).
+    broadcast_mask_is_padding_only: bool = False
     property_aliases = {
         "W_Q": "q.weight",
         "W_K": "k.weight",
@@ -584,9 +588,12 @@ class AttentionBridge(GeneralizedComponent):
     ) -> torch.Tensor:
         """Apply causal and optional attention masking to reconstructed scores.
 
-        HuggingFace-style 4D masks already encode causal semantics, so they are
-        treated as authoritative. Lower-rank masks do not, so the local causal
-        mask is still applied before adding the caller-provided padding mask.
+        4D masks are treated as authoritative, matching HF, which applies a 4D
+        mask as given. Lower-rank masks carry no causal structure, so the local
+        causal mask is applied before adding them. On subclasses that set
+        ``broadcast_mask_is_padding_only``, a 4D mask broadcast over the query
+        rows ([batch, 1, 1, kv_seq_len]) is padding only and gets the local
+        causal mask too.
 
         Args:
             attn_scores: Attention scores [batch, heads, q_seq_len, kv_seq_len].
@@ -599,7 +606,11 @@ class AttentionBridge(GeneralizedComponent):
             q_seq_len = seq_len
         min_dtype = torch.finfo(attn_scores.dtype).min
         mask_value = -torch.inf if self.compatibility_mode else min_dtype
-        use_direct_hf_mask = attention_mask is not None and attention_mask.ndim >= 4
+        use_direct_hf_mask = (
+            attention_mask is not None
+            and attention_mask.ndim >= 4
+            and not (self.broadcast_mask_is_padding_only and attention_mask.shape[-2] == 1)
+        )
         # Bidirectional attention (encoders) and cross-attention have no causal
         # structure, so only synthesize the triangular mask for causal self-attention.
         apply_causal = self.is_causal and not self.is_cross_attention

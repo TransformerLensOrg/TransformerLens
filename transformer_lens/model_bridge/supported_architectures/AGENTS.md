@@ -178,6 +178,18 @@ def postprocess_weights(self, bridge: Any) -> None:
 
 ---
 
+## Weight processing for encoder-decoders: `residual_layout()`
+
+`fold_ln`, `center_writing_weights` and `fold_value_biases` walk decoder-only `blocks.{i}` keys, so on encoder-decoders they find nothing; the BART family runs with them off. A pre-LN encoder-decoder can turn them on by returning a `ResidualLayout` (in [`../architecture_adapter.py`](../architecture_adapter.py)) from `residual_layout()` and setting `supports_fold_ln` / `supports_center_writing_weights` to `True`. The layout lists, as state-dict prefixes with HF `nn.Linear` layout:
+
+- `norm_readers`: each LayerNorm and the linears reading its output, including cross-stack reads (Whisper's `encoder_ln_final` feeds every decoder block's cross-attention `k`/`v`).
+- `residual_writers` / `embedding_writers`: what is added to each residual stream.
+- `value_output_pairs`: each attention's value and output linears.
+
+It is exact only when every read of a residual stream goes through a LayerNorm, so post-LN members (BART, Marian) must not declare one. [`whisper.py`](whisper.py) is the reference implementation; pin it with a tiny `from_config` test asserting logits match HF up to a per-position constant after `enable_compatibility_mode()`.
+
+---
+
 ## Tokenizer policy
 
 Tokenizer behaviour is **per-model**, not per-architecture — siblings routinely differ (instruct vs base BOS, padding side, EOS, chat template). **Don't copy these from your starter adapter blindly.**

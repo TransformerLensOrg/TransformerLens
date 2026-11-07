@@ -7,6 +7,7 @@ silently giving every decode step position-0's bias row.
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
@@ -15,9 +16,9 @@ from transformer_lens.factories.architecture_adapter_factory import (
 )
 
 
-def _attn_bridge():
+def _attn_bridge(architecture: str = "LlamaForCausalLM"):
     adapter = ArchitectureAdapterFactory.select_architecture_adapter(
-        make_bridge_cfg("LlamaForCausalLM", d_model=8, n_heads=2, d_head=4)
+        make_bridge_cfg(architecture, d_model=8, n_heads=2, d_head=4)
     )
     import copy
 
@@ -168,3 +169,39 @@ class TestPerLayerHeadDimHookShapes:
     def test_module_head_dim_resolves_when_index_missing(self) -> None:
         shapes = self._hook_shapes(width=16, layer_idx=None, head_dim=4)
         assert shapes == {"q": (2, 5, 4, 4), "z": (2, 5, 4, 4)}, shapes
+
+
+def test_broadcast_padding_mask_keeps_the_causal_mask() -> None:
+    """GPT-1 passes [batch, 1, 1, kv]: 4D, but padding only."""
+    bridge = _attn_bridge("OpenAIGPTLMHeadModel")
+    kv_len, n_heads = 4, 2
+    mask = torch.zeros(1, 1, 1, kv_len)
+    scores = torch.zeros(1, n_heads, kv_len, kv_len)
+
+    out = bridge._apply_reconstruct_attention_mask(scores, mask, seq_len=kv_len)
+    future = ~torch.tril(torch.ones(kv_len, kv_len, dtype=torch.bool))
+    assert torch.all(out[..., future] < 0), out
+    assert torch.all(out[..., ~future] == 0), out
+
+
+def test_broadcast_4d_mask_is_authoritative_by_default() -> None:
+    """HF applies a caller's [batch, 1, 1, kv] mask as given, without causality."""
+    bridge = _attn_bridge()
+    kv_len, n_heads = 4, 2
+    mask = torch.zeros(1, 1, 1, kv_len)
+    scores = torch.zeros(1, n_heads, kv_len, kv_len)
+
+    out = bridge._apply_reconstruct_attention_mask(scores, mask, seq_len=kv_len)
+    assert torch.all(out == 0), out
+
+
+@pytest.mark.parametrize("architecture", ["LlamaForCausalLM", "OpenAIGPTLMHeadModel"])
+def test_single_query_row_mask_on_cached_decode_is_not_over_masked(architecture: str) -> None:
+    """One query row is also what a causal 4D mask looks like on a decode step."""
+    bridge = _attn_bridge(architecture)
+    kv_len, n_heads = 4, 2
+    mask = torch.zeros(1, 1, 1, kv_len)
+    scores = torch.zeros(1, n_heads, 1, kv_len)
+
+    out = bridge._apply_reconstruct_attention_mask(scores, mask, seq_len=kv_len, q_seq_len=1)
+    assert torch.all(out == 0), out

@@ -196,4 +196,5 @@ model.run_with_hooks(
 - [Migrating to TransformerLens 3](migrating_to_v3.md) — porting HookedTransformer hook patterns to TransformerBridge.
 - [Main Demo](../generated/demos/Main_Demo) — end-to-end walkthrough using the hook system.
 - [SwiGLU Gate-Sign Demo](../generated/demos/SwiGLU_Gate_Sign_Demo) — reading a gated MLP's gate, value and product hooks (`mlp.hook_pre`, `mlp.hook_pre_linear`, `mlp.hook_post`) together to tag sign regimes and remove one with a hook.
+- [Weight-Edit Audit Demo](../generated/demos/Weight_Edit_Audit_Demo) — pairing a read on `mlp.hook_post` with a write on `mlp.hook_out` in the same forward to replay a weight edit as a hook intervention.
 - [`transformer_lens/hook_points.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/hook_points.py), [`transformer_lens/ActivationCache.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py), [`transformer_lens/patching.py`](https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/patching.py) — source.

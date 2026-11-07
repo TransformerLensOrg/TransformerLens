@@ -13,8 +13,20 @@ import torch
 
 import transformer_lens.utilities as utils
 from transformer_lens.config.transformer_lens_config import TransformerLensConfig
+from transformer_lens.conversion_utils.conversion_steps.chain_tensor_conversion import (
+    ChainTensorConversion,
+)
+from transformer_lens.conversion_utils.conversion_steps.transpose_tensor_conversion import (
+    TransposeTensorConversion,
+)
+from transformer_lens.conversion_utils.param_processing_conversion import (
+    ParamProcessingConversion,
+)
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
+from transformer_lens.model_bridge.architecture_adapter import (
+    ArchitectureAdapter,
+    ResidualLayout,
+)
 from transformer_lens.utilities import filter_dict_by_prefix
 from transformer_lens.utilities.architectures import POST_NORM_ARCHITECTURES
 
@@ -746,12 +758,15 @@ class ProcessWeights:
             # rmsnorm_uses_offset: effective scale is (1+w), identity is 0.0
             rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
             effective_ln2_w = (1.0 + ln2_w) if rmsnorm_uses_offset else ln2_w
-            if mlp_W_in.shape[1] == effective_ln2_w.shape[0]:
+            model_axis = ProcessWeights._mlp_model_axis(
+                mlp_W_in_key, mlp_W_in, effective_ln2_w.shape[0], adapter, reads_residual=True
+            )
+            if model_axis == 1:
                 ln2_w_broadcast = effective_ln2_w[None, :]
                 sum_dim = -1
                 if ln2_b is not None:
                     ln2_b_broadcast = ln2_b[None, :]
-            elif mlp_W_in.shape[0] == effective_ln2_w.shape[0]:
+            elif model_axis == 0:
                 ln2_w_broadcast = effective_ln2_w[:, None]
                 sum_dim = -2
                 if ln2_b is not None:
@@ -837,18 +852,13 @@ class ProcessWeights:
             assert mlp_W_in_centered is not None, f"MLP W_in not found at key {mlp_W_in_key}"
             # Center along d_model: TL [d_model, d_mlp] or HF [d_mlp, d_model]
             d_model = cfg.d_model if cfg is not None else None
-            if (
-                d_model is not None
-                and mlp_W_in_centered.shape[0] == d_model
-                and mlp_W_in_centered.shape[-1] != d_model
-            ):
+            model_axis = ProcessWeights._mlp_model_axis(
+                mlp_W_in_key, mlp_W_in_centered, d_model, adapter, reads_residual=True
+            )
+            if model_axis == 0:
                 # TL format [d_model, d_mlp]
                 mlp_W_in_centered = mlp_W_in_centered - mlp_W_in_centered.mean(0, keepdim=True)
-            elif (
-                d_model is not None
-                and mlp_W_in_centered.shape[-1] == d_model
-                and mlp_W_in_centered.shape[0] != d_model
-            ):
+            elif model_axis == 1:
                 # HF format [d_mlp, d_model]
                 mlp_W_in_centered = mlp_W_in_centered - mlp_W_in_centered.mean(-1, keepdim=True)
             else:
@@ -978,6 +988,68 @@ class ProcessWeights:
         return state_dict
 
     @staticmethod
+    def _unembed_model_axis(weight: torch.Tensor, d_model: Optional[int], adapter=None) -> int:
+        """Resolve the hidden axis after conversion, including square readouts."""
+        if adapter is not None:
+            conversions = getattr(adapter, "weight_processing_conversions", None) or {}
+            conversion = conversions.get("unembed.weight", conversions.get("unembed"))
+            if ProcessWeights._conversion_transposes(conversion):
+                # Transposing HF [d_vocab, d_model] yields TL [d_model, d_vocab].
+                return 0
+        if d_model is not None and weight.shape[0] != weight.shape[1]:
+            if weight.shape[0] == d_model:
+                return 0
+            if weight.shape[1] == d_model:
+                return 1
+            raise ValueError(f"Unembedding shape {weight.shape} has no d_model={d_model} axis")
+        # Without conversion metadata, Bridge weights are HF; adapter-free inputs are TL.
+        return 0 if adapter is None else 1
+
+    @staticmethod
+    def _conversion_transposes(conversion: Any) -> bool:
+        """Whether a weight conversion swaps the two axes of a 2-D weight."""
+        if isinstance(conversion, ParamProcessingConversion):
+            conversion = conversion.tensor_conversion
+        if isinstance(conversion, TransposeTensorConversion):
+            return True
+        if isinstance(conversion, ChainTensorConversion):
+            # Two transposes cancel.
+            return (
+                sum(ProcessWeights._conversion_transposes(c) for c in conversion.conversions) % 2
+                == 1
+            )
+        return False
+
+    @staticmethod
+    def _mlp_model_axis(
+        key: str, weight: torch.Tensor, d_model: Optional[int], adapter, reads_residual: bool
+    ) -> Optional[int]:
+        """d_model axis of a dense MLP weight after conversion, or None; square ones use layout."""
+        if d_model is None:
+            return None
+        if weight.shape[0] != weight.shape[1]:
+            if weight.shape[0] == d_model:
+                return 0
+            if weight.shape[1] == d_model:
+                return 1
+            return None
+        if weight.shape[0] != d_model:
+            return None
+        tl_axis = 0 if reads_residual else 1
+        if adapter is None:
+            return tl_axis
+        conversions = getattr(adapter, "weight_processing_conversions", None) or {}
+        placeholder = re.sub(r"blocks\.(\d+)\.", "blocks.{i}.", key)
+        conversion = conversions.get(
+            placeholder, conversions.get(placeholder.removesuffix(".weight"))
+        )
+        if ProcessWeights._conversion_transposes(conversion):
+            return tl_axis
+        if key in getattr(adapter, "_in_out_weight_keys", ()):
+            return tl_axis
+        return 1 - tl_axis
+
+    @staticmethod
     def _fold_unembed_layer_norm(
         state_dict: Dict[str, torch.Tensor], cfg, fold_biases: bool, center_weights: bool, adapter
     ) -> Dict[str, torch.Tensor]:
@@ -1010,14 +1082,11 @@ class ProcessWeights:
         rmsnorm_uses_offset = getattr(cfg, "rmsnorm_uses_offset", False)
         effective_ln_weight = (1.0 + ln_weight) if rmsnorm_uses_offset else ln_weight
         if len(unembed_weight.shape) == 2 and len(ln_weight.shape) == 1:
-            if unembed_weight.shape[1] == ln_weight.shape[0]:
-                new_unembed_weight = unembed_weight * effective_ln_weight[None, :]
-            elif unembed_weight.shape[0] == ln_weight.shape[0]:
+            model_axis = ProcessWeights._unembed_model_axis(unembed_weight, len(ln_weight), adapter)
+            if model_axis == 0:
                 new_unembed_weight = unembed_weight * effective_ln_weight[:, None]
             else:
-                raise ValueError(
-                    f"Cannot broadcast unembedding weight {unembed_weight.shape} with layer norm weight {ln_weight.shape}"
-                )
+                new_unembed_weight = unembed_weight * effective_ln_weight[None, :]
         else:
             raise ValueError(
                 f"Unexpected tensor shapes: unembedding {unembed_weight.shape}, layer norm {ln_weight.shape}"
@@ -1047,22 +1116,12 @@ class ProcessWeights:
                 unembed_weight_centered is not None
             ), f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight_centered.shape) == 2:
-                # Center along d_model: detect TL vs HF format
-                d_vocab = getattr(cfg, "d_vocab", None) if cfg is not None else None
-                if (
-                    d_vocab is not None
-                    and unembed_weight_centered.shape[0] == d_vocab
-                    and unembed_weight_centered.shape[-1] != d_vocab
-                ):
-                    # HF format [d_vocab, d_model] — center along dim=-1
-                    unembed_weight_centered = (
-                        unembed_weight_centered - unembed_weight_centered.mean(-1, keepdim=True)
-                    )
-                else:
-                    # TL format [d_model, d_vocab] — center along dim=0
-                    unembed_weight_centered = (
-                        unembed_weight_centered - unembed_weight_centered.mean(0, keepdim=True)
-                    )
+                model_axis = ProcessWeights._unembed_model_axis(
+                    unembed_weight_centered, len(ln_weight), adapter
+                )
+                unembed_weight_centered = unembed_weight_centered - unembed_weight_centered.mean(
+                    model_axis, keepdim=True
+                )
                 state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
                     unembed_W_U_key, unembed_weight_centered, cfg, adapter, None
                 )
@@ -1102,14 +1161,13 @@ class ProcessWeights:
             ln_bias = state_dict[ln_final_b_key]
             assert unembed_weight is not None, f"Unembed weight not found at key {unembed_W_U_key}"
             if len(unembed_weight.shape) == 2 and len(ln_bias.shape) == 1:
-                if unembed_weight.shape[1] == ln_bias.shape[0]:
-                    bias_contribution = (unembed_weight * ln_bias[None, :]).sum(dim=-1)
-                elif unembed_weight.shape[0] == ln_bias.shape[0]:
+                model_axis = ProcessWeights._unembed_model_axis(
+                    unembed_weight, len(ln_bias), adapter
+                )
+                if model_axis == 0:
                     bias_contribution = (unembed_weight * ln_bias[:, None]).sum(dim=-2)
                 else:
-                    raise ValueError(
-                        f"Cannot broadcast unembedding weight {unembed_weight.shape} with layer norm bias {ln_bias.shape}"
-                    )
+                    bias_contribution = (unembed_weight * ln_bias[None, :]).sum(dim=-1)
             else:
                 raise ValueError(
                     f"Unexpected tensor shapes: unembedding {unembed_weight.shape}, layer norm bias {ln_bias.shape}"
@@ -1171,6 +1229,75 @@ class ProcessWeights:
         state_dict = ProcessWeights._fold_unembed_layer_norm(
             state_dict, cfg, fold_biases, center_weights, adapter
         )
+        return state_dict
+
+    @staticmethod
+    def fold_layer_norm_with_layout(
+        state_dict: Dict[str, torch.Tensor], layout: ResidualLayout, center_weights: bool = True
+    ) -> Dict[str, torch.Tensor]:
+        """Fold each norm into the linears ``layout.norm_readers`` lists for it.
+
+        A reader computes ``W(γ ⊙ x̂ + β) + b = (W diag γ) x̂ + (b + Wβ)``, so γ and β move
+        into the reader and the norm keeps only the normalization (γ = 1, β = 0); a
+        bias-free reader gets a created bias. For LayerNorm, x̂ has zero mean, so the
+        reader's weights are also centered over their input axis (``center_weights``).
+        """
+        state_dict = dict(state_dict)
+        for norm, readers in layout.norm_readers.items():
+            gamma = state_dict[f"{norm}.weight"]
+            beta = state_dict.get(f"{norm}.bias")
+            for reader in readers:
+                weight = state_dict[f"{reader}.weight"]
+                if beta is not None:
+                    # Dropping Wβ on a bias-free key would keep logits but offset hook_k.
+                    bias_key = f"{reader}.bias"
+                    state_dict[bias_key] = state_dict.get(bias_key, 0) + weight @ beta
+                weight = weight * gamma
+                if center_weights:
+                    weight = weight - weight.mean(dim=1, keepdim=True)
+                state_dict[f"{reader}.weight"] = weight
+            state_dict[f"{norm}.weight"] = torch.ones_like(gamma)
+            if beta is not None:
+                state_dict[f"{norm}.bias"] = torch.zeros_like(beta)
+        return state_dict
+
+    @staticmethod
+    def center_writing_weights_with_layout(
+        state_dict: Dict[str, torch.Tensor], layout: ResidualLayout
+    ) -> Dict[str, torch.Tensor]:
+        """Center every write ``layout`` lists over d_model. The streams are read only
+        through LayerNorms, which remove the mean, so the output is unchanged."""
+        state_dict = dict(state_dict)
+        for writer in layout.residual_writers:
+            weight = state_dict[f"{writer}.weight"]
+            state_dict[f"{writer}.weight"] = weight - weight.mean(dim=0, keepdim=True)
+            bias_key = f"{writer}.bias"
+            if bias_key in state_dict:
+                state_dict[bias_key] = state_dict[bias_key] - state_dict[bias_key].mean()
+        for table in layout.embedding_writers:
+            weight = state_dict[f"{table}.weight"]
+            state_dict[f"{table}.weight"] = weight - weight.mean(dim=1, keepdim=True)
+        return state_dict
+
+    @staticmethod
+    def fold_value_biases_with_layout(
+        state_dict: Dict[str, torch.Tensor], layout: ResidualLayout, center_outputs: bool = False
+    ) -> Dict[str, torch.Tensor]:
+        """Move each attention's value bias into its output bias. Attention weights sum
+        to 1, so the value bias reaches the output unchanged, as ``W_O b_V``."""
+        state_dict = dict(state_dict)
+        for value, output in layout.value_output_pairs:
+            value_bias = state_dict.get(f"{value}.bias")
+            if value_bias is None:
+                continue
+            output_bias_key = f"{output}.bias"
+            if output_bias_key not in state_dict:
+                raise ValueError(f"{output} has no bias to receive the value bias of {value}.")
+            output_bias = state_dict[output_bias_key] + state_dict[f"{output}.weight"] @ value_bias
+            if center_outputs:
+                output_bias = output_bias - output_bias.mean()
+            state_dict[output_bias_key] = output_bias
+            state_dict[f"{value}.bias"] = torch.zeros_like(value_bias)
         return state_dict
 
     @staticmethod
@@ -1363,9 +1490,12 @@ class ProcessWeights:
                     # Center along d_model dimension. In TL format W_out is [d_mlp, d_model]
                     # so d_model is dim=-1. But bridge adapters may keep HF format
                     # [d_model, d_mlp] where d_model is dim=0. Detect via cfg.d_model.
-                    if mlp_W_out.shape[-1] == cfg.d_model:
+                    model_axis = ProcessWeights._mlp_model_axis(
+                        mlp_W_out_key, mlp_W_out, cfg.d_model, adapter, reads_residual=False
+                    )
+                    if model_axis == 1:
                         mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
-                    elif mlp_W_out.shape[0] == cfg.d_model:
+                    elif model_axis == 0:
                         mlp_W_out = mlp_W_out - mlp_W_out.mean(0, keepdim=True)
                     else:
                         mlp_W_out = mlp_W_out - mlp_W_out.mean(-1, keepdim=True)
@@ -1402,7 +1532,7 @@ class ProcessWeights:
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of the model.
-            cfg: Model configuration (used to determine d_vocab for correct centering dimension).
+            cfg: Model configuration (used to identify the hidden axis for legacy layouts).
             adapter: Optional architecture adapter for parameter key translation.
 
         Returns:
@@ -1423,18 +1553,8 @@ class ProcessWeights:
         )
         assert W_U is not None, f"Unembed weight not found at key {unembed_W_U_key}"
 
-        # Detect W_U format to center along correct dim (wrong dim corrupts output)
-        vocab_dim = -1  # Default: TL format [d_model, d_vocab]
-        if cfg is not None:
-            d_vocab = getattr(cfg, "d_vocab", None)
-            d_model = getattr(cfg, "d_model", None)
-            if d_vocab is not None and W_U.shape[0] == d_vocab and W_U.shape[-1] != d_vocab:
-                # HF format [d_vocab, d_model] — center along dim=0
-                vocab_dim = 0
-            elif d_model is not None and W_U.shape[-1] == d_model and W_U.shape[0] != d_model:
-                # Padded-vocab checkpoints (e.g. HyenaDNA pads 12→16 rows) defeat
-                # the d_vocab match; the d_model axis is unambiguous.
-                vocab_dim = 0
+        model_axis = ProcessWeights._unembed_model_axis(W_U, getattr(cfg, "d_model", None), adapter)
+        vocab_dim = 1 - model_axis
         W_U = W_U - W_U.mean(vocab_dim, keepdim=True)
         state_dict[unembed_W_U_key] = ProcessWeights.convert_tensor_to_hf_format(
             unembed_W_U_key, W_U, None, adapter, None
@@ -1659,9 +1779,15 @@ class ProcessWeights:
         original_dtypes: Dict[str, torch.dtype] = {}
         original_keys = set(state_dict)
         for k, v in state_dict.items():
-            if isinstance(v, torch.Tensor) and v.is_floating_point() and v.dtype != torch.float32:
+            if isinstance(v, torch.Tensor) and v.is_floating_point():
                 original_dtypes[k] = v.dtype
-                state_dict[k] = v.float()
+                # float64 is kept: casting it would round every processed weight to float32.
+                if v.dtype != torch.float64:
+                    state_dict[k] = v.float()
+
+        # Architectures the decoder-only blocks.{i} walk misses declare their layout.
+        layout = adapter.residual_layout() if hasattr(adapter, "residual_layout") else None
+        is_layer_norm = getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]
 
         # Skip fold_ln for adapters that don't support it (e.g., post-LN architectures
         # like BERT where LN placement means folding goes into the wrong sublayer).
@@ -1674,7 +1800,11 @@ class ProcessWeights:
                 UserWarning,
             )
             fold_ln = False
-        if fold_ln:
+        if fold_ln and layout is not None:
+            state_dict = ProcessWeights.fold_layer_norm_with_layout(
+                state_dict, layout, center_weights=is_layer_norm
+            )
+        elif fold_ln:
             if getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]:
                 state_dict = ProcessWeights.fold_layer_norm(
                     state_dict, cfg, fold_biases=True, center_weights=True, adapter=adapter
@@ -1708,11 +1838,17 @@ class ProcessWeights:
             and getattr(cfg, "normalization_type", "LN") in ["LN", "LNPre"]
             and not getattr(cfg, "final_rms", False)
         )
-        if should_center_writing_weights:
+        if should_center_writing_weights and layout is not None:
+            state_dict = ProcessWeights.center_writing_weights_with_layout(state_dict, layout)
+        elif should_center_writing_weights:
             state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
             state_dict = ProcessWeights.center_unembed(state_dict, cfg=cfg, adapter=adapter)
-        if fold_value_biases:
+        if fold_value_biases and layout is not None:
+            state_dict = ProcessWeights.fold_value_biases_with_layout(
+                state_dict, layout, center_outputs=should_center_writing_weights
+            )
+        elif fold_value_biases:
             state_dict = ProcessWeights.fold_value_biases(state_dict, cfg, adapter=adapter)
             if should_center_writing_weights:
                 for layer_idx in range(cfg.n_layers):
@@ -1726,7 +1862,15 @@ class ProcessWeights:
                         state_dict[b_O_key] = ProcessWeights.convert_tensor_to_hf_format(
                             b_O_key, b_O, cfg, adapter, layer_idx
                         )
-        if refactor_factored_attn_matrices:
+        if refactor_factored_attn_matrices and layout is not None:
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support refactor_factored_attn_matrices; "
+                "attention matrices stay as they are.",
+                UserWarning,
+            )
+        elif refactor_factored_attn_matrices:
             state_dict = ProcessWeights.refactor_factored_attn_matrices(
                 state_dict, cfg, adapter=adapter
             )

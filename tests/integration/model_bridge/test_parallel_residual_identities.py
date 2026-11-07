@@ -74,6 +74,18 @@ PARALLEL_CASES = [
         "StableLmForCausalLM", StableLmConfig, dict(_GQA, use_parallel_residual=True), id="stablelm"
     ),
     pytest.param("FalconForCausalLM", FalconConfig, dict(_FALCON, parallel_attn=True), id="falcon"),
+    pytest.param(
+        "FalconForCausalLM",
+        FalconConfig,
+        dict(
+            _FALCON,
+            new_decoder_architecture=True,
+            num_ln_in_parallel_attn=2,
+            multi_query=False,
+            num_kv_heads=4,
+        ),
+        id="falcon-two-norms",
+    ),
 ]
 
 SEQUENTIAL_CASES = [
@@ -160,6 +172,59 @@ def test_sequential_variant_exposes_resid_mid(
     assert bridge.cfg.parallel_attn_mlp is False
     for layer in range(bridge.cfg.n_layers):
         assert f"blocks.{layer}.hook_resid_mid" in cache
+
+
+@pytest.mark.parametrize(
+    "hf_architecture,config_cls,config_kwargs", PARALLEL_CASES + SEQUENTIAL_CASES
+)
+@pytest.mark.parametrize("normalized", [False, True])
+@pytest.mark.parametrize("batchless", [False, True])
+def test_mlp_input_decomposition_matches_norm_input(
+    hf_architecture: str,
+    config_cls: Any,
+    config_kwargs: dict[str, Any],
+    normalized: bool,
+    batchless: bool,
+) -> None:
+    bridge, cache = _run(hf_architecture, config_cls, config_kwargs)
+    if batchless:
+        cache = cache.apply_slice_to_batch_dim(0)
+    for layer in range(bridge.cfg.n_layers):
+        # Shared-norm parallel blocks feed both branches from ln1; NeoX uses a separate ln2.
+        norm = "ln2" if "ln2" in bridge.blocks[layer]._modules else "ln1"
+        target = cache[f"blocks.{layer}.{norm}.hook_{'out' if normalized else 'in'}"]
+        components = cache.decompose_resid(layer=layer, mlp_input=True, apply_ln=normalized)
+        torch.testing.assert_close(components.sum(0), target, atol=1e-5, rtol=1e-5)
+        for expand in (False, True):
+            full = cache.get_full_resid_decomposition(
+                layer=layer, mlp_input=True, apply_ln=normalized, expand_neurons=expand
+            )
+            torch.testing.assert_close(full.sum(0), target, atol=2e-5, rtol=1e-5)
+        for projected in (False, True):
+            direction = torch.arange(bridge.cfg.d_model, dtype=torch.float32) / bridge.cfg.d_model
+            neurons = cache.stack_neuron_results(
+                layer=layer,
+                mlp_input=True,
+                apply_ln=normalized,
+                incl_remainder=True,
+                pos_slice=-1,
+                project_output_onto=direction if projected else None,
+            )
+            expected = target[..., -1, :] @ direction if projected else target[..., -1, :]
+            torch.testing.assert_close(neurons.sum(0), expected, atol=2e-5, rtol=1e-5)
+
+
+def test_missing_independent_mlp_scale_does_not_use_attention_scale() -> None:
+    from transformer_lens.ActivationCache import ActivationCache
+
+    bridge, cache = _run(
+        "GPTNeoXForCausalLM", GPTNeoXConfig, dict(_MHA, use_parallel_residual=True)
+    )
+    incomplete = ActivationCache(
+        {key: value for key, value in cache.items() if key != "blocks.0.ln2.hook_scale"}, bridge
+    )
+    with pytest.raises(KeyError, match="blocks.0.ln2.hook_scale"):
+        incomplete.decompose_resid(layer=0, mlp_input=True, apply_ln=True)
 
 
 @pytest.mark.parametrize("use_parallel_residual", [True, False])

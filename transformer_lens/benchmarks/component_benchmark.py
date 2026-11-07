@@ -61,6 +61,9 @@ def benchmark_all_components(
         if getattr(bridge.cfg, "is_audio_model", False):
             # Audio preprocessing needs waveform input; validated in Phase 8
             skip_components.extend(["audio_feature_extractor", "feat_proj", "conv_pos_embed"])
+        if getattr(bridge.cfg, "is_audio_seq2seq", False):
+            # Channel-first spectrogram convs; covered end to end by the forward pass
+            skip_components.extend(["conv1", "conv2"])
 
         # Run comprehensive benchmark
         report = benchmarker.benchmark_all_components(skip_components=skip_components)

@@ -38,6 +38,7 @@ class BlockBridge(GeneralizedComponent):
 
     is_list_item: bool = True
     hook_out_is_single_residual_stream: bool = True
+    mlp_input_includes_attn: bool = True
     # hook_mlp_in is a direct HookPoint on this class (not aliased) so it can
     # fire on the MLP-branch entry (pre-ln2, or the MLP input on post-norm
     # blocks); see __init__. The normalized mlp input stays at block.mlp.hook_in.
@@ -276,7 +277,7 @@ class BlockBridge(GeneralizedComponent):
         """Hook the primary tensor in the output and return the result.
 
         Args:
-            output: Raw output from the original component (tensor or tuple).
+            output: Raw output from the original component (tensor, tuple or list).
             wrap_single_element: If True, single-element tuples stay as tuples after
                 hooking (default, required by most HF models). If False, single-element
                 tuples are unwrapped to a bare tensor (Bloom convention).
@@ -293,6 +294,9 @@ class BlockBridge(GeneralizedComponent):
                     return (first,) if wrap_single_element else first
                 output = (first,) + output[1:]
             return output
+        # OpenAI GPT's block returns a list, and its parent model indexes it.
+        if isinstance(output, list) and len(output) > 0 and isinstance(output[0], torch.Tensor):
+            return [self.hook_out(output[0]), *output[1:]]
         if isinstance(output, torch.Tensor):
             output = self.hook_out(output)
             if force_tuple_for_bare_tensor and wrap_single_element:
@@ -465,6 +469,8 @@ class ParallelBlockBridge(BlockBridge):
     when ``cfg.parallel_attn_mlp=True``. Type-level distinction means a reader
     of the adapter sees ``ParallelBlockBridge`` and knows the hook is absent.
     """
+
+    mlp_input_includes_attn: bool = False
 
     def __init__(
         self,

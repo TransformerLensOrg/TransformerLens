@@ -5,6 +5,7 @@ multimodal class), so parity is proven on a seeded tiny from a local config
 with the hybrid sliding/full attention mix exercised (window < seq).
 """
 
+import pytest
 import torch
 
 from tests.integration.model_bridge.helpers import make_tiny_pair
@@ -75,3 +76,12 @@ class TestGemma4TextBridge:
             bridge.run_with_hooks(ids, fwd_hooks=[(name, grab) for name in expected])
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
+
+    def test_neuron_results_reject_unbridged_post_norm(self) -> None:
+        """ln2_post is a plain component with no cached scale; pre-norm values would be wrong."""
+        bridge, _ = _tiny_gemma4_text_pair()
+        ids = torch.randint(3, VOCAB, (1, 8), generator=torch.Generator().manual_seed(0))
+        with torch.no_grad():
+            _, cache = bridge.run_with_cache(ids)
+        with pytest.raises(KeyError, match=r"blocks\.0\.ln2_post .*no hook_scale"):
+            cache.get_neuron_results(0)
