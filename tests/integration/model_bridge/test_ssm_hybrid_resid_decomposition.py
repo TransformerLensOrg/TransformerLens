@@ -169,8 +169,36 @@ def _granite_dense():
     return _boot(AutoModelForCausalLM.from_config(c).eval(), "GraniteMoeHybridForCausalLM")
 
 
+def _lfm2():
+    """LFM2 short-conv blocks (``conv`` slot) with non-zero conv output biases."""
+    from transformers import AutoModelForCausalLM, Lfm2Config
+
+    torch.manual_seed(0)
+    c = Lfm2Config(
+        vocab_size=256,
+        hidden_size=64,
+        num_hidden_layers=3,
+        layer_types=["conv", "full_attention", "conv"],
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        intermediate_size=128,
+        # Keep the MLP width at intermediate_size, so cfg.d_mlp matches it.
+        block_auto_adjust_ff_dim=False,
+        conv_bias=True,
+    )
+    c.architectures = ["Lfm2ForCausalLM"]
+    model = AutoModelForCausalLM.from_config(c).eval()
+    # Non-zero output biases, so a double-counted bias row would show.
+    with torch.no_grad():
+        for layer in model.model.layers:
+            if hasattr(layer, "conv"):
+                layer.conv.out_proj.bias.normal_()
+    return _boot(model, "Lfm2ForCausalLM")
+
+
 _FACTORIES = {
     "granite_dense": _granite_dense,
+    "lfm2": _lfm2,
     "mamba2": _mamba2,
     "mamba2_bias": _mamba2_bias,
     "nemotron_h": _nemotronh,
@@ -226,6 +254,7 @@ class TestDecomposeResid:
         expected = {
             "qwen3_5": ["0_linear_attn_out", "0_mlp_out", "3_attn_out", "3_mlp_out"],
             "granite_dense": ["0_mixer_out", "0_mlp_out", "1_attn_out", "1_mlp_out"],
+            "lfm2": ["0_conv_out", "0_mlp_out", "1_attn_out", "1_mlp_out", "2_conv_out"],
             "mamba2": ["0_mixer_out", "1_mixer_out"],
             "mamba2_bias": ["0_mixer_out", "1_mixer_out"],
             # Passthrough mixers are labelled by cfg.layers_block_type.
