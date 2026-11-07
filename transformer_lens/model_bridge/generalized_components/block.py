@@ -19,7 +19,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 
 # Layer-type variant submodule names. Tuple for deterministic iteration order.
 # Extend here when adding new hybrid variant types.
-VARIANT_SUBMODULE_NAMES: tuple[str, ...] = ("attn", "linear_attn", "mamba", "mixer", "ssm")
+VARIANT_SUBMODULE_NAMES: tuple[str, ...] = ("attn", "linear_attn", "mamba", "mixer", "ssm", "conv")
 _VARIANT_SUBMODULE_SET: frozenset[str] = frozenset(VARIANT_SUBMODULE_NAMES)
 
 # Infrastructure modules excluded from submodule introspection.

@@ -1758,6 +1758,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         "mamba": ("out_proj.bias",),
         "mixer": ("out_proj.bias",),
         "ssm": ("out_proj.bias",),
+        "conv": ("out_proj.bias",),
     }
 
     def _get_block_variant_bias(self, block: "GeneralizedComponent") -> Optional[torch.Tensor]:
