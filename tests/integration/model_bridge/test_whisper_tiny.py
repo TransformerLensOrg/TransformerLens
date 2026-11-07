@@ -286,8 +286,7 @@ SPECIAL_TOKENS = [
 SUPPRESS_TOKENS = [10, 11, 12]
 
 
-@pytest.fixture
-def prompt_pair(tmp_path):
+def _tiny_whisper_pair(tmp_path, special_tokens):
     """Tiny Whisper with a real byte-level WhisperTokenizer, built without a download, plus
     an unwrapped HF copy. The tokenizer is saved and reloaded so it carries the
     from_pretrained metadata the boot path relies on; the generation config sets
@@ -301,10 +300,10 @@ def prompt_pair(tmp_path):
     )
 
     vocab = {ch: i for i, ch in enumerate(bytes_to_unicode().values())}
-    for token in SPECIAL_TOKENS:
+    for token in special_tokens:
         vocab[token] = len(vocab)
     WhisperTokenizer(
-        vocab=vocab, merges=[], additional_special_tokens=SPECIAL_TOKENS[1:]
+        vocab=vocab, merges=[], additional_special_tokens=special_tokens[1:]
     ).save_pretrained(tmp_path)
     tokenizer = WhisperTokenizer.from_pretrained(tmp_path)
     eot = vocab["<|endoftext|>"]
@@ -336,6 +335,35 @@ def prompt_pair(tmp_path):
     bridge = TransformerBridge(
         model, adapter, tokenizer=configure_tokenizer(tokenizer, adapter.cfg)
     )
+    return bridge, reference
+
+
+@pytest.fixture
+def prompt_pair(tmp_path):
+    return _tiny_whisper_pair(tmp_path, SPECIAL_TOKENS)
+
+
+# A second language and ten timestamp tokens, which follow <|notimestamps|> as in Whisper
+MULTILINGUAL_TOKENS = SPECIAL_TOKENS[:3] + ["<|fr|>"] + SPECIAL_TOKENS[3:]
+TIMESTAMP_TOKENS = [f"<|{0.02 * i:.2f}|>" for i in range(10)]
+
+
+@pytest.fixture
+def multilingual_pair(tmp_path):
+    """The tiny pair with a multilingual checkpoint's generation config: language and task
+    tokens, and timestamps."""
+    bridge, reference = _tiny_whisper_pair(tmp_path, MULTILINGUAL_TOKENS + TIMESTAMP_TOKENS)
+    vocab = bridge.tokenizer.get_vocab()
+    for model in (bridge.original_model, reference):
+        config = model.generation_config
+        config.lang_to_id = {t: vocab[t] for t in ("<|en|>", "<|fr|>")}
+        config.task_to_id = {
+            "transcribe": vocab["<|transcribe|>"],
+            "translate": vocab["<|translate|>"],
+        }
+        config.no_timestamps_token_id = vocab["<|notimestamps|>"]
+        config.is_multilingual = True
+        config.max_initial_timestamp_index = 5
     return bridge, reference
 
 
@@ -473,6 +501,118 @@ class TestWhisperTinyGenerate:
     def test_generate_stream_not_supported(self, prompt_bridge, clips):
         with pytest.raises(NotImplementedError, match="generate_stream"):
             next(prompt_bridge.generate_stream(clips, verbose=False))
+
+
+def _hf_whisper_generate(reference, clips, **kwargs):
+    """HF's Whisper generate on the unwrapped copy: it builds the prompt itself and returns
+    only the generated tokens."""
+    with torch.no_grad():
+        out = reference.generate(clips, do_sample=False, max_new_tokens=6, **kwargs)
+    return out if isinstance(out, torch.Tensor) else out["sequences"]
+
+
+def _ids(bridge, *tokens):
+    return bridge.tokenizer.convert_tokens_to_ids(list(tokens))
+
+
+class TestWhisperTinyLanguageAndTimestamps:
+    """generate() builds the decoder prompt as HF's Whisper generate does."""
+
+    def _check(self, bridge, reference, clips, prompts, **kwargs):
+        tokens = bridge.generate(clips, do_sample=False, max_new_tokens=6, verbose=False, **kwargs)
+        for row, prompt in zip(tokens.tolist(), prompts):
+            assert row[: len(prompt)] == prompt
+        expected = _hf_whisper_generate(reference, clips, **kwargs)
+        for row, prompt, theirs in zip(tokens.tolist(), prompts, expected.tolist()):
+            assert row[len(prompt) :] == theirs
+        return tokens
+
+    @pytest.mark.parametrize("forced", [False, True])
+    def test_default_prompt_detects_the_language(self, multilingual_pair, clips, forced):
+        """Without forced ids the prompt has no task, as HF's; real checkpoints force
+        <|transcribe|> after the detected language."""
+        bridge, reference = multilingual_pair
+        if forced:
+            transcribe = _ids(bridge, "<|transcribe|>")[0]
+            for model in (bridge.original_model, reference):
+                model.generation_config.forced_decoder_ids = [[1, None], [2, transcribe]]
+        detected = reference.detect_language(input_features=clips).tolist()
+        sot, notimestamps = _ids(bridge, "<|startoftranscript|>", "<|notimestamps|>")
+        task = _ids(bridge, "<|transcribe|>") if forced else []
+        prompts = [[sot, lang] + task + [notimestamps] for lang in detected]
+        self._check(bridge, reference, clips, prompts)
+
+    def test_language_and_task(self, multilingual_pair, clips):
+        bridge, reference = multilingual_pair
+        prompt = _ids(
+            bridge, "<|startoftranscript|>", "<|fr|>", "<|translate|>", "<|notimestamps|>"
+        )
+        self._check(bridge, reference, clips, [prompt] * 2, language="fr", task="translate")
+
+    def test_one_language_per_clip(self, multilingual_pair, clips):
+        bridge, reference = multilingual_pair
+        prompts = [
+            _ids(bridge, "<|startoftranscript|>", lang, "<|transcribe|>", "<|notimestamps|>")
+            for lang in ("<|en|>", "<|fr|>")
+        ]
+        self._check(bridge, reference, clips, prompts, language=["en", "fr"])
+
+    def test_language_by_code_name_or_token(self, multilingual_pair, clips):
+        bridge, _ = multilingual_pair
+        prompts = [
+            bridge.generate(clips, language=lang, max_new_tokens=1, verbose=False)[:, :4]
+            for lang in ("fr", "french", "<|fr|>")
+        ]
+        assert all(torch.equal(p, prompts[0]) for p in prompts)
+
+    def test_timestamps(self, multilingual_pair, clips):
+        """<|notimestamps|> is dropped and HF's timestamp rules apply."""
+        bridge, reference = multilingual_pair
+        prompt = _ids(bridge, "<|startoftranscript|>", "<|en|>", "<|transcribe|>")
+        tokens = self._check(
+            bridge, reference, clips, [prompt] * 2, language="en", return_timestamps=True
+        )
+        first = tokens[:, len(prompt)].tolist()
+        assert all(token >= _ids(bridge, "<|0.00|>")[0] for token in first)
+
+    def test_detection_is_one_more_pass_through_the_hooks(self, multilingual_pair, clips):
+        bridge, _ = multilingual_pair
+        calls = []
+        hook = ("encoder_blocks.0.hook_out", lambda tensor, hook: calls.append(1))
+        with bridge.hooks(fwd_hooks=[hook]):
+            bridge.generate(clips, max_new_tokens=2, verbose=False)
+        assert len(calls) == 2
+        calls.clear()
+        with bridge.hooks(fwd_hooks=[hook]):
+            bridge.generate(clips, language="en", max_new_tokens=2, verbose=False)
+        assert len(calls) == 1
+
+    def test_a_language_set_on_the_tokenizer_is_kept(self, multilingual_pair, clips):
+        bridge, _ = multilingual_pair
+        bridge.tokenizer.set_prefix_tokens(language="french", task="translate")
+        tokens = bridge.generate(clips, max_new_tokens=1, verbose=False)
+        prefix = bridge.tokenizer.prefix_tokens
+        assert tokens[:, : len(prefix)].tolist() == [prefix] * 2
+
+    @pytest.mark.parametrize(
+        "kwargs, message",
+        [
+            ({"language": "de"}, "Unsupported language"),
+            ({"task": "summarize"}, "task must be one of"),
+            ({"language": ["en"]}, "one per clip"),
+            ({"language": "en", "decoder_input": torch.tensor([[1]])}, "not both"),
+        ],
+    )
+    def test_invalid_arguments(self, multilingual_pair, clips, kwargs, message):
+        bridge, _ = multilingual_pair
+        with pytest.raises(ValueError, match=message):
+            bridge.generate(clips, max_new_tokens=1, verbose=False, **kwargs)
+
+    def test_checkpoint_without_language_tokens(self, prompt_bridge, clips):
+        with pytest.raises(ValueError, match="no language tokens"):
+            prompt_bridge.generate(clips, language="en", max_new_tokens=1, verbose=False)
+        with pytest.raises(ValueError, match="no_timestamps_token_id"):
+            prompt_bridge.generate(clips, return_timestamps=True, max_new_tokens=1, verbose=False)
 
 
 class TestWhisperTinyErrors:
