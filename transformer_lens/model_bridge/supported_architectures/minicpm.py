@@ -24,6 +24,7 @@ from transformer_lens.model_bridge.supported_architectures._remote_code_compat i
     backfill_is_torch_fx_available,
     create_dynamic_cache_when_missing,
     force_import_remote_class,
+    hide_default_rope_scaling_from_init_rope,
     iter_remote_modeling_modules,
     retie_weights_keys_v5,
 )
@@ -161,6 +162,12 @@ class MiniCPMArchitectureAdapter(ArchitectureAdapter):
             model_cls = getattr(module, "MiniCPMModel", None)
             if model_cls is not None:
                 create_dynamic_cache_when_missing(model_cls)
+            # v5 turns a null rope_scaling into a default-type dict, which the 1/2-era
+            # _init_rope indexes as a scaled RoPE ("type"). Patched on the class so the
+            # verify_models HF reference, which loads its own config, is covered too.
+            attention_cls = getattr(module, "MiniCPMAttention", None)
+            if attention_cls is not None:
+                hide_default_rope_scaling_from_init_rope(attention_cls)
 
     def prepare_model(self, hf_model: Any) -> None:
         """Rebuild the per-layer rotary tables meta-device loading leaves uninitialized."""

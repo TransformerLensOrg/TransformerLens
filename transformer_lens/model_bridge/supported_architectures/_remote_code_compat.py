@@ -184,6 +184,41 @@ def create_dynamic_cache_when_missing(cls: type[Any]) -> None:
     setattr(cls, "_tl_cache_patched", True)
 
 
+def _is_default_rope_scaling(rope_scaling: Any) -> bool:
+    if not isinstance(rope_scaling, dict):
+        return False
+    return rope_scaling.get("rope_type", rope_scaling.get("type")) == "default"
+
+
+def hide_default_rope_scaling_from_init_rope(cls: type[Any]) -> None:
+    """Make ``cls._init_rope`` see ``rope_scaling=None`` when v5 normalized it to the default.
+
+    v5 rewrites a checkpoint's ``rope_scaling: null`` into
+    ``{"rope_type": "default", "rope_theta": ...}``. Remote ``_init_rope`` methods
+    that only test ``rope_scaling is None`` then index a ``"type"``/``"factor"``
+    key the default dict lacks. The patch hides that dict for the duration of
+    the call, so the remote code builds its unscaled rotary embedding from
+    ``rope_theta``, and restores it afterwards. Idempotent via ``_tl_rope_patched``.
+    """
+    if cls.__dict__.get("_tl_rope_patched", False):
+        return
+    original_init_rope = cls._init_rope
+
+    @functools.wraps(original_init_rope)
+    def _init_rope(self: Any) -> Any:
+        rope_scaling = getattr(self.config, "rope_scaling", None)
+        if not _is_default_rope_scaling(rope_scaling):
+            return original_init_rope(self)
+        self.config.rope_scaling = None
+        try:
+            return original_init_rope(self)
+        finally:
+            self.config.rope_scaling = rope_scaling
+
+    setattr(cls, "_init_rope", _init_rope)
+    setattr(cls, "_tl_rope_patched", True)
+
+
 def disable_tied_weights_lookup(cls: type[Any]) -> None:
     """Give ``cls`` an empty ``all_tied_weights_keys``.
 

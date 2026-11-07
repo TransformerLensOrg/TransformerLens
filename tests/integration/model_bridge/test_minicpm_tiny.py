@@ -6,7 +6,8 @@ weights. That puts the remote-code path — the transformers-v5 patches in
 ``prepare_loading`` and the rotary repair in ``prepare_model`` — under CI, which
 the slow real-checkpoint suite (test_minicpm_adapter.py) cannot. Both code
 generations run: MiniCPM4 (LongRoPE, raises on a missing Cache) and MiniCPM 1/2
-(plain RoPE, legacy-cache calls).
+(plain RoPE, legacy-cache calls). MiniCPM 1/2 keeps the hub config's
+``rope_scaling``, which v5 normalizes from null to a default-type dict.
 
 The muP scales are non-trivial and pairwise distinct, so dropping or swapping any
 of them breaks parity. The reference is a deep copy taken before the bridge wraps
@@ -51,7 +52,7 @@ _LONG_ROPE = {
 class _Source(NamedTuple):
     repo: str
     revision: str
-    rope_scaling: Any
+    rope_scaling: Any  # None keeps the hub config's value as transformers loads it
     rotary_class: str
 
 
@@ -85,21 +86,21 @@ def _tiny_config(source: _Source) -> Any:
     config = AutoConfig.from_pretrained(
         source.repo, trust_remote_code=True, revision=source.revision
     )
-    config.update(
-        {
-            "vocab_size": 128,
-            "hidden_size": 64,
-            "intermediate_size": 96,
-            "num_hidden_layers": N_LAYERS,
-            "num_attention_heads": 64 // HEAD_DIM,
-            "num_key_value_heads": 2,
-            "max_position_embeddings": 64,
-            "scale_emb": SCALE_EMB,
-            "scale_depth": SCALE_DEPTH,
-            "dim_model_base": DIM_MODEL_BASE,
-            "rope_scaling": source.rope_scaling,
-        }
-    )
+    overrides: dict[str, Any] = {
+        "vocab_size": 128,
+        "hidden_size": 64,
+        "intermediate_size": 96,
+        "num_hidden_layers": N_LAYERS,
+        "num_attention_heads": 64 // HEAD_DIM,
+        "num_key_value_heads": 2,
+        "max_position_embeddings": 64,
+        "scale_emb": SCALE_EMB,
+        "scale_depth": SCALE_DEPTH,
+        "dim_model_base": DIM_MODEL_BASE,
+    }
+    if source.rope_scaling is not None:
+        overrides["rope_scaling"] = source.rope_scaling
+    config.update(overrides)
     config._attn_implementation = "eager"
     return config
 

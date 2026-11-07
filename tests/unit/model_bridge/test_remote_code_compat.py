@@ -20,6 +20,7 @@ from transformer_lens.model_bridge.supported_architectures._remote_code_compat i
     create_dynamic_cache_when_missing,
     disable_tied_weights_lookup,
     force_import_remote_class,
+    hide_default_rope_scaling_from_init_rope,
     iter_remote_modeling_modules,
     patch_init_weights_skip_loaded,
     restore_default_rope_init,
@@ -254,6 +255,59 @@ class TestCreateDynamicCacheWhenMissing:
         forward = cls.forward
         create_dynamic_cache_when_missing(cls)
         assert cls.forward is forward
+
+
+def _make_init_rope_attention_class() -> Any:
+    """A stand-in for 1/2-era remote attention whose _init_rope indexes ``"type"``."""
+
+    class Config:
+        def __init__(self, rope_scaling: Any) -> None:
+            self.rope_scaling = rope_scaling
+
+    class RemoteAttention:
+        def __init__(self, rope_scaling: Any) -> None:
+            self.config = Config(rope_scaling)
+            self._init_rope()
+
+        def _init_rope(self) -> None:
+            if self.config.rope_scaling is None:
+                self.rotary_emb = "plain"
+            else:
+                self.rotary_emb = self.config.rope_scaling["type"]
+
+    return RemoteAttention
+
+
+class TestHideDefaultRopeScalingFromInitRope:
+    def test_unpatched_default_dict_fails(self) -> None:
+        cls = _make_init_rope_attention_class()
+        with pytest.raises(KeyError):
+            cls({"rope_type": "default", "rope_theta": 10000.0})
+
+    @pytest.mark.parametrize(
+        "rope_scaling",
+        [{"rope_type": "default", "rope_theta": 10000.0}, {"type": "default"}],
+    )
+    def test_default_dict_builds_the_plain_rotary(self, rope_scaling: dict) -> None:
+        cls = _make_init_rope_attention_class()
+        hide_default_rope_scaling_from_init_rope(cls)
+        attention = cls(rope_scaling)
+        assert attention.rotary_emb == "plain"
+        assert attention.config.rope_scaling == rope_scaling
+
+    @pytest.mark.parametrize("rope_scaling", [None, {"type": "linear", "factor": 2.0}])
+    def test_other_rope_scaling_is_untouched(self, rope_scaling: Any) -> None:
+        cls = _make_init_rope_attention_class()
+        hide_default_rope_scaling_from_init_rope(cls)
+        expected = "plain" if rope_scaling is None else "linear"
+        assert cls(rope_scaling).rotary_emb == expected
+
+    def test_double_patch_wraps_once(self) -> None:
+        cls = _make_init_rope_attention_class()
+        hide_default_rope_scaling_from_init_rope(cls)
+        init_rope = cls._init_rope
+        hide_default_rope_scaling_from_init_rope(cls)
+        assert cls._init_rope is init_rope
 
 
 class TestDisableTiedWeightsLookup:
