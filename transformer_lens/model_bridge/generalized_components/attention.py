@@ -156,7 +156,6 @@ class AttentionBridge(GeneralizedComponent):
         if pattern_conversion_rule is not None:
             self.hook_pattern.hook_conversion = pattern_conversion_rule
         self._attn_scores = None
-        self._pattern = None
         self._hf_forward_wrapped = False
         self.maintain_native_attention = maintain_native_attention
         self.requires_position_embeddings = requires_position_embeddings
