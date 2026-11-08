@@ -27,7 +27,9 @@ Unlike Gemma 1-3, ``Gemma4RMSNorm`` multiplies by ``weight`` directly — there 
 ``(1.0 + weight)`` offset.
 """
 
-from typing import Any
+from typing import Any, Optional
+
+import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -35,12 +37,41 @@ from transformer_lens.model_bridge.generalized_components import (
     DelegatedAttentionBlockBridge,
     EmbeddingBridge,
     LinearBridge,
+    RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+
+
+class Gemma4BlockBridge(DelegatedAttentionBlockBridge):
+    """Gemma 4 decoder layer.
+
+    After its residual adds the layer writes the per-layer input branch
+    (``post_per_layer_input_norm``, E2B/E4B) and then multiplies the whole residual
+    stream by its learned ``layer_scalar``. The residual decompositions read both.
+    """
+
+    residual_side_outputs = {"post_per_layer_input_norm": "per_layer_input"}
+
+    @property
+    def residual_output_scale(self) -> Optional[torch.Tensor]:
+        """HF's ``layer_scalar`` buffer, applied to the residual stream at the end of the layer."""
+        original = self._modules.get("_original_component")
+        return getattr(original, "layer_scalar", None)
+
+    @property
+    def neuron_expansion_unsupported_reason(self) -> Optional[str]:
+        """MoE layers normalize the dense MLP output and add the experts' before ln2_post."""
+        if "experts" not in self._modules:
+            return None
+        return (
+            "the dense MLP output goes through post_feedforward_layernorm_1 and is summed with "
+            "the MoE experts' output before post_feedforward_layernorm, so its neurons cannot "
+            "be mapped onto the residual stream."
+        )
 
 
 class Gemma4ArchitectureAdapter(ArchitectureAdapter):
@@ -100,15 +131,33 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
             # Single rotary module serving both layer types (full / sliding) via a
             # per-layer-type forward kwarg, with separate rope parameters per type.
             "rotary_emb": RotaryEmbeddingBridge(name="model.language_model.rotary_emb"),
-            "blocks": DelegatedAttentionBlockBridge(
+            "blocks": Gemma4BlockBridge(
                 name="model.language_model.layers",
                 submodules={
                     # Sandwich norms: ln1/ln1_post around attention, ln2/ln2_post
-                    # around the MLP (same shape as Gemma 2/3).
-                    "ln1": GeneralizedComponent(name="input_layernorm"),
-                    "ln1_post": GeneralizedComponent(name="post_attention_layernorm"),
-                    "ln2": GeneralizedComponent(name="pre_feedforward_layernorm"),
-                    "ln2_post": GeneralizedComponent(name="post_feedforward_layernorm"),
+                    # around the MLP (same shape as Gemma 2/3). Norm bridges on HF's own
+                    # forward: their hook_scale lets the residual decompositions map heads
+                    # and neurons through the post norms and apply the cached-scale LN.
+                    "ln1": RMSNormalizationBridge(
+                        name="input_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln1_post": RMSNormalizationBridge(
+                        name="post_attention_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2": RMSNormalizationBridge(
+                        name="pre_feedforward_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
+                    "ln2_post": RMSNormalizationBridge(
+                        name="post_feedforward_layernorm",
+                        config=self.cfg,
+                        use_native_layernorm_autograd=True,
+                    ),
                     # PLE residual mix — present only when hidden_size_per_layer_input > 0
                     # (E2B/E4B; absent on 31B and 26B-A4B).
                     "per_layer_input_gate": GeneralizedComponent(
@@ -155,6 +204,10 @@ class Gemma4ArchitectureAdapter(ArchitectureAdapter):
                     "mlp": self._gated_mlp(),
                 },
             ),
-            "ln_final": GeneralizedComponent(name="model.language_model.norm"),
+            "ln_final": RMSNormalizationBridge(
+                name="model.language_model.norm",
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+            ),
             "unembed": UnembeddingBridge(name="lm_head"),
         }

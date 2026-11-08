@@ -15,6 +15,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     GatedMLPBridge,
     LinearBridge,
+    RMSNormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
@@ -23,6 +24,7 @@ from transformer_lens.model_bridge.generalized_components.base import (
 )
 from transformer_lens.model_bridge.supported_architectures.gemma4 import (
     Gemma4ArchitectureAdapter,
+    Gemma4BlockBridge,
 )
 
 ARCH = "Gemma4ForConditionalGeneration"
@@ -116,6 +118,33 @@ def test_block_decomposition():
     for norm in ("ln1", "ln1_post", "ln2", "ln2_post"):
         assert norm in blocks.submodules
         assert blocks.submodules[norm].optional is False
+
+
+def test_norms_are_native_norm_bridges():
+    """Norm bridges on HF's own forward: hook_scale for the residual decompositions."""
+    m = _adapter().component_mapping
+    norms = [m["blocks"].submodules[n] for n in ("ln1", "ln1_post", "ln2", "ln2_post")]
+    for norm in norms + [m["ln_final"]]:
+        assert isinstance(norm, RMSNormalizationBridge)
+        assert norm.use_native_layernorm_autograd is True
+
+
+def test_block_exposes_layer_scalar_and_per_layer_input_write():
+    blocks = _adapter().component_mapping["blocks"]
+    assert isinstance(blocks, Gemma4BlockBridge)
+    assert blocks.residual_side_outputs == {"post_per_layer_input_norm": "per_layer_input"}
+
+    layer = torch.nn.Module()
+    layer.layer_scalar = torch.nn.Buffer(torch.tensor([0.25]))
+    blocks.set_original_component(layer)
+    assert torch.equal(blocks.residual_output_scale, torch.tensor([0.25]))
+    assert blocks.neuron_expansion_unsupported_reason is None
+
+
+def test_moe_blocks_refuse_neuron_expansion():
+    blocks = _adapter().component_mapping["blocks"]
+    blocks.add_module("experts", torch.nn.Identity())
+    assert "post_feedforward_layernorm_1" in blocks.neuron_expansion_unsupported_reason
 
 
 def test_split_qkv_fork_aliases_absent():
