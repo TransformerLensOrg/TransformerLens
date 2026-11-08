@@ -17,6 +17,7 @@ from transformer_lens.model_bridge.generalized_components import GatedMLPBridge
 from transformer_lens.model_bridge.supported_architectures.bitnet import (
     BitNetArchitectureAdapter,
     _BitNetAttentionBridge,
+    _BitNetMLPBridge,
 )
 
 
@@ -43,11 +44,18 @@ def adapter() -> BitNetArchitectureAdapter:
 class TestBitNetComponentMapping:
     def test_attention_uses_sub_norm_bridge(self, adapter):
         """BitNet's distinguishing feature: RMSNorms before both output
-        projections, applied via the adapter-local attention bridge and the
-        delegated HF MLP."""
+        projections, applied via the adapter-local attention and MLP bridges."""
         submodules = adapter.component_mapping["blocks"].submodules
         assert isinstance(submodules["attn"], _BitNetAttentionBridge)
+        assert isinstance(submodules["mlp"], _BitNetMLPBridge)
         assert isinstance(submodules["mlp"], GatedMLPBridge)
+        mlp = submodules["mlp"]
+        assert mlp.name == "mlp"
+        assert {k: v.name for k, v in mlp.submodules.items()} == {
+            "gate": "gate_proj",
+            "in": "up_proj",
+            "out": "down_proj",
+        }
 
     def test_sub_norms_disable_folding(self, adapter):
         assert adapter.supports_fold_ln is False
@@ -72,6 +80,28 @@ class TestBitNetComponentMapping:
         x = torch.ones(1, 2, 4)
         out = attn._pre_output_projection(x)
         assert torch.equal(out, x * 2.0)
+
+    def test_mlp_reconstruction_applies_sub_norm(self, adapter):
+        """The generic processed-weights MLP goes straight from act(gate) * up to
+        down_proj; BitNet's ffn_sub_norm must be applied in between."""
+        mlp = adapter.component_mapping["blocks"].submodules["mlp"]
+
+        class _FakeNorm(torch.nn.Module):
+            def forward(self, x):
+                return x * 2.0
+
+        class _FakeMLP(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.ffn_sub_norm = _FakeNorm()
+
+        mlp._modules["_original_component"] = _FakeMLP()
+        x = torch.ones(1, 2, 4)
+        assert torch.equal(mlp._pre_output_projection(x), x * 2.0)
+
+    def test_generic_gated_mlp_pre_output_projection_is_identity(self):
+        x = torch.randn(1, 2, 4)
+        assert GatedMLPBridge(name="mlp")._pre_output_projection(x) is x
 
 
 class TestBitNetPackedCheckpointGuard:

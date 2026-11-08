@@ -120,7 +120,7 @@ class GatedMLPBridge(MLPBridge):
                 linear_output = in_module.hook_out(linear_output)  # type: ignore[misc]
             act_fn = resolve_activation_fn(self.config)
             activated = act_fn(gate_output)
-            hidden = activated * linear_output
+            hidden = self._pre_output_projection(activated * linear_output)
             if hasattr(self, "out") and hasattr(self.out, "hook_in"):
                 hidden = self.out.hook_in(hidden)
             output = torch.nn.functional.linear(hidden, W_out, b_out)
@@ -140,6 +140,15 @@ class GatedMLPBridge(MLPBridge):
         output = self.original_component(*new_args, **kwargs)
         output = self.hook_out(output)
         return output
+
+    def _pre_output_projection(self, hidden: torch.Tensor) -> torch.Tensor:
+        """Transform the gated activation before ``out`` on the processed-weights path.
+
+        Identity by default. Override when the HF MLP applies more between the gating
+        product and ``down_proj`` (BitNet's ``ffn_sub_norm``); ``hook_post`` sees the result,
+        as it does on the HF path, where it is ``out.hook_in``.
+        """
+        return hidden
 
     def _processed_projection(self, name: str) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Current weight and bias of a projection, still attached to autograd so they train."""

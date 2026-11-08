@@ -1,11 +1,13 @@
 """BitNet b1.58 (``BitNetForCausalLM``) adapter: llama layout plus attn/ffn
-sub-layer RMSNorms (attn_sub_norm reapplied by an adapter-local attention bridge)."""
+sub-layer RMSNorms (attn_sub_norm and ffn_sub_norm reapplied by adapter-local
+attention and MLP bridges on the processed-weights path)."""
 
 from typing import Any
 
 import torch
 
 from transformer_lens.model_bridge.generalized_components import (
+    GatedMLPBridge,
     PositionEmbeddingsAttentionBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.llama import (
@@ -29,6 +31,21 @@ class _BitNetAttentionBridge(PositionEmbeddingsAttentionBridge):
         return attn_output
 
 
+class _BitNetMLPBridge(GatedMLPBridge):
+    """Applies BitNet's ffn_sub_norm before the down projection.
+
+    The generic processed-weights path goes straight from ``act(gate) * up`` to
+    down_proj; BitNet inserts an RMSNorm in between.
+    """
+
+    def _pre_output_projection(self, hidden: torch.Tensor) -> torch.Tensor:
+        oc = self.original_component
+        sub_norm = getattr(oc, "ffn_sub_norm", None) if oc is not None else None
+        if isinstance(sub_norm, torch.nn.Module):
+            hidden = sub_norm(hidden)
+        return hidden
+
+
 class BitNetArchitectureAdapter(LlamaArchitectureAdapter):
     """Architecture adapter for BitNetForCausalLM models."""
 
@@ -47,6 +64,11 @@ class BitNetArchitectureAdapter(LlamaArchitectureAdapter):
         # standard LN folding and W_O centering do not model them.
         self.supports_fold_ln = False
         self.supports_center_writing_weights = False
+        blocks = self.components["blocks"]
+        mlp = blocks.submodules["mlp"]
+        blocks.submodules["mlp"] = _BitNetMLPBridge(
+            name=mlp.name, config=self.cfg, submodules=mlp.submodules
+        )
 
     def prepare_model(self, hf_model: Any) -> None:
         """Refuse packed 1.58-bit checkpoints, which need BitNet dequant kernels.
