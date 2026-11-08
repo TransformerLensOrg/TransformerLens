@@ -402,19 +402,39 @@ class ActivationCache:
         )
 
     def _mixer_out_names(self, layer: int) -> List[str]:
-        """Variant slots (``linear_attn``, ``mixer``, …) of a block without attention.
+        """Variant slots (``linear_attn``, ``mixer``, …) that write outside ``hook_attn_out``.
 
         Hybrid and SSM blocks write their sequence-mixer output in place of
-        ``hook_attn_out``; empty for attention blocks.
+        ``hook_attn_out``. Parallel hybrids (Falcon-H1) run a mixer beside attention
+        and add both outputs to the residual stream; that mixer is listed too.
         """
         from transformer_lens.model_bridge.generalized_components.block import (
             VARIANT_SUBMODULE_NAMES,
         )
 
-        if self._has_attn(layer):
-            return []
         modules = self._block_modules(layer) or {}
+        if self._has_attn(layer):
+            if "attn" not in modules:
+                return []
+            return [name for name in VARIANT_SUBMODULE_NAMES if name != "attn" and name in modules]
         return [name for name in VARIANT_SUBMODULE_NAMES if name in modules]
+
+    @staticmethod
+    def _mlp_contribution_scale(block: Any) -> float:
+        """Multiplier HF applies to the MLP output before the residual add."""
+        return getattr(
+            block, "mlp_contribution_scale", getattr(block, "residual_contribution_scale", 1.0)
+        )
+
+    @classmethod
+    def _neuron_contribution_scale(cls, block: Any) -> float:
+        """Multiplier from ``post @ W_out + b_out`` to the residual contribution.
+
+        Adds any multiplier inside the MLP after ``W_out`` (Falcon-H1's down multiplier),
+        which ``hook_mlp_out`` already includes but the neuron expansion does not.
+        """
+        mlp = block._modules.get("mlp") if isinstance(block._modules, dict) else None
+        return cls._mlp_contribution_scale(block) * getattr(mlp, "_neuron_contribution_scale", 1.0)
 
     def _has_mlp(self, layer: int) -> bool:
         """Whether block ``layer`` writes an MLP output separate from its mixer."""
@@ -470,24 +490,28 @@ class ActivationCache:
         """Residual contributions of a non-attention block's mixer, e.g. ``0_linear_attn_out``.
 
         Scaled by the block's ``residual_contribution_scale`` (Granite's ``residual_multiplier``
-        is applied after ``hook_out``), matching the head and neuron paths. ``subtract_bias``
-        drops the mixer's output bias first, for decompositions that carry it in their own
-        ``bias`` row.
+        is applied after ``hook_out``), matching the head and neuron paths, or by the mixer's
+        own entry in ``mixer_contribution_scales`` (Falcon-H1's ``ssm_out_multiplier``).
+        ``subtract_bias`` drops the mixer's output bias first, for decompositions that carry it
+        in their own ``bias`` row.
         """
         components: List[torch.Tensor] = []
         labels: List[str] = []
         names = self._mixer_out_names(layer)
         block = self.model.blocks[layer]
-        scale = getattr(block, "residual_contribution_scale", 1.0)
-        # Same bias accumulated_bias counts for this block, so the two cancel exactly.
+        default_scale = getattr(block, "residual_contribution_scale", 1.0)
+        mixer_scales = getattr(block, "mixer_contribution_scales", {})
+        # Same bias accumulated_bias counts for this block, so the two cancel exactly. On a
+        # parallel hybrid that bias is the attention's, so the mixer keeps its own.
         bias = None
-        if subtract_bias and names:
+        if subtract_bias and names and not self._has_attn(layer):
             get_bias = getattr(self.model, "_get_block_variant_bias", None)
             bias = get_bias(block) if callable(get_bias) else None
         for i, name in enumerate(names):
             out = pos_slice.apply(self[f"blocks.{layer}.{name}.hook_out"], dim=-2)
             if i == 0 and isinstance(bias, torch.Tensor):
                 out = out - bias.to(out.device, out.dtype)
+            scale = mixer_scales.get(name, default_scale)
             if scale != 1.0:
                 out = out * scale
             components.append(out)
@@ -845,7 +869,8 @@ class ActivationCache:
                 attention components. Defaults to "all". On SSM / hybrid models, blocks without
                 attention contribute their sequence-mixer output (e.g. ``0_linear_attn_out``,
                 ``0_mixer_out``) in the attention slot, and blocks without an MLP contribute no
-                ``mlp_out``.
+                ``mlp_out``. Parallel hybrids (Falcon-H1) add their mixer output
+                (``0_mamba_out``) after ``0_attn_out``.
             apply_ln:
                 Whether to apply LayerNorm to the stack.
             pos_slice:
@@ -891,6 +916,8 @@ class ActivationCache:
             if self._has_attn(l):
                 components_list.append(self[("attn_out", l)])
                 labels.append(f"{l}_attn_out")
+                # Parallel hybrids add a mixer output beside attention.
+                add_mixer(l)
             elif self._mixer_role(l) == "attn":
                 add_mixer(l)
 
@@ -1230,7 +1257,11 @@ class ActivationCache:
             mapped = self._apply_post_norm_map(raw, scale, weight, centers)
             if norm_bias is not None:
                 mapped = mapped + norm_bias.to(device=scale.device)
-            delta = (mapped - raw) * getattr(block, "residual_contribution_scale", 1.0)
+            delta = (mapped - raw) * (
+                getattr(block, "residual_contribution_scale", 1.0)
+                if kind == "attn"
+                else self._neuron_contribution_scale(block)
+            )
             correction = delta if correction is None else correction + delta
         return correction
 
@@ -1408,7 +1439,7 @@ class ActivationCache:
         neuron_acts = self[("post", layer, "mlp")]
         block = self.model.blocks[layer]
         W_out = block.mlp.W_out
-        contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
+        contribution_scale = self._neuron_contribution_scale(block)
         if pos_slice is not None:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
@@ -1521,7 +1552,7 @@ class ActivationCache:
                 continue
             block = self.model.blocks[l]
             W_out_l = block.mlp.W_out  # [d_mlp, d_model]
-            contribution_scale = getattr(block, "residual_contribution_scale", 1.0)
+            contribution_scale = self._neuron_contribution_scale(block)
             post = self._post_norm_map(l, "ln2_post", pos_slice)
             if post is not None:
                 post_scale, post_weight, post_centers, _ = post
@@ -1851,7 +1882,8 @@ class ActivationCache:
            layers only on SSM / hybrid models)
         2. Sequence-mixer results of blocks without attention heads (SSM / hybrid
            models only; one row per mixer, e.g. ``0_linear_attn_out``, output bias
-           excluded since it is in the ``bias`` row). MLP-type passthrough mixers
+           excluded since it is in the ``bias`` row), and of mixers that run beside
+           attention (Falcon-H1's ``0_mamba_out``, bias included). MLP-type passthrough mixers
            (NemotronH) appear here only when ``expand_neurons=True``; otherwise they
            are part of the MLP rows below.
         3. Neuron / MLP results (only if ``cfg.attn_only=False`` and
