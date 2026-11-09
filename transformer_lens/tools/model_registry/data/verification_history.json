@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-10-10T23:22:28.618265",
+  "last_updated": "2026-11-04T22:04:08.549906",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -41441,6 +41441,78 @@
       "model_id": "FacebookAI/roberta-base",
       "architecture_id": "RobertaForMaskedLM",
       "verified_date": "2026-10-10",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai/whisper-tiny",
+      "architecture_id": "WhisperForConditionalGeneration",
+      "verified_date": "2026-10-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai/whisper-large-v3-turbo",
+      "architecture_id": "WhisperForConditionalGeneration",
+      "verified_date": "2026-10-22",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "distil-whisper/distil-large-v3",
+      "architecture_id": "WhisperForConditionalGeneration",
+      "verified_date": "2026-11-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai/whisper-base",
+      "architecture_id": "WhisperForConditionalGeneration",
+      "verified_date": "2026-11-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai/whisper-small",
+      "architecture_id": "WhisperForConditionalGeneration",
+      "verified_date": "2026-11-04",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openai/whisper-medium",
+      "architecture_id": "WhisperForConditionalGeneration",
+      "verified_date": "2026-11-04",
       "verified_by": "verify_models",
       "transformerlens_version": "0.0.0",
       "prompt_profile": null,

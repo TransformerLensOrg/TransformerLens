@@ -393,6 +393,26 @@ class TestRemoteBridgeForward:
         with pytest.raises(TypeError, match="names_filter"):
             bridge.run_with_hooks(torch.tensor([[1, 2]]), names_filter="blocks.0.hook_resid_pre")
 
+    @pytest.mark.parametrize(
+        "kwarg",
+        [
+            {"fwd_hooks": [("blocks.0.hook_resid_pre", lambda tensor, hook: tensor)]},
+            {"fwd_hook": []},
+            {"names_filter": "blocks.0.hook_resid_pre"},
+        ],
+        ids=["fwd_hooks", "fwd_hook", "names_filter"],
+    )
+    def test_forward_rejects_misplaced_execution_kwargs(self, kwarg):
+        """The stub driver, like the real ones, would otherwise drop these silently."""
+        import torch
+
+        bridge = RemoteBridge(_stub_adapter(), tokenizer=None, driver=_stub_driver())
+        (name,) = kwarg
+        with pytest.raises(
+            TypeError, match=rf"forward\(\) got an unexpected keyword argument '{name}'"
+        ):
+            bridge.forward(torch.tensor([[1, 2]]), **kwarg)
+
     def test_forward_replays_captures(self):
         import torch
 

@@ -556,5 +556,129 @@ def test_manual_hooks_stop_at_layer_compat_with_processing(
         bridge_with_compat_and_processing.blocks[1].attn.remove_hooks()
 
 
+# stop_at_layer=n_layers: the residual leaving the last block, before ln_final and unembed.
+# Blocks stop on entry, and no block follows the last, so this case stops on its exit.
+
+
+@pytest.fixture(params=["default", "compat"])
+def any_bridge(request, distilgpt2_bridge, distilgpt2_bridge_compat):
+    return {"default": distilgpt2_bridge, "compat": distilgpt2_bridge_compat}[request.param]
+
+
+@pytest.fixture()
+def tokens() -> torch.Tensor:
+    return torch.randint(0, 100, (2, 10))
+
+
+def _last_resid(bridge, tokens) -> torch.Tensor:
+    name = f"blocks.{bridge.cfg.n_layers - 1}.hook_out"
+    return bridge.run_with_cache(tokens, names_filter=name)[1][name]
+
+
+def test_forward_stops_after_the_last_block(any_bridge, tokens):
+    n_layers = any_bridge.cfg.n_layers
+    with torch.no_grad():
+        residual = any_bridge(tokens, stop_at_layer=n_layers)
+        torch.testing.assert_close(residual, _last_resid(any_bridge, tokens))
+        # What comes back is what the final norm and unembed go on to read.
+        logits = any_bridge.unembed(any_bridge.ln_final(residual))
+        torch.testing.assert_close(logits, any_bridge(tokens), atol=1e-4, rtol=1e-4)
+
+
+def test_run_with_cache_stops_after_the_last_block(any_bridge, tokens):
+    n_layers = any_bridge.cfg.n_layers
+    with torch.no_grad():
+        output, cache = any_bridge.run_with_cache(tokens, stop_at_layer=n_layers)
+    torch.testing.assert_close(output, cache[f"blocks.{n_layers - 1}.hook_out"])
+    assert not any("ln_final" in key or "unembed" in key for key in cache.keys())
+
+
+def test_run_with_hooks_returns_an_edit_on_the_last_block(any_bridge, tokens):
+    n_layers = any_bridge.cfg.n_layers
+    fired = []
+
+    def zero(tensor, *, hook):
+        return torch.zeros_like(tensor)
+
+    with torch.no_grad():
+        output = any_bridge.run_with_hooks(
+            tokens,
+            stop_at_layer=n_layers,
+            fwd_hooks=[
+                (f"blocks.{n_layers - 1}.hook_out", zero),
+                ("ln_final.hook_in", lambda tensor, *, hook: fired.append(hook.name)),
+            ],
+        )
+    assert torch.count_nonzero(output) == 0
+    assert fired == []
+
+
+def test_backward_hook_on_the_last_block_still_fires(any_bridge, tokens):
+    n_layers = any_bridge.cfg.n_layers
+    fired = []
+    try:
+        output = any_bridge.run_with_hooks(
+            tokens,
+            stop_at_layer=n_layers,
+            bwd_hooks=[
+                (f"blocks.{n_layers - 1}.hook_out", lambda grad, *, hook: fired.append(hook.name))
+            ],
+            reset_hooks_end=False,
+        )
+        output.sum().backward()
+    finally:
+        any_bridge.reset_hooks()
+        any_bridge.zero_grad()
+    assert len(fired) == 1
+
+
+def test_negative_n_layers_stops_at_the_embed(any_bridge, tokens):
+    n_layers = any_bridge.cfg.n_layers
+    with torch.no_grad():
+        torch.testing.assert_close(
+            any_bridge(tokens, stop_at_layer=-n_layers), any_bridge(tokens, stop_at_layer=0)
+        )
+
+
+def test_stop_after_the_last_block_from_a_start_layer(any_bridge, tokens):
+    n_layers = any_bridge.cfg.n_layers
+    with torch.no_grad():
+        resumed = any_bridge(
+            any_bridge(tokens, stop_at_layer=1), start_at_layer=1, stop_at_layer=n_layers
+        )
+        torch.testing.assert_close(resumed, _last_resid(any_bridge, tokens), atol=1e-5, rtol=1e-5)
+
+
+def test_stop_after_the_last_block_leaves_no_hook_behind(any_bridge, tokens):
+    last = any_bridge.blocks[-1]
+    hooks_before = len(last._forward_hooks)
+    with torch.no_grad():
+        expected = any_bridge(tokens)
+        any_bridge(tokens, stop_at_layer=any_bridge.cfg.n_layers)
+        any_bridge.run_with_cache(tokens, stop_at_layer=any_bridge.cfg.n_layers)
+        torch.testing.assert_close(any_bridge(tokens), expected)
+    assert len(last._forward_hooks) == hooks_before
+
+
+@pytest.mark.parametrize("offset", [1, -1])
+def test_stop_at_layer_out_of_range_raises(any_bridge, tokens, offset):
+    """Past either end it would run to completion and return logits as if it had stopped."""
+    n_layers = any_bridge.cfg.n_layers
+    stop_at_layer = n_layers + 1 if offset > 0 else -n_layers - 1
+    with torch.no_grad():
+        expected = any_bridge(tokens)
+        for run in (any_bridge, any_bridge.run_with_cache, any_bridge.run_with_hooks):
+            with pytest.raises(ValueError, match=f"stop_at_layer={stop_at_layer} out of range"):
+                run(tokens, stop_at_layer=stop_at_layer)
+        # A rejected stop leaves neither end of the run armed for the next call.
+        with pytest.raises(ValueError, match="out of range"):
+            any_bridge(
+                torch.zeros(2, 10, any_bridge.cfg.d_model),
+                start_at_layer=1,
+                stop_at_layer=stop_at_layer,
+            )
+        torch.testing.assert_close(any_bridge(tokens), expected)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

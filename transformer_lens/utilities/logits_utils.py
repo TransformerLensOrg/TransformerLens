@@ -88,12 +88,12 @@ def sample_logits(
     Sample from the logits, in order to generate text
 
     final_logits has shape [batch, vocab_size]
-    We divide the logits by temperature before softmaxing and sampling - high temperature = more uniform, low = more argmaxy. Temp = 0.0 is greedy sampling
+    We divide the logits by temperature before softmaxing and sampling - high temperature = more uniform, low = more argmaxy. Temp = 0.0 is greedy sampling; a negative temperature raises ValueError.
     We apply top_k and top_p filtering to the logits, to encourage diversity. top_k = 10 means we only sample from the 10 most likely tokens. top_p = 0.9 means we only sample from the top 90% of tokens, and then renormalise the distribution. top_k and top_p are mutually exclusive. By default we apply neither and just sample from the full distribution.
 
     Frequency penalty is a penalty on the probability of a token, proportional to the number of times it has been generated so far. This encourages the model to generate new tokens, rather than repeating itself. It is a hyperparameter, and should be tuned. It is applied to the logits before sampling. If this is non-zero it is required to input the input_tokens. It must be non-negative (a negative value raises ValueError), and it has no effect on greedy (temperature 0.0) sampling.
 
-    Repetition penalty (HuggingFace-style) divides positive logits by the penalty value and multiplies negative logits by it for any token that has appeared in the sequence. A value of 1.0 means no penalty. Values > 1.0 discourage repetition. This is applied before temperature scaling.
+    Repetition penalty (HuggingFace-style) divides positive logits by the penalty value and multiplies negative logits by it for any token that has appeared in the sequence. A value of 1.0 means no penalty. Values > 1.0 discourage repetition. It must be positive (zero or a negative value raises ValueError). This is applied before temperature scaling.
 
     When ``top_k`` exceeds the vocabulary size it is clamped to the vocabulary size (matching HuggingFace), rather than raising an error.
     """
@@ -101,6 +101,12 @@ def sample_logits(
         # The penalty is applied only when positive, so a negative value would
         # otherwise be a silent no-op rather than a frequency bonus.
         raise ValueError(f"freq_penalty must be non-negative, got {freq_penalty}.")
+    if temperature < 0:
+        # A negative temperature flips the logits' sign and samples the least likely tokens.
+        raise ValueError(f"temperature must be non-negative, got {temperature}.")
+    if repetition_penalty <= 0:
+        # Zero divides logits by zero (NaN) and a negative value flips their signs.
+        raise ValueError(f"repetition_penalty must be positive, got {repetition_penalty}.")
     if temperature == 0.0:
         # Greedy sampling - still apply repetition penalty before argmax
         if repetition_penalty != 1.0 and tokens is not None:

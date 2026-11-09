@@ -438,6 +438,7 @@ jobs:
           # - "Interactive_Neuroscope"
           - "Jacobian_Lens_Coordinate_Patch_Benchmark_Demo"
           - "Main_Demo"
+          - "Natural_Language_Autoencoders_Demo"
           # - "No_Position_Experiment"
           - "Othello_GPT"
           - "Patchscopes_Generation_Demo"
@@ -445,6 +446,7 @@ jobs:
           # - "stable_lm"
           - "SVD_Circuits_Demo"
           - "SwiGLU_Gate_Sign_Demo"
+          - "Weight_Edit_Audit_Demo"
           - "T5"
         requires_hf_token: [false]
         include:

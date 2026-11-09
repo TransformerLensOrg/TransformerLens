@@ -6,7 +6,7 @@ it and want to eg cheaply and roughly compare models you've trained to baselines
 """
 
 import random
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import einops
 import torch
@@ -251,7 +251,15 @@ DATASET_LOADERS = [
 
 # %%
 @torch.inference_mode()
-def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
+def evaluate_on_dataset(
+    model: Any,
+    data_loader: Iterable[Dict[str, torch.Tensor]],
+    truncate: int = 100,
+    device: Optional[Union[str, torch.device]] = None,
+) -> float:
+    # Default to the model's device; a hardcoded "cuda" crashes CPU/MPS callers.
+    if device is None:
+        device = model.cfg.device
     warn_if_mps(device)
     running_loss = 0
     total = 0
@@ -267,14 +275,23 @@ def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
 # %%
 @torch.inference_mode()
 def induction_loss(
-    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=None, device="cuda"
-):
+    model: Any,
+    tokenizer: Any = None,
+    batch_size: int = 4,
+    subseq_len: int = 384,
+    prepend_bos: Optional[bool] = None,
+    device: Optional[Union[str, torch.device]] = None,
+) -> torch.Tensor:
     """
     Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.
 
     By default, prepends a beginning of string token (when prepend_bos flag defaults to None, model.cfg.default_prepend_bos is used
     whose default is True unless specified otherwise), which is useful to give models a resting position, and sometimes models were trained with this.
+
+    Runs on the model's own device unless `device` says otherwise.
     """
+    if device is None:
+        device = model.cfg.device
     warn_if_mps(device)
     # Make the repeated sequence
     first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
@@ -300,13 +317,19 @@ def induction_loss(
 
 # %%
 @torch.inference_mode()
-def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
+def evaluate(
+    model: Any,
+    truncate: int = 100,
+    batch_size: int = 8,
+    tokenizer: Any = None,
+    device: Optional[Union[str, torch.device]] = None,
+) -> Dict[str, float]:
     if tokenizer is None:
         tokenizer = model.tokenizer
-    losses = {}
+    losses: Dict[str, float] = {}
     for data_name, data_loader_fn in zip(DATASET_NAMES, DATASET_LOADERS):
         data_loader = data_loader_fn(tokenizer=tokenizer, batch_size=batch_size)
-        loss = evaluate_on_dataset(model, data_loader, truncate=truncate)
+        loss = evaluate_on_dataset(model, data_loader, truncate=truncate, device=device)
         print(f"{data_name}: {loss}")
         losses[f"{data_name}_loss"] = loss
     return losses

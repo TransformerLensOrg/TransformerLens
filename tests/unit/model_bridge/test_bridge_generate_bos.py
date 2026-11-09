@@ -275,3 +275,82 @@ class TestGenerateStreamPrependBos:
 
         assert first_yield is not None
         assert first_yield[0, 0].item() != bridge.tokenizer.bos_token_id
+
+
+@pytest.mark.parametrize("stream", [False, True], ids=["generate", "generate_stream"])
+class TestBatchedPromptMask:
+    """A batched row must continue exactly as its prompt does alone.
+
+    distilgpt2's BOS is also its pad token, so a left-padded row's tokens can't show
+    where its padding ends.
+    """
+
+    PROMPTS = ["The capital of France is a very", "Hello"]
+    KWARGS = {
+        "max_new_tokens": 6,
+        "do_sample": False,
+        "stop_at_eos": False,
+        "return_type": "tokens",
+        "verbose": False,
+    }
+
+    def _run(self, bridge, stream, prompts, prepend_bos):
+        if stream:
+            chunks = bridge.generate_stream(
+                prompts, prepend_bos=prepend_bos, max_tokens_per_yield=100, **self.KWARGS
+            )
+            return torch.cat(list(chunks), dim=-1)
+        return bridge.generate(prompts, prepend_bos=prepend_bos, **self.KWARGS)
+
+    def _assert_rows_match_single_prompts(self, bridge, stream, prompts, prepend_bos):
+        batched = self._run(bridge, stream, prompts, prepend_bos)
+        for row, prompt in enumerate(prompts):
+            single = self._run(bridge, stream, prompt, prepend_bos)
+            assert torch.equal(batched[row, -single.shape[-1] :], single[0])
+
+    def test_prepend_bos_false_attends_no_pad(self, distilgpt2_bridge, stream):
+        self._assert_rows_match_single_prompts(distilgpt2_bridge, stream, self.PROMPTS, False)
+
+    def test_prepend_bos_overrides_cfg_default(self, distilgpt2_bridge, stream, monkeypatch):
+        monkeypatch.setattr(distilgpt2_bridge.cfg, "default_prepend_bos", False)
+        self._assert_rows_match_single_prompts(distilgpt2_bridge, stream, self.PROMPTS, True)
+
+    def test_literal_bos_stays_attended(self, distilgpt2_bridge, stream):
+        """Pre-formatted text carries its own BOS, which has the pad token's id here."""
+        bos = distilgpt2_bridge.tokenizer.bos_token
+        prompts = [bos + prompt for prompt in self.PROMPTS]
+        self._assert_rows_match_single_prompts(distilgpt2_bridge, stream, prompts, False)
+
+    def test_explicit_mask_skips_derived_mask(self, distilgpt2_bridge, stream, monkeypatch):
+        """The loop ignores the derived mask when one is passed, so it must not be built."""
+        bridge = distilgpt2_bridge
+        expected = self._run(bridge, stream, self.PROMPTS, False)
+        tokens = bridge.to_tokens(
+            self.PROMPTS, prepend_bos=False, padding_side="left", truncate=False
+        )
+        mask = bridge._left_padded_prompt_mask(self.PROMPTS, tokens, False)
+
+        def _fail(*args, **kwargs):
+            raise AssertionError("_left_padded_prompt_mask ran under an explicit attention_mask")
+
+        monkeypatch.setattr(bridge, "_left_padded_prompt_mask", _fail)
+        kwargs = {**self.KWARGS, "attention_mask": mask}
+        if stream:
+            chunks = bridge.generate_stream(
+                self.PROMPTS, prepend_bos=False, max_tokens_per_yield=100, **kwargs
+            )
+            out = torch.cat(list(chunks), dim=-1)
+        else:
+            out = bridge.generate(self.PROMPTS, prepend_bos=False, **kwargs)
+        assert torch.equal(out, expected)
+
+
+def test_empty_prompt_attends_only_its_last_pad(distilgpt2_bridge):
+    prompts = ["", "Hello there friend"]
+    tokens = distilgpt2_bridge.to_tokens(
+        prompts, prepend_bos=False, padding_side="left", truncate=False
+    )
+
+    mask = distilgpt2_bridge._left_padded_prompt_mask(prompts, tokens, False)
+
+    assert mask.tolist() == [[0, 0, 1], [1, 1, 1]]

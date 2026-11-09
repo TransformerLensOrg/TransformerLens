@@ -262,7 +262,10 @@ def detect_tokenizer_bos_eos(tokenizer: Any) -> tuple[bool, bool]:
 
 def skip_tokenizer_for_modality(cfg: Any) -> bool:
     """True when a source must not auto-load a text tokenizer: audio/vision models use
-    feature extractors or image processors, not text tokenizers (their repos ship none)."""
+    feature extractors or image processors, not text tokenizers (their repos ship none).
+    Audio seq2seq models (Whisper) are the exception: their decoder emits text tokens."""
+    if getattr(cfg, "is_audio_seq2seq", False):
+        return False
     return bool(getattr(cfg, "is_audio_model", False) or getattr(cfg, "is_visual_model", False))
 
 

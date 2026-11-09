@@ -65,6 +65,11 @@ Set to `"1"` to opt in to Apple Silicon (MPS) as a target device for model infer
 export TRANSFORMERLENS_ALLOW_MPS=1
 ```
 
+For Hugging Face MoE experts using the shared grouped dispatcher, `TransformerBridge`
+checks the MPS matmul output-slice primitive and uses eager experts only when incorrect
+writes are detected. This emits a once-per-process warning and may reduce performance.
+Setting `TRANSFORMERLENS_ALLOW_MPS=1` does not disable this correctness safeguard.
+
 ## Huggingface Gated Access
 
 For convenience, gated-model access depends only on `HF_TOKEN` above. Once you have set the token and accepted any model-specific agreements on the HuggingFace Hub, gated models load through TransformerLens with no additional configuration. The most popular gated families supported by TransformerLens are the Llama, Mistral/Mixtral, and Gemma models.

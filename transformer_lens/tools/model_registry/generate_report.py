@@ -137,6 +137,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "DeiTForImageClassification": "DeiT with a single CLS-token classification head",
     "Wav2Vec2Model": "Facebook's Wav2Vec 2.0 for speech",
     "HubertModel": "Facebook's HuBERT for speech",
+    "WhisperForConditionalGeneration": "OpenAI's Whisper speech recognition encoder-decoder (log-mel audio encoder, text decoder)",
     "Cohere2ForCausalLM": "Cohere's Command-A architecture with interleaved sliding-window RoPE and full-attention NoPE layers",
     "OuroForCausalLM": "ByteDance's Ouro looped language model (LoopLM) with weight-shared iterated depth",
     "RavenForCausalLM": "tomg-group-umd's Huginn depth-recurrent decoder (prelude / weight-tied recurrent core / coda) with runtime recurrence count",

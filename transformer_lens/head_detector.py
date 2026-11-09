@@ -32,6 +32,8 @@ CACHE_WITH_SEQ_LIST_ERR = (
     "and let each prompt be run separately."
 )
 
+EMPTY_SEQ_LIST_ERR = "`seq` is an empty list; pass at least one prompt."
+
 SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
 
 DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection pattern of shape %s"
@@ -85,17 +87,20 @@ def detect_head(
 
     Args:
         model: Model being used.
-        seq: String or list of strings being fed to the model.
+        seq: String or list of strings being fed to the model. A list is scored one prompt at a
+            time and averaged; with a tensor `detection_pattern`, every prompt in it must tokenise
+            to the pattern's sequence length.
         head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a
             head_name or a detection_pattern, but not both!
-        detection_pattern: (sequence_length, sequence_length)nTensor representing what attention
+        detection_pattern: (sequence_length, sequence_length) Tensor representing what attention
             pattern corresponds to the head we're looking for or the name of a pre-specified head.
             Currently available heads are: `["previous_token_head", "duplicate_token_head",
             "induction_head"]`.
         heads: If specific attention heads is given here, all other heads' score is set to -1.
             Useful for IOI-style circuit analysis. Heads can be specified as a list of tuples (layer,
             head) or a dictionary mapping a layer to heads within that layer that we want to
-            analyze. cache: Include the cache to save time if you want.
+            analyze.
+        cache: Include the cache to save time if you want.
         exclude_bos: Exclude attention paid to the beginning of sequence token.
         exclude_current_token: Exclude attention paid to the current token.
         error_measure: `"mul"` for using element-wise multiplication. `"abs"` for using absolute
@@ -105,38 +110,40 @@ def detect_head(
         Tensor representing the score for each attention head.
     """
 
-    cfg = model.cfg
-    tokens = model.to_tokens(seq).to(cfg.device)
-    seq_len = tokens.shape[-1]
-
     # Validate error_measure
 
     assert error_measure in get_args(
         ErrorMeasure
     ), f"Invalid error_measure={error_measure}; valid values are {get_args(ErrorMeasure)}"
 
+    if isinstance(seq, list):
+        # One cache cannot serve multiple prompts, and each prompt needs its own
+        # batch dimension removed before its score can be averaged.
+        if cache is not None:
+            raise ValueError(CACHE_WITH_SEQ_LIST_ERR)
+        if not seq:
+            raise ValueError(EMPTY_SEQ_LIST_ERR)
+        batch_scores = [
+            detect_head(
+                model,
+                batch_seq,
+                detection_pattern,
+                heads=heads,
+                exclude_bos=exclude_bos,
+                exclude_current_token=exclude_current_token,
+                error_measure=error_measure,
+            )
+            for batch_seq in seq
+        ]
+        return torch.stack(batch_scores).mean(0)
+
+    cfg = model.cfg
+    tokens = model.to_tokens(seq).to(cfg.device)
+    seq_len = tokens.shape[-1]
+
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
         assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
-        if isinstance(seq, list):
-            # Every other argument is forwarded below. `cache` deliberately is
-            # not, because one cache holds the activations of one prompt and
-            # cannot serve the rest. Say so rather than dropping it quietly.
-            if cache is not None:
-                raise ValueError(CACHE_WITH_SEQ_LIST_ERR)
-            batch_scores = [
-                detect_head(
-                    model,
-                    batch_seq,
-                    detection_pattern,
-                    heads=heads,
-                    exclude_bos=exclude_bos,
-                    exclude_current_token=exclude_current_token,
-                    error_measure=error_measure,
-                )
-                for batch_seq in seq
-            ]
-            return torch.stack(batch_scores).mean(0)
         detection_pattern = cast(
             torch.Tensor,
             eval(f"get_{detection_pattern}_detection_pattern(tokens.cpu())"),
