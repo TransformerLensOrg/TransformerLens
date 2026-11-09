@@ -964,6 +964,12 @@ class ActivationCache:
                 continue
             all_cached = False
 
+            # Routed attention (JetMoE's mixture of attention heads) has no static W_O.
+            routed = getattr(self.model.blocks[layer].attn, "head_results_from_cache", None)
+            if callable(routed):
+                self.cache_dict[result_key] = routed(self, layer)
+                continue
+
             z = self[("z", layer, "attn")]
             weights = self.model.blocks[layer].attn.W_O
             if z.dtype != weights.dtype:
