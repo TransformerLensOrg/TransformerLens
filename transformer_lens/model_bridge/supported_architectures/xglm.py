@@ -14,6 +14,7 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
     MLPBridge,
     NormalizationBridge,
+    PosEmbedBridge,
     UnembeddingBridge,
 )
 
@@ -60,8 +61,9 @@ class XGLMArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            # No "pos_embed": sinusoidal embeddings are a non-persistent buffer with
-            # no learnable weights — embed_positions does not appear in state_dict.
+            # Sinusoidal table (a non-persistent "weights" buffer, not in the
+            # state_dict). HF adds it to the scaled token embedding before block 0.
+            "pos_embed": PosEmbedBridge(name="model.embed_positions"),
             "blocks": BlockBridge(
                 name="model.layers",
                 # fc2 IS the mlp output (no container fires hook_out). No
