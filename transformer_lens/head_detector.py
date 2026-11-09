@@ -115,28 +115,30 @@ def detect_head(
         ErrorMeasure
     ), f"Invalid error_measure={error_measure}; valid values are {get_args(ErrorMeasure)}"
 
+    # When seq is a list, delegate each prompt separately regardless of pattern type.
+    # Previously this block was nested inside `if isinstance(detection_pattern, str)`,
+    # which caused an AssertionError when a tensor detection_pattern was supplied with
+    # a list of sequences (the batch dimension reached remove_batch_dim=True unchecked).
+    if isinstance(seq, list):
+        if cache is not None:
+            raise ValueError(CACHE_WITH_SEQ_LIST_ERR)
+        batch_scores = [
+            detect_head(
+                model,
+                batch_seq,
+                detection_pattern,
+                heads=heads,
+                exclude_bos=exclude_bos,
+                exclude_current_token=exclude_current_token,
+                error_measure=error_measure,
+            )
+            for batch_seq in seq
+        ]
+        return torch.stack(batch_scores).mean(0)
+
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
         assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
-        if isinstance(seq, list):
-            # Every other argument is forwarded below. `cache` deliberately is
-            # not, because one cache holds the activations of one prompt and
-            # cannot serve the rest. Say so rather than dropping it quietly.
-            if cache is not None:
-                raise ValueError(CACHE_WITH_SEQ_LIST_ERR)
-            batch_scores = [
-                detect_head(
-                    model,
-                    batch_seq,
-                    detection_pattern,
-                    heads=heads,
-                    exclude_bos=exclude_bos,
-                    exclude_current_token=exclude_current_token,
-                    error_measure=error_measure,
-                )
-                for batch_seq in seq
-            ]
-            return torch.stack(batch_scores).mean(0)
         detection_pattern = cast(
             torch.Tensor,
             eval(f"get_{detection_pattern}_detection_pattern(tokens.cpu())"),

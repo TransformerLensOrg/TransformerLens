@@ -258,6 +258,21 @@ def test_batched_unequal_lengths():
     assert torch.allclose(r3, (r1 + r2) / 2, atol=ATOL)
 
 
+def test_batched_with_tensor_detection_pattern():
+    """List of sequences must work when detection_pattern is a tensor, not a string."""
+    # Regression for issue #1979: the isinstance(seq, list) branch was nested inside
+    # isinstance(detection_pattern, str), so a tensor pattern + list of sequences crashed
+    # with "Cannot remove batch dimension from cache with batch size 2".
+    seqs = [test_duplicated_sequence, test_duplicated_sequence2]
+    pattern = get_previous_token_head_detection_pattern(
+        model.to_tokens(test_duplicated_sequence).cpu()
+    )
+    result = detect_head(model, seqs, pattern)
+    r1 = detect_head(model, test_duplicated_sequence, pattern)
+    r2 = detect_head(model, test_duplicated_sequence2, pattern)
+    assert torch.allclose(result, (r1 + r2) / 2, atol=ATOL)
+
+
 @pytest.mark.parametrize(
     "error_measure, expected",
     (
