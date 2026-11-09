@@ -521,10 +521,58 @@ The full-vocabulary dictionary is cached on the model's device and is vocabulary
 
 ## Importing an existing lens
 
-`JacobianLens.load()` accepts two file schemas: the standard artifact format (four
+`JacobianLens.load()` accepts three file schemas: the standard artifact format (four
 official keys — `J`, `n_prompts`, `source_layers`, `d_model`) written by
-`JacobianLens.save()` and compatible with the Anthropic reference package, and the
-fit-checkpoint format described below.
+`JacobianLens.save()` and compatible with the Anthropic reference package, the J++
+Lens package's own format, and the fit-checkpoint format described below.
+
+### Published J++ lenses and artifact provenance
+
+The J++ lenses on `neuronpedia/jacobian-lens` (`<model>/jpp/...`) use the standard
+artifact keys plus a top-level `provenance` dict that records the source, the method,
+the fitting configuration and the activation convention the maps read. `load()` keeps
+that dict verbatim under `metadata["provenance"]` and normalises the recorded values
+onto the keys the rest of the class already reads:
+
+| Normalised key | Read from | Checked by `validate_model()` |
+|---|---|---|
+| `model_name` | `provenance.model_name`, `provenance.hf_model_name`, or `source_config.hf_model_name` | yes, against `model.cfg.model_name` |
+| `model_revision` | `provenance.model_revision` / `hf_model_revision`, only when recorded | yes, against the booted HF commit |
+| `method`, `lrp_mode` | `provenance` or `source_config` | no (informational; `method == "jpp"` blocks `merge()`) |
+| `target_layer` | `provenance.target_layer` (absolute block index, as in the released R-Lens files) | yes, must be the final block |
+| `relative_end_transport_layer` | `source_config.relative_end_transport_layer` (J++ package convention) | yes, resolved against `n_layers` when no `target_layer` is recorded |
+| `capture_point` | `provenance.capture_point` | yes, must be `"block_output"` |
+| `stream_reduce` | `provenance.stream_reduce` | yes, must be `"none"` (single-stream contract) |
+
+Nothing is invented: a file without a recorded revision loads without `model_revision`,
+and an explicit `metadata` dict in the same file wins over the provenance. Leaves that
+`weights_only=True` could not reload (tensors, non-string keys) are dropped from the
+copied provenance and named in `dropped_fields`.
+
+```python
+lens = JacobianLens.from_pretrained(
+    "neuronpedia/jacobian-lens",
+    filename="qwen3.5-0.8b/jpp/Salesforce-wikitext/Qwen3.5-0.8B_jpp_lens.pt",
+    revision="e166deb5ad540932100ef803c8c9bcc2a5453694",
+    model=model,
+)
+lens.metadata["method"]       # "jpp"
+lens.metadata["model_name"]   # "Qwen/Qwen3.5-0.8B"
+lens.metadata["provenance"]["source_config"]["lrp_mode"]  # "rlens"
+```
+
+The authors' original files (`koayon/jpp-lenses`, written by the
+[`jpp_lens`](https://github.com/safety-research/jpp_lens) package's `BaseLens.save`)
+store the maps under `parameters.jacobians` with a `config` dict instead of
+`n_prompts`/`d_model`. `load()` reads `d_model` and `num_prompts_trained_on` from the
+config, keeps it under `metadata["provenance"]["source_config"]`, normalises the same
+keys as above, and sets `converted_from: "jpp_lens_artifact"`. Only
+`lens_type == "jacobian"` files load; a logit-lens file raises.
+
+J++ maps combine clustered expert Jacobians with learned signed weights, so they are
+not prompt means and carry no additive statistics. `merge()` therefore refuses any lens
+whose metadata records `method == "jpp"` or `converted_from == "jpp_lens_artifact"`.
+Readout and interventions work unchanged.
 
 ### Fit checkpoint format
 

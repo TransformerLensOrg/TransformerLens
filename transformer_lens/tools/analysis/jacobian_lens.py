@@ -195,6 +195,18 @@ _FIT_RESERVED_KEYS: frozenset = frozenset(
 # (rather than nested under a "metadata" key).
 _CHECKPOINT_FLAT_PROVENANCE: frozenset = frozenset({"model_name", "model_revision", "corpus"})
 
+# Sentinel recorded on lenses imported from the J++ Lens package's own file
+# schema (safety-research/jpp_lens). Published J++ maps combine clustered expert
+# Jacobians with learned weights, so they carry no prompt-mean statistics that
+# merge() could average; the package's ``lrp_mode``/``num_clusters`` fields cannot
+# tell such a map apart from a plain fit, hence the conservative marker.
+_JPP_ARTIFACT_SENTINEL = "jpp_lens_artifact"
+# Recorded ``method`` values whose maps are not prompt means.
+_NON_ADDITIVE_METHODS: frozenset = frozenset({"jpp"})
+# Activation-capture convention this lens reads: single-stream block outputs.
+_CAPTURE_POINT_BLOCK_OUTPUT = "block_output"
+_STREAM_REDUCE_NONE = "none"
+
 
 @dataclass
 class JacobianLensReadout:
@@ -269,8 +281,10 @@ class JacobianLens:
         n_prompts: Number of prompts averaged into the fit.
         d_model: Residual stream width the lens was fitted for.
         metadata: Optional provenance (model name, TransformerLens version, fit
-            hyperparameters). Preserved by :meth:`save`/:meth:`load`; artifacts
-            from the reference implementation load with empty metadata.
+            hyperparameters). Preserved by :meth:`save`/:meth:`load`; plain
+            artifacts from the reference implementation load with empty
+            metadata, while converted J++/R-Lens files keep their recorded
+            ``provenance`` plus the normalised keys :meth:`validate_model` reads.
     """
 
     def __init__(
@@ -348,12 +362,30 @@ class JacobianLens:
     def load(cls: Type[_LensT], path: str) -> _LensT:
         """Load a lens artifact or fit checkpoint saved in a supported schema.
 
-        Two file schemas are accepted:
+        Three file schemas are accepted:
 
         **Artifact** (the reference format, written by :meth:`save` or the
         Anthropic reference package): must contain a ``J`` key mapping layer
         indices to transport matrices, plus ``n_prompts``, ``d_model``, and an
-        optional ``metadata`` dict.
+        optional ``metadata`` dict. Converted published files (Neuronpedia's
+        J++ lenses, the released R-Lens files) add a top-level ``provenance``
+        dict; it is kept verbatim under ``metadata["provenance"]`` and its
+        recorded ``hf_model_name``/``model_name``, ``model_revision``,
+        ``method``, ``lrp_mode``, ``target_layer``,
+        ``relative_end_transport_layer``, ``capture_point`` and
+        ``stream_reduce`` are normalised onto the metadata keys
+        :meth:`validate_model` checks. Explicit ``metadata`` keys take
+        precedence. No fitting revision is invented when none was recorded.
+
+        **J++ Lens package artifact** (``BaseLens.save`` in
+        ``safety-research/jpp_lens``): ``parameters.jacobians`` holds the
+        per-layer matrices, ``config`` the package's ``LensConfig``
+        (``hf_model_name``, ``d_model``, ``num_prompts_trained_on``,
+        ``relative_end_transport_layer``, ``lrp_mode``, ...). The config is kept
+        under ``metadata["provenance"]["source_config"]`` and normalised the
+        same way; ``converted_from: "jpp_lens_artifact"`` is added so
+        :meth:`merge` refuses these maps, which are expert-combined rather than
+        prompt means. Only ``lens_type == "jacobian"`` files load.
 
         **Fit checkpoint** (running-sum format, written by the reference
         implementation's ``write_checkpoint()`` during fitting): must contain
@@ -400,18 +432,98 @@ class JacobianLens:
         """
         payload = torch.load(path, map_location="cpu", weights_only=True)
         if "J" in payload:
-            return cls(
-                {int(layer): matrix for layer, matrix in payload["J"].items()},
-                n_prompts=int(payload.get("n_prompts", 0)),
-                d_model=int(payload["d_model"]),
-                metadata=payload.get("metadata"),
-            )
+            return cls._from_artifact_payload(path, payload)
+        if "parameters" in payload:
+            return cls._from_jpp_payload(path, payload)
         if "jacobian_sum" in payload:
             return cls._from_checkpoint_payload(path, payload)
         raise ValueError(
             f"{path} does not look like a Jacobian lens artifact or fit checkpoint. "
-            "Expected a 'J' key (artifact) or 'jacobian_sum' key (fit checkpoint). "
+            "Expected a 'J' key (artifact), a 'parameters' key (J++ Lens package "
+            "artifact), or a 'jacobian_sum' key (fit checkpoint). "
             "See JacobianLens.load() for the supported file schemas."
+        )
+
+    @classmethod
+    def _from_artifact_payload(cls: Type[_LensT], path: str, payload: Dict[str, Any]) -> _LensT:
+        """Build a lens from a ``J``-keyed artifact, importing any recorded provenance.
+
+        Converted published files (Neuronpedia's ``convert-jpp-lens.py``, the
+        released R-Lens files) add a top-level ``provenance`` dict next to the
+        four official keys; the J++ Lens package also writes ``{"J", "config"}``
+        for a J-lens with its own ``LensConfig``. Both are kept verbatim under
+        ``metadata["provenance"]`` and normalised onto the keys
+        :meth:`validate_model` reads. A plain artifact loads exactly as before.
+        """
+        jacobians = {int(layer): matrix for layer, matrix in payload["J"].items()}
+        config = payload.get("config")
+        provenance = payload.get("provenance")
+        converted_from: Optional[str] = None
+        if not isinstance(provenance, dict):
+            provenance = None
+        if provenance is None and isinstance(config, dict):
+            provenance = {"source_config": config}
+            converted_from = _JPP_ARTIFACT_SENTINEL
+        d_model = payload.get("d_model")
+        n_prompts = payload.get("n_prompts")
+        if isinstance(config, dict):
+            if d_model is None:
+                d_model = config.get("d_model")
+            if n_prompts is None:
+                n_prompts = config.get("num_prompts_trained_on")
+        if d_model is None:
+            d_model = _matrix_width(path, jacobians)
+        explicit = payload.get("metadata")
+        return cls(
+            jacobians,
+            n_prompts=int(n_prompts or 0),
+            d_model=int(d_model),
+            metadata=_import_artifact_metadata(
+                explicit if isinstance(explicit, dict) else None,
+                provenance,
+                converted_from=converted_from,
+            ),
+        )
+
+    @classmethod
+    def _from_jpp_payload(cls: Type[_LensT], path: str, payload: Dict[str, Any]) -> _LensT:
+        """Build a lens from the J++ Lens package's ``BaseLens.save`` schema.
+
+        The file holds ``parameters.jacobians`` (``{layer: [d, d]}``), the
+        ``source_layers`` list, and ``config`` (the package's ``LensConfig``,
+        which carries ``hf_model_name``, ``d_model``, ``num_prompts_trained_on``,
+        ``relative_end_transport_layer`` and ``lrp_mode``). The config is kept
+        under ``metadata["provenance"]["source_config"]`` and the lens is marked
+        ``converted_from: "jpp_lens_artifact"`` so :meth:`merge` refuses it.
+        """
+        config = payload.get("config")
+        if not isinstance(config, dict):
+            config = {}
+        lens_type = config.get("lens_type", "jacobian")
+        if lens_type != "jacobian":
+            raise ValueError(
+                f"{path} holds a lens_type={lens_type!r} lens from the J++ Lens package; "
+                "JacobianLens loads only lens_type='jacobian' artifacts, which store "
+                "their maps under parameters.jacobians."
+            )
+        parameters = payload["parameters"]
+        raw_jacobians = parameters.get("jacobians") if isinstance(parameters, dict) else None
+        if not isinstance(raw_jacobians, dict):
+            raise ValueError(
+                f"{path} has no parameters.jacobians mapping; the J++ Lens package stores "
+                "one [d_model, d_model] transport matrix per source layer there."
+            )
+        jacobians = {int(layer): matrix for layer, matrix in raw_jacobians.items()}
+        d_model = config.get("d_model")
+        if d_model is None:
+            d_model = _matrix_width(path, jacobians)
+        return cls(
+            jacobians,
+            n_prompts=int(config.get("num_prompts_trained_on") or 0),
+            d_model=int(d_model),
+            metadata=_import_artifact_metadata(
+                None, {"source_config": config}, converted_from=_JPP_ARTIFACT_SENTINEL
+            ),
         )
 
     @classmethod
@@ -575,15 +687,17 @@ class JacobianLens:
         Provenance must match across shards (apart from ``n_prompts``), so a
         merge cannot silently relabel matrices fitted with different models,
         corpora, dtypes, or recorded estimator settings. The merged count
-        replaces the per-shard count.
+        replaces the per-shard count. Lenses imported from J++ artifacts
+        (``method == "jpp"`` or ``converted_from == "jpp_lens_artifact"``) are
+        refused: their maps are expert-combined, not prompt means.
 
         Args:
             lenses: Lenses that agree exactly on ``source_layers`` and
                 ``d_model``.
 
         Raises:
-            ValueError: On an empty sequence, mismatched lenses, or shards from
-                different estimators.
+            ValueError: On an empty sequence, mismatched lenses, shards from
+                different estimators, or imported J++ maps.
         """
         if not lenses:
             raise ValueError("cannot merge an empty sequence of lenses")
@@ -596,8 +710,9 @@ class JacobianLens:
                 f"invalid shards: {invalid_counts}"
             )
         first = lenses[0]
-        for lens in lenses:
+        for index, lens in enumerate(lenses):
             _validate_metadata(lens.metadata)
+            _require_additive_statistics(lens, index)
         first_provenance = {
             key: value for key, value in first.metadata.items() if key != "n_prompts"
         }
@@ -680,12 +795,31 @@ class JacobianLens:
                 f"lens has source layers {out_of_range} outside the model's "
                 f"0..{final_layer - 1} source range — this lens belongs to a different model."
             )
-        target_layer = int(self.metadata.get("target_layer", final_layer))
+        recorded_target = self.metadata.get("target_layer")
+        if recorded_target is None:
+            # The J++ Lens package records the target relative to the end of the model.
+            relative_end = self.metadata.get("relative_end_transport_layer")
+            recorded_target = final_layer if relative_end is None else n_layers + int(relative_end)
+        target_layer = int(recorded_target)
         if target_layer != final_layer:
             raise ValueError(
                 f"lens targets layer {target_layer}, but readout supports only the "
                 f"published final-layer convention ({final_layer}); refit without "
                 "a custom target layer."
+            )
+        capture_point = self.metadata.get("capture_point")
+        if capture_point is not None and capture_point != _CAPTURE_POINT_BLOCK_OUTPUT:
+            raise ValueError(
+                f"lens records capture_point={capture_point!r}, but readout reads block "
+                f"outputs (blocks.{{layer}}.hook_out, capture_point="
+                f"{_CAPTURE_POINT_BLOCK_OUTPUT!r}); this lens was fitted on a different "
+                "activation."
+            )
+        stream_reduce = self.metadata.get("stream_reduce")
+        if stream_reduce is not None and stream_reduce != _STREAM_REDUCE_NONE:
+            raise ValueError(
+                f"lens records stream_reduce={stream_reduce!r}, but JacobianLens supports "
+                f"single-stream block outputs only (stream_reduce={_STREAM_REDUCE_NONE!r})."
             )
         return self
 
@@ -1918,6 +2052,127 @@ def _require_raw_bridge(model: Any, *, estimator: str) -> None:
             f"{estimator} requires a direct d_model-width unembedding after ln_final; "
             f"got W_U input width {unembed_width} for d_model={model.cfg.d_model}. "
             "Architectures with a final output projection are not yet supported."
+        )
+
+
+def _matrix_width(path: str, jacobians: Dict[int, torch.Tensor]) -> int:
+    """Infer ``d_model`` from the first transport matrix of an artifact without one."""
+    if not jacobians:
+        raise ValueError(f"{path} holds no transport matrices; at least one layer is required.")
+    return int(next(iter(jacobians.values())).shape[0])
+
+
+def _sanitize_metadata_value(value: Any, path: str, dropped: List[str]) -> Tuple[bool, Any]:
+    """Return ``(keep, cleaned)``, dropping leaves ``weights_only=True`` cannot reload.
+
+    Dropped leaves are named in ``dropped`` with their dotted path so an imported
+    provenance dict survives with only the offending entries removed.
+    """
+    if value is None or type(value) in (bool, int, float, str):
+        return True, value
+    if isinstance(value, torch.Tensor):
+        dropped.append(f"{path}: shape={tuple(value.shape)} dtype={value.dtype}")
+        return False, None
+    if type(value) in (list, tuple):
+        items = []
+        for index, item in enumerate(value):
+            keep, cleaned = _sanitize_metadata_value(item, f"{path}[{index}]", dropped)
+            if keep:
+                items.append(cleaned)
+        return True, type(value)(items)
+    if type(value) is dict:
+        cleaned_dict: Dict[str, Any] = {}
+        for key, item in value.items():
+            if type(key) is not str:
+                dropped.append(f"{path}.{key!r}: non-string key")
+                continue
+            keep, cleaned = _sanitize_metadata_value(item, f"{path}.{key}", dropped)
+            if keep:
+                cleaned_dict[key] = cleaned
+        return True, cleaned_dict
+    dropped.append(f"{path}: {type(value).__name__}")
+    return False, None
+
+
+def _normalize_artifact_provenance(provenance: Dict[str, Any]) -> Dict[str, Any]:
+    """Map recorded artifact provenance onto the metadata keys this class reads.
+
+    Values are looked up on the provenance dict first and then on its nested
+    ``source_config`` (the J++ Lens package's ``LensConfig``). Only recorded
+    values are copied: a missing fitting revision stays missing rather than
+    being guessed from the model.
+    """
+    source_config = provenance.get("source_config")
+    sources: List[Dict[str, Any]] = [provenance]
+    if isinstance(source_config, dict):
+        sources.append(source_config)
+
+    def recorded(*names: str) -> Any:
+        for mapping in sources:
+            for name in names:
+                value = mapping.get(name)
+                if value is not None:
+                    return value
+        return None
+
+    normalized: Dict[str, Any] = {}
+    model_name = recorded("model_name", "hf_model_name")
+    if isinstance(model_name, str) and model_name:
+        normalized["model_name"] = model_name
+    revision = recorded("model_revision", "hf_model_revision")
+    if isinstance(revision, str) and revision:
+        normalized["model_revision"] = revision
+    for key in ("method", "lrp_mode", "capture_point", "stream_reduce"):
+        value = recorded(key)
+        if isinstance(value, str):
+            normalized[key] = value
+    for key in ("target_layer", "relative_end_transport_layer"):
+        value = recorded(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            normalized[key] = value
+    return normalized
+
+
+def _import_artifact_metadata(
+    explicit: Optional[Dict[str, Any]],
+    provenance: Optional[Dict[str, Any]],
+    *,
+    converted_from: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Combine an artifact's ``metadata`` dict with its recorded provenance.
+
+    Explicit ``metadata`` keys win; the raw provenance is kept under
+    ``metadata["provenance"]`` and its normalised keys fill the gaps. With no
+    provenance and no import marker the explicit dict is returned untouched so
+    plain artifacts load exactly as before.
+    """
+    if provenance is None and converted_from is None:
+        return explicit
+    metadata: Dict[str, Any] = dict(explicit or {})
+    dropped: List[str] = []
+    if provenance is not None:
+        _, clean_provenance = _sanitize_metadata_value(provenance, "provenance", dropped)
+        metadata.setdefault("provenance", clean_provenance)
+        for key, value in _normalize_artifact_provenance(clean_provenance).items():
+            metadata.setdefault(key, value)
+    if converted_from is not None:
+        metadata["converted_from"] = converted_from
+    if dropped:
+        metadata["dropped_fields"] = list(metadata.get("dropped_fields", [])) + dropped
+    return metadata
+
+
+def _require_additive_statistics(lens: "JacobianLens", index: int) -> None:
+    """Refuse to merge maps that are not prompt means of Jacobians."""
+    method = lens.metadata.get("method")
+    converted_from = lens.metadata.get("converted_from")
+    if method in _NON_ADDITIVE_METHODS or converted_from == _JPP_ARTIFACT_SENTINEL:
+        raise ValueError(
+            f"lens {index} was imported from a J++ Lens artifact (method={method!r}, "
+            f"converted_from={converted_from!r}). Its maps combine clustered expert "
+            "Jacobians with learned weights and carry no additive prompt statistics, so "
+            "merge() cannot average them with other shards; combine such fits with the "
+            "J++ Lens package instead."
         )
 
 

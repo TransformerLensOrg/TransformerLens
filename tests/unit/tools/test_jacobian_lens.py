@@ -775,6 +775,29 @@ def test_validate_model_rejects_nonfinal_target_metadata(toy_model: _ToyBridge) 
         lens.validate_model(toy_model)
 
 
+def test_validate_model_resolves_relative_end_transport_layer(toy_model: _ToyBridge) -> None:
+    with pytest.raises(ValueError, match=r"final.?layer"):
+        _lens(metadata={"relative_end_transport_layer": -2}).validate_model(toy_model)
+    final = _lens(metadata={"relative_end_transport_layer": -1})
+    assert final.validate_model(toy_model) is final
+
+
+def test_validate_model_checks_recorded_capture_convention(toy_model: _ToyBridge) -> None:
+    with pytest.raises(ValueError, match="capture_point"):
+        _lens(metadata={"capture_point": "attention_output"}).validate_model(toy_model)
+    with pytest.raises(ValueError, match="stream_reduce"):
+        _lens(metadata={"stream_reduce": "mean"}).validate_model(toy_model)
+    matching = _lens(
+        metadata={
+            "model_name": "toy-bridge",
+            "capture_point": "block_output",
+            "stream_reduce": "none",
+            "relative_end_transport_layer": -1,
+        }
+    )
+    assert matching.validate_model(toy_model) is matching
+
+
 def test_readout_bounds_checks(toy_model: _ToyBridge, fitted_lens: JacobianLens) -> None:
     with pytest.raises(ValueError, match="out of range"):
         fitted_lens.readout(toy_model, "a toy prompt", layers=[99], use_jacobian=False)

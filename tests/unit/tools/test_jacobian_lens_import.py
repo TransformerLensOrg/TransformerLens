@@ -323,3 +323,268 @@ class TestMergeProvenance:
             torch.full((d_model, d_model), expected_mean),
             atol=1e-5,
         )
+
+
+# ---------------------------------------------------------------------------
+# J++ artifacts: converted (J + provenance) and native (parameters.jacobians)
+# ---------------------------------------------------------------------------
+
+
+def _author_config(
+    *,
+    d_model=8,
+    n_layers=3,
+    n_prompts=10,
+    lrp_mode="rlens",
+    lens_type="jacobian",
+    hf_model_name="Qwen/Qwen3.5-0.8B",
+    relative_end_transport_layer=-1,
+):
+    """A ``LensConfig.to_dict()`` payload as written by the J++ Lens package."""
+    return {
+        "hf_model_name": hf_model_name,
+        "checkpoint_name": "recipe_lens",
+        "lens_type": lens_type,
+        "checkpoint_every_n_prompts": 4,
+        "creation_time": "2026-10-07_00-51-51",
+        "artifacts_base_dir": "artifacts",
+        "checkpoint_path": "artifacts/2026-10-07/recipe_lens",
+        "source_layers": list(range(n_layers)),
+        "relative_end_transport_layer": relative_end_transport_layer,
+        "d_model": d_model,
+        "num_prompts_trained_on": n_prompts,
+        "next_prompt_idx": 0,
+        "jacobian_rows_per_pass": 16,
+        "max_seq_len": 128,
+        "skip_first_n_positions": 16,
+        "num_clusters": 0,
+        "cluster_projection_dim": 0,
+        "lrp_mode": lrp_mode,
+    }
+
+
+def _converted_provenance(config, **overrides):
+    """The ``provenance`` dict Neuronpedia's convert-jpp-lens.py writes."""
+    provenance = {
+        "source": "neuronpedia fit, koayon/jpp_lens recipe, 96 WikiText prompts",
+        "method": "jpp",
+        "lrp_mode": config["lrp_mode"],
+        "source_config": config,
+        "capture_point": "block_output",
+        "stream_reduce": "none",
+        "stream_index": None,
+    }
+    provenance.update(overrides)
+    return provenance
+
+
+def _jacobians(n_layers=3, d_model=8):
+    return {i: torch.randn(d_model, d_model) for i in range(n_layers)}
+
+
+def _save_converted_artifact(path, jacobians, provenance, *, n_prompts=10, metadata=None):
+    d_model = next(iter(jacobians.values())).shape[0]
+    payload = {
+        "J": {layer: matrix.half() for layer, matrix in jacobians.items()},
+        "n_prompts": n_prompts,
+        "source_layers": sorted(jacobians),
+        "d_model": d_model,
+        "provenance": provenance,
+    }
+    if metadata is not None:
+        payload["metadata"] = metadata
+    torch.save(payload, path)
+
+
+def _save_author_artifact(path, jacobians, config):
+    torch.save(
+        {
+            "parameters": {
+                "jacobians": {layer: matrix.half() for layer, matrix in jacobians.items()}
+            },
+            "source_layers": sorted(jacobians),
+            "config": config,
+        },
+        path,
+    )
+
+
+class TestLoadConvertedProvenance:
+    def test_provenance_preserved_in_metadata(self, tmp_path):
+        p = str(tmp_path / "jpp.pt")
+        provenance = _converted_provenance(_author_config())
+        _save_converted_artifact(p, _jacobians(), provenance)
+        lens = JacobianLens.load(p)
+        assert lens.metadata["provenance"] == provenance
+
+    def test_recorded_values_normalized_without_inventing_revision(self, tmp_path):
+        p = str(tmp_path / "jpp.pt")
+        _save_converted_artifact(p, _jacobians(), _converted_provenance(_author_config()))
+        lens = JacobianLens.load(p)
+        assert lens.metadata["model_name"] == "Qwen/Qwen3.5-0.8B"
+        assert lens.metadata["method"] == "jpp"
+        assert lens.metadata["lrp_mode"] == "rlens"
+        assert lens.metadata["capture_point"] == "block_output"
+        assert lens.metadata["stream_reduce"] == "none"
+        assert lens.metadata["relative_end_transport_layer"] == -1
+        assert "model_revision" not in lens.metadata
+        assert "target_layer" not in lens.metadata
+        assert lens.n_prompts == 10
+        assert lens.d_model == 8
+
+    def test_recorded_revision_and_target_layer_harvested(self, tmp_path):
+        p = str(tmp_path / "rlens.pt")
+        provenance = _converted_provenance(
+            _author_config(), target_layer=1, model_revision="2fc0636"
+        )
+        _save_converted_artifact(p, _jacobians(), provenance)
+        lens = JacobianLens.load(p)
+        assert lens.metadata["target_layer"] == 1
+        assert lens.metadata["model_revision"] == "2fc0636"
+
+    def test_explicit_metadata_wins_over_provenance(self, tmp_path):
+        p = str(tmp_path / "jpp.pt")
+        provenance = _converted_provenance(_author_config())
+        _save_converted_artifact(
+            p, _jacobians(), provenance, metadata={"model_name": "explicit", "corpus": "wiki"}
+        )
+        lens = JacobianLens.load(p)
+        assert lens.metadata["model_name"] == "explicit"
+        assert lens.metadata["corpus"] == "wiki"
+        assert lens.metadata["method"] == "jpp"
+        assert lens.metadata["provenance"] == provenance
+
+    def test_unsafe_provenance_leaves_dropped_and_recorded(self, tmp_path):
+        p = str(tmp_path / "jpp.pt")
+        provenance = _converted_provenance(_author_config(), fit_stats=torch.randn(3))
+        _save_converted_artifact(p, _jacobians(), provenance)
+        lens = JacobianLens.load(p)
+        assert "fit_stats" not in lens.metadata["provenance"]
+        assert any("fit_stats" in field for field in lens.metadata["dropped_fields"])
+        assert lens.metadata["provenance"]["method"] == "jpp"
+        assert lens.metadata["model_name"] == "Qwen/Qwen3.5-0.8B"
+
+    def test_save_load_roundtrip_preserves_provenance(self, tmp_path):
+        p = str(tmp_path / "jpp.pt")
+        q = str(tmp_path / "resaved.pt")
+        _save_converted_artifact(p, _jacobians(), _converted_provenance(_author_config()))
+        lens = JacobianLens.load(p)
+        lens.save(q)
+        reloaded = JacobianLens.load(q)
+        assert reloaded.metadata == lens.metadata
+        assert reloaded.n_prompts == lens.n_prompts
+        for layer in lens.source_layers:
+            torch.testing.assert_close(reloaded.jacobians[layer], lens.jacobians[layer])
+
+    def test_merge_refuses_jpp_maps(self, tmp_path):
+        p1, p2 = str(tmp_path / "a.pt"), str(tmp_path / "b.pt")
+        provenance = _converted_provenance(_author_config())
+        _save_converted_artifact(p1, _jacobians(), provenance)
+        _save_converted_artifact(p2, _jacobians(), provenance)
+        with pytest.raises(ValueError, match="additive"):
+            JacobianLens.merge([JacobianLens.load(p1), JacobianLens.load(p2)])
+
+    def test_plain_artifact_without_provenance_unchanged(self, tmp_path):
+        p = str(tmp_path / "plain.pt")
+        _save_artifact(p, metadata={"model_name": "gpt2"})
+        lens = JacobianLens.load(p)
+        assert lens.metadata == {"model_name": "gpt2"}
+
+
+class TestLoadAuthorSchema:
+    def test_loads_same_jacobians_as_native_schema(self, tmp_path):
+        jacobians = _jacobians()
+        native, author = str(tmp_path / "native.pt"), str(tmp_path / "author.pt")
+        torch.save(
+            {
+                "J": {layer: matrix.half() for layer, matrix in jacobians.items()},
+                "n_prompts": 10,
+                "source_layers": sorted(jacobians),
+                "d_model": 8,
+            },
+            native,
+        )
+        _save_author_artifact(author, jacobians, _author_config())
+        native_lens = JacobianLens.load(native)
+        author_lens = JacobianLens.load(author)
+        assert author_lens.source_layers == native_lens.source_layers
+        assert author_lens.d_model == native_lens.d_model
+        assert author_lens.n_prompts == native_lens.n_prompts
+        for layer in native_lens.source_layers:
+            torch.testing.assert_close(author_lens.jacobians[layer], native_lens.jacobians[layer])
+            assert author_lens.jacobians[layer].dtype == torch.float32
+
+    def test_config_normalized_into_metadata(self, tmp_path):
+        p = str(tmp_path / "author.pt")
+        config = _author_config()
+        _save_author_artifact(p, _jacobians(), config)
+        lens = JacobianLens.load(p)
+        assert lens.metadata["converted_from"] == "jpp_lens_artifact"
+        assert lens.metadata["provenance"]["source_config"] == config
+        assert lens.metadata["model_name"] == "Qwen/Qwen3.5-0.8B"
+        assert lens.metadata["lrp_mode"] == "rlens"
+        assert lens.metadata["relative_end_transport_layer"] == -1
+        assert "model_revision" not in lens.metadata
+        assert "method" not in lens.metadata
+
+    def test_j_with_config_variant(self, tmp_path):
+        p = str(tmp_path / "j_config.pt")
+        jacobians = _jacobians()
+        torch.save(
+            {
+                "J": {layer: matrix.half() for layer, matrix in jacobians.items()},
+                "config": _author_config(n_prompts=7),
+            },
+            p,
+        )
+        lens = JacobianLens.load(p)
+        assert lens.d_model == 8
+        assert lens.n_prompts == 7
+        assert lens.metadata["model_name"] == "Qwen/Qwen3.5-0.8B"
+        assert lens.metadata["converted_from"] == "jpp_lens_artifact"
+
+    def test_d_model_inferred_when_config_omits_it(self, tmp_path):
+        p = str(tmp_path / "author.pt")
+        config = _author_config()
+        del config["d_model"]
+        _save_author_artifact(p, _jacobians(d_model=4), config)
+        assert JacobianLens.load(p).d_model == 4
+
+    def test_rejects_non_jacobian_lens_type(self, tmp_path):
+        p = str(tmp_path / "logit.pt")
+        torch.save(
+            {
+                "parameters": {},
+                "source_layers": [0, 1],
+                "config": _author_config(lens_type="logit"),
+            },
+            p,
+        )
+        with pytest.raises(ValueError, match="lens_type='logit'"):
+            JacobianLens.load(p)
+
+    def test_rejects_parameters_without_jacobians(self, tmp_path):
+        p = str(tmp_path / "no_jac.pt")
+        torch.save(
+            {"parameters": {"other": {0: 1.0}}, "source_layers": [0], "config": _author_config()},
+            p,
+        )
+        with pytest.raises(ValueError, match="parameters.jacobians"):
+            JacobianLens.load(p)
+
+    def test_save_load_roundtrip(self, tmp_path):
+        p, q = str(tmp_path / "author.pt"), str(tmp_path / "resaved.pt")
+        _save_author_artifact(p, _jacobians(), _author_config())
+        lens = JacobianLens.load(p)
+        lens.save(q)
+        reloaded = JacobianLens.load(q)
+        assert reloaded.metadata == lens.metadata
+        for layer in lens.source_layers:
+            torch.testing.assert_close(reloaded.jacobians[layer], lens.jacobians[layer])
+
+    def test_merge_refuses_imported_author_artifacts(self, tmp_path):
+        p1, p2 = str(tmp_path / "a.pt"), str(tmp_path / "b.pt")
+        _save_author_artifact(p1, _jacobians(), _author_config())
+        _save_author_artifact(p2, _jacobians(), _author_config())
+        with pytest.raises(ValueError, match="additive"):
+            JacobianLens.merge([JacobianLens.load(p1), JacobianLens.load(p2)])
