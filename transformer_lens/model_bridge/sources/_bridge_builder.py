@@ -87,6 +87,10 @@ _HF_PASSTHROUGH_ATTRS = [
     "num_layers_per_stack",
     "sliding_window_pattern",
     "_sliding_window_pattern",
+    # LFM2 (dense FFN width auto-adjust)
+    "block_auto_adjust_ff_dim",
+    "block_ffn_dim_multiplier",
+    "block_multiple_of",
     # Hybrid/MoE architectures
     "layer_types",
     "moe_intermediate_size",
