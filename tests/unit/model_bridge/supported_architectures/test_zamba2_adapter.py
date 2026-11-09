@@ -18,6 +18,7 @@ from transformer_lens.model_bridge.generalized_components import (
 )
 from transformer_lens.model_bridge.supported_architectures.zamba2 import (
     Zamba2ArchitectureAdapter,
+    Zamba2BlockBridge,
 )
 
 
@@ -171,6 +172,27 @@ class TestZamba2BlockComponents:
         mixer = blocks.submodules["mixer"]
         assert isinstance(mixer, SSM2MixerBridge)
         assert all(component.optional is True for component in mixer.submodules.values())
+
+    def test_hybrid_layers_map_into_their_mamba_decoder(self, blocks: SSMBlockBridge) -> None:
+        """A hybrid layer's residual write is its wrapped Mamba-2 decoder's mixer."""
+        import copy
+
+        import torch.nn as nn
+
+        assert isinstance(blocks, Zamba2BlockBridge)
+        mamba_block = copy.deepcopy(blocks)
+        mamba_block.set_original_component(nn.Module())
+        assert mamba_block.submodules["norm"].name == "input_layernorm"
+        assert mamba_block.submodules["mixer"].name == "mamba"
+
+        hybrid_layer = nn.Module()
+        hybrid_layer.mamba_decoder = nn.Module()
+        hybrid_block = copy.deepcopy(blocks)
+        hybrid_block.set_original_component(hybrid_layer)
+        assert hybrid_block.submodules["norm"].name == "mamba_decoder.input_layernorm"
+        assert hybrid_block.submodules["mixer"].name == "mamba_decoder.mamba"
+        # The template itself is left unchanged.
+        assert blocks.submodules["mixer"].name == "mamba"
 
 
 class TestZamba2FactoryRegistration:
