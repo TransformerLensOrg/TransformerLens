@@ -169,6 +169,59 @@ def _granite_dense():
     return _boot(AutoModelForCausalLM.from_config(c).eval(), "GraniteMoeHybridForCausalLM")
 
 
+def _zamba2():
+    """Zamba2 with hybrid layers: the shared transformer feeds the Mamba-2 input of layers 1
+    and 3 but does not write to the residual stream."""
+    from transformers import AutoModelForCausalLM
+    from transformers.models.zamba2 import Zamba2Config
+
+    torch.manual_seed(0)
+    c = Zamba2Config(
+        vocab_size=256,
+        hidden_size=64,
+        intermediate_size=128,
+        num_hidden_layers=4,
+        num_attention_heads=4,
+        num_key_value_heads=4,
+        attention_hidden_size=128,
+        layers_block_type=["mamba", "hybrid", "mamba", "hybrid"],
+        hybrid_layer_ids=[1, 3],
+        num_mem_blocks=1,
+        use_mem_rope=False,
+        mamba_d_state=16,
+        mamba_ngroups=1,
+        mamba_headdim=16,
+        n_mamba_heads=8,
+        chunk_size=8,
+    )
+    c.architectures = ["Zamba2ForCausalLM"]
+    return _boot(AutoModelForCausalLM.from_config(c).eval(), "Zamba2ForCausalLM")
+
+
+def _recurrent_gemma():
+    """RecurrentGemma: RG-LRU and local-attention temporal blocks, each followed by a gated
+    MLP. hidden_size 80 makes HF's bfloat16 embedding normalizer (8.9375) differ from
+    sqrt(80)."""
+    from transformers import AutoModelForCausalLM
+    from transformers.models.recurrent_gemma import RecurrentGemmaConfig
+
+    torch.manual_seed(0)
+    c = RecurrentGemmaConfig(
+        vocab_size=256,
+        hidden_size=80,
+        lru_width=80,
+        intermediate_size=160,
+        num_hidden_layers=4,
+        num_attention_heads=4,
+        num_key_value_heads=1,
+        head_dim=20,
+        attention_window_size=8,
+        block_types=["recurrent", "recurrent", "attention"],
+    )
+    c.architectures = ["RecurrentGemmaForCausalLM"]
+    return _boot(AutoModelForCausalLM.from_config(c).eval(), "RecurrentGemmaForCausalLM")
+
+
 def _lfm2():
     """LFM2 short-conv blocks (``conv`` slot) with non-zero conv output biases."""
     from transformers import AutoModelForCausalLM, Lfm2Config
@@ -202,6 +255,8 @@ _FACTORIES = {
     "mamba2": _mamba2,
     "mamba2_bias": _mamba2_bias,
     "nemotron_h": _nemotronh,
+    "recurrent_gemma": _recurrent_gemma,
+    "zamba2": _zamba2,
 }
 if _QWEN3_5_AVAILABLE:
     _FACTORIES["qwen3_5"] = _qwen35
@@ -259,8 +314,24 @@ class TestDecomposeResid:
             "mamba2_bias": ["0_mixer_out", "1_mixer_out"],
             # Passthrough mixers are labelled by cfg.layers_block_type.
             "nemotron_h": ["0_mixer_out", "1_attn_out", "2_mixer_out", "3_mlp_out"],
+            # Hybrid layers 1 and 3 write only through their Mamba-2 mixer.
+            "zamba2": ["0_mixer_out", "1_mixer_out", "2_mixer_out", "3_mixer_out"],
+            # Layer 2's temporal block is local attention.
+            "recurrent_gemma": [
+                "0_mixer_out",
+                "0_mlp_out",
+                "1_mixer_out",
+                "1_mlp_out",
+                "2_attn_out",
+                "2_mlp_out",
+                "3_mixer_out",
+                "3_mlp_out",
+            ],
         }[name]
-        assert labels[1:] == expected if name == "nemotron_h" else set(expected) <= set(labels)
+        if name in ("nemotron_h", "zamba2", "recurrent_gemma"):
+            assert labels[1:] == expected
+        else:
+            assert set(expected) <= set(labels)
         if name in ("mamba2", "mamba2_bias"):
             assert not any(label.endswith("_mlp_out") for label in labels)
 
@@ -275,9 +346,9 @@ class TestDecomposeResid:
 
     def test_mlp_input_sums_to_resid_mid(self, bridge_and_cache):
         name, bridge, cache = bridge_and_cache
-        if name != "qwen3_5":
-            pytest.skip("only Qwen3.5 blocks have a separate MLP input")
-        for layer in (0, 3):
+        if name not in ("qwen3_5", "recurrent_gemma"):
+            pytest.skip("only Qwen3.5 and RecurrentGemma blocks have a separate MLP input")
+        for layer in (0, 2, 3):
             comps = cache.decompose_resid(layer=layer, mlp_input=True)
             torch.testing.assert_close(
                 comps.sum(0), cache[f"blocks.{layer}.hook_resid_mid"], atol=ATOL, rtol=0
@@ -347,3 +418,33 @@ class TestFullResidDecomposition:
         final = _final_resid(bridge, cache)
         expected = cache.apply_ln_to_stack(final[None], bridge.cfg.n_layers)[0] @ directions
         torch.testing.assert_close(stack.sum(0), expected, atol=1e-4, rtol=0)
+
+
+def test_zamba2_hybrid_layers_write_only_their_mamba_output():
+    bridge = _zamba2()
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(TOKENS)
+    for layer in range(bridge.cfg.n_layers):
+        write = cache[f"blocks.{layer}.hook_resid_post"] - cache[f"blocks.{layer}.hook_resid_pre"]
+        torch.testing.assert_close(
+            write, cache[f"blocks.{layer}.mixer.hook_out"], atol=ATOL, rtol=0
+        )
+    # On a hybrid layer the norm reads the residual plus the shared transformer's output.
+    assert not torch.allclose(cache["blocks.1.norm.hook_in"], cache["blocks.1.hook_resid_pre"])
+
+
+def test_recurrent_gemma_hook_embed_is_the_scaled_embedding():
+    """HF scales the embedding by its bfloat16 normalizer after embed_tokens."""
+    bridge = _recurrent_gemma()
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(TOKENS)
+    torch.testing.assert_close(
+        cache["hook_embed"], cache["blocks.0.hook_resid_pre"], atol=0, rtol=0
+    )
+    for layer in range(bridge.cfg.n_layers):
+        resid_mid = (
+            cache[f"blocks.{layer}.hook_resid_pre"] + cache[f"blocks.{layer}.hook_mixer_out"]
+        )
+        torch.testing.assert_close(
+            resid_mid, cache[f"blocks.{layer}.hook_resid_mid"], atol=ATOL, rtol=0
+        )

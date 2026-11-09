@@ -7,8 +7,9 @@ LFM2. These tests pin the architecture-specific quirks:
 - Gemma-family numerics: RMSNorm ``(1.0 + weight)`` offset, final-logit soft cap.
 - Gated MLP, RMSNorm, ``final_rms``.
 - The heterogeneous ``block_types`` pattern is exposed as ``layers_block_type``.
-- Whole-layer block bridge advertising only residual-stream hooks (no attn/MLP
-  substructure, since recurrent layers have none).
+- Every layer bridges its two pre-norms, its temporal block (RG-LRU or local
+  attention) as a passthrough ``mixer``, and its gated MLP.
+- ``hook_embed`` is scaled by HF's bfloat16 ``normalizer``.
 """
 
 import pytest
@@ -17,8 +18,13 @@ from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
+    GatedMLPBridge,
+    LinearBridge,
     RMSNormalizationBridge,
     UnembeddingBridge,
+)
+from transformer_lens.model_bridge.generalized_components.base import (
+    GeneralizedComponent,
 )
 from transformer_lens.model_bridge.supported_architectures.recurrent_gemma import (
     RecurrentGemmaArchitectureAdapter,
@@ -67,6 +73,24 @@ class TestRecurrentGemmaAdapterConfig:
         assert adapter.cfg.attn_only is False
         assert adapter.cfg.positional_embedding_type == "rotary"
 
+    def test_d_mlp_is_half_the_intermediate_size(self) -> None:
+        # HF's RecurrentGemmaMlp projects to intermediate_size // 2.
+        bridge_cfg = make_bridge_cfg(
+            "RecurrentGemmaForCausalLM",
+            d_model=64,
+            d_head=16,
+            n_layers=3,
+            n_ctx=128,
+            n_heads=4,
+            d_vocab=256,
+            d_mlp=512,
+        )
+        bridge_cfg.layers_block_type = ["recurrent", "recurrent", "attention"]
+        bridge_cfg.intermediate_size = 512
+        assert RecurrentGemmaArchitectureAdapter(bridge_cfg).cfg.d_mlp == 256
+        # Idempotent when the adapter is built again on the same config.
+        assert RecurrentGemmaArchitectureAdapter(bridge_cfg).cfg.d_mlp == 256
+
     def test_final_logit_soft_cap(self, adapter: RecurrentGemmaArchitectureAdapter) -> None:
         assert adapter.cfg.output_logits_soft_cap == 30.0
 
@@ -110,15 +134,66 @@ class TestRecurrentGemmaComponentMapping:
         assert mapping["ln_final"].name == "model.final_norm"
         assert mapping["unembed"].name == "lm_head"
 
-    def test_blocks_only_advertise_supported_residual_aliases(
+    def test_blocks_advertise_mixer_and_mlp_aliases_but_no_attention(
         self, adapter: RecurrentGemmaArchitectureAdapter
     ) -> None:
         blocks = adapter.component_mapping["blocks"]
         assert blocks.hook_aliases == {
             "hook_resid_pre": "hook_in",
+            "hook_resid_mid": "ln2.hook_in",
             "hook_resid_post": "hook_out",
+            "hook_mixer_in": "mixer.hook_in",
+            "hook_mixer_out": "mixer.hook_out",
+            "hook_mlp_out": "mlp.hook_out",
         }
-        assert blocks.submodules == {}
+
+    def test_block_submodules(self, adapter: RecurrentGemmaArchitectureAdapter) -> None:
+        submodules = adapter.component_mapping["blocks"].submodules
+        assert set(submodules) == {"ln1", "mixer", "ln2", "mlp"}
+        assert isinstance(submodules["ln1"], RMSNormalizationBridge)
+        assert submodules["ln1"].name == "temporal_pre_norm"
+        # The temporal block is RG-LRU or local attention depending on the layer.
+        assert type(submodules["mixer"]) is GeneralizedComponent
+        assert submodules["mixer"].name == "temporal_block"
+        assert isinstance(submodules["ln2"], RMSNormalizationBridge)
+        assert submodules["ln2"].name == "channel_pre_norm"
+        mlp = submodules["mlp"]
+        assert isinstance(mlp, GatedMLPBridge)
+        assert mlp.name == "mlp_block"
+        assert {k: v.name for k, v in mlp.submodules.items()} == {
+            "gate": "gate_proj",
+            "in": "up_proj",
+            "out": "down_proj",
+        }
+        assert all(isinstance(v, LinearBridge) for v in mlp.submodules.values())
+
+    @pytest.mark.parametrize("d_model, scale", [(64, 8.0), (2560, 50.5), (4096, 64.0)])
+    def test_embedding_scale_is_bfloat16_sqrt_d_model(self, d_model: int, scale: float) -> None:
+        bridge_cfg = make_bridge_cfg(
+            "RecurrentGemmaForCausalLM",
+            d_model=d_model,
+            d_head=16,
+            n_layers=3,
+            n_ctx=128,
+            n_heads=4,
+            d_vocab=256,
+            d_mlp=128,
+        )
+        bridge_cfg.layers_block_type = ["recurrent", "recurrent", "attention"]
+        embed = RecurrentGemmaArchitectureAdapter(bridge_cfg).component_mapping["embed"]
+        assert embed._output_contribution_scale == scale
+
+    def test_prepare_model_reads_the_normalizer_buffer(self, cfg: TransformerBridgeConfig) -> None:
+        from types import SimpleNamespace
+
+        import torch
+
+        adapter = RecurrentGemmaArchitectureAdapter(cfg)
+        hf_model = SimpleNamespace(
+            model=SimpleNamespace(normalizer=torch.tensor(7.75)), config=SimpleNamespace()
+        )
+        adapter.prepare_model(hf_model)
+        assert adapter.component_mapping["embed"]._output_contribution_scale == 7.75
 
 
 class TestRecurrentGemmaFactoryRegistration:

@@ -28,16 +28,21 @@ Key adapter decisions:
 - For Mamba layers: ``norm`` (-> ``.input_layernorm``) and ``mixer``
   (-> ``.mamba``) are declared as submodules and expose inner hooks
   (in_proj, conv1d, inner_norm, out_proj).
-- For Hybrid layers: ``norm`` and ``mixer`` are marked ``optional=True`` so
-  component_setup skips them gracefully (Hybrid layers have no top-level
-  ``.input_layernorm`` or ``.mamba``). Block-level ``hook_in``/``hook_out``
-  still fire on every layer.
+- For Hybrid layers: ``norm`` and ``mixer`` point at the wrapped Mamba-2
+  decoder layer (``.mamba_decoder.input_layernorm`` / ``.mamba_decoder.mamba``).
+  The shared transformer's output (after the per-layer ``.linear``) is added to
+  the Mamba-2 input only, not to the residual stream, so the Mamba-2 output is
+  the only residual write of every layer: ``resid_post = resid_pre +
+  mixer.hook_out``. On hybrid layers ``norm.hook_in`` is ``resid_pre`` plus the
+  shared transformer's output.
 - ``applicable_phases = [1, 2, 3, 4]``: P1 is exact vs raw HF (pure
   passthrough); P2/P3 run hook/cache self-checks and HF equivalence; P4 exercises
   ``past_key_values`` cache threading across Mamba-2 and attention layers.
 """
 
 from typing import Any
+
+import torch.nn as nn
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -64,6 +69,25 @@ def _make_optional(component: "GeneralizedComponent") -> "GeneralizedComponent":
     """
     component.optional = True
     return component
+
+
+class Zamba2BlockBridge(SSMBlockBridge):
+    """Zamba2 layer: maps ``norm`` / ``mixer`` into a hybrid layer's Mamba-2 decoder.
+
+    ``Zamba2HybridLayer`` wraps a ``Zamba2MambaDecoderLayer`` as ``.mamba_decoder``
+    and adds the shared transformer's output to its input. The Mamba-2 mixer
+    there is the hybrid layer's only residual write, as on the pure Mamba layers.
+    """
+
+    def set_original_component(self, original_component: "nn.Module") -> None:
+        super().set_original_component(original_component)
+        if hasattr(original_component, "mamba_decoder"):
+            for slot, path in (
+                ("norm", "mamba_decoder.input_layernorm"),
+                ("mixer", "mamba_decoder.mamba"),
+            ):
+                if slot in self.submodules:
+                    self.submodules[slot].name = path
 
 
 class Zamba2ArchitectureAdapter(ArchitectureAdapter):
@@ -131,16 +155,16 @@ class Zamba2ArchitectureAdapter(ArchitectureAdapter):
 
         self.component_mapping = {
             "embed": EmbeddingBridge(name="model.embed_tokens"),
-            "blocks": SSMBlockBridge(
+            "blocks": Zamba2BlockBridge(
                 name="model.layers",
                 submodules={
-                    # Pre-norm: present on Zamba2MambaDecoderLayer (.input_layernorm),
-                    # absent on Zamba2HybridLayer (no top-level pre-norm) -> optional.
+                    # Pre-norm: .input_layernorm on Zamba2MambaDecoderLayer;
+                    # Zamba2BlockBridge redirects it into a hybrid layer's .mamba_decoder.
                     "norm": _make_optional(
                         RMSNormalizationBridge(name="input_layernorm", config=self.cfg)
                     ),
-                    # Mamba-2 mixer: present on Zamba2MambaDecoderLayer (.mamba),
-                    # absent at the top level of Zamba2HybridLayer -> optional.
+                    # Mamba-2 mixer: .mamba on Zamba2MambaDecoderLayer, .mamba_decoder.mamba
+                    # on Zamba2HybridLayer (redirected by Zamba2BlockBridge).
                     "mixer": _make_optional(
                         SSM2MixerBridge(
                             name="mamba",

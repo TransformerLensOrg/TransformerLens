@@ -9,7 +9,8 @@ Verifies forward-pass and generation parity against Zyphra/Zamba2-1.2B:
 
 Zamba2 has two layer types, surfaced canonically in ``cfg.layers_block_type``:
   - ``"linear_attention"`` — pure Mamba-2 SSM (HF ``"mamba"``)
-  - ``"hybrid"`` — Mamba-2 + shared global-attention (Zamba2HybridLayer)
+  - ``"hybrid"`` — Mamba-2 + shared global-attention (Zamba2HybridLayer); its
+    ``.mixer`` / ``.norm`` are the wrapped Mamba-2 decoder's
 
 Run with GPU acceleration:
     CUDA_VISIBLE_DEVICES=0 pytest tests/integration/model_bridge/test_zamba2_adapter.py -v -s
@@ -102,15 +103,15 @@ class TestZamba2BridgeCreation:
         first_mamba = next(i for i, t in enumerate(lbt) if t == "linear_attention")
         assert isinstance(zamba2_bridge.blocks[first_mamba].mixer, SSM2MixerBridge)
 
-    def test_hybrid_layers_have_no_mixer(self, zamba2_bridge: TransformerBridge) -> None:
-        """Hybrid layers have no top-level .mamba; .mixer should be absent or None."""
+    def test_hybrid_layers_wrap_their_mamba_decoder(self, zamba2_bridge: TransformerBridge) -> None:
+        """Hybrid layers expose the Mamba-2 mixer of their wrapped .mamba_decoder as .mixer."""
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
         first_hybrid = next(i for i, t in enumerate(lbt) if t == "hybrid")
-        # The optional=True submodule should not be set up by component_setup
-        mixer = getattr(zamba2_bridge.blocks[first_hybrid], "mixer", None)
-        assert mixer is None or getattr(
-            mixer, "optional", False
-        ), "Hybrid layer should not have a wired .mixer (no top-level .mamba attribute)"
+        block = zamba2_bridge.blocks[first_hybrid]
+        assert isinstance(block.mixer, SSM2MixerBridge)
+        hf_layer = block.original_component
+        assert hf_layer.mamba_decoder.mamba is block.mixer
+        assert hf_layer.mamba_decoder.input_layernorm is block.norm
 
     def test_layers_block_type_populated(self, zamba2_bridge: TransformerBridge) -> None:
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
@@ -279,16 +280,21 @@ class TestZamba2HookCoverage:
                 assert key_in in cache, f"Missing {key_in}"
                 assert key_out in cache, f"Missing {key_out}"
 
-    def test_hybrid_layers_no_mixer_hooks(self, cache, zamba2_bridge: TransformerBridge) -> None:
-        """Hybrid layers have no top-level .mamba, so no mixer submodule hooks."""
+    def test_hybrid_layers_write_only_their_mixer_output(
+        self, cache, zamba2_bridge: TransformerBridge
+    ) -> None:
+        """The shared transformer feeds the Mamba-2 input only; the mixer is the residual write."""
         lbt = getattr(zamba2_bridge.cfg, "layers_block_type", [])
         hybrid_indices = [i for i, t in enumerate(lbt) if t == "hybrid"]
         assert hybrid_indices, "No hybrid layers found in layers_block_type"
         for i in hybrid_indices[:3]:
-            # mixer hooks must not appear for hybrid layers
-            assert (
-                f"blocks.{i}.mixer.in_proj.hook_in" not in cache
-            ), f"Unexpected mixer hook on hybrid layer {i}"
+            assert f"blocks.{i}.mixer.in_proj.hook_in" in cache
+            resid_post = cache[f"blocks.{i}.hook_resid_post"].float()
+            write = resid_post - cache[f"blocks.{i}.hook_resid_pre"].float()
+            err = (write - cache[f"blocks.{i}.mixer.hook_out"].float()).abs().max()
+            # bf16 on GPU: the residual add rounds at the scale of the residual stream.
+            tol = 1e-5 if _dtype() == torch.float32 else 1e-2
+            assert err <= tol * resid_post.abs().max(), f"layer {i}: {err}"
 
     def test_no_transformer_specific_hooks(self, cache) -> None:
         """SSMBlockBridge must not inject transformer-shaped hook names."""
