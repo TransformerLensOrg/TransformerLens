@@ -441,11 +441,6 @@ class JointQKVAttentionBridge(AttentionBridge):
         Returns:
             Processed output with hook_out applied
         """
-        attn_pattern = None
-        if isinstance(output, tuple) and len(output) >= 2:
-            attn_pattern = output[1]
-        if attn_pattern is not None:
-            self._pattern = attn_pattern
         if isinstance(output, tuple) and len(output) > 0 and isinstance(output[0], torch.Tensor):
             processed_output = list(output)
             processed_output[0] = self.hook_hidden_states(output[0])
