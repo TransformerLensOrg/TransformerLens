@@ -3023,17 +3023,24 @@ def test_faithfulness_restores_hook_flags_when_it_raises() -> None:
 def test_faithfulness_recovery_is_graded_not_binary() -> None:
     """A partial circuit lands strictly between the corrupt and clean metrics.
 
-    Only edges into the readout position move this metric; keeping half of them recovers part.
+    Dropping every edge out of layer 0's MLP at the readout position cuts that writer's
+    paths to the metric and keeps all others, so this toy recovers about 0.47. A subset
+    with no complete path into ``logits`` would recover exactly 0, leaving the sign to rounding.
     """
     model, clean, corrupt, metric = _faithfulness_toy()
     edges = _graph_edges(model, corrupt, metric)
-    readout = [edge for edge in edges if edge[1].position == SEQ_LEN - 1]
-    assert readout
-    partial = readout[: len(readout) // 2]
+    partial = [
+        edge
+        for edge in edges
+        if not (
+            edge[0].kind == "mlp_out" and edge[0].layer == 0 and edge[0].position == SEQ_LEN - 1
+        )
+    ]
+    assert len(partial) < len(edges)
 
     report = faithfulness(model, clean, corrupt, metric, partial)
 
-    assert 0.0 < report.recovered < 1.0
+    assert 0.1 < report.recovered < 0.9
     assert report.circuit_size == len(partial)
 
 
