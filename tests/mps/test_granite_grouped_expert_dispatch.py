@@ -210,13 +210,17 @@ def test_corrected_experts_preserve_input_route_and_parameter_gradients(expert_c
     )
     reference = copy.deepcopy(block)
     block.to("mps")
+    # Same device, same kernels: the guard must be invisible to autograd, so the bare HF
+    # module is the gradient oracle and the match is exact. CPU fp32 only checks the forward.
+    bare = copy.deepcopy(block)
     bridge = MoEBridge("moe")
     bridge.set_original_component(block)
     data = torch.randn(10, 64, generator=torch.Generator().manual_seed(1))
-    cpu_input = data.clone().requires_grad_()
     mps_input = data.to("mps").requires_grad_()
-    cpu_routes = torch.linspace(0.2, 1.0, 20).reshape(10, 2).requires_grad_()
-    mps_routes = torch.linspace(0.2, 1.0, 20, device="mps").reshape(10, 2).requires_grad_()
+    bare_input = data.to("mps").requires_grad_()
+    routes = torch.linspace(0.2, 1.0, 20, device="mps").reshape(10, 2)
+    mps_routes = routes.clone().requires_grad_()
+    bare_routes = routes.clone().requires_grad_()
     calls = []
 
     def observe(module, args, output):
@@ -225,7 +229,8 @@ def test_corrected_experts_preserve_input_route_and_parameter_gradients(expert_c
 
     handle = block.experts.register_forward_hook(observe)
     try:
-        expected = _oracle(reference, cpu_input, cpu_routes) * 2
+        with torch.no_grad():
+            expected = _oracle(reference, data, routes.cpu()) * 2
         actual = bridge(mps_input, top_k_weights=mps_routes)
     finally:
         handle.remove()
@@ -235,15 +240,15 @@ def test_corrected_experts_preserve_input_route_and_parameter_gradients(expert_c
     assert calls[0][2] is mps_routes
     assert actual.shape == mps_input.shape
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-4, atol=1e-6)
-    cpu_targets = (cpu_input, cpu_routes, *reference.experts.parameters())
+    bare_output = bare(bare_input, top_k_weights=bare_routes) * 2
     mps_targets = (mps_input, mps_routes, *block.experts.parameters())
-    cpu_grads = torch.autograd.grad(expected.square().sum(), cpu_targets)
+    bare_targets = (bare_input, bare_routes, *bare.experts.parameters())
     mps_grads = torch.autograd.grad(actual.square().sum(), mps_targets)
-    for measured, oracle in zip(mps_grads, cpu_grads):
+    bare_grads = torch.autograd.grad(bare_output.square().sum(), bare_targets)
+    for measured, oracle in zip(mps_grads, bare_grads):
         assert measured.device.type == "mps"
-        torch.testing.assert_close(measured.cpu(), oracle, rtol=1e-4, atol=1e-6)
-    assert cpu_grads[1].abs().max() > 0
-    assert all(gradient.abs().max() > 0 for gradient in cpu_grads[2:])
+        torch.testing.assert_close(measured, oracle, rtol=0, atol=0)
+    assert all(gradient.abs().max() > 0 for gradient in bare_grads)
     torch.testing.assert_close(block.indices.cpu(), reference.indices, rtol=0, atol=0)
     for parameter, saved in zip(block.experts.parameters(), reference.experts.parameters()):
         torch.testing.assert_close(parameter.cpu(), saved, rtol=0, atol=0)
