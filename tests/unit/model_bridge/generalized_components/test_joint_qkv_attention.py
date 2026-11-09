@@ -565,3 +565,41 @@ class TestJointQKVAttention:
 
         assert list(clone_cache) == ["blocks.0.attn.hook_result"]
         assert list(original_cache) == ["blocks.0.attn.hook_q_input"]
+
+    def test_forward_leaves_no_activations_on_the_bridge(self):
+        """A forward pass must not leave the attention pattern on the module.
+
+        A stored pattern keeps the whole forward graph alive after the caller drops the
+        output, and deepcopy refuses non-leaf tensors, so a model could no longer be
+        cloned for paired ablations once a grad-enabled forward had run.
+        """
+        from transformers import GPT2Config, GPT2LMHeadModel
+
+        from transformer_lens.model_bridge.sources._bridge_builder import (
+            build_bridge_from_module,
+        )
+
+        hf_config = GPT2Config(
+            n_layer=2, n_head=2, n_embd=32, n_positions=8, n_ctx=8, vocab_size=16
+        )
+        bridge = build_bridge_from_module(
+            GPT2LMHeadModel(hf_config).eval(),
+            "GPT2LMHeadModel",
+            hf_config=hf_config,
+            tokenizer=None,
+            device="cpu",
+        )
+
+        def tensor_attributes():
+            return {
+                (name, attr)
+                for name, module in bridge.named_modules()
+                for attr, value in vars(module).items()
+                if isinstance(value, torch.Tensor)
+            }
+
+        before = tensor_attributes()
+        bridge(torch.randint(0, bridge.cfg.d_vocab, (2, 4)))
+
+        assert tensor_attributes() - before == set()
+        copy.deepcopy(bridge)
