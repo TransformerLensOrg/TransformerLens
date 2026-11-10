@@ -163,3 +163,6 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
         """Match Falcon-H1's post-unembedding multiplier."""
         multiplier = float(getattr(self.cfg, "lm_head_multiplier", 1.0))
         return super().apply_output_logits_transform(logits * multiplier)
+
+    def output_logits_scale(self) -> float:
+        return float(getattr(self.cfg, "lm_head_multiplier", 1.0))

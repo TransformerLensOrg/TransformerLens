@@ -209,8 +209,10 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         head output already carries it, so applying cfg.logit_scale again would
         double-scale every reader of this transform.
         """
-        scale: float = 1.0 if self._logit_scale_already_folded else getattr(self.cfg, "logit_scale")
-        return super().apply_output_logits_transform(logits * scale)
+        return super().apply_output_logits_transform(logits * self.output_logits_scale())
+
+    def output_logits_scale(self) -> float:
+        return 1.0 if self._logit_scale_already_folded else getattr(self.cfg, "logit_scale")
 
 
 class _Cohere2AttentionBridge(PositionEmbeddingsAttentionBridge):

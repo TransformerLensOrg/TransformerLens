@@ -300,6 +300,16 @@ class ArchitectureAdapter:
         """
         return apply_softcap(logits, getattr(self.cfg, "output_logits_soft_cap", None))
 
+    def output_logits_scale(self) -> float:
+        """Return the constant factor the output transform applies before any soft cap.
+
+        Linear readouts such as ``ActivationCache.logit_attrs`` multiply ``W_U``
+        directions by it so their attributions add up to the model's logits.
+        Adapters whose ``apply_output_logits_transform`` scales the logits
+        override this to return the same factor.
+        """
+        return 1.0
+
     def validate_output_logits_transform(self) -> None:
         """Validate that the adapter can reproduce its post-unembedding path."""
 

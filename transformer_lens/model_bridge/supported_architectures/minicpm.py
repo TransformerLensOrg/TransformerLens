@@ -123,6 +123,9 @@ class MiniCPMArchitectureAdapter(ArchitectureAdapter):
         divisor = self.cfg.d_model / float(getattr(self.cfg, "dim_model_base", 1.0))
         return super().apply_output_logits_transform(logits / divisor)
 
+    def output_logits_scale(self) -> float:
+        return float(getattr(self.cfg, "dim_model_base", 1.0)) / self.cfg.d_model
+
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch the remote code's transformers-v5 incompatibilities before loading."""
         super().prepare_loading(model_name, model_kwargs)

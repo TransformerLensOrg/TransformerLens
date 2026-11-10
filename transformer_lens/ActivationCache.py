@@ -789,6 +789,14 @@ class ActivationCache:
                 incorrect_tokens
             )
 
+        # W_U omits any constant factor the architecture applies to the unembedding
+        # output (e.g. Granite's logits_scaling); include it so attributions sum to logits.
+        output_logits_scale = getattr(
+            getattr(self.model, "adapter", None), "output_logits_scale", None
+        )
+        if callable(output_logits_scale):
+            logit_directions = logit_directions * output_logits_scale()
+
         scaled_residual_stack = self.apply_ln_to_stack(
             residual_stack,
             layer=-1,

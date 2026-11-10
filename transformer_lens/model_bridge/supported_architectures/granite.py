@@ -116,3 +116,6 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
         """Match Granite's ``lm_head / logits_scaling`` output path."""
         scaling = float(getattr(self.cfg, "logits_scaling", 1.0))
         return super().apply_output_logits_transform(logits / scaling)
+
+    def output_logits_scale(self) -> float:
+        return 1.0 / float(getattr(self.cfg, "logits_scaling", 1.0))
