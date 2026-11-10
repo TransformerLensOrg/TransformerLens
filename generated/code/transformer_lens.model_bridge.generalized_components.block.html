@@ -484,6 +484,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -620,7 +621,9 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -743,6 +746,11 @@ itself. Implied for post-norm-only blocks (ln2_post without ln2).</p></li>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.generalized_components.block.BlockBridge.mlp_input_includes_attn">
+<span class="sig-name descname"><span class="pre">mlp_input_includes_attn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.mlp_input_includes_attn" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.generalized_components.block.BlockBridge.real_components">
 <span class="sig-name descname"><span class="pre">real_components</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.real_components" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -807,6 +815,21 @@ output = resid_pre + attn_out + mlp_out — no distinct post-attention
 residual exists. Matches legacy HookedTransformer which omits hook_resid_mid
 when <code class="docutils literal notranslate"><span class="pre">cfg.parallel_attn_mlp=True</span></code>. Type-level distinction means a reader
 of the adapter sees <code class="docutils literal notranslate"><span class="pre">ParallelBlockBridge</span></code> and knows the hook is absent.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.mlp_input_includes_attn">
+<span class="sig-name descname"><span class="pre">mlp_input_includes_attn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.mlp_input_includes_attn" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.real_components">
+<span class="sig-name descname"><span class="pre">real_components</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.real_components" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.training">
+<span class="sig-name descname"><span class="pre">training</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.training" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -911,6 +934,7 @@ intervention trap, so the name must be absent instead.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.hook_aliases"><code class="docutils literal notranslate"><span class="pre">BlockBridge.hook_aliases</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.hook_out_is_single_residual_stream"><code class="docutils literal notranslate"><span class="pre">BlockBridge.hook_out_is_single_residual_stream</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.is_list_item"><code class="docutils literal notranslate"><span class="pre">BlockBridge.is_list_item</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.mlp_input_includes_attn"><code class="docutils literal notranslate"><span class="pre">BlockBridge.mlp_input_includes_attn</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.real_components"><code class="docutils literal notranslate"><span class="pre">BlockBridge.real_components</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.BlockBridge.training"><code class="docutils literal notranslate"><span class="pre">BlockBridge.training</span></code></a></li>
 </ul>
@@ -922,7 +946,12 @@ intervention trap, so the name must be absent instead.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.MLABlockBridge"><code class="docutils literal notranslate"><span class="pre">MLABlockBridge</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge"><code class="docutils literal notranslate"><span class="pre">ParallelBlockBridge</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge"><code class="docutils literal notranslate"><span class="pre">ParallelBlockBridge</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.mlp_input_includes_attn"><code class="docutils literal notranslate"><span class="pre">ParallelBlockBridge.mlp_input_includes_attn</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.real_components"><code class="docutils literal notranslate"><span class="pre">ParallelBlockBridge.real_components</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.training"><code class="docutils literal notranslate"><span class="pre">ParallelBlockBridge.training</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge"><code class="docutils literal notranslate"><span class="pre">ScaledResidualBlockBridge</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge.__init__"><code class="docutils literal notranslate"><span class="pre">ScaledResidualBlockBridge.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.generalized_components.block.ScaledResidualBlockBridge.set_original_component"><code class="docutils literal notranslate"><span class="pre">ScaledResidualBlockBridge.set_original_component()</span></code></a></li>
@@ -944,5 +973,6 @@ intervention trap, so the name must be absent instead.</p>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>

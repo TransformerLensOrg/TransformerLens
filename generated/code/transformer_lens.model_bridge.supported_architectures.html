@@ -484,6 +484,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -620,7 +621,9 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -756,6 +759,7 @@
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.n_layers_from"><code class="docutils literal notranslate"><span class="pre">BartFamilyArchitectureAdapter.n_layers_from</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.require_symmetric_layers"><code class="docutils literal notranslate"><span class="pre">BartFamilyArchitectureAdapter.require_symmetric_layers</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.setup_hook_compatibility"><code class="docutils literal notranslate"><span class="pre">BartFamilyArchitectureAdapter.setup_hook_compatibility()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.unembed_name"><code class="docutils literal notranslate"><span class="pre">BartFamilyArchitectureAdapter.unembed_name</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1951,6 +1955,24 @@
 <li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html#transformer_lens.model_bridge.supported_architectures.wav2vec2.Wav2Vec2ArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">Wav2Vec2ArchitectureAdapter</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html#transformer_lens.model_bridge.supported_architectures.wav2vec2.Wav2Vec2ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Wav2Vec2ArchitectureAdapter.prepare_model()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.applicable_phases"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.applicable_phases</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.audio_input_name"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.audio_input_name</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.component_mapping</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.force_scale_embedding"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.force_scale_embedding</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.has_final_stack_norm"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.has_final_stack_norm</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.n_layers_from"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.n_layers_from</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.require_symmetric_layers"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.require_symmetric_layers</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.residual_layout"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.residual_layout()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.unembed_name"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.unembed_name</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.uses_split_attention</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.weight_processing_conversions"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.weight_processing_conversions</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -5217,6 +5239,91 @@ quantizer head has no interpretability surface.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.supported_architectures.</span></span><span class="sig-name descname"><span class="pre">WhisperArchitectureAdapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter" title="transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">BartFamilyArchitectureAdapter</span></code></a></p>
+<p>Architecture adapter for WhisperForConditionalGeneration models.</p>
+<p>Inputs: <code class="docutils literal notranslate"><span class="pre">bridge(input_features,</span> <span class="pre">decoder_input=decoder_ids)</span></code>, where
+<code class="docutils literal notranslate"><span class="pre">input_features</span></code> is the log-mel spectrogram <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">n_mels,</span> <span class="pre">2</span> <span class="pre">*</span> <span class="pre">n_frames]</span></code>
+from <code class="docutils literal notranslate"><span class="pre">bridge.processor</span></code> and <code class="docutils literal notranslate"><span class="pre">decoder_ids</span></code> are decoder token ids (e.g. the
+start-of-transcript prompt), one row per clip or one row shared by all clips.
+<code class="docutils literal notranslate"><span class="pre">bridge.to_tokens(text)</span></code> builds that prompt from the tokenizer’s prefix tokens
+(set the language and task with <code class="docutils literal notranslate"><span class="pre">bridge.tokenizer.set_prefix_tokens</span></code>). Returns
+decoder logits under teacher forcing.</p>
+<p>Transcription: <code class="docutils literal notranslate"><span class="pre">bridge.generate(input_features,</span> <span class="pre">return_type=&quot;str&quot;)</span></code> decodes from
+the same prefix (or <code class="docutils literal notranslate"><span class="pre">decoder_input</span></code>), applying the checkpoint’s
+<code class="docutils literal notranslate"><span class="pre">suppress_tokens</span></code> and <code class="docutils literal notranslate"><span class="pre">begin_suppress_tokens</span></code> as HF’s generate does.</p>
+<p>Encoder front end (channel-first, so its hooks declare position on dim 2):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">conv1</span></code> / <code class="docutils literal notranslate"><span class="pre">conv2</span></code>: the two <code class="docutils literal notranslate"><span class="pre">nn.Conv1d</span></code> layers. HF applies GELU outside
+the modules, so <code class="docutils literal notranslate"><span class="pre">hook_out</span></code> is pre-activation; <code class="docutils literal notranslate"><span class="pre">conv2</span></code> halves the frames.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pos_embed</span></code>: the fixed sinusoidal table, read whole as <code class="docutils literal notranslate"><span class="pre">[n_frames,</span> <span class="pre">d_model]</span></code>
+(no batch dim) and added to the transposed <code class="docutils literal notranslate"><span class="pre">conv2</span></code> output.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">encoder_blocks.{i}.hook_out</span></code> is <code class="docutils literal notranslate"><span class="pre">[batch,</span> <span class="pre">n_frames,</span> <span class="pre">d_model]</span></code>: 1500 frames,
+one per 20 ms of the 30 s window, on every released checkpoint.</p>
+<p>Attention biases: <code class="docutils literal notranslate"><span class="pre">q_proj</span></code>, <code class="docutils literal notranslate"><span class="pre">v_proj</span></code> and <code class="docutils literal notranslate"><span class="pre">out_proj</span></code> carry a bias but
+<code class="docutils literal notranslate"><span class="pre">k_proj</span></code> does not (HF builds it with <code class="docutils literal notranslate"><span class="pre">bias=False</span></code>), so <code class="docutils literal notranslate"><span class="pre">attn.k.bias</span></code> is
+<code class="docutils literal notranslate"><span class="pre">None</span></code> on every self- and cross-attention.</p>
+<p>Stacks may be asymmetric (large-v3-turbo: 32 encoder / 4 decoder layers;
+distil-whisper: 2 decoder layers); <code class="docutils literal notranslate"><span class="pre">n_layers</span></code> follows the decoder, as for
+Blenderbot.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.__init__" title="Link to this definition">¶</a></dt>
+<dd><p>Set the audio seq2seq flags on top of the BART-family setup.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.applicable_phases">
+<span class="sig-name descname"><span class="pre">applicable_phases</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[1]</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.applicable_phases" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.audio_input_name">
+<span class="sig-name descname"><span class="pre">audio_input_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'input_features'</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.audio_input_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.force_scale_embedding">
+<span class="sig-name descname"><span class="pre">force_scale_embedding</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.force_scale_embedding" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.has_final_stack_norm">
+<span class="sig-name descname"><span class="pre">has_final_stack_norm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.has_final_stack_norm" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.n_layers_from">
+<span class="sig-name descname"><span class="pre">n_layers_from</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'decoder'</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.n_layers_from" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.require_symmetric_layers">
+<span class="sig-name descname"><span class="pre">require_symmetric_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.require_symmetric_layers" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.residual_layout">
+<span class="sig-name descname"><span class="pre">residual_layout</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout" title="transformer_lens.model_bridge.architecture_adapter.ResidualLayout"><span class="pre">ResidualLayout</span></a></span></span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.residual_layout" title="Link to this definition">¶</a></dt>
+<dd><p>Norm readers, residual writers and value/output pairs of both stacks.</p>
+<p>Each block’s norms feed its own sublayers. The encoder’s final norm feeds the
+cross-attention keys and values of every decoder block, and the decoder’s
+final norm feeds the unembedding. Encoder writes are the attention and MLP
+outputs plus the sinusoidal positions; the GELU’d conv output is not linear
+in any weight, so it stays uncentered (centering is exact either way, since
+every read is through a LayerNorm).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.unembed_name">
+<span class="sig-name descname"><span class="pre">unembed_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'proj_out'</span></em><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.unembed_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.supported_architectures.</span></span><span class="sig-name descname"><span class="pre">XGLMArchitectureAdapter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter" title="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchitectureAdapter</span></code></a></p>
@@ -5952,6 +6059,18 @@ Mamba-2 step.</p>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.Wav2Vec2ArchitectureAdapter.prepare_model"><code class="docutils literal notranslate"><span class="pre">Wav2Vec2ArchitectureAdapter.prepare_model()</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.__init__()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.applicable_phases"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.applicable_phases</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.audio_input_name"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.audio_input_name</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.force_scale_embedding"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.force_scale_embedding</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.has_final_stack_norm"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.has_final_stack_norm</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.n_layers_from"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.n_layers_from</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.require_symmetric_layers"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.require_symmetric_layers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.residual_layout"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.residual_layout()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.unembed_name"><code class="docutils literal notranslate"><span class="pre">WhisperArchitectureAdapter.unembed_name</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">XGLMArchitectureAdapter.__init__()</span></code></a></li>
 </ul>
@@ -5979,5 +6098,6 @@ Mamba-2 step.</p>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>

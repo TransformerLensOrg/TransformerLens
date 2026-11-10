@@ -484,6 +484,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -620,7 +621,9 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -726,7 +729,7 @@ something to every logit.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>state_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>torch.Tensor</em><em>]</em>) – State dict of the model.</p></li>
-<li><p><strong>cfg</strong> – Model configuration (used to determine d_vocab for correct centering dimension).</p></li>
+<li><p><strong>cfg</strong> – Model configuration (used to identify the hidden axis for legacy layouts).</p></li>
 <li><p><strong>adapter</strong> – Optional architecture adapter for parameter key translation.</p></li>
 </ul>
 </dd>
@@ -775,6 +778,13 @@ is done in-place. See fold_layer_norm for more details.</p>
 <dd class="field-odd"><p>Dict[str, torch.Tensor]</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.weight_processing.ProcessWeights.center_writing_weights_with_layout">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">center_writing_weights_with_layout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout" title="transformer_lens.model_bridge.architecture_adapter.ResidualLayout"><span class="pre">ResidualLayout</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.weight_processing.ProcessWeights.center_writing_weights_with_layout" title="Link to this definition">¶</a></dt>
+<dd><p>Center every write <code class="docutils literal notranslate"><span class="pre">layout</span></code> lists over d_model. The streams are read only
+through LayerNorms, which remove the mean, so the output is unchanged.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -995,6 +1005,16 @@ to absorb the LN bias contribution, similar to how MLP folding handles missing b
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_with_layout">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fold_layer_norm_with_layout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout" title="transformer_lens.model_bridge.architecture_adapter.ResidualLayout"><span class="pre">ResidualLayout</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_with_layout" title="Link to this definition">¶</a></dt>
+<dd><p>Fold each norm into the linears <code class="docutils literal notranslate"><span class="pre">layout.norm_readers</span></code> lists for it.</p>
+<p>A reader computes <code class="docutils literal notranslate"><span class="pre">W(γ</span> <span class="pre">⊙</span> <span class="pre">x̂</span> <span class="pre">+</span> <span class="pre">β)</span> <span class="pre">+</span> <span class="pre">b</span> <span class="pre">=</span> <span class="pre">(W</span> <span class="pre">diag</span> <span class="pre">γ)</span> <span class="pre">x̂</span> <span class="pre">+</span> <span class="pre">(b</span> <span class="pre">+</span> <span class="pre">Wβ)</span></code>, so γ and β move
+into the reader and the norm keeps only the normalization (γ = 1, β = 0); a
+bias-free reader gets a created bias. For LayerNorm, x̂ has zero mean, so the
+reader’s weights are also centered over their input axis (<code class="docutils literal notranslate"><span class="pre">center_weights</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.weight_processing.ProcessWeights.fold_value_biases">
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fold_value_biases</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adapter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.weight_processing.ProcessWeights.fold_value_biases" title="Link to this definition">¶</a></dt>
 <dd><p>Fold the value biases into the output bias.</p>
@@ -1020,6 +1040,13 @@ sum_head(b_V_head &#64; W_O_head).</p>
 <dd class="field-odd"><p>Dict[str, torch.Tensor]</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.weight_processing.ProcessWeights.fold_value_biases_with_layout">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fold_value_biases_with_layout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout" title="transformer_lens.model_bridge.architecture_adapter.ResidualLayout"><span class="pre">ResidualLayout</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_outputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.weight_processing.ProcessWeights.fold_value_biases_with_layout" title="Link to this definition">¶</a></dt>
+<dd><p>Move each attention’s value bias into its output bias. Attention weights sum
+to 1, so the value bias reaches the output unchanged, as <code class="docutils literal notranslate"><span class="pre">W_O</span> <span class="pre">b_V</span></code>.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1164,6 +1191,7 @@ factorization on this effective matrix, then separate out into final weights and
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.center_unembed"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.center_unembed()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.center_weight_single"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.center_weight_single()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.center_writing_weights"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.center_writing_weights()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.center_writing_weights_with_layout"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.center_writing_weights_with_layout()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.convert_tensor_to_hf_format"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.convert_tensor_to_hf_format()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.convert_tensor_to_tl_format"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.convert_tensor_to_tl_format()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.distribute_weights_to_components"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.distribute_weights_to_components()</span></code></a></li>
@@ -1173,7 +1201,9 @@ factorization on this effective matrix, then separate out into final weights and
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_biases"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.fold_layer_norm_biases()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_weight_single"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.fold_layer_norm_weight_single()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_weights"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.fold_layer_norm_weights()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_with_layout"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.fold_layer_norm_with_layout()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.fold_value_biases"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.fold_value_biases()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.fold_value_biases_with_layout"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.fold_value_biases_with_layout()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.process_weights"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.process_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.weight_processing.ProcessWeights.refactor_factored_attn_matrices"><code class="docutils literal notranslate"><span class="pre">ProcessWeights.refactor_factored_attn_matrices()</span></code></a></li>
 </ul>
@@ -1194,5 +1224,6 @@ factorization on this effective matrix, then separate out into final weights and
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>

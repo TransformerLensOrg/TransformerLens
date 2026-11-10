@@ -484,6 +484,7 @@
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../generated/code/transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -620,7 +621,9 @@
 <li class="toctree-l1"><a class="reference internal" href="interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -866,6 +869,7 @@ applies to gradients as well:</p>
 <li><p><a class="reference internal" href="migrating_to_v3.html"><span class="std std-doc">Migrating to TransformerLens 3</span></a> — porting HookedTransformer hook patterns to TransformerBridge.</p></li>
 <li><p><a class="reference internal" href="../generated/demos/Main_Demo.html"><span class="doc std std-doc">Main Demo</span></a> — end-to-end walkthrough using the hook system.</p></li>
 <li><p><a class="reference internal" href="../generated/demos/SwiGLU_Gate_Sign_Demo.html"><span class="doc std std-doc">SwiGLU Gate-Sign Demo</span></a> — reading a gated MLP’s gate, value and product hooks (<code class="docutils literal notranslate"><span class="pre">mlp.hook_pre</span></code>, <code class="docutils literal notranslate"><span class="pre">mlp.hook_pre_linear</span></code>, <code class="docutils literal notranslate"><span class="pre">mlp.hook_post</span></code>) together to tag sign regimes and remove one with a hook.</p></li>
+<li><p><a class="reference internal" href="../generated/demos/Weight_Edit_Audit_Demo.html"><span class="doc std std-doc">Weight-Edit Audit Demo</span></a> — pairing a read on <code class="docutils literal notranslate"><span class="pre">mlp.hook_post</span></code> with a write on <code class="docutils literal notranslate"><span class="pre">mlp.hook_out</span></code> in the same forward to replay a weight edit as a hook intervention.</p></li>
 <li><p><a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/hook_points.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/hook_points.py</span></code></a>, <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/ActivationCache.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/ActivationCache.py</span></code></a>, <a class="reference external" href="https://github.com/TransformerLensOrg/TransformerLens/blob/main/transformer_lens/patching.py"><code class="docutils literal notranslate"><span class="pre">transformer_lens/patching.py</span></code></a> — source.</p></li>
 </ul>
 </section>
@@ -960,5 +964,6 @@ applies to gradients as well:</p>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>

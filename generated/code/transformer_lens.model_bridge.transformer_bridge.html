@@ -484,6 +484,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -620,7 +621,9 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -839,7 +842,7 @@ compatibility with direct <code class="docutils literal notranslate"><span class
 <span class="sig-name descname"><span class="pre">accumulated_bias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_mlp_biases</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.transformer_bridge.TransformerBridge.accumulated_bias" title="Link to this definition">¶</a></dt>
 <dd><p>Sum of variant + MLP output biases through the residual stream up to <cite>layer</cite>.</p>
 <p>Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
-to include the variant bias of the target layer itself.</p>
+to target <code class="docutils literal notranslate"><span class="pre">layer</span></code>’s MLP input, adding its variant bias unless the block is parallel.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -979,7 +982,8 @@ class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresp
 adapter is selected automatically (e.g., BertForNextSentencePrediction).</p></li>
 <li><p><strong>hf_model</strong> – Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
 models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
-When provided, load_weights is ignored.</p></li>
+When provided, load_weights is ignored, and without <code class="docutils literal notranslate"><span class="pre">device=</span></code> the bridge reads
+<code class="docutils literal notranslate"><span class="pre">cfg.device</span></code> from the model’s weights.</p></li>
 <li><p><strong>device_map</strong> – HuggingFace-style device map (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;balanced&quot;</span></code>, dict, etc.) for
 dispatched inference. Explicit maps may include CPU and disk targets; meta targets
 are still rejected when <code class="docutils literal notranslate"><span class="pre">load_weights=True</span></code> (meta has no real data to offload from,
@@ -1143,7 +1147,10 @@ real frames and 0 for padding.</p></li>
 feed back on the next call for incremental decoding.</p></li>
 <li><p><strong>loss_per_token</strong> – Whether to return loss per token</p></li>
 <li><p><strong>prepend_bos</strong> – Whether to prepend BOS token</p></li>
-<li><p><strong>padding_side</strong> – Which side to pad on</p></li>
+<li><p><strong>padding_side</strong> – Which side to pad on when tokenizing a list of strings. For a
+token tensor, the side it was already padded on: the attention mask is
+then read off the pad token. Pass <code class="docutils literal notranslate"><span class="pre">attention_mask</span></code> instead when the pad
+id also occurs as a real token.</p></li>
 <li><p><strong>labels</strong> – Explicit language-model targets. Encoder-decoder models require
 labels for loss; decoder-only models fall back to input IDs when omitted.</p></li>
 <li><p><strong>past_key_values</strong> – HuggingFace KV cache from a prior <code class="docutils literal notranslate"><span class="pre">use_cache=True</span></code> step
@@ -1158,7 +1165,10 @@ the residual-stream tensor <code class="docutils literal notranslate"><span clas
 output is discarded when block k swaps in the residual) but are excluded
 from <code class="docutils literal notranslate"><span class="pre">run_with_cache</span></code> output. Requires an HF model that accepts
 <code class="docutils literal notranslate"><span class="pre">inputs_embeds</span></code>; only supported on the standard <code class="docutils literal notranslate"><span class="pre">blocks</span></code> stack.</p></li>
-<li><p><strong>stop_at_layer</strong> – Layer to stop forward pass at. Only supported on the
+<li><p><strong>stop_at_layer</strong> – Return the residual stream entering this block instead of the
+model output. <code class="docutils literal notranslate"><span class="pre">n_layers</span></code> returns what leaves the last block, before the
+final norm and unembed, and a value outside <code class="docutils literal notranslate"><span class="pre">[-n_layers,</span> <span class="pre">n_layers]</span></code>
+raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. Only supported on the
 standard <code class="docutils literal notranslate"><span class="pre">blocks</span></code> stack; architectures that register no <code class="docutils literal notranslate"><span class="pre">blocks</span></code>
 (e.g. Raven’s <code class="docutils literal notranslate"><span class="pre">prelude</span></code>/<code class="docutils literal notranslate"><span class="pre">core_block</span></code>/<code class="docutils literal notranslate"><span class="pre">coda</span></code>) raise
 <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> rather than running to completion.</p></li>
@@ -1168,8 +1178,13 @@ The tensor is passed directly to the underlying HuggingFace model.
 Only valid when cfg.is_multimodal is True or cfg.is_visual_model is True.</p></li>
 <li><p><strong>input_values</strong> – Optional audio waveform tensor for audio models (e.g., HuBERT).
 The tensor is passed directly to the underlying HuggingFace model.
-Only valid when cfg.is_audio_model is True.</p></li>
-<li><p><strong>**kwargs</strong> – Additional arguments passed to model</p></li>
+Only valid when cfg.is_audio_model is True. Audio seq2seq models
+(cfg.is_audio_seq2seq, e.g. Whisper) instead take their features as
+<code class="docutils literal notranslate"><span class="pre">input</span></code> and require <code class="docutils literal notranslate"><span class="pre">decoder_input</span></code> (decoder token ids) or <code class="docutils literal notranslate"><span class="pre">labels</span></code>,
+with one row per clip or a single row shared by every clip.</p></li>
+<li><p><strong>**kwargs</strong> – Additional arguments passed to the model. Hook/cache helper
+options belong to run_with_hooks, run_with_cache or hooks, not forward;
+misplaced options and singular fwd_hook/bwd_hook raise TypeError.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1187,7 +1202,13 @@ This implementation is based on HookedTransformer.generate() to ensure consisten
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>input</strong> – Text string, list of strings, or tensor of tokens</p></li>
+<li><p><strong>input</strong> – Text string, list of strings, or tensor of tokens. Audio seq2seq models
+(e.g. Whisper) take the audio features tensor instead and decode from
+<code class="docutils literal notranslate"><span class="pre">decoder_input</span></code> (one row, shared by every clip, or one per clip), which
+defaults to the tokenizer’s prefix tokens. The audio is encoded once per
+call, so encoder hooks fire once and decoder hooks fire every step. The
+default return is the decoder tokens, prompt included, and
+<code class="docutils literal notranslate"><span class="pre">return_type=&quot;str&quot;</span></code> gives the transcripts.</p></li>
 <li><p><strong>max_new_tokens</strong> – Maximum number of tokens to generate</p></li>
 <li><p><strong>stop_at_eos</strong> – If True, stop generating tokens when the model outputs eos_token</p></li>
 <li><p><strong>eos_token_id</strong> – The token ID to use for end of sentence</p></li>
@@ -1214,7 +1235,8 @@ lengths. For batched list inputs, left-padding is forced internally for
 correct generation behavior. Defaults to None (tokenizer default).</p></li>
 <li><p><strong>return_type</strong> – The type of output to return - ‘input’, ‘str’, or ‘tokens’</p></li>
 <li><p><strong>verbose</strong> – Not used in Bridge (kept for API compatibility)</p></li>
-<li><p><strong>output_logits</strong> – If True, return a ModelOutput with sequences and logits tuple</p></li>
+<li><p><strong>output_logits</strong> – If True, return a ModelOutput with sequences and a tuple of raw
+per-step model logits, before decoding constraints or sampling transforms.</p></li>
 <li><p><strong>return_cache</strong> – If True, also return an ActivationCache for the full prompt +
 generated sequence, identical to <code class="docutils literal notranslate"><span class="pre">run_with_cache(output)</span></code> with the
 effective prompt attention mask extended over the generated tokens. The call
@@ -2086,5 +2108,6 @@ reach it.</p>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>

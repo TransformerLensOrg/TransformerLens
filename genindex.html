@@ -482,6 +482,7 @@
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="generated/code/transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -618,7 +619,9 @@
 <li class="toctree-l1"><a class="reference internal" href="content/interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generated/demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="generated/demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -1204,6 +1207,10 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.T5ArchitectureAdapter.__init__">(transformer_lens.model_bridge.supported_architectures.T5ArchitectureAdapter method)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.__init__">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.__init__">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.xglm.html#transformer_lens.model_bridge.supported_architectures.xglm.XGLMArchitectureAdapter.__init__">(transformer_lens.model_bridge.supported_architectures.xglm.XGLMArchitectureAdapter method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter.__init__">(transformer_lens.model_bridge.supported_architectures.XGLMArchitectureAdapter method)</a>
@@ -1562,6 +1569,10 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.ViTArchitectureAdapter.applicable_phases">(transformer_lens.model_bridge.supported_architectures.ViTArchitectureAdapter attribute)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.applicable_phases">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.applicable_phases">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.zamba2.html#transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter.applicable_phases">(transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.Zamba2ArchitectureAdapter.applicable_phases">(transformer_lens.model_bridge.supported_architectures.Zamba2ArchitectureAdapter attribute)</a>
@@ -1757,6 +1768,16 @@
         </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.attribution_patching.html#transformer_lens.tools.analysis.attribution_patching.AttributionResult">AttributionResult (class in transformer_lens.tools.analysis.attribution_patching)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.audio_input_name">audio_input_name (transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.ArchitectureAdapter.audio_input_name">(transformer_lens.model_bridge.ArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.audio_input_name">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.audio_input_name">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.AudioFeatureExtractorBridge">AudioFeatureExtractorBridge (class in transformer_lens.model_bridge.generalized_components)</a>
 
         <ul>
@@ -2085,12 +2106,12 @@
         </ul></li>
         <li><a href="generated/code/transformer_lens.benchmarks.weight_processing.html#transformer_lens.benchmarks.weight_processing.benchmark_mlp_output_centering">benchmark_mlp_output_centering() (in module transformer_lens.benchmarks.weight_processing)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.benchmarks.component_outputs.html#transformer_lens.benchmarks.component_outputs.benchmark_model">benchmark_model() (in module transformer_lens.benchmarks.component_outputs)</a>
 </li>
         <li><a href="generated/code/transformer_lens.benchmarks.multimodal.html#transformer_lens.benchmarks.multimodal.benchmark_multimodal_cache">benchmark_multimodal_cache() (in module transformer_lens.benchmarks.multimodal)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.benchmarks.multimodal.html#transformer_lens.benchmarks.multimodal.benchmark_multimodal_forward">benchmark_multimodal_forward() (in module transformer_lens.benchmarks.multimodal)</a>
 </li>
         <li><a href="generated/code/transformer_lens.benchmarks.multimodal.html#transformer_lens.benchmarks.multimodal.benchmark_multimodal_generation">benchmark_multimodal_generation() (in module transformer_lens.benchmarks.multimodal)</a>
@@ -2351,6 +2372,14 @@
           <li><a href="generated/code/transformer_lens.model_bridge.bridge_core.html#transformer_lens.model_bridge.bridge_core.BridgeCore">(class in transformer_lens.model_bridge.bridge_core)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.AttentionBridge.broadcast_mask_is_padding_only">broadcast_mask_is_padding_only (transformer_lens.model_bridge.AttentionBridge attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.attention.html#transformer_lens.model_bridge.generalized_components.attention.AttentionBridge.broadcast_mask_is_padding_only">(transformer_lens.model_bridge.generalized_components.attention.AttentionBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.AttentionBridge.broadcast_mask_is_padding_only">(transformer_lens.model_bridge.generalized_components.AttentionBridge attribute)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.bridge_core.html#transformer_lens.model_bridge.bridge_core.build_alias_to_canonical_map">build_alias_to_canonical_map() (in module transformer_lens.model_bridge.bridge_core)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.alibi_utils.html#transformer_lens.model_bridge.generalized_components.alibi_utils.build_alibi_slopes">build_alibi_slopes() (in module transformer_lens.model_bridge.generalized_components.alibi_utils)</a>
@@ -2454,6 +2483,8 @@
         <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.center_weight_single">center_weight_single() (transformer_lens.weight_processing.ProcessWeights static method)</a>
 </li>
         <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.center_writing_weights">center_writing_weights() (transformer_lens.weight_processing.ProcessWeights static method)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.center_writing_weights_with_layout">center_writing_weights_with_layout() (transformer_lens.weight_processing.ProcessWeights static method)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_protocol.html#transformer_lens.model_protocol.TransformerLensModel.cfg">cfg (transformer_lens.model_protocol.TransformerLensModel property)</a>
 
@@ -2753,6 +2784,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.vaultgemma.html#transformer_lens.model_bridge.supported_architectures.vaultgemma.VaultGemmaArchitectureAdapter.component_mapping">(transformer_lens.model_bridge.supported_architectures.vaultgemma.VaultGemmaArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.vit.html#transformer_lens.model_bridge.supported_architectures.vit.ViTArchitectureAdapter.component_mapping">(transformer_lens.model_bridge.supported_architectures.vit.ViTArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.component_mapping">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.zamba2.html#transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter.component_mapping">(transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter attribute)</a>
 </li>
@@ -3293,6 +3326,8 @@
           <li><a href="generated/code/transformer_lens.lit.html#transformer_lens.lit.TransformerLensLITConfig.embedding_layers">(transformer_lens.lit.TransformerLensLITConfig attribute)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#id0">embedding_writers (transformer_lens.model_bridge.architecture_adapter.ResidualLayout attribute)</a>, <a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.embedding_writers">[1]</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.EmbeddingBridge">EmbeddingBridge (class in transformer_lens.model_bridge)</a>
 
         <ul>
@@ -3589,9 +3624,13 @@
 </li>
         <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_weights">fold_layer_norm_weights() (transformer_lens.weight_processing.ProcessWeights static method)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.fold_layer_norm_with_layout">fold_layer_norm_with_layout() (transformer_lens.weight_processing.ProcessWeights static method)</a>
+</li>
         <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.moe.html#transformer_lens.model_bridge.generalized_components.moe.fold_scale_into_moe_block">fold_scale_into_moe_block() (in module transformer_lens.model_bridge.generalized_components.moe)</a>
 </li>
         <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.fold_value_biases">fold_value_biases() (transformer_lens.weight_processing.ProcessWeights static method)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.weight_processing.html#transformer_lens.weight_processing.ProcessWeights.fold_value_biases_with_layout">fold_value_biases_with_layout() (transformer_lens.weight_processing.ProcessWeights static method)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.transformers.html#transformer_lens.model_bridge.sources.transformers.AutoConfig.for_model">for_model() (transformer_lens.model_bridge.sources.transformers.AutoConfig class method)</a>
 </li>
@@ -3605,6 +3644,10 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.force_scale_embedding">(transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BartArchitectureAdapter.force_scale_embedding">(transformer_lens.model_bridge.supported_architectures.BartArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.force_scale_embedding">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.force_scale_embedding">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.benchmarks.utils.html#transformer_lens.benchmarks.utils.format_results">format_results() (in module transformer_lens.benchmarks.utils)</a>
@@ -4695,6 +4738,10 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.pegasus.html#transformer_lens.model_bridge.supported_architectures.pegasus.PegasusArchitectureAdapter.has_final_stack_norm">(transformer_lens.model_bridge.supported_architectures.pegasus.PegasusArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.PegasusArchitectureAdapter.has_final_stack_norm">(transformer_lens.model_bridge.supported_architectures.PegasusArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.has_final_stack_norm">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.has_final_stack_norm">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.HookPoint.has_hooks">has_hooks() (transformer_lens.hook_points.HookPoint method)</a>
@@ -5931,6 +5978,18 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.MLABlockBridge">(class in transformer_lens.model_bridge.generalized_components.block)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.BlockBridge.mlp_input_includes_attn">mlp_input_includes_attn (transformer_lens.model_bridge.BlockBridge attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.BlockBridge.mlp_input_includes_attn">(transformer_lens.model_bridge.generalized_components.block.BlockBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.mlp_input_includes_attn">(transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.BlockBridge.mlp_input_includes_attn">(transformer_lens.model_bridge.generalized_components.BlockBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.ParallelBlockBridge.mlp_input_includes_attn">(transformer_lens.model_bridge.generalized_components.ParallelBlockBridge attribute)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.lit.constants.html#transformer_lens.lit.constants.HookPointNames.MLP_OUT_TEMPLATE">MLP_OUT_TEMPLATE (transformer_lens.lit.constants.HookPointNames attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.lit.constants.html#transformer_lens.lit.constants.HookPointNames.MLP_POST_TEMPLATE">MLP_POST_TEMPLATE (transformer_lens.lit.constants.HookPointNames attribute)</a>
@@ -6615,6 +6674,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.wav2vec2.html#module-transformer_lens.model_bridge.supported_architectures.wav2vec2">transformer_lens.model_bridge.supported_architectures.wav2vec2</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#module-transformer_lens.model_bridge.supported_architectures.whisper">transformer_lens.model_bridge.supported_architectures.whisper</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.xglm.html#module-transformer_lens.model_bridge.supported_architectures.xglm">transformer_lens.model_bridge.supported_architectures.xglm</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.youtu.html#module-transformer_lens.model_bridge.supported_architectures.youtu">transformer_lens.model_bridge.supported_architectures.youtu</a>
@@ -6834,6 +6895,10 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.blenderbot.html#transformer_lens.model_bridge.supported_architectures.blenderbot.BlenderbotArchitectureAdapter.n_layers_from">(transformer_lens.model_bridge.supported_architectures.blenderbot.BlenderbotArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BlenderbotArchitectureAdapter.n_layers_from">(transformer_lens.model_bridge.supported_architectures.BlenderbotArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.n_layers_from">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.n_layers_from">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.bridge.html#transformer_lens.model_bridge.bridge.TransformerBridge.n_params_total">n_params_total (transformer_lens.model_bridge.bridge.TransformerBridge property)</a>
@@ -7058,6 +7123,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.sources.vllm.overlays.html#transformer_lens.model_bridge.sources.vllm.overlays.DecoderOnlyOverlay.nonfiring_hooks">(transformer_lens.model_bridge.sources.vllm.overlays.DecoderOnlyOverlay method)</a>
 </li>
         </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#id1">norm_readers (transformer_lens.model_bridge.architecture_adapter.ResidualLayout attribute)</a>, <a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.norm_readers">[1]</a>
+</li>
         <li><a href="generated/code/transformer_lens.config.transformer_lens_config.html#transformer_lens.config.transformer_lens_config.TransformerLensConfig.normalization_type">normalization_type (transformer_lens.config.transformer_lens_config.TransformerLensConfig attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.NormalizationBridge">NormalizationBridge (class in transformer_lens.model_bridge)</a>
@@ -8187,6 +8254,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.DelegatedAttentionBlockBridge.real_components">(transformer_lens.model_bridge.generalized_components.block.DelegatedAttentionBlockBridge attribute)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.real_components">(transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge attribute)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.BlockBridge.real_components">(transformer_lens.model_bridge.generalized_components.BlockBridge attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.clip_vision_encoder.html#transformer_lens.model_bridge.generalized_components.clip_vision_encoder.CLIPVisionEncoderBridge.real_components">(transformer_lens.model_bridge.generalized_components.clip_vision_encoder.CLIPVisionEncoderBridge attribute)</a>
@@ -8390,8 +8459,6 @@
 </li>
         <li><a href="generated/code/transformer_lens.utilities.tensors.html#transformer_lens.utilities.tensors.repeat_along_head_dimension">repeat_along_head_dimension() (in module transformer_lens.utilities.tensors)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.conversion_utils.conversion_steps.html#transformer_lens.conversion_utils.conversion_steps.RepeatTensorConversion">RepeatTensorConversion (class in transformer_lens.conversion_utils.conversion_steps)</a>
 
         <ul>
@@ -8404,6 +8471,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.component_setup.html#transformer_lens.model_bridge.component_setup.replace_remote_component">(in module transformer_lens.model_bridge.component_setup)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.utilities.quantization.html#transformer_lens.utilities.quantization.require_readable_weight">require_readable_weight() (in module transformer_lens.utilities.quantization)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.require_symmetric_layers">require_symmetric_layers (transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter attribute)</a>
@@ -8412,6 +8481,10 @@
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.blenderbot.html#transformer_lens.model_bridge.supported_architectures.blenderbot.BlenderbotArchitectureAdapter.require_symmetric_layers">(transformer_lens.model_bridge.supported_architectures.blenderbot.BlenderbotArchitectureAdapter attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.BlenderbotArchitectureAdapter.require_symmetric_layers">(transformer_lens.model_bridge.supported_architectures.BlenderbotArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.require_symmetric_layers">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.require_symmetric_layers">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.required_libraries">required_libraries (transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter attribute)</a>
@@ -8488,7 +8561,21 @@
 </li>
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html#id11">residual (transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.CoordinatePatch attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html#transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.CoordinatePatch.residual">[1]</a>
 </li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.residual_layout">residual_layout() (transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter method)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.ArchitectureAdapter.residual_layout">(transformer_lens.model_bridge.ArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.residual_layout">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.residual_layout">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter method)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html#id12">residual_max_delta (transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.CoordinatePatch attribute)</a>, <a href="generated/code/transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.html#transformer_lens.tools.analysis.jacobian_lens_coordinate_patch.CoordinatePatch.residual_max_delta">[1]</a>
+</li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#id2">residual_writers (transformer_lens.model_bridge.architecture_adapter.ResidualLayout attribute)</a>, <a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.residual_writers">[1]</a>
+</li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout">ResidualLayout (class in transformer_lens.model_bridge.architecture_adapter)</a>
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.inspect.hooks.html#transformer_lens.model_bridge.sources.inspect.hooks.resolve">resolve() (in module transformer_lens.model_bridge.sources.inspect.hooks)</a>
 </li>
@@ -10146,6 +10233,8 @@
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.BlockBridge.training">(transformer_lens.model_bridge.generalized_components.block.BlockBridge attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.DelegatedAttentionBlockBridge.training">(transformer_lens.model_bridge.generalized_components.block.DelegatedAttentionBlockBridge attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.block.html#transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge.training">(transformer_lens.model_bridge.generalized_components.block.ParallelBlockBridge attribute)</a>
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.generalized_components.html#transformer_lens.model_bridge.generalized_components.BlockBridge.training">(transformer_lens.model_bridge.generalized_components.BlockBridge attribute)</a>
 </li>
@@ -12263,6 +12352,13 @@
 </li>
         </ul></li>
         <li>
+    transformer_lens.model_bridge.supported_architectures.whisper
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#module-transformer_lens.model_bridge.supported_architectures.whisper">module</a>
+</li>
+        </ul></li>
+        <li>
     transformer_lens.model_bridge.supported_architectures.xglm
 
         <ul>
@@ -12845,6 +12941,14 @@
 </li>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.transformers_driver.html#transformer_lens.model_bridge.sources.transformers_driver.TransformersDriver.underlying_model">underlying_model (transformer_lens.model_bridge.sources.transformers_driver.TransformersDriver property)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.bart.html#transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter.unembed_name">unembed_name (transformer_lens.model_bridge.supported_architectures.bart.BartFamilyArchitectureAdapter attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.unembed_name">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter.unembed_name">(transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter attribute)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.html#transformer_lens.model_bridge.UnembeddingBridge">UnembeddingBridge (class in transformer_lens.model_bridge)</a>
 
         <ul>
@@ -13000,6 +13104,8 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.vit.html#transformer_lens.model_bridge.supported_architectures.vit.ViTArchitectureAdapter.uses_split_attention">(transformer_lens.model_bridge.supported_architectures.vit.ViTArchitectureAdapter attribute)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.uses_split_attention">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.zamba2.html#transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter.uses_split_attention">(transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter attribute)</a>
 </li>
         </ul></li>
@@ -13073,6 +13179,8 @@
 </li>
         <li><a href="generated/code/transformer_lens.tools.model_registry.validate.html#id2">value (transformer_lens.tools.model_registry.validate.ValidationError attribute)</a>, <a href="generated/code/transformer_lens.tools.model_registry.validate.html#transformer_lens.tools.model_registry.validate.ValidationError.value">[1]</a>
 </li>
+        <li><a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#id3">value_output_pairs (transformer_lens.model_bridge.architecture_adapter.ResidualLayout attribute)</a>, <a href="generated/code/transformer_lens.model_bridge.architecture_adapter.html#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.value_output_pairs">[1]</a>
+</li>
         <li><a href="generated/code/transformer_lens.patching.html#id7">values (transformer_lens.patching.PatchingResult attribute)</a>, <a href="generated/code/transformer_lens.patching.html#transformer_lens.patching.PatchingResult.values">[1]</a>
 
         <ul>
@@ -13085,14 +13193,14 @@
 </li>
         <li><a href="generated/code/transformer_lens.tools.analysis.projection_kernel.html#transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference.variance">variance (transformer_lens.tools.analysis.projection_kernel.RandomSubspaceReference attribute)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.VaultGemmaArchitectureAdapter">VaultGemmaArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
 
         <ul>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.vaultgemma.html#transformer_lens.model_bridge.supported_architectures.vaultgemma.VaultGemmaArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.vaultgemma)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.tools.model_registry.html#transformer_lens.tools.model_registry.VerificationHistory">VerificationHistory (class in transformer_lens.tools.model_registry)</a>
 
         <ul>
@@ -13490,7 +13598,15 @@
 </li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.vit.html#transformer_lens.model_bridge.supported_architectures.vit.ViTArchitectureAdapter.weight_processing_conversions">(transformer_lens.model_bridge.supported_architectures.vit.ViTArchitectureAdapter attribute)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter.weight_processing_conversions">(transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter attribute)</a>
+</li>
           <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.zamba2.html#transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter.weight_processing_conversions">(transformer_lens.model_bridge.supported_architectures.zamba2.Zamba2ArchitectureAdapter attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.html#transformer_lens.model_bridge.supported_architectures.WhisperArchitectureAdapter">WhisperArchitectureAdapter (class in transformer_lens.model_bridge.supported_architectures)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.model_bridge.supported_architectures.whisper.html#transformer_lens.model_bridge.supported_architectures.whisper.WhisperArchitectureAdapter">(class in transformer_lens.model_bridge.supported_architectures.whisper)</a>
 </li>
         </ul></li>
         <li><a href="generated/code/transformer_lens.model_bridge.sources.inspect.hooks.html#transformer_lens.model_bridge.sources.inspect.hooks.wire_key">wire_key() (in module transformer_lens.model_bridge.sources.inspect.hooks)</a>
@@ -13598,5 +13714,6 @@
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>

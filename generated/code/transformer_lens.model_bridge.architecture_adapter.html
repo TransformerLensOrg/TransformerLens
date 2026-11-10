@@ -484,6 +484,7 @@
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vaultgemma.html">transformer_lens.model_bridge.supported_architectures.vaultgemma module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.vit.html">transformer_lens.model_bridge.supported_architectures.vit module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.wav2vec2.html">transformer_lens.model_bridge.supported_architectures.wav2vec2 module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.whisper.html">transformer_lens.model_bridge.supported_architectures.whisper module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.xglm.html">transformer_lens.model_bridge.supported_architectures.xglm module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.youtu.html">transformer_lens.model_bridge.supported_architectures.youtu module</a></li>
 <li class="toctree-l5"><a class="reference internal" href="transformer_lens.model_bridge.supported_architectures.zamba2.html">transformer_lens.model_bridge.supported_architectures.zamba2 module</a></li>
@@ -620,7 +621,9 @@
 <li class="toctree-l1"><a class="reference internal" href="../../content/interchange_interventions.html">Interchange Interventions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SVD_Circuits_Demo.html">SVD Circuits Demo</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/SwiGLU_Gate_Sign_Demo.html">SwiGLU gate-sign regimes: double-negative echoes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Weight_Edit_Audit_Demo.html">Auditing a published weight edit with TransformerBridge</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Backward_Lens_Demo.html">Backward Lens: gradient factors in vocabulary space</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../demos/Natural_Language_Autoencoders_Demo.html">Natural Language Autoencoders: explain and reconstruct an activation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html">Transformer Lens Main Demo Notebook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Setup">Setup</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../demos/Main_Demo.html#Introduction">Introduction</a></li>
@@ -711,6 +714,11 @@ It handles both component mapping (for accessing model parts) and weight convers
 Adapters with additional scaling override this method instead of relying
 on similarly named configuration fields used by unrelated architectures.</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.audio_input_name">
+<span class="sig-name descname"><span class="pre">audio_input_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'input_values'</span></em><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.audio_input_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.bool_4d_mask_is_keep">
@@ -1008,6 +1016,13 @@ HuggingFace names silently matches nothing.</p>
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.residual_layout">
+<span class="sig-name descname"><span class="pre">residual_layout</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout" title="transformer_lens.model_bridge.architecture_adapter.ResidualLayout"><span class="pre">ResidualLayout</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.residual_layout" title="Link to this definition">¶</a></dt>
+<dd><p>Explicit norm/residual layout for weight processing, or None to use the
+decoder-only <code class="docutils literal notranslate"><span class="pre">blocks.{i}</span></code> walk. Override for architectures that walk misses.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.setup_component_testing">
 <span class="sig-name descname"><span class="pre">setup_component_testing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bridge_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.setup_component_testing" title="Link to this definition">¶</a></dt>
 <dd><p>Wire model-specific references for component testing (eager-forcing + rotary
@@ -1082,6 +1097,81 @@ per the <code class="docutils literal notranslate"><span class="pre">_testing_*<
 
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ResidualLayout">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.model_bridge.architecture_adapter.</span></span><span class="sig-name descname"><span class="pre">ResidualLayout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">norm_readers:</span> <span class="pre">~typing.Dict[str,</span> <span class="pre">list[str]],</span> <span class="pre">residual_writers:</span> <span class="pre">list[str]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;,</span> <span class="pre">embedding_writers:</span> <span class="pre">list[str]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;,</span> <span class="pre">value_output_pairs:</span> <span class="pre">list[tuple[str,</span> <span class="pre">str]]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Where each LayerNorm’s output goes and what writes to each residual stream.</p>
+<p>Covers pre-LN architectures the decoder-only <code class="docutils literal notranslate"><span class="pre">blocks.{i}</span></code> weight-processing walk
+cannot handle, such as encoder-decoders with cross-attention. Entries are
+state-dict prefixes of components with HF <code class="docutils literal notranslate"><span class="pre">nn.Linear</span></code> / <code class="docutils literal notranslate"><span class="pre">nn.Embedding</span></code>
+layout (<code class="docutils literal notranslate"><span class="pre">[out,</span> <span class="pre">in]</span></code> weights, <code class="docutils literal notranslate"><span class="pre">[n,</span> <span class="pre">d_model]</span></code> tables).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ResidualLayout.norm_readers">
+<span class="sig-name descname"><span class="pre">norm_readers</span></span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.norm_readers" title="Link to this definition">¶</a></dt>
+<dd><p>Each LayerNorm prefix mapped to the linears that read its output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[str, list[str]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ResidualLayout.residual_writers">
+<span class="sig-name descname"><span class="pre">residual_writers</span></span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.residual_writers" title="Link to this definition">¶</a></dt>
+<dd><p>Linears whose output is added to a residual stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ResidualLayout.embedding_writers">
+<span class="sig-name descname"><span class="pre">embedding_writers</span></span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.embedding_writers" title="Link to this definition">¶</a></dt>
+<dd><p>Embedding tables whose rows are added to a residual stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.model_bridge.architecture_adapter.ResidualLayout.value_output_pairs">
+<span class="sig-name descname"><span class="pre">value_output_pairs</span></span><a class="headerlink" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.value_output_pairs" title="Link to this definition">¶</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">(value,</span> <span class="pre">output)</span></code> linears of each attention.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[tuple[str, str]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">embedding_writers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id0" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-name descname"><span class="pre">norm_readers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id1" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-name descname"><span class="pre">residual_writers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id2" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id3">
+<span class="sig-name descname"><span class="pre">value_output_pairs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#id3" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
 
         </article>
@@ -1144,6 +1234,7 @@ per the <code class="docutils literal notranslate"><span class="pre">_testing_*<
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.__init__"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.applicable_phases"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.applicable_phases</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.apply_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.apply_output_logits_transform()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.audio_input_name"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.audio_input_name</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.bool_4d_mask_is_keep"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.bool_4d_mask_is_keep</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.component_mapping"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.component_mapping</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.component_test_skip_suffixes"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.component_test_skip_suffixes</span></code></a></li>
@@ -1164,6 +1255,7 @@ per the <code class="docutils literal notranslate"><span class="pre">_testing_*<
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.preprocess_weights"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.preprocess_weights()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.required_libraries"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.required_libraries</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.required_libraries_group"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.required_libraries_group</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.residual_layout"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.residual_layout()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.setup_component_testing"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.setup_component_testing()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.supports_batched_generation"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.supports_batched_generation</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.supports_causal_loss"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.supports_causal_loss</span></code></a></li>
@@ -1175,6 +1267,17 @@ per the <code class="docutils literal notranslate"><span class="pre">_testing_*<
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.uses_split_attention"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.uses_split_attention</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.validate_output_logits_transform"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.validate_output_logits_transform()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ArchitectureAdapter.weight_processing_conversions"><code class="docutils literal notranslate"><span class="pre">ArchitectureAdapter.weight_processing_conversions</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout"><code class="docutils literal notranslate"><span class="pre">ResidualLayout</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.norm_readers"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.norm_readers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.residual_writers"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.residual_writers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.embedding_writers"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.embedding_writers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.model_bridge.architecture_adapter.ResidualLayout.value_output_pairs"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.value_output_pairs</span></code></a></li>
+<li><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.embedding_writers</span></code></a></li>
+<li><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.norm_readers</span></code></a></li>
+<li><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.residual_writers</span></code></a></li>
+<li><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">ResidualLayout.value_output_pairs</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -1193,5 +1296,6 @@ per the <code class="docutils literal notranslate"><span class="pre">_testing_*<
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/scripts/furo.js?v=32e29ea5"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>
