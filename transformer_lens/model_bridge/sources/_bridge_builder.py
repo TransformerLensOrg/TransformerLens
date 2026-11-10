@@ -161,6 +161,10 @@ _HF_PASSTHROUGH_ATTRS = [
     "qk_bias",
     # Muse Glimmer
     "output_multiplier",
+    # MiniCPM (muP scaling)
+    "scale_emb",
+    "scale_depth",
+    "dim_model_base",
     # RWKV-7 (attention-free recurrent, generalized delta-rule time-mixing).
     # head_dim is intentionally omitted: it is a read-only alias of d_head on
     # TransformerBridgeConfig, so a passthrough setattr would raise.

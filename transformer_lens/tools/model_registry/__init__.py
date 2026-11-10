@@ -146,6 +146,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "Mamba2ForCausalLM",
     "MarianMTModel",
     "MBartForConditionalGeneration",
+    "MiniCPMForCausalLM",
     "MiniMaxM2ForCausalLM",
     "NemotronForCausalLM",
     "NemotronHForCausalLM",
@@ -311,6 +312,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "MambaForCausalLM": ["state-spaces"],
     "MarianMTModel": ["Helsinki-NLP"],
     "MBartForConditionalGeneration": ["facebook"],
+    "MiniCPMForCausalLM": ["openbmb"],
     "MiniMaxM2ForCausalLM": ["MiniMaxAI"],
     "NemotronForCausalLM": ["nvidia"],
     "NemotronHForCausalLM": ["nvidia"],
@@ -385,6 +387,7 @@ REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
     "microsoft/phi-2",
     "microsoft/phi-4",
     "openai/gpt-oss-",
+    "openbmb/MiniCPM",  # MiniCPMForCausalLM — ships own modeling_minicpm.py
     "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
     "Qwen/Qwen-",
     "Qwen/Qwen3-",
