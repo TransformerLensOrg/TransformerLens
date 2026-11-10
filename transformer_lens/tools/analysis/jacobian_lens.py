@@ -471,7 +471,7 @@ class JacobianLens:
                 d_model = config.get("d_model")
             if n_prompts is None:
                 n_prompts = config.get("num_prompts_trained_on")
-        if d_model is None:
+        if not d_model:
             d_model = _matrix_width(path, jacobians)
         explicit = payload.get("metadata")
         return cls(
@@ -514,8 +514,16 @@ class JacobianLens:
                 "one [d_model, d_model] transport matrix per source layer there."
             )
         jacobians = {int(layer): matrix for layer, matrix in raw_jacobians.items()}
+        source_layers = payload.get("source_layers")
+        if source_layers is not None:
+            listed = sorted(int(layer) for layer in source_layers)
+            if listed != sorted(jacobians):
+                raise ValueError(
+                    f"{path} lists source_layers {listed} but parameters.jacobians holds "
+                    f"layers {sorted(jacobians)}"
+                )
         d_model = config.get("d_model")
-        if d_model is None:
+        if not d_model:
             d_model = _matrix_width(path, jacobians)
         return cls(
             jacobians,
@@ -1393,7 +1401,10 @@ class JacobianLens:
         }
         per_position = {layer: torch.tensor(fractions[layer]) for layer in resolved_layers}
         return JSpaceVarianceProfile(
-            layers=resolved_layers, median=median, pooled=pooled, per_position=per_position
+            layers=resolved_layers,
+            median=median,
+            pooled=pooled,
+            per_position=per_position,
         )
 
     # ------------------------------------------------------------------ #
@@ -1577,7 +1588,9 @@ class JacobianLens:
                     raise ValueError(f"clamp_to is missing activation {hook_name!r}")
                 clean = clamp_to[hook_name]
                 _validate_residual_activation(
-                    clean, d_model=model.cfg.d_model, hook_name=f"clamp_to[{hook_name!r}]"
+                    clean,
+                    d_model=model.cfg.d_model,
+                    hook_name=f"clamp_to[{hook_name!r}]",
                 )
                 normalized = _normalize_positions(positions, clean.shape[1])
                 clean_selected = clean if positions is None else clean[:, normalized, :]
@@ -1626,7 +1639,10 @@ class JacobianLens:
                 return selected.float() + delta
 
             hooks.append(
-                (hook_name, _make_intervention_hook(transform, positions, model.cfg.d_model))
+                (
+                    hook_name,
+                    _make_intervention_hook(transform, positions, model.cfg.d_model),
+                )
             )
         return hooks
 
@@ -1648,7 +1664,12 @@ class JacobianLens:
             stacklevel=2,
         )
         return self.swap_hooks(
-            model, source_token, target_token, layers, positions=positions, clamp_to=clean_cache
+            model,
+            source_token,
+            target_token,
+            layers,
+            positions=positions,
+            clamp_to=clean_cache,
         )
 
     def coordinate_patch_hooks(
@@ -1853,7 +1874,11 @@ class JacobianLens:
             n_prompts=n_done,
             d_model=options.d_model,
             metadata=_build_fit_metadata(
-                model, options, estimator=ESTIMATOR_JACOBIAN, n_prompts=n_done, metadata=metadata
+                model,
+                options,
+                estimator=ESTIMATOR_JACOBIAN,
+                n_prompts=n_done,
+                metadata=metadata,
             ),
         )
 
@@ -2272,7 +2297,11 @@ def _make_intervention_hook(
 
 
 def _distinct_ids(
-    model: Any, source_token: ConceptToken, target_token: ConceptToken, *, operation: str
+    model: Any,
+    source_token: ConceptToken,
+    target_token: ConceptToken,
+    *,
+    operation: str,
 ) -> Tuple[int, int]:
     """Resolve a source/target pair, refusing one that names the same token twice."""
     source_id, target_id = to_token_ids(model, [source_token, target_token])

@@ -190,7 +190,12 @@ class TestLoadCheckpoint:
         """Checkpoints that store model_name / corpus at top level are handled."""
         p = str(tmp_path / "ckpt.pt")
         _save_checkpoint(
-            p, flat_provenance={"model_name": "llama3", "corpus": "pile", "model_revision": "abc"}
+            p,
+            flat_provenance={
+                "model_name": "llama3",
+                "corpus": "pile",
+                "model_revision": "abc",
+            },
         )
         lens = JacobianLens.load(p)
         assert lens.metadata.get("model_name") == "llama3"
@@ -256,7 +261,11 @@ class TestMergeProvenance:
         assert merged.n_prompts == l1.n_prompts + l2.n_prompts
 
     def test_merge_two_artifacts_succeeds(self, tmp_path):
-        shared_meta = {"model_name": "gpt2", "corpus": "wiki", "transformer_lens_fit": True}
+        shared_meta = {
+            "model_name": "gpt2",
+            "corpus": "wiki",
+            "transformer_lens_fit": True,
+        }
         p1, p2 = str(tmp_path / "a1.pt"), str(tmp_path / "a2.pt")
         _save_artifact(p1, metadata=dict(shared_meta))
         _save_artifact(p2, metadata=dict(shared_meta))
@@ -446,7 +455,10 @@ class TestLoadConvertedProvenance:
         p = str(tmp_path / "jpp.pt")
         provenance = _converted_provenance(_author_config())
         _save_converted_artifact(
-            p, _jacobians(), provenance, metadata={"model_name": "explicit", "corpus": "wiki"}
+            p,
+            _jacobians(),
+            provenance,
+            metadata={"model_name": "explicit", "corpus": "wiki"},
         )
         lens = JacobianLens.load(p)
         assert lens.metadata["model_name"] == "explicit"
@@ -550,6 +562,24 @@ class TestLoadAuthorSchema:
         _save_author_artifact(p, _jacobians(d_model=4), config)
         assert JacobianLens.load(p).d_model == 4
 
+    def test_d_model_zero_in_config_falls_back_to_matrix_width(self, tmp_path):
+        path = tmp_path / "lens.pt"
+        _save_author_artifact(path, _jacobians(d_model=8), _author_config(d_model=0))
+
+        lens = JacobianLens.load(str(path))
+
+        assert lens.d_model == 8
+
+    def test_rejects_source_layers_that_disagree_with_jacobians(self, tmp_path):
+        path = tmp_path / "lens.pt"
+        _save_author_artifact(path, _jacobians(n_layers=3), _author_config())
+        payload = torch.load(path)
+        payload["source_layers"] = [0, 1]
+        torch.save(payload, path)
+
+        with pytest.raises(ValueError, match="source_layers"):
+            JacobianLens.load(str(path))
+
     def test_rejects_non_jacobian_lens_type(self, tmp_path):
         p = str(tmp_path / "logit.pt")
         torch.save(
@@ -566,7 +596,11 @@ class TestLoadAuthorSchema:
     def test_rejects_parameters_without_jacobians(self, tmp_path):
         p = str(tmp_path / "no_jac.pt")
         torch.save(
-            {"parameters": {"other": {0: 1.0}}, "source_layers": [0], "config": _author_config()},
+            {
+                "parameters": {"other": {0: 1.0}},
+                "source_layers": [0],
+                "config": _author_config(),
+            },
             p,
         )
         with pytest.raises(ValueError, match="parameters.jacobians"):
