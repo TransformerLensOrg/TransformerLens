@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2028,3 +2029,178 @@ class ActivationCache:
             return residual_stack, labels
         else:
             return residual_stack
+
+
+StepFilter = Optional[Union[int, Iterable[int], Callable[[int], bool]]]
+
+
+def _normalize_step_filter(cache_steps: StepFilter) -> Callable[[int], bool]:
+    """Normalize ``cache_steps`` into a boolean predicate over 0-based denoising step indices."""
+    if cache_steps is None:
+        return lambda _step: True
+    if isinstance(cache_steps, bool):
+        raise TypeError("cache_steps must be an int, iterable of ints, callable, or None; got bool")
+    if isinstance(cache_steps, int):
+        if cache_steps < 0:
+            raise ValueError(f"cache_steps index must be non-negative; got {cache_steps}")
+        target = cache_steps
+        return lambda step: step == target
+    if callable(cache_steps):
+        return cache_steps
+    if isinstance(cache_steps, Iterable) and not isinstance(cache_steps, (str, bytes)):
+        steps_set: set[int] = set()
+        for item in cache_steps:
+            if isinstance(item, bool) or not isinstance(item, int):
+                raise TypeError(
+                    f"cache_steps iterable must contain only non-negative ints; got {item!r}"
+                )
+            if item < 0:
+                raise ValueError(f"cache_steps index must be non-negative; got {item}")
+            steps_set.add(item)
+        frozen = frozenset(steps_set)
+        return lambda step: step in frozen
+    raise TypeError(
+        f"cache_steps must be an int, iterable of ints, callable, or None; got {type(cache_steps).__name__}"
+    )
+
+
+class DiffusionTrajectoryCache(Mapping[int, ActivationCache]):
+    """Step-indexed activation caches recorded across a diffusion denoising trajectory.
+
+    Autoregressive :meth:`~transformer_lens.model_bridge.TransformerBridge.generate` can build
+    its cache from a single post-hoc pass on the completed sequence because causal masking
+    keeps earlier positions invariant as new tokens are appended. Discrete diffusion LMs
+    (Dream, LLaDA, LLaDA-2, Gidd) use bidirectional attention and iteratively unmask a canvas
+    over ``S`` denoising steps: step ``s``'s activations depend on the partially-masked canvas
+    ``x_s`` and cannot be recovered from the final unmasked sequence ``x_S``. Attaching
+    standard ``add_caching_hooks`` across ``diffusion_generate`` would overwrite ``cache[name]``
+    on every forward pass, silently discarding steps ``0..S-2``.
+
+    ``DiffusionTrajectoryCache`` holds one :class:`ActivationCache` per captured denoising step,
+    along with the input token canvas ``step_tokens[s]`` fed into step ``s``.
+    """
+
+    def __init__(
+        self,
+        step_caches: Mapping[int, ActivationCache],
+        *,
+        step_tokens: Optional[Mapping[int, torch.Tensor]] = None,
+        num_steps_run: int = 0,
+        model: Optional[Any] = None,
+    ) -> None:
+        self.step_caches: Dict[int, ActivationCache] = {
+            int(step): step_caches[step] for step in sorted(step_caches)
+        }
+        self.step_tokens: Dict[int, torch.Tensor] = (
+            {int(step): step_tokens[step] for step in sorted(step_tokens)}
+            if step_tokens is not None
+            else {}
+        )
+        self.num_steps_run: int = max(
+            int(num_steps_run),
+            (max(self.step_caches) + 1) if self.step_caches else 0,
+        )
+        first_cache = next(iter(self.step_caches.values()), None)
+        self.model: Optional[Any] = (
+            model if model is not None else getattr(first_cache, "model", None)
+        )
+
+    @property
+    def steps(self) -> Tuple[int, ...]:
+        """Captured denoising step indices in ascending chronological order."""
+        return tuple(self.step_caches.keys())
+
+    def __getitem__(self, step: int) -> ActivationCache:
+        if isinstance(step, bool) or not isinstance(step, int):
+            raise KeyError(f"Step index must be an int; got {step!r}")
+        if step not in self.step_caches:
+            raise KeyError(
+                f"Denoising step {step} was not captured (captured steps: {list(self.steps)})"
+            )
+        return self.step_caches[step]
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(self.step_caches)
+
+    def __len__(self) -> int:
+        return len(self.step_caches)
+
+    def __contains__(self, step: object) -> bool:
+        return not isinstance(step, bool) and isinstance(step, int) and step in self.step_caches
+
+    def __repr__(self) -> str:
+        sample_cache = next(iter(self.step_caches.values()), None)
+        n_hooks = len(sample_cache) if sample_cache is not None else 0
+        return (
+            f"DiffusionTrajectoryCache(steps={list(self.steps)}, "
+            f"num_steps_run={self.num_steps_run}, hooks_per_step={n_hooks})"
+        )
+
+    def stack(
+        self,
+        key: str,
+        steps: Optional[Sequence[int]] = None,
+    ) -> torch.Tensor:
+        """Stack ``cache[step][key]`` across ``steps`` (default: all captured steps) along dim 0."""
+        selected = tuple(self.steps if steps is None else steps)
+        if not selected:
+            raise ValueError("Cannot stack an empty sequence of denoising steps")
+        return torch.stack([self[step][key] for step in selected], dim=0)
+
+    def to(self, device: Union[str, torch.device]) -> "DiffusionTrajectoryCache":
+        """Move every per-step :class:`ActivationCache` and ``step_tokens`` tensor to ``device``."""
+        for step_cache in self.step_caches.values():
+            step_cache.to(device)
+        for step, tokens in list(self.step_tokens.items()):
+            self.step_tokens[step] = tokens.to(device)
+        return self
+
+    def make_step_patch_hook(
+        self,
+        hook_name: str,
+        *,
+        steps: StepFilter = None,
+        positions: Optional[Union[int, Sequence[int], slice]] = None,
+        pos_dim: int = 1,
+    ) -> Callable[..., Optional[torch.Tensor]]:
+        """Build a forward hook that patches ``hook_name`` from this trajectory at selected steps.
+
+        When attached via ``with bridge.hooks(fwd_hooks=[(hook_name, hook_fn)]):`` around
+        :meth:`~transformer_lens.model_bridge.TransformerBridge.diffusion_generate`, the hook
+        reads ``bridge.current_diffusion_step`` on each forward pass and substitutes the source
+        activation recorded at that step. Steps not matching ``steps`` (or not present in this
+        cache) pass through untouched.
+        """
+        step_predicate = _normalize_step_filter(steps)
+        for step, step_cache in self.step_caches.items():
+            if step_predicate(step) and hook_name not in step_cache:
+                raise KeyError(
+                    f"Hook {hook_name!r} is not present in captured step {step} "
+                    f"(available keys: {list(step_cache.keys())})"
+                )
+
+        def _patch_hook(tensor: torch.Tensor, *, hook: Any) -> Optional[torch.Tensor]:
+            current_step = getattr(self.model, "current_diffusion_step", None)
+            if current_step is None and hook is not None:
+                current_step = getattr(hook, "ctx", {}).get("diffusion_step")
+            if current_step is None or not step_predicate(current_step):
+                return None
+            if current_step not in self.step_caches:
+                return None
+            source = self.step_caches[current_step][hook_name].to(
+                device=tensor.device, dtype=tensor.dtype
+            )
+            if positions is None:
+                return source.clone()
+            patched = tensor.clone()
+            axis = pos_dim if pos_dim >= 0 else tensor.ndim + pos_dim
+            idx: List[Any] = [slice(None)] * tensor.ndim
+            idx[axis] = positions
+            index_tuple = tuple(idx)
+            if source.shape == patched[index_tuple].shape:
+                patched[index_tuple] = source
+            else:
+                patched[index_tuple] = source[index_tuple]
+            return patched
+
+        return _patch_hook

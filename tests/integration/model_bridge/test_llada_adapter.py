@@ -904,3 +904,49 @@ def test_causal_loss_modes_fail_clearly(models: TinyModels, return_type: str) ->
     with pytest.raises(NotImplementedError, match="causal.*loss|shifted.*loss"):
         models.bridge(tokens, return_type=return_type)
     assert len(models.bridge.original_model.output_attentions_requests) == calls_before
+
+
+def test_diffusion_generate_trajectory_cache_and_step_patching(models: TinyModels) -> None:
+    from transformer_lens.ActivationCache import DiffusionTrajectoryCache
+
+    prompt_a = torch.tensor([[5, 7, 9]])
+    prompt_b = torch.tensor([[11, 13, 15]])
+    mask_id = models.bridge.cfg.mask_token_id
+
+    seq_a, traj_a = models.bridge.diffusion_generate(
+        prompt_a,
+        max_new_tokens=3,
+        return_cache=True,
+        names_filter=["blocks.0.attn.hook_pattern", "blocks.1.hook_out"],
+    )
+    assert isinstance(seq_a, torch.Tensor)
+    assert isinstance(traj_a, DiffusionTrajectoryCache)
+    assert seq_a.shape == (1, 6)
+    assert torch.equal(seq_a[:, :3], prompt_a)
+    assert torch.all(seq_a[:, 3:] != mask_id)
+    assert traj_a.steps == (0, 1, 2)
+    # Step 0 starts with all 3 continuation positions masked; each step unmasks 1 token
+    assert (traj_a.step_tokens[0][0, 3:] == mask_id).sum().item() == 3
+    assert (traj_a.step_tokens[1][0, 3:] == mask_id).sum().item() == 2
+    assert (traj_a.step_tokens[2][0, 3:] == mask_id).sum().item() == 1
+    assert traj_a.stack("blocks.0.attn.hook_pattern").shape == (3, 1, 4, 6, 6)
+    assert traj_a.stack("blocks.1.hook_out").shape == (3, 1, 6, 32)
+
+    # Step-selective activation patching across denoising steps
+    patch_fn = traj_a.make_step_patch_hook(
+        "blocks.1.hook_out",
+        steps=[0],
+        positions=slice(3, 6),
+    )
+    with models.bridge.hooks(fwd_hooks=[("blocks.1.hook_out", patch_fn)]):
+        _, patched_traj_b = models.bridge.diffusion_generate(
+            prompt_b,
+            max_new_tokens=3,
+            return_cache=True,
+            names_filter=["blocks.1.hook_out"],
+            cache_steps=[0, 1],
+        )
+    torch.testing.assert_close(
+        patched_traj_b[0]["blocks.1.hook_out"][:, 3:6, :],
+        traj_a[0]["blocks.1.hook_out"][:, 3:6, :],
+    )

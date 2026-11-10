@@ -432,6 +432,7 @@ jobs:
           - "BERT"
           - "Backward_Lens_Demo"
           - "Bridge_Evals_Demo"
+          - "Diffusion_Trajectory_Patching_Demo"
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           - "Head_Detector_Demo"

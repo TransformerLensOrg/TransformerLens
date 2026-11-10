@@ -35,7 +35,12 @@ from torch.utils.hooks import RemovableHandle
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 from transformer_lens import utilities as utils
-from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.ActivationCache import (
+    ActivationCache,
+    DiffusionTrajectoryCache,
+    StepFilter,
+    _normalize_step_filter,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookIntrospectionMixin, HookPoint
@@ -45,6 +50,7 @@ from transformer_lens.model_bridge.bridge_core import (
     _SELF_ATTENTION_NAMES,
     BridgeCore,
     _validate_execution_kwargs,
+    build_alias_to_canonical_map,
 )
 from transformer_lens.model_bridge.component_setup import (
     refresh_container_state_owners,
@@ -74,6 +80,7 @@ from transformer_lens.model_bridge.generalized_components.moe import (
     has_batched_experts,
 )
 from transformer_lens.model_bridge.get_params_util import get_bridge_params
+from transformer_lens.utilities import Slice, SliceInput
 from transformer_lens.utilities.activation_functions import softcap_enabled
 from transformer_lens.utilities.devices import move_to_and_update_config
 from transformer_lens.utilities.position_ids import accepts_mask_derived_position_ids
@@ -4046,19 +4053,35 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # return_input_tokens only (no cache)
         return result, input_tokens
 
+    @property
+    def current_diffusion_step(self) -> Optional[int]:
+        """Zero-based denoising step index during an active :meth:`diffusion_generate` call."""
+        return getattr(self, "_diffusion_step", None)
+
     @torch.no_grad()
     def diffusion_generate(
         self,
         input: Union[str, List[str], torch.Tensor],
         max_new_tokens: int = 32,
         prepend_bos: Optional[bool] = None,
+        *,
+        return_cache: bool = False,
+        names_filter: Optional[Union[str, List[str], Callable[[str], bool]]] = None,
+        cache_steps: StepFilter = None,
+        pos_slice: Optional[Union[Slice, SliceInput, slice]] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        remove_batch_dim: bool = False,
         **kwargs: Any,
-    ) -> Union[str, torch.Tensor]:
+    ) -> Any:
         """Sample from a non-autoregressive (diffusion) architecture.
 
         Delegates to the model's own sampler, which calls the model through
-        ``__call__`` so bridge hooks fire on every denoising step.
+        ``__call__`` so bridge hooks fire on every denoising step. When
+        ``return_cache=True``, records per-step activations into a
+        :class:`~transformer_lens.ActivationCache.DiffusionTrajectoryCache`
+        without overwriting earlier denoising steps.
         """
+        step_predicate = _normalize_step_filter(cache_steps)
         sampler_name = getattr(self.adapter, "native_sampler", None)
         architecture = self.cfg.architecture or type(self.adapter).__name__
         if sampler_name is None:
@@ -4091,9 +4114,94 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 input, prepend_bos=prepend_bos, move_to_device=True, truncate=False
             )
 
+        step_dicts: Dict[int, Dict[str, torch.Tensor]] = {}
+        step_tokens: Dict[int, torch.Tensor] = {}
+        staging_cache: Dict[str, torch.Tensor] = {}
+        step_fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = []
+
+        if return_cache:
+            hook_dict = getattr(self, "hook_dict", {})
+            if isinstance(names_filter, (str, list)):
+                aliases = build_alias_to_canonical_map(hook_dict)
+                requested = [names_filter] if isinstance(names_filter, str) else list(names_filter)
+                for req_name in requested:
+                    self._check_hook_fireable(req_name, aliases.get(req_name, req_name))
+            normalized_pos_slice: Optional[Union[Slice, SliceInput]]
+            if isinstance(pos_slice, slice):
+                wrapped_slice = Slice(None)
+                wrapped_slice.slice = pos_slice
+                wrapped_slice.mode = "slice"
+                normalized_pos_slice = wrapped_slice
+            else:
+                normalized_pos_slice = pos_slice
+            _, raw_fwd_hooks, _ = self.get_caching_hooks(
+                names_filter=names_filter,
+                incl_bwd=False,
+                device=device,
+                remove_batch_dim=remove_batch_dim,
+                cache=staging_cache,
+                pos_slice=normalized_pos_slice,
+            )
+            if not raw_fwd_hooks and names_filter and isinstance(names_filter, (str, list)):
+                raise KeyError(
+                    f"names_filter {names_filter!r} matched no hook points on this model; "
+                    "check the name against model.hook_dict."
+                )
+
+            def _make_step_save_hook(_fn: Callable) -> Callable:
+                def _step_save(tensor: Any, *, hook: Any) -> None:
+                    step = getattr(self, "_diffusion_step", None)
+                    if step is None or not step_predicate(step):
+                        return None
+                    staging_cache.clear()
+                    _fn(tensor, hook=hook)
+                    if staging_cache:
+                        bucket = step_dicts.setdefault(step, {})
+                        bucket.update(staging_cache)
+                        staging_cache.clear()
+                    return None
+
+                return _step_save
+
+            step_fwd_hooks = [
+                (h_name, _make_step_save_hook(h_fn)) for h_name, h_fn in raw_fwd_hooks
+            ]
+
+        step_counter = 0
+        self._diffusion_step: Optional[int] = None
+
+        def _on_step_start(
+            _module: Any, args: Tuple[Any, ...], kwargs_in: Optional[Dict[str, Any]] = None
+        ) -> None:
+            nonlocal step_counter
+            step = step_counter
+            step_counter += 1
+            self._diffusion_step = step
+            if return_cache and step_predicate(step):
+                canvas = args[0] if args else (kwargs_in or {}).get("input_ids")
+                if isinstance(canvas, torch.Tensor):
+                    step_tokens[step] = canvas.detach().clone().to(device)
+
         sampler_kwargs = self.adapter.native_sampler_kwargs(max_new_tokens, tokens.shape[-1])
         sampler_kwargs.update(kwargs)
-        output = sampler(tokens, **sampler_kwargs)
+
+        pre_handle: Optional[RemovableHandle] = None
+        if hasattr(self.original_model, "register_forward_pre_hook"):
+            pre_handle = self.original_model.register_forward_pre_hook(
+                _on_step_start, with_kwargs=True
+            )
+
+        try:
+            if step_fwd_hooks:
+                with self.hooks(fwd_hooks=step_fwd_hooks):
+                    output = sampler(tokens, **sampler_kwargs)
+            else:
+                output = sampler(tokens, **sampler_kwargs)
+        finally:
+            if pre_handle is not None:
+                pre_handle.remove()
+            self._diffusion_step = None
+
         # Samplers return either bare ids or a generation output object.
         sequences = getattr(output, "sequences", output)
         # They also disagree on whether the prompt is included: Dream and Gidd
@@ -4110,9 +4218,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if not includes_prompt:
                 sequences = torch.cat([tokens, sequences], dim=-1)
 
+        result: Union[str, torch.Tensor]
         if was_string and self.tokenizer is not None:
-            return self.tokenizer.decode(sequences[0], skip_special_tokens=True)
-        return sequences
+            result = self.tokenizer.decode(sequences[0], skip_special_tokens=True)
+        else:
+            result = sequences
+
+        if not return_cache:
+            return result
+
+        step_caches = {
+            step: ActivationCache(step_dict, self, has_batch_dim=not remove_batch_dim)
+            for step, step_dict in sorted(step_dicts.items())
+        }
+        trajectory_cache = DiffusionTrajectoryCache(
+            step_caches,
+            step_tokens=step_tokens,
+            num_steps_run=step_counter,
+            model=self,
+        )
+        return result, trajectory_cache
 
     @torch.no_grad()
     def generate_stream(

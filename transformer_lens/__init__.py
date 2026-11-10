@@ -9,7 +9,7 @@ from . import (
     tools,
     utilities,
 )
-from .ActivationCache import ActivationCache
+from .ActivationCache import ActivationCache, DiffusionTrajectoryCache
 from .cache.key_value_cache import TransformerLensKeyValueCache
 from .cache.key_value_cache_entry import TransformerLensKeyValueCacheEntry
 from .config import TransformerBridgeConfig
@@ -102,6 +102,7 @@ __all__ = [
     "TransformerBridgeConfig",
     "FactoredMatrix",
     "ActivationCache",
+    "DiffusionTrajectoryCache",
     "SVDInterpreter",
     "HookedRootModule",
     "TransformerLensKeyValueCache",
