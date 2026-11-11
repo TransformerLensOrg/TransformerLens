@@ -41,8 +41,6 @@ Key adapter decisions:
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
@@ -159,7 +157,6 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+    def output_logits_scale(self) -> float:
         """Match Falcon-H1's post-unembedding multiplier."""
-        multiplier = float(getattr(self.cfg, "lm_head_multiplier", 1.0))
-        return super().apply_output_logits_transform(logits * multiplier)
+        return float(getattr(self.cfg, "lm_head_multiplier", 1.0))

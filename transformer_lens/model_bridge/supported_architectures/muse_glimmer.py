@@ -2,8 +2,6 @@
 
 from typing import Any
 
-import torch
-
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
     AttentionBridge,
@@ -77,6 +75,5 @@ class MuseGlimmerArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
-        multiplier = float(getattr(self.cfg, "output_multiplier", 1.0))
-        return super().apply_output_logits_transform(logits * multiplier)
+    def output_logits_scale(self) -> float:
+        return float(getattr(self.cfg, "output_multiplier", 1.0))

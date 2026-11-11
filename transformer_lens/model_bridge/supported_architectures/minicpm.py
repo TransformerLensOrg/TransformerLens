@@ -70,7 +70,7 @@ class MiniCPMArchitectureAdapter(ArchitectureAdapter):
     - each sublayer output is multiplied by ``scale_depth / sqrt(num_hidden_layers)``
       before the residual add (hook_attn_out / hook_mlp_out expose the product);
     - the final hidden state is divided by ``hidden_size / dim_model_base`` before
-      lm_head (reproduced by apply_output_logits_transform).
+      lm_head (reproduced by output_logits_scale).
 
     Nothing is folded into weights: HF applies the scales on the raw and the
     processed path alike, and weight processing is linear, so it commutes.
@@ -115,13 +115,12 @@ class MiniCPMArchitectureAdapter(ArchitectureAdapter):
             "unembed": UnembeddingBridge(name="lm_head", config=self.cfg),
         }
 
-    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+    def output_logits_scale(self) -> float:
         """Match MiniCPM's ``lm_head(h / (hidden_size / dim_model_base))`` output path.
 
         lm_head is bias-free, so dividing its output equals dividing its input.
         """
-        divisor = self.cfg.d_model / float(getattr(self.cfg, "dim_model_base", 1.0))
-        return super().apply_output_logits_transform(logits / divisor)
+        return float(getattr(self.cfg, "dim_model_base", 1.0)) / self.cfg.d_model
 
     def prepare_loading(self, model_name: str, model_kwargs: dict) -> None:
         """Patch the remote code's transformers-v5 incompatibilities before loading."""
