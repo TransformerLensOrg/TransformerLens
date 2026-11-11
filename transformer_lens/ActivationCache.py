@@ -475,7 +475,6 @@ class ActivationCache:
         ``bias`` row.
         """
         components: List[torch.Tensor] = []
-        labels: List[str] = []
         names = self._mixer_out_names(layer)
         block = self.model.blocks[layer]
         scale = getattr(block, "residual_contribution_scale", 1.0)
@@ -491,8 +490,93 @@ class ActivationCache:
             if scale != 1.0:
                 out = out * scale
             components.append(out)
-            labels.append(self._mixer_label(layer, name))
-        return components, labels
+        return components, self._mixer_labels(layer)
+
+    def _mixer_labels(self, layer: int) -> List[str]:
+        """Labels of :meth:`_mixer_stack`'s rows for block ``layer``."""
+        return [self._mixer_label(layer, name) for name in self._mixer_out_names(layer)]
+
+    def _decomposition_layer(self, layer: Optional[int]) -> int:
+        """``None`` / ``-1`` mean the full stack: the residual entering the unembedding."""
+        if layer is None or layer == -1:
+            return int(self.model.cfg.n_layers)
+        return layer
+
+    def _resid_component_plan(
+        self,
+        layer: int,
+        mode: Literal["all", "mlp", "attn"] = "all",
+        mlp_input: bool = False,
+        incl_embeds: bool = True,
+    ) -> List[Tuple[List[str], Callable[[], List[torch.Tensor]]]]:
+        """:meth:`decompose_resid`'s rows as ``(labels, read)`` groups.
+
+        The labels depend only on the block layout, so they exist before any activation
+        does; ``read`` fetches the group's tensors from the cache.
+        """
+        incl_attn = mode != "mlp"
+        incl_mlp = mode != "attn" and not self.model.cfg.attn_only
+        hook_dict = getattr(self.model, "hook_dict", None)
+        registered = hook_dict if isinstance(hook_dict, dict) else None
+        plan: List[Tuple[List[str], Callable[[], List[torch.Tensor]]]] = []
+
+        def read(key: Any) -> Callable[[], List[torch.Tensor]]:
+            return lambda: [self[key]]
+
+        def mlp_out(l: int) -> List[torch.Tensor]:
+            # Several modules can feed one MLP-side add (GraniteMoeHybrid sums its MoE and
+            # shared MLP inline), leaving no hook_mlp_out; the residual difference is that write.
+            if registered is not None and f"blocks.{l}.hook_mlp_out" not in registered:
+                resid = (f"blocks.{l}.hook_resid_mid", f"blocks.{l}.hook_resid_post")
+                if all(name in registered for name in resid):
+                    return [self[("resid_post", l)] - self[("resid_mid", l)]]
+            return [self[("mlp_out", l)]]
+
+        def add_mixer(l: int) -> None:
+            plan.append((self._mixer_labels(l), lambda: self._mixer_stack(l, Slice(None))[0]))
+
+        def add_attn_slot(l: int) -> None:
+            if self._has_attn(l):
+                plan.append(([f"{l}_attn_out"], read(("attn_out", l))))
+            elif self._mixer_role(l) == "attn":
+                add_mixer(l)
+
+        def add_mlp_slot(l: int) -> None:
+            if self._has_mlp(l):
+                plan.append(([f"{l}_mlp_out"], lambda: mlp_out(l)))
+            elif not self._has_attn(l) and self._mixer_role(l) == "mlp":
+                add_mixer(l)
+
+        if incl_embeds:
+            if self.has_embed:
+                plan.append((["embed"], read("hook_embed")))
+            if self.has_pos_embed:
+                plan.append((["pos_embed"], read("hook_pos_embed")))
+        for l in range(layer):
+            if incl_attn:
+                add_attn_slot(l)
+            if incl_mlp:
+                add_mlp_slot(l)
+        if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
+            add_attn_slot(layer)
+        return plan
+
+    def decompose_resid_labels(
+        self,
+        layer: Optional[int] = None,
+        mlp_input: bool = False,
+        mode: Literal["all", "mlp", "attn"] = "all",
+        incl_embeds: bool = True,
+    ) -> List[str]:
+        """The labels :meth:`decompose_resid` returns for these arguments, read from the
+        block layout alone, so a tool can check a decomposition before running the model."""
+        plan = self._resid_component_plan(
+            self._decomposition_layer(layer),
+            mode=mode,
+            mlp_input=mlp_input,
+            incl_embeds=incl_embeds,
+        )
+        return [label for labels, _ in plan for label in labels]
 
     def accumulated_resid(
         self,
@@ -853,7 +937,9 @@ class ActivationCache:
                 attention components. Defaults to "all". On SSM / hybrid models, blocks without
                 attention contribute their sequence-mixer output (e.g. ``0_linear_attn_out``,
                 ``0_mixer_out``) in the attention slot, and blocks without an MLP contribute no
-                ``mlp_out``.
+                ``mlp_out``. A sequential block with no ``hook_mlp_out`` (GraniteMoeHybrid with
+                experts sums its MoE and shared MLP inline) contributes
+                ``resid_post - resid_mid`` as its ``mlp_out``.
             apply_ln:
                 Whether to apply LayerNorm to the stack.
             pos_slice:
@@ -873,47 +959,12 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
         pos_slice = cast(Slice, pos_slice)  # mypy can't seem to infer this
-        if layer is None or layer == -1:
-            # Default to the residual stream immediately pre unembed
-            layer = self.model.cfg.n_layers
-        assert isinstance(layer, int)
-
-        incl_attn = mode != "mlp"
-        incl_mlp = mode != "attn" and not self.model.cfg.attn_only
-        components_list = []
-        labels = []
-        if incl_embeds:
-            if self.has_embed:
-                components_list = [self["hook_embed"]]
-                labels.append("embed")
-            if self.has_pos_embed:
-                components_list.append(self["hook_pos_embed"])
-                labels.append("pos_embed")
-
-        def add_mixer(l: int) -> None:
-            mixers, mixer_labels = self._mixer_stack(l, Slice(None))
-            components_list.extend(mixers)
-            labels.extend(mixer_labels)
-
-        def add_attn_slot(l: int) -> None:
-            if self._has_attn(l):
-                components_list.append(self[("attn_out", l)])
-                labels.append(f"{l}_attn_out")
-            elif self._mixer_role(l) == "attn":
-                add_mixer(l)
-
-        for l in range(layer):
-            if incl_attn:
-                add_attn_slot(l)
-            if incl_mlp:
-                if self._has_mlp(l):
-                    components_list.append(self[("mlp_out", l)])
-                    labels.append(f"{l}_mlp_out")
-                elif not self._has_attn(l) and self._mixer_role(l) == "mlp":
-                    add_mixer(l)
-        if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
-            add_attn_slot(layer)
-        components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
+        layer = self._decomposition_layer(layer)
+        plan = self._resid_component_plan(
+            layer, mode=mode, mlp_input=mlp_input, incl_embeds=incl_embeds
+        )
+        labels = [label for entry_labels, _ in plan for label in entry_labels]
+        components_list = [pos_slice.apply(c, dim=-2) for _, read in plan for c in read()]
         if components_list:
             components = torch.stack(components_list, dim=0)
         else:
@@ -1402,7 +1453,7 @@ class ActivationCache:
             layer:
                 Layer index.
             neuron_slice:
-                Slice of the neuron.
+                Slice of the neuron. An int drops the neuron axis from the result.
             pos_slice:
                 Slice of the positions.
             project_output_onto:
@@ -1427,17 +1478,18 @@ class ActivationCache:
             # Note - order is important, as Slice.apply *may* collapse a dimension, so this ensures
             # that position dimension is -2 when we apply position slice
             neuron_acts = pos_slice.apply(neuron_acts, dim=-2)
-        if neuron_slice is not None:
-            neuron_acts = neuron_slice.apply(neuron_acts, dim=-1)
-            W_out = neuron_slice.apply(W_out, dim=0)
-        if contribution_scale != 1.0:
-            neuron_acts = neuron_acts * contribution_scale
         post = self._post_norm_map(layer, "ln2_post", pos_slice)
         if post is not None:
             scale, weight, centers, _ = post
             # center(a_n W_out_n) / s * w = (a_n / s) * center(W_out_n) * w
             W_out = self._apply_post_norm_map(W_out, torch.ones(()), weight, centers)
+            # Divide before slicing: an int neuron_slice drops the axis scale's trailing 1 broadcasts over.
             neuron_acts = (neuron_acts / scale).to(neuron_acts.dtype)
+        if neuron_slice is not None:
+            neuron_acts = neuron_slice.apply(neuron_acts, dim=-1)
+            W_out = neuron_slice.apply(W_out, dim=0)
+        if contribution_scale != 1.0:
+            neuron_acts = neuron_acts * contribution_scale
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]

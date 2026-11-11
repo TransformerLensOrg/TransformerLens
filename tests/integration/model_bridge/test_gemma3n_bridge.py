@@ -66,6 +66,21 @@ def test_run_with_cache_text_only(bridge):
     assert len(cache) > 0
 
 
+def test_svd_w_in_uses_hf_ln2_scale(bridge):
+    """W_in is scaled by the per-channel factor HF's ln2 actually applies."""
+    from transformer_lens.SVDInterpreter import SVDInterpreter
+
+    interpreter = SVDInterpreter(bridge)
+    for layer in range(bridge.cfg.n_layers):
+        hf_ln2 = bridge.blocks[layer].ln2.original_component
+        x = torch.randn(8, bridge.cfg.d_model)
+        x_hat = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + hf_ln2.eps)
+        with torch.no_grad():
+            scale = (hf_ln2(x) / x_hat).mean(0)
+        expected = interpreter.params[f"blocks.{layer}.mlp.W_in"].T * scale
+        torch.testing.assert_close(interpreter._get_w_in_matrix(layer), expected)
+
+
 def test_contribution_hooks_are_post_norm_outputs(bridge):
     """hook_attn_out / hook_mlp_out carry the post-sublayer norm outputs, the tensors the
     layer actually adds (Gemma 2/3 contract), checked against an independent HF run."""
@@ -113,3 +128,9 @@ def test_half_converts_unmapped_parameters():
     assert unconverted == []
     with torch.no_grad():
         assert bridge(IDS).dtype == torch.float16
+
+
+def test_start_at_layer_is_refused_on_altup_blocks(bridge):
+    """An AltUp block carries a stack of streams, so there is no single residual to inject."""
+    with pytest.raises(NotImplementedError, match="AltUpBlockBridge"):
+        bridge(torch.zeros(1, 3, bridge.cfg.d_model), start_at_layer=1)

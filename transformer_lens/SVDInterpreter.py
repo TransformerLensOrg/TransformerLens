@@ -162,10 +162,17 @@ class SVDInterpreter:
         w_in = self.params[key].T
 
         if f"blocks.{layer_index}.ln2.w" in self.params:  # If fold_ln == False
+            # Lazy: keeps `import transformer_lens` from loading the model_bridge package.
+            from transformer_lens.model_bridge.generalized_components.normalization import (
+                norm_uses_weight_offset,
+            )
+
             ln_2 = self.params[f"blocks.{layer_index}.ln2.w"]
-            if getattr(self.cfg, "rmsnorm_uses_offset", False):
-                # Offset-RMS models (Gemma family) store w as an offset from 1:
-                # the effective scale is (1 + w), and post-fold w = 0 is identity.
+            blocks = getattr(self.model, "blocks", None)
+            norm = getattr(blocks[layer_index], "ln2", None) if blocks is not None else None
+            if norm_uses_weight_offset(norm, self.cfg):
+                # Offset-RMS norms store w as an offset from 1: the effective scale is
+                # (1 + w), and post-fold w = 0 is identity.
                 ln_2 = 1.0 + ln_2
             return w_in * ln_2
 

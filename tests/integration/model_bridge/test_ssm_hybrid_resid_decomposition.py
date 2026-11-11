@@ -136,9 +136,9 @@ def _nemotronh():
     return _boot(AutoModelForCausalLM.from_config(c).eval(), "NemotronHForCausalLM")
 
 
-def _granite_dense():
-    """Dense GraniteMoeHybrid (shared MLP, no experts) with a non-unit residual_multiplier:
-    every sublayer output is scaled after its hook_out before the residual add."""
+def _granite_hybrid(num_local_experts: int):
+    """GraniteMoeHybrid with a non-unit residual_multiplier: every sublayer output is scaled
+    after its hook_out before the residual add."""
     from transformers import AutoModelForCausalLM
     from transformers.models.granitemoehybrid import GraniteMoeHybridConfig
 
@@ -151,7 +151,8 @@ def _granite_dense():
         num_hidden_layers=3,
         num_attention_heads=8,
         num_key_value_heads=4,
-        num_local_experts=0,
+        num_local_experts=num_local_experts,
+        num_experts_per_tok=1,
         max_position_embeddings=64,
         layer_types=["mamba", "attention", "mamba"],
         mamba_n_heads=8,
@@ -167,6 +168,16 @@ def _granite_dense():
     )
     c.architectures = ["GraniteMoeHybridForCausalLM"]
     return _boot(AutoModelForCausalLM.from_config(c).eval(), "GraniteMoeHybridForCausalLM")
+
+
+def _granite_dense():
+    """Shared MLP only: the MLP-side write fires hook_mlp_out."""
+    return _granite_hybrid(num_local_experts=0)
+
+
+def _granite_moe():
+    """MoE + shared MLP summed inline before the scaled add, so no hook_mlp_out exists."""
+    return _granite_hybrid(num_local_experts=2)
 
 
 def _zamba2():
@@ -251,6 +262,7 @@ def _lfm2():
 
 _FACTORIES = {
     "granite_dense": _granite_dense,
+    "granite_moe": _granite_moe,
     "lfm2": _lfm2,
     "mamba2": _mamba2,
     "mamba2_bias": _mamba2_bias,
@@ -309,6 +321,7 @@ class TestDecomposeResid:
         expected = {
             "qwen3_5": ["0_linear_attn_out", "0_mlp_out", "3_attn_out", "3_mlp_out"],
             "granite_dense": ["0_mixer_out", "0_mlp_out", "1_attn_out", "1_mlp_out"],
+            "granite_moe": ["0_mixer_out", "0_mlp_out", "1_attn_out", "1_mlp_out"],
             "lfm2": ["0_conv_out", "0_mlp_out", "1_attn_out", "1_mlp_out", "2_conv_out"],
             "mamba2": ["0_mixer_out", "1_mixer_out"],
             "mamba2_bias": ["0_mixer_out", "1_mixer_out"],
@@ -354,6 +367,36 @@ class TestDecomposeResid:
                 comps.sum(0), cache[f"blocks.{layer}.hook_resid_mid"], atol=ATOL, rtol=0
             )
 
+    def test_resid_mid_is_resid_pre_plus_the_attention_slot(self, bridge_and_cache):
+        """``hook_resid_mid`` must sit right after the attention-slot write, on every block
+        that has one (mixer-only and parallel blocks have none to check)."""
+        _, bridge, cache = bridge_and_cache
+        hooks = bridge.hook_dict
+        for layer in range(bridge.cfg.n_layers):
+            if f"blocks.{layer}.hook_resid_mid" not in hooks:
+                continue
+            rows, labels = cache.decompose_resid(
+                layer=layer, mlp_input=True, mode="attn", incl_embeds=False, return_labels=True
+            )
+            slot = [row for row, label in zip(rows, labels) if label.startswith(f"{layer}_")]
+            assert slot, labels
+            write = (
+                cache[f"blocks.{layer}.hook_resid_mid"] - cache[f"blocks.{layer}.hook_resid_pre"]
+            )
+            torch.testing.assert_close(write, torch.stack(slot).sum(0), atol=ATOL, rtol=0)
+
+    @pytest.mark.parametrize("mode", ["all", "attn", "mlp"])
+    @pytest.mark.parametrize("mlp_input", [False, True])
+    def test_labels_are_known_before_any_activation(self, bridge_and_cache, mode, mlp_input):
+        _, bridge, cache = bridge_and_cache
+        _, labels = cache.decompose_resid(mode=mode, mlp_input=mlp_input, return_labels=True)
+        assert cache.decompose_resid_labels(mode=mode, mlp_input=mlp_input) == labels
+        from transformer_lens import ActivationCache
+
+        assert ActivationCache({}, bridge).decompose_resid_labels(
+            mode=mode, mlp_input=mlp_input, incl_embeds=False
+        ) == [label for label in labels if label not in ("embed", "pos_embed")]
+
     def test_logit_attrs_runs(self, bridge_and_cache):
         _, bridge, cache = bridge_and_cache
         attrs = cache.logit_attrs(cache.decompose_resid(), tokens=torch.tensor([3, 3]))
@@ -389,7 +432,7 @@ class TestFullResidDecomposition:
     @pytest.mark.parametrize("expand_neurons", [False, True])
     def test_sums_to_final_residual(self, bridge_and_cache, expand_neurons):
         name, bridge, cache = bridge_and_cache
-        if name == "granite_dense" and expand_neurons:
+        if name in ("granite_dense", "granite_moe") and expand_neurons:
             # Its MLP is `shared_mlp`, outside the `mlp` slot neuron expansion reads.
             with pytest.raises(NotImplementedError, match="shared_mlp"):
                 cache.get_full_resid_decomposition(expand_neurons=True)
@@ -405,7 +448,7 @@ class TestFullResidDecomposition:
         self, bridge_and_cache, expand_neurons
     ):
         name, bridge, cache = bridge_and_cache
-        if name == "granite_dense" and expand_neurons:
+        if name in ("granite_dense", "granite_moe") and expand_neurons:
             # Its MLP is `shared_mlp`, outside the `mlp` slot neuron expansion reads.
             with pytest.raises(NotImplementedError, match="shared_mlp"):
                 cache.get_full_resid_decomposition(expand_neurons=True)
@@ -431,6 +474,22 @@ def test_zamba2_hybrid_layers_write_only_their_mamba_output():
         )
     # On a hybrid layer the norm reads the residual plus the shared transformer's output.
     assert not torch.allclose(cache["blocks.1.norm.hook_in"], cache["blocks.1.hook_resid_pre"])
+
+
+def test_granite_moe_mlp_row_is_the_inline_moe_plus_shared_mlp_write():
+    """With experts, no single module feeds the MLP-side add, so the block has no hook_mlp_out;
+    decompose_resid derives the row from the residual stream instead of raising."""
+    bridge = _granite_moe()
+    assert not any(name.endswith("hook_mlp_out") for name in bridge.hook_dict)
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(TOKENS)
+    rows, labels = cache.decompose_resid(mode="mlp", incl_embeds=False, return_labels=True)
+    assert labels == [f"{layer}_mlp_out" for layer in range(bridge.cfg.n_layers)]
+    for layer, row in enumerate(rows):
+        write = (
+            cache[f"blocks.{layer}.moe.hook_out"] + cache[f"blocks.{layer}.shared_mlp.hook_out"]
+        ) * bridge.blocks[layer].residual_contribution_scale
+        torch.testing.assert_close(row, write, atol=ATOL, rtol=0)
 
 
 def test_recurrent_gemma_hook_embed_is_the_scaled_embedding():

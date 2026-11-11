@@ -8,6 +8,7 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     EmbeddingBridge,
     LinearBridge,
+    NormalizationBridge,
     RotaryEmbeddingBridge,
     UnembeddingBridge,
     VisionProjectionBridge,
@@ -38,6 +39,18 @@ class MuseGlimmerArchitectureAdapter(ArchitectureAdapter):
         self.cfg.attn_implementation = "eager"
         self.weight_processing_conversions: dict = {}
 
+        def sandwich_norm(name: str) -> NormalizationBridge:
+            # Block norms scale by (1 + w) but the final norm by raw w, so the offset is
+            # declared per-norm and cfg.rmsnorm_uses_offset stays False for ln_final.
+            # Both forward paths read eps from the HF norm, so the post norms keep
+            # post_norm_eps while cfg.eps stays rms_norm_eps.
+            return NormalizationBridge(
+                name=name,
+                config=self.cfg,
+                use_native_layernorm_autograd=True,
+                uses_weight_offset=True,
+            )
+
         self.component_mapping = {
             "vision_encoder": GeneralizedComponent(name="model.vision_tower"),
             # HF runs ``vision_adapter -> vision_projection -> perception_emb_norm`` and
@@ -51,10 +64,10 @@ class MuseGlimmerArchitectureAdapter(ArchitectureAdapter):
             "blocks": BlockBridge(
                 name="model.language_model.layers",
                 submodules={
-                    "ln1": GeneralizedComponent(name="input_layernorm"),
-                    "ln1_post": GeneralizedComponent(name="post_attention_layernorm"),
-                    "ln2": GeneralizedComponent(name="pre_feedforward_layernorm"),
-                    "ln2_post": GeneralizedComponent(name="post_feedforward_layernorm"),
+                    "ln1": sandwich_norm("input_layernorm"),
+                    "ln1_post": sandwich_norm("post_attention_layernorm"),
+                    "ln2": sandwich_norm("pre_feedforward_layernorm"),
+                    "ln2_post": sandwich_norm("post_feedforward_layernorm"),
                     "attn": AttentionBridge(
                         name="self_attn",
                         config=self.cfg,

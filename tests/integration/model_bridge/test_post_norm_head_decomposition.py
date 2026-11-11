@@ -26,6 +26,7 @@ from transformers import (
 )
 
 from transformer_lens.model_bridge.sources import build_bridge_from_module
+from transformer_lens.utilities.slice import Slice
 
 _TINY = dict(
     hidden_size=64,
@@ -163,6 +164,37 @@ def test_output_bias_is_mapped_through_post_norm(hf_architecture: str, config_cl
             torch.testing.assert_close(
                 full.sum(0), _target(cache, n_layers, layer, mlp_input), atol=2e-5, rtol=1e-5
             )
+
+
+@pytest.mark.parametrize("hf_architecture,config_cls,config_kwargs", CASES)
+@pytest.mark.parametrize("neuron_slice", [5, Slice(5)], ids=["int", "Slice-int"])
+@pytest.mark.parametrize("pos_slice", [None, -1], ids=["all-pos", "last-pos"])
+@pytest.mark.parametrize("batched", [True, False], ids=["batched", "batchless"])
+@pytest.mark.parametrize("n_outs", [None, 0, 2], ids=["unprojected", "proj-1d", "proj-2d"])
+def test_integer_neuron_slice_matches_list(
+    hf_architecture: str,
+    config_cls: Any,
+    config_kwargs: dict[str, Any],
+    neuron_slice: Any,
+    pos_slice: Any,
+    batched: bool,
+    n_outs: Any,
+) -> None:
+    """An int neuron_slice is the one-element list slice with the neuron axis dropped."""
+    bridge, cache = _run(hf_architecture, config_cls, config_kwargs)
+    if not batched:
+        cache = cache.apply_slice_to_batch_dim(0)
+    d_model = bridge.cfg.d_model
+    project = None
+    if n_outs is not None:
+        shape = (d_model,) if n_outs == 0 else (d_model, n_outs)
+        project = torch.randn(shape, generator=torch.Generator().manual_seed(0))
+    kwargs = dict(layer=0, pos_slice=pos_slice, project_output_onto=project)
+    reference = cache.get_neuron_results(neuron_slice=[5], **kwargs)
+    expected = reference[..., 0] if n_outs == 0 else reference[..., 0, :]
+    result = cache.get_neuron_results(neuron_slice=neuron_slice, **kwargs)
+    assert result.shape == expected.shape
+    torch.testing.assert_close(result, expected)
 
 
 def test_half_precision_stacks_keep_model_dtype() -> None:

@@ -5,8 +5,6 @@ from typing import Any, List, Optional
 
 import torch
 
-# Block variants with no attn_out + mlp_out split and no resid_mid hook.
-_HYBRID_VARIANT_NAMES = ("mamba", "ssm", "mixer", "linear_attn")
 _ID_DTYPES = (torch.int64, torch.int32, torch.int16, torch.int8, torch.uint8)
 
 
@@ -36,12 +34,29 @@ def require_eval_mode(model: Any, *, operation: str) -> None:
     )
 
 
-def hybrid_block_types(model: Any) -> List[str]:
-    """Sorted distinct ``model.layer_types()`` entries naming an SSM or linear-attention block."""
-    layer_types = model.layer_types() if hasattr(model, "layer_types") else []
-    return sorted(
-        {t for t in layer_types if any(part in _HYBRID_VARIANT_NAMES for part in t.split("+"))}
-    )
+def blocks_without_resid_mid(model: Any) -> List[int]:
+    """Indices of sequential blocks that expose no ``hook_resid_mid``."""
+    blocks = getattr(model, "blocks", None)
+    hook_dict = getattr(model, "hook_dict", None)
+    if blocks is None or not isinstance(hook_dict, dict):
+        return []
+    return [
+        l
+        for l, block in enumerate(blocks)
+        # Parallel blocks have no resid_mid by design and accumulated_resid skips them.
+        if getattr(block, "mlp_input_includes_attn", True)
+        and f"blocks.{l}.hook_resid_mid" not in hook_dict
+    ]
+
+
+def require_resid_mid(model: Any, *, operation: str, alternative: str) -> None:
+    """Refuse ``operation`` when a sequential block has no ``hook_resid_mid`` to read."""
+    missing = blocks_without_resid_mid(model)
+    if missing:
+        raise ValueError(
+            f"{operation} reads hook_resid_mid on every sequential block, but blocks "
+            f"{missing} have none (the sequence mixer is their only sublayer); {alternative}"
+        )
 
 
 def compute_dtype(dtype: torch.dtype) -> torch.dtype:

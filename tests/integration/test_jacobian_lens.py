@@ -351,6 +351,52 @@ def test_bidirectional_bert_bridge_is_rejected_before_readout():
         lens.validate_model(model)
 
 
+def test_modernbert_decoder_prediction_head_is_rejected_before_fit():
+    """J^T W_U skips the dense+GELU+norm head that ModernBERT-decoder applies before lm_head."""
+    from transformers import ModernBertDecoderConfig, ModernBertDecoderForCausalLM
+
+    from transformer_lens.model_bridge.sources import build_bridge_from_module
+    from transformer_lens.tools.analysis import JacobianLens
+
+    config = ModernBertDecoderConfig(
+        vocab_size=32,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        max_position_embeddings=16,
+        pad_token_id=0,
+        bos_token_id=0,
+        eos_token_id=0,
+    )
+    model = build_bridge_from_module(
+        ModernBertDecoderForCausalLM(config).eval(),
+        "ModernBertDecoderForCausalLM",
+        hf_config=config,
+        dtype=torch.float32,
+        device="cpu",
+        model_name="tiny-random-modernbert-decoder-jacobian-lens-contract",
+    )
+    lens = JacobianLens(
+        {0: torch.eye(config.hidden_size)},
+        n_prompts=1,
+        d_model=config.hidden_size,
+        metadata={"target_layer": 1},
+    )
+
+    with pytest.raises(ValueError, match=r"mounts \['prediction_head'\]"):
+        lens.validate_model(model)
+    # No tokenizer is attached, so reaching tokenization would raise a different error.
+    with pytest.raises(ValueError, match=r"mounts \['prediction_head'\]"):
+        JacobianLens.fit(
+            model,
+            ["a b c"],
+            corpus="c",
+            skip_first_positions=0,
+            show_progress=False,
+        )
+
+
 @pytest.mark.slow
 def test_gemma_published_artifact_parity_topk_and_softcap():
     """Gemma readout matches the artifact formula and its soft-capped output."""

@@ -12,6 +12,7 @@ from transformer_lens.utilities import (
     derive_generator,
     sign_flip_permutation_pvalue,
     standard_error,
+    statistics,
     success_rate_ci,
 )
 from transformer_lens.utilities.statistics import _binomial_cdf, _count_hits
@@ -181,6 +182,65 @@ def test_sign_flip_exact_enumeration_matches_hand_count():
     greater = sign_flip_permutation_pvalue(effects, alternative="greater")
     less = sign_flip_permutation_pvalue(effects, alternative="less")
     assert greater < less
+
+
+def test_sign_flip_exact_branch_evaluates_bounded_sign_chunks(monkeypatch):
+    null_widths = []
+
+    def spy(null, observed, alternative):
+        null_widths.append(null.shape[-1])
+        return _count_hits(null, observed, alternative)
+
+    monkeypatch.setattr(statistics, "_count_hits", spy)
+    sign_flip_permutation_pvalue(torch.randn(3, 12))
+    assert sum(null_widths) == 2**12
+    assert max(null_widths) <= 256
+
+
+def _unchunked_sign_flip_pvalue(effects: torch.Tensor, alternative: str) -> torch.Tensor:
+    n = effects.shape[-1]
+    signs = torch.tensor(list(itertools.product((1.0, -1.0), repeat=n)), dtype=effects.dtype)
+    null = (effects.unsqueeze(-2) * signs).mean(dim=-1)
+    observed = effects.mean(dim=-1, keepdim=True)
+    return _count_hits(null, observed, alternative) / 2**n
+
+
+@pytest.mark.parametrize("chunk", [1, 7])
+@pytest.mark.parametrize("n", [1, 5, 9, 12])
+@pytest.mark.parametrize("kind", ["tied", "randn"])
+@pytest.mark.parametrize("alternative", ["two-sided", "greater", "less"])
+def test_sign_flip_exact_chunking_matches_unchunked_enumeration(
+    monkeypatch, chunk: int, n: int, kind: str, alternative: str
+):
+    generator = torch.Generator().manual_seed(n)
+    if kind == "tied":
+        effects = torch.randint(-3, 4, (4, n), generator=generator).float()
+    else:
+        effects = torch.randn(4, n, generator=generator)
+    monkeypatch.setattr(statistics, "_SIGN_FLIP_CHUNK", chunk)
+    p = sign_flip_permutation_pvalue(effects, alternative=alternative)
+    assert torch.equal(p, _unchunked_sign_flip_pvalue(effects, alternative))
+
+
+@pytest.mark.parametrize("exact_max_n", [12, 3])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_sign_flip_returns_nan_for_cells_with_non_finite_effects(exact_max_n: int, bad: float):
+    effects = torch.tensor([[1.0, 2.0, bad, 3.0, 0.5], [1.0, 2.0, -1.5, 3.0, 0.5]])
+    p = sign_flip_permutation_pvalue(
+        effects, exact_max_n=exact_max_n, n_permutations=200, generator=derive_generator(5)
+    )
+    assert torch.isnan(p[0])
+    expected = sign_flip_permutation_pvalue(
+        effects[1:], exact_max_n=exact_max_n, n_permutations=200, generator=derive_generator(5)
+    )
+    assert torch.equal(p[1:], expected)
+
+
+@pytest.mark.parametrize("alternative", ["two-sided", "greater", "less"])
+def test_sign_flip_mixed_infinite_effects_are_nan(alternative: str):
+    """+inf and -inf average to a NaN observed mean that an isnan() check on the inputs misses."""
+    effects = torch.tensor([[float("inf"), float("-inf"), 1.0, 2.0]])
+    assert torch.isnan(sign_flip_permutation_pvalue(effects, alternative=alternative)).all()
 
 
 def test_sign_flip_monte_carlo_separates_effect_from_null():

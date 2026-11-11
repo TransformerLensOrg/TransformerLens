@@ -359,24 +359,123 @@ def test_stacked_by_pos_dataframe_labels_match_the_direct_pattern_sweep(batched)
         assert row.value.item() == pytest.approx(direct.values[layer, head, pos, example].item())
 
 
-def test_stacked_gqa_dataframe_has_zero_rows_for_padded_heads():
-    from transformer_lens.patching import get_act_patch_attn_head_all_pos_every
-
+@pytest.fixture(scope="module")
+def gqa():
+    """A batch-3 clean/corrupt pair on a tiny model with two key/value heads for four queries."""
     model = _tiny_model(n_key_value_heads=2)
     torch.manual_seed(0)
     clean = torch.randint(0, model.cfg.d_vocab, (3, 5))
     torch.manual_seed(1)
     corrupt = torch.randint(0, model.cfg.d_vocab, (3, 5))
-    _, cache = model.run_with_cache(clean)
+    clean_logits, cache = model.run_with_cache(clean)
+    return model, clean_logits, corrupt, cache
+
+
+@pytest.fixture(scope="module")
+def gqa_result(gqa):
+    from transformer_lens.patching import get_act_patch_attn_head_all_pos_every
+
+    model, _, corrupt, cache = gqa
+    return get_act_patch_attn_head_all_pos_every(
+        model, corrupt, cache, _per_example, reduce="none", baseline=True
+    )
+
+
+def _assert_nan_only_on_padded(t, kv):
+    padded = torch.zeros(t.shape[:3], dtype=torch.bool)
+    padded[2:4, :, kv:] = True
+    assert t[padded].isnan().all()
+    assert t[~padded].isfinite().all()
+
+
+def test_gqa_padded_cells_are_nan_in_effect_and_normalized(gqa, gqa_result):
+    _, clean_logits, _, _ = gqa
+    effect = gqa_result.effect()
+    _assert_nan_only_on_padded(effect, kv=2)
+    live = gqa_result.values - gqa_result.baseline
+    torch.testing.assert_close(effect[:2], live[:2])
+    torch.testing.assert_close(effect[2:4, :, :2], live[2:4, :, :2])
+    normalized = gqa_result.normalized(_per_example(clean_logits).detach())
+    _assert_nan_only_on_padded(normalized, kv=2)
+
+
+def test_gqa_padded_cells_are_nan_in_every_statistic(gqa_result):
+    _assert_nan_only_on_padded(gqa_result.permutation_pvalue(), kv=2)
+    _assert_nan_only_on_padded(gqa_result.stderr(), kv=2)
+    for of_effect in (False, True):
+        low, high = gqa_result.bootstrap_ci(of_effect=of_effect, n_resamples=50)
+        _assert_nan_only_on_padded(low, kv=2)
+        _assert_nan_only_on_padded(high, kv=2)
+
+
+def test_gqa_valid_mask_marks_exactly_the_padded_cells(gqa, gqa_result, batched):
+    from transformer_lens.patching import (
+        get_act_patch_attn_head_all_pos_every,
+        get_act_patch_attn_head_by_pos_every,
+        get_act_patch_block_every,
+    )
+
+    model = gqa[0]
+    expected = torch.ones(5, model.cfg.n_layers, model.cfg.n_heads, dtype=torch.bool)
+    expected[2:4, :, 2:] = False
+    assert gqa_result.valid is not None and torch.equal(gqa_result.valid, expected)
+
+    mqa = _tiny_model(n_key_value_heads=1)
+    torch.manual_seed(0)
+    clean = torch.randint(0, mqa.cfg.d_vocab, (2, 4))
+    torch.manual_seed(1)
+    corrupt = torch.randint(0, mqa.cfg.d_vocab, (2, 4))
+    _, cache = mqa.run_with_cache(clean)
+    by_pos = get_act_patch_attn_head_by_pos_every(mqa, corrupt, cache, _per_example, reduce="none")
+    expected_pos = torch.ones(5, mqa.cfg.n_layers, 4, mqa.cfg.n_heads, dtype=torch.bool)
+    expected_pos[2:4, :, :, 1:] = False
+    assert by_pos.valid is not None and torch.equal(by_pos.valid, expected_pos)
+
+    model, _, corrupt, cache = batched
+    full = get_act_patch_attn_head_all_pos_every(model, corrupt, cache, _per_example, reduce="none")
+    assert full.valid is None
+    block = get_act_patch_block_every(model, corrupt, cache, _per_example, reduce="none")
+    assert block.valid is None
+
+
+def test_gqa_mask_survives_metric_selection_and_reduced_baseline(gqa):
+    from transformer_lens.patching import get_act_patch_attn_head_all_pos_every
+
+    model, _, corrupt, cache = gqa
+    multi = get_act_patch_attn_head_all_pos_every(
+        model,
+        corrupt,
+        cache,
+        {"a": _per_example, "b": lambda logits: logits[:, -1, 5]},
+        reduce="none",
+        baseline=True,
+    )
+    _assert_nan_only_on_padded(multi["b"].effect(), kv=2)
+    # The documented recipe: the ellipsis skips the metric axis the mask does not have.
+    p = multi.permutation_pvalue()
+    assert multi.valid is not None
+    live = p[..., multi.valid]
+    assert live.shape == (2, int(multi.valid.sum()))
+    assert live.isfinite().all()
+    reduced = get_act_patch_attn_head_all_pos_every(model, corrupt, cache, _scalar, baseline=True)
+    assert reduced.reduced
+    _assert_nan_only_on_padded(reduced.effect(), kv=2)
+
+
+def test_stacked_gqa_dataframe_omits_padded_heads(gqa):
+    from transformer_lens.patching import get_act_patch_attn_head_all_pos_every
+
+    model, _, corrupt, cache = gqa
     stacked = get_act_patch_attn_head_all_pos_every(
         model, corrupt, cache, _per_example, reduce="none"
     )
     frame = stacked.to_dataframe()
-    assert len(frame) == 5 * model.cfg.n_layers * model.cfg.n_heads * 3
+    n_layers, n_heads = model.cfg.n_layers, model.cfg.n_heads
+    assert len(frame) == (5 * n_layers * n_heads - 2 * n_layers * (n_heads - 2)) * 3
     padded = frame[(frame.patch_type_name.isin(["k", "v"])) & (frame["head"] >= 2)]
-    assert len(padded) == 2 * model.cfg.n_layers * 2 * 3 and (padded.value == 0).all()
+    assert len(padded) == 0
     live = frame[(frame.patch_type_name == "k") & (frame["head"] < 2)]
-    assert (live.value != 0).any()
+    assert len(live) == n_layers * 2 * 3 and (live.value != 0).any()
 
 
 def test_every_helpers_compute_the_baseline_once(batched, monkeypatch):

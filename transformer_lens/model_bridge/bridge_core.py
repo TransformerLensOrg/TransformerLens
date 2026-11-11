@@ -1174,6 +1174,22 @@ class BridgeCore:
             remove_batch_dim=remove_batch_dim,
         )
 
+    def _has_registered_blocks(self) -> bool:
+        """Whether a ``blocks`` stack is registered as a submodule on this bridge.
+
+        Checks ``_modules`` directly rather than ``hasattr``: ``__getattr__`` falls
+        through to the wrapped HF model, so ``hasattr(self, "blocks")`` can be True
+        for a model that merely exposes its own ``.blocks`` attribute.
+        """
+        modules = self.__dict__.get("_modules") or {}
+        return "blocks" in modules
+
+    def _registered_block_count(self) -> Optional[int]:
+        """Length of the registered ``blocks`` stack, or None when there is none."""
+        if not self._has_registered_blocks():
+            return None
+        return len(self.__dict__["_modules"]["blocks"])
+
     @staticmethod
     def _resolve_stop_at_layer(stop_at_layer: int, n_blocks: int) -> int:
         """Map ``stop_at_layer`` to ``[0, n_blocks]``, with ``n_blocks`` past the last block.
@@ -1317,13 +1333,14 @@ class BridgeCore:
         """
         _validate_execution_kwargs(kwargs, "run_with_hooks")
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
+        n_blocks = self._registered_block_count()
         effective_stop_layer = None
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
+        if stop_at_layer is not None and n_blocks is not None:
+            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, n_blocks)
         effective_start_layer = None
-        if start_at_layer is not None and hasattr(self, "blocks"):
+        if start_at_layer is not None and n_blocks is not None:
             effective_start_layer = (
-                len(self.blocks) + start_at_layer if start_at_layer < 0 else start_at_layer
+                n_blocks + start_at_layer if start_at_layer < 0 else start_at_layer
             )
 
         def add_hook_to_point(
@@ -1478,7 +1495,9 @@ class BridgeCore:
     ) -> Tuple[Any, Union[ActivationCache, Dict[str, torch.Tensor]]]:
         """Run the model and cache activations. Returns ``(output, cache)``.
 
-        ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early.
+        ``stop_at_layer`` raises :class:`StopAtLayerException` to stop early; on an
+        architecture with no ``blocks`` stack it raises ``NotImplementedError``, as
+        :meth:`forward` does.
         ``start_at_layer`` treats ``input`` as the residual entering block ``k``
         (see :meth:`forward`); blocks below ``k`` are excluded from the cache to
         match HookedTransformer. ``pos_slice`` slices each cached activation along
@@ -1541,8 +1560,6 @@ class BridgeCore:
         cache: Dict[str, torch.Tensor] = {}
         hooks: List[Tuple[HookPoint, str]] = []
         visited: set[int] = set()
-        stop_hook_point: Optional[HookPoint] = None
-        stop_hook_fn: Optional[Callable] = None
 
         # None → no-op .to(None), tensors stay on their current device.
         cache_device = kwargs.pop("device", None)
@@ -1577,26 +1594,17 @@ class BridgeCore:
             return cache_hook
 
         hook_dict = self.hook_dict
+        n_blocks = self._registered_block_count()
         effective_stop_layer = None
-        if stop_at_layer is not None and hasattr(self, "blocks"):
-            effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
-            if effective_stop_layer == len(self.blocks):
-                # No block follows the last for a hook_in to stop on; forward stops on its exit.
-                kwargs["stop_at_layer"] = effective_stop_layer
-            else:
-                # Stop at the beginning of the specified block, not at the end of the previous block
-                block_hook_name = f"blocks.{effective_stop_layer}.hook_in"
-                if block_hook_name in hook_dict:
-
-                    def stop_hook(tensor: torch.Tensor, *, hook: Any) -> torch.Tensor:
-                        raise StopAtLayerException(tensor)
-
-                    stop_hook_point = hook_dict[block_hook_name]
-                    stop_hook_fn = stop_hook
+        if stop_at_layer is not None:
+            # forward owns the guard and the stop; resolving here only bounds the cache.
+            kwargs["stop_at_layer"] = stop_at_layer
+            if n_blocks is not None:
+                effective_stop_layer = self._resolve_stop_at_layer(stop_at_layer, n_blocks)
         effective_start_layer = None
-        if start_at_layer is not None and hasattr(self, "blocks"):
+        if start_at_layer is not None and n_blocks is not None:
             effective_start_layer = (
-                len(self.blocks) + start_at_layer if start_at_layer < 0 else start_at_layer
+                n_blocks + start_at_layer if start_at_layer < 0 else start_at_layer
             )
         matched_any = False
         for hook_name, hook in hook_dict.items():
@@ -1692,7 +1700,6 @@ class BridgeCore:
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
-        stop_handle: Optional[LensHandle] = None
         try:
             for hp, name in hooks:
                 fwd_handle = hp.add_hook(make_cache_hook(name), level=context_level)
@@ -1702,9 +1709,6 @@ class BridgeCore:
                         make_grad_cache_hook(name), dir="bwd", level=context_level
                     )
                     added_hooks.append((hp, "bwd", bwd_handle))
-            if stop_hook_point is not None and stop_hook_fn is not None:
-                stop_handle = stop_hook_point.add_hook(stop_hook_fn, level=context_level)
-                added_hooks.append((stop_hook_point, "fwd", stop_handle))
         except Exception:
             try:
                 for hp, direction, handle in added_hooks:
@@ -1764,14 +1768,11 @@ class BridgeCore:
         finally:
             try:
                 for hp, direction, handle in added_hooks:
-                    # Retain requested cache hooks, but never internal early-stop hooks.
-                    if reset_hooks_end or handle is stop_handle:
+                    if reset_hooks_end:
                         self._remove_temporary_hook(hp, direction, handle)
                 if clear_contexts:
                     for hp, _ in hooks:
                         hp.clear_context()
-                    if stop_hook_point is not None:
-                        stop_hook_point.clear_context()
             finally:
                 self.context_level -= 1
         if self.compatibility_mode == True:

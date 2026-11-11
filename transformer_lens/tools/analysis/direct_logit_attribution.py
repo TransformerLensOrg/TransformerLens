@@ -39,15 +39,15 @@ Example::
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import torch
 from jaxtyping import Float
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.tools.analysis._model_state import (
-    hybrid_block_types,
     require_eval_mode,
+    require_resid_mid,
 )
 from transformer_lens.tools.analysis.logit_lens import (
     _final_norm,
@@ -135,15 +135,54 @@ def _residual_stack_and_labels(
     raise ValueError(f"unit must be one of {_VALID_UNITS}, got {unit!r}")
 
 
+def _require_every_writer_decomposed(model: Any) -> None:
+    """Refuse DLA while ``decompose_resid`` would omit a sequence-mixer slot a block writes through.
+
+    A block that runs a mixer beside attention adds both outputs to the residual stream;
+    if ``decompose_resid`` emits a row for only one, the attribution would not sum to
+    the logit and nothing else would notice. Structural, so it runs before any forward.
+    """
+    from transformer_lens.model_bridge.generalized_components.block import (
+        VARIANT_SUBMODULE_NAMES,
+    )
+
+    has_blocks = getattr(model, "_has_registered_blocks", None)
+    if callable(has_blocks) and not has_blocks():
+        return
+    blocks = getattr(model, "blocks", None)
+    if blocks is None:
+        return
+    # An empty cache reads the labels from the block layout alone.
+    layout = ActivationCache({}, model)
+    emitted = set(layout.decompose_resid_labels(incl_embeds=False))
+    for layer, block in enumerate(blocks):
+        modules = getattr(block, "_modules", None)
+        if not isinstance(modules, dict):
+            continue
+        for slot in VARIANT_SUBMODULE_NAMES:
+            if slot not in modules:
+                continue
+            label = f"{layer}_attn_out" if slot == "attn" else layout._mixer_label(layer, slot)
+            if label not in emitted:
+                raise ValueError(
+                    f"DLA unit='component' cannot attribute block {layer}: its {slot} output "
+                    f"is not decomposed yet (decompose_resid emits no {label!r}), so the "
+                    "attribution would not sum to the logit. Use unit='head' or unit='layer'."
+                )
+
+
 def _validate_bridge_compatibility(model) -> bool:
     """Reject Bridges DLA can't produce correct numbers for; return whether ``model`` is one.
 
     Compatibility mode alone does not guarantee the final norm is folded:
     ``fold_ln=False`` and ``no_processing=True`` leave its affine parameters
-    active. The hybrid-arch check catches Mamba/SSM blocks before decomposition.
+    active.
     """
     # Lazy import — keeps the module importable without dragging in the bridge.
     from transformer_lens.model_bridge import TransformerBridge
+    from transformer_lens.model_bridge.generalized_components.normalization import (
+        norm_uses_weight_offset,
+    )
 
     if not isinstance(model, TransformerBridge):
         return False
@@ -164,7 +203,7 @@ def _validate_bridge_compatibility(model) -> bool:
         if isinstance(weight, torch.Tensor):
             identity = (
                 torch.zeros_like(weight)
-                if getattr(model.cfg, "rmsnorm_uses_offset", False)
+                if norm_uses_weight_offset(final_norm, model.cfg)
                 else torch.ones_like(weight)
             )
             if not torch.equal(weight, identity):
@@ -181,14 +220,6 @@ def _validate_bridge_compatibility(model) -> bool:
                 "with fold_ln=True and no_processing=False."
             )
 
-    # Refused up front: decompose_resid would otherwise fail with a confusing KeyError.
-    hybrid = hybrid_block_types(model)
-    if hybrid:
-        raise NotImplementedError(
-            f"DLA does not yet support hybrid architectures (found block types {hybrid}). "
-            f"Only standard attention + MLP transformers (e.g. GPT-2, LLaMA, Pythia) are "
-            f"supported; hybrid support requires extending ActivationCache.decompose_resid."
-        )
     return True
 
 
@@ -221,13 +252,12 @@ def direct_logit_attribution(
     normalization's affine parameters must be folded into ``W_U`` and ``b_U``
     (or already be identity);
     otherwise the projection direction is wrong and DLA would return silently
-    incorrect numbers. Hybrid architectures
-    (Mamba/SSM/Mixer/LinearAttention) are not yet supported because
-    ``decompose_resid`` only understands the ``attn_out + mlp_out`` block layout;
-    both conditions raise an explicit error at call time, as does a Bridge whose
-    readout is not ``ln_final -> unembed`` on the last block's output; a prompt run
-    here is also checked against the model's own output, a precomputed ``cache``
-    only structurally.
+    incorrect numbers; that raises an explicit error at call time, as does a Bridge
+    whose readout is not ``ln_final -> unembed`` on the last block's output; a prompt
+    run here is also checked against the model's own output, a precomputed ``cache``
+    only structurally. On hybrid and SSM stacks, sequence-mixer blocks contribute their
+    mixer output (e.g. ``0_linear_attn_out``); ``unit="layer"`` needs a ``resid_mid``
+    hook on every sequential block, which mixer-only blocks (Mamba, NemotronH) lack.
 
     Args:
         model:
@@ -270,9 +300,10 @@ def direct_logit_attribution(
             ``TransformerBridge`` is passed without compatibility mode enabled,
             with an active learned final-norm weight or bias, or with a readout
             that is not ``ln_final -> unembed``; also if the model must run while
-            any module is in training mode (a supplied ``cache`` is not checked).
-        NotImplementedError: If a ``TransformerBridge`` reports a hybrid block
-            layout (Mamba/SSM/Mixer/LinearAttention).
+            any module is in training mode (a supplied ``cache`` is not checked);
+            also if ``unit="layer"`` and a sequential block has no ``hook_resid_mid``,
+            or ``unit="component"`` and ``decompose_resid`` would omit a block's
+            sequence-mixer output (both checked before any forward).
     """
     if unit not in _VALID_UNITS:
         raise ValueError(f"unit must be one of {_VALID_UNITS}, got {unit!r}")
@@ -280,6 +311,17 @@ def direct_logit_attribution(
         raise ValueError("answer_tokens is required")
 
     is_bridge = _validate_bridge_compatibility(model)
+    if unit == "layer":
+        require_resid_mid(
+            model,
+            operation="DLA unit='layer'",
+            alternative=(
+                "use unit='component', or logit_lens(..., incl_mid=False) for the per-block "
+                "trajectory"
+            ),
+        )
+    elif unit == "component":
+        _require_every_writer_decomposed(model)
 
     if cache is None:
         if input is None:

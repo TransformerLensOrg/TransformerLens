@@ -102,7 +102,10 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     estimate_occupancy,
     get_sparse_decomposition,
 )
-from transformer_lens.tools.analysis.logit_lens import logit_readout
+from transformer_lens.tools.analysis.logit_lens import (
+    _require_direct_readout,
+    logit_readout,
+)
 from transformer_lens.tools.analysis.projection_kernel import orthonormal_subspace
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
@@ -1956,18 +1959,7 @@ def _require_raw_bridge(model: Any, *, estimator: str) -> None:
             f"{estimator} requires the standard direct ln_final -> unembed output path; "
             f"this Bridge is missing {missing_components}."
         )
-    blocks_component = component_mapping["blocks"]
-    if not getattr(blocks_component, "hook_out_is_single_residual_stream", False):
-        raise ValueError(
-            f"{estimator} requires single-stream [batch, position, d_model] block "
-            f"outputs; {type(blocks_component).__name__} does not provide that "
-            "contract."
-        )
-    if "project_out" in component_mapping:
-        raise ValueError(
-            f"{estimator} does not yet support a final output projection between "
-            "the residual stream and unembedding."
-        )
+    _require_direct_readout(model, operation=estimator)
     unembed_width = model.W_U.shape[0]
     if unembed_width != model.cfg.d_model:
         raise ValueError(
