@@ -104,6 +104,14 @@ class NormalizationBridge(GeneralizedComponent):
             return self._uses_weight_offset_override
         return self.uses_rms_norm and bool(getattr(self.config, "rmsnorm_uses_offset", False))
 
+    def _eps(self) -> float | torch.Tensor:
+        """The wrapped norm's epsilon (``eps`` or ``variance_epsilon``), else the config's."""
+        for attr in ("eps", "variance_epsilon"):
+            value = getattr(self.original_component, attr, None)
+            if value is not None:
+                return value
+        return getattr(self.config, "eps", 1e-05)
+
     def forward(self, hidden_states: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         """Forward pass through the normalization bridge.
 
@@ -139,9 +147,7 @@ class NormalizationBridge(GeneralizedComponent):
             hidden_states = hidden_states - hidden_states.mean(-1, keepdim=True)
         # sqrt saves its output for backward; the clone keeps in-place hook edits off it.
         scale = self.hook_scale(
-            (hidden_states.pow(2).mean(-1, keepdim=True) + getattr(self.config, "eps", 1e-05))
-            .sqrt()
-            .clone()
+            (hidden_states.pow(2).mean(-1, keepdim=True) + self._eps()).sqrt().clone()
         )
         hidden_states = self.hook_normalized(hidden_states / scale)
         return self._apply_weight_and_bias(hidden_states, input_dtype)
@@ -209,13 +215,7 @@ class NormalizationBridge(GeneralizedComponent):
                 x_centered = x_float - x_float.mean(-1, keepdim=True)
             else:
                 x_centered = x_float
-            eps_tensor = getattr(self.original_component, "eps", None)
-            if eps_tensor is None:
-                eps_tensor = getattr(self.original_component, "variance_epsilon", None)
-            if eps_tensor is None:
-                eps_value: float | torch.Tensor = getattr(self.config, "eps", 1e-05)
-            else:
-                eps_value = eps_tensor
+            eps_value = self._eps()
             variance = x_centered.pow(2).mean(-1, keepdim=True)
             if isinstance(eps_value, torch.Tensor):
                 inv_rms = torch.rsqrt(variance + eps_value)
@@ -301,3 +301,11 @@ class RMSNormPreBridge(NormalizationBridge):
     ) -> torch.Tensor:
         """No learnable scale to apply — only restore the input dtype."""
         return hidden_states.to(input_dtype)
+
+
+def norm_uses_weight_offset(norm: Optional[torch.nn.Module], cfg: Any) -> bool:
+    """Whether ``norm`` scales by ``1 + w``: the mounted bridge's own flag, else the config's."""
+    # Mixed adapters declare offset block norms per-norm while cfg describes ln_final.
+    if isinstance(norm, NormalizationBridge):
+        return norm.uses_weight_offset
+    return bool(getattr(cfg, "rmsnorm_uses_offset", False))

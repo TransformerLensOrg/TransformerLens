@@ -370,7 +370,9 @@ class ArchitectureAdapter:
 
         This method allows architectures to apply custom transformations to weights
         before standard weight processing (fold_layer_norm, center_writing_weights, etc.).
-        For example, Gemma models scale embeddings by sqrt(d_model).
+        For example, Cohere folds ``logit_scale`` into the unembedding here. Gemma's
+        ``sqrt(d_model)`` embedding scale is not a fold: HF applies it at runtime, so
+        folding it as well would double-scale.
 
         Args:
             state_dict: The state dictionary, keyed in TransformerLens format. The caller

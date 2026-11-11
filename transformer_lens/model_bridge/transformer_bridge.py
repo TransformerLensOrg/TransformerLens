@@ -530,16 +530,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         return self._n_params_total
 
-    def _has_registered_blocks(self) -> bool:
-        """Whether a ``blocks`` stack is registered as a submodule on this bridge.
-
-        Checks ``_modules`` directly rather than ``hasattr``: ``__getattr__`` falls
-        through to the wrapped HF model, so ``hasattr(self, "blocks")`` can be True
-        for a model that merely exposes its own ``.blocks`` attribute.
-        """
-        modules = self.__dict__.get("_modules") or {}
-        return "blocks" in modules
-
     def __getattr__(self, name: str) -> Any:
         """Provide a clear error message for missing attributes."""
         # Re-invoke original_model's property so its descriptive AttributeError
@@ -1008,6 +998,27 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Returns:
             Token tensor of shape ``[batch, pos]``.
         """
+        return self._to_tokens_and_mask(
+            input,
+            prepend_bos=prepend_bos,
+            padding_side=padding_side,
+            move_to_device=move_to_device,
+            truncate=truncate,
+        )[0]
+
+    def _to_tokens_and_mask(
+        self,
+        input: Union[str, List[str]],
+        prepend_bos: Optional[bool] = None,
+        padding_side: Optional[str] = None,
+        move_to_device: bool = True,
+        truncate: bool = True,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """``to_tokens`` plus the tokenizer's attention mask, sliced in lockstep with the tokens.
+
+        Rebuilding the mask from the token ids can't tell a pad from a real token with
+        the pad's id (a literal ``<|endoftext|>`` on GPT-2), so string callers keep this one.
+        """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos is None:
             prepend_bos = getattr(self.cfg, "default_prepend_bos", True)
@@ -1027,14 +1038,17 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # tokenize to subword garbage, so skip rather than pollute the input.
         if isinstance(input, str):
             input = [input]
-        tokens = self.tokenizer(
+        encoded = self.tokenizer(
             input,
             return_tensors="pt",
             padding=True,
             padding_side=padding_side,
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
-        )["input_ids"]
+            return_attention_mask=True,
+        )
+        tokens = encoded["input_ids"]
+        mask: Optional[torch.Tensor] = encoded.get("attention_mask")
         # Strip auto-appended EOS tokens (e.g., OLMo)
         if (
             getattr(self.cfg, "tokenizer_appends_eos", False)
@@ -1043,13 +1057,38 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # Remove trailing EOS, keep at least 1 token
             while tokens.shape[-1] > 1 and (tokens[:, -1] == self.tokenizer.eos_token_id).all():
                 tokens = tokens[:, :-1]
+                if mask is not None:
+                    mask = mask[:, :-1]
         if not prepend_bos and tokenizer_prepends_bos:
+            n_cols = tokens.shape[-1]
             tokens = utils.get_tokens_with_bos_removed(
                 self.tokenizer, tokens, padding_side=padding_side
             )
+            if mask is not None and tokens.shape[-1] < n_cols:
+                # Each row loses one real token, so its pads stay where they were.
+                mask = mask[..., :-1] if padding_side == "left" else mask[..., 1:]
+        if mask is None:
+            # Remote-code tokenizers may omit the mask; fall back to reading the pads,
+            # which only a multi-row batch can have.
+            if (
+                tokens.shape[0] > 1
+                and isinstance(self.tokenizer, PreTrainedTokenizerBase)
+                and self.tokenizer.pad_token_id is not None
+            ):
+                mask = utils.get_attention_mask(
+                    self.tokenizer, tokens, prepend_bos, padding_side=padding_side
+                )
+            else:
+                mask = torch.ones_like(tokens)
+        mask = mask.long()
+        if mask.shape[-1] > 0:
+            # An empty prompt keeps one pad as context; an all-masked row softmaxes to NaN.
+            empty = ~mask.bool().any(dim=-1)
+            mask[empty, -1 if padding_side == "left" else 0] = 1
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
-        return tokens
+            mask = mask.to(self.cfg.device)
+        return tokens, mask
 
     def encoder_output(
         self,
@@ -2057,6 +2096,8 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Bridge analog of :meth:`HookedTransformer.input_to_embed`. Returns
         ``(residual, tokens, shortformer_pos_embed, attention_mask)``; feed the
         residual to ``forward(..., start_at_layer=0)`` to resume the pass.
+        ``attention_mask`` is the caller's mask, else the tokenizer's for a padded
+        string batch on either padding side, else ``None``.
 
         ``shortformer_pos_embed`` is always ``None``: for the models the bridge
         supports the residual already carries positional information, so there is
@@ -2064,18 +2105,22 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         """
         if isinstance(input, (str, list)):
             assert self.tokenizer is not None, "Must provide a tokenizer for string input."
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+            tokens, string_mask = self._to_tokens_and_mask(
+                input, prepend_bos=prepend_bos, padding_side=padding_side
+            )
+            if attention_mask is None and not bool(string_mask.all()):
+                attention_mask = string_mask
         else:
             tokens = input
             if isinstance(tokens, torch.Tensor) and tokens.ndim == 1:
                 tokens = tokens.unsqueeze(0)
-        if (
-            attention_mask is None
-            and self.tokenizer is not None
-            and self.tokenizer.padding_side == "left"
-        ):
-            _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
-            attention_mask = utils.get_attention_mask(self.tokenizer, tokens, _prepend)
+            if (
+                attention_mask is None
+                and self.tokenizer is not None
+                and self.tokenizer.padding_side == "left"
+            ):
+                _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
+                attention_mask = utils.get_attention_mask(self.tokenizer, tokens, _prepend)
         residual = self.forward(tokens, stop_at_layer=0, attention_mask=attention_mask)
         return residual, tokens, None, attention_mask
 
@@ -2189,10 +2234,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 feed back on the next call for incremental decoding.
             loss_per_token: Whether to return loss per token
             prepend_bos: Whether to prepend BOS token
-            padding_side: Which side to pad on when tokenizing a list of strings. For a
-                token tensor, the side it was already padded on: the attention mask is
-                then read off the pad token. Pass ``attention_mask`` instead when the pad
-                id also occurs as a real token.
+            padding_side: Which side to pad on when tokenizing a list of strings, whose
+                mask is the tokenizer's own. For a token tensor, the side it was already
+                padded on: the attention mask is then read off the pad token. Pass
+                ``attention_mask`` instead when the pad id also occurs as a real token.
             labels: Explicit language-model targets. Encoder-decoder models require
                 labels for loss; decoder-only models fall back to input IDs when omitted.
             past_key_values: HuggingFace KV cache from a prior ``use_cache=True`` step
@@ -2268,9 +2313,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             effective_stop_at_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
-        if effective_stop_at_layer is not None:
-            for block in self.blocks:
-                block._stop_at_layer_idx = effective_stop_at_layer
+        # Armed by position in the bridge's own stack: HF module names (h.N, layers.N,
+        # encoder.layer.N, ...) are too varied to parse back into an index.
+        if effective_stop_at_layer is not None and effective_stop_at_layer < len(self.blocks):
+            self.blocks[effective_stop_at_layer]._stop_at_layer_idx = effective_stop_at_layer
 
         # Map HookedEncoderDecoder-style kwargs to HF-compatible names
         if "decoder_input" in kwargs:
@@ -2289,6 +2335,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             and not getattr(self.cfg, "is_audio_model", False)
             and not getattr(self.cfg, "is_visual_model", False)
         )
+        _string_mask: Optional[torch.Tensor] = None
         _resolved_padding_side = padding_side
         if _resolved_padding_side is None and self.tokenizer is not None:
             _resolved_padding_side = getattr(self.tokenizer, "padding_side", "right")
@@ -2317,9 +2364,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         "Visual models require tensor input (pixel values), not text. "
                         "Pass a torch.Tensor or use the pixel_values parameter."
                     )
-                input_ids = self.to_tokens(
-                    input, prepend_bos=prepend_bos, padding_side=padding_side
-                )
+                if _is_batched_list:
+                    input_ids, _string_mask = self._to_tokens_and_mask(
+                        input, prepend_bos=prepend_bos, padding_side=_resolved_padding_side
+                    )
+                else:
+                    input_ids = self.to_tokens(
+                        input, prepend_bos=prepend_bos, padding_side=padding_side
+                    )
             else:
                 input_ids = input
                 # Promote 1D integer token tensors to 2D [batch=1, seq] to match
@@ -2377,15 +2429,19 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                             "Pass attention_mask=... to state the padding directly instead."
                         )
                 else:
-                    derived_mask = utils.get_attention_mask(
-                        self.tokenizer,
-                        input_ids,
-                        prepend_bos=(
-                            getattr(self.cfg, "default_prepend_bos", True)
-                            if prepend_bos is None
-                            else prepend_bos
-                        ),
-                        padding_side=_resolved_padding_side,
+                    derived_mask = (
+                        _string_mask
+                        if _string_mask is not None
+                        else utils.get_attention_mask(
+                            self.tokenizer,
+                            input_ids,
+                            prepend_bos=(
+                                getattr(self.cfg, "default_prepend_bos", True)
+                                if prepend_bos is None
+                                else prepend_bos
+                            ),
+                            padding_side=_resolved_padding_side,
+                        )
                     ).to(self.cfg.device)
                     # A tensor with no pads stays on the unmasked path, so its logits are unchanged.
                     _is_unpadded = _is_padded_tokens and bool(derived_mask.all())
@@ -2838,13 +2894,18 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             start_at_layer += n_blocks
         if not 0 <= start_at_layer < n_blocks:
             raise ValueError(f"start_at_layer={start_at_layer} out of range [0, {n_blocks}).")
+        start_block = self.blocks[start_at_layer]
+        if not callable(getattr(start_block, "_maybe_inject_start_residual", None)):
+            raise NotImplementedError(
+                f"start_at_layer is not supported on {type(start_block).__name__} blocks: "
+                "they carry no single residual stream to swap the caller's tensor in for."
+            )
         # The returned tensor is fed to HF as inputs_embeds; stash a clone so an
         # architecture that mutates inputs_embeds in place can't corrupt the value
         # block ``start_at_layer`` swaps back in.
         injected = residual.clone()
-        for block in self.blocks:
-            block._start_at_layer_idx = start_at_layer
-            block._start_residual = injected
+        start_block._start_at_layer_idx = start_at_layer
+        start_block._start_residual = injected
         return residual
 
     def _teardown_start_at_layer(self) -> None:
@@ -3026,23 +3087,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             forced = torch.full_like(seed, forced_bos_token_id)
             seed = torch.cat([seed, forced], dim=1)
         return seed, min_decoder_length
-
-    def _left_padded_prompt_mask(
-        self, prompts: List[str], tokens: torch.Tensor, prepend_bos: Optional[bool]
-    ) -> torch.Tensor:
-        """Attention mask for ``prompts`` left-padded into ``tokens``, from each one's length.
-
-        The tokens alone can't give this when the pad id is also a real token, as BOS is on
-        GPT-2-style tokenizers: a row's last pad and a leading BOS look the same.
-        """
-        mask = torch.zeros_like(tokens)
-        for row, prompt in enumerate(prompts):
-            n_real = self.to_tokens(
-                prompt, prepend_bos=prepend_bos, move_to_device=False, truncate=False
-            ).shape[-1]
-            # An empty prompt keeps its last pad as context, and -0 would select the whole row.
-            mask[row, -max(n_real, 1) :] = 1
-        return mask
 
     def _generate_tokens(
         self,
@@ -3590,6 +3634,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         )
         audio_decoder_prompt: Optional[torch.Tensor] = None
         audio_timestamps = False
+        _list_prompt_mask: Optional[torch.Tensor] = None
         if getattr(self.cfg, "is_audio_seq2seq", False):
             (
                 input_tokens,
@@ -3626,7 +3671,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 # flush-right and logits[:, -1, :] is always the last real token.
                 # Passed as a kwarg rather than assigned: a raise between assignment
                 # and restore would pin the shared tokenizer left for the session.
-                input_tokens = self.to_tokens(
+                input_tokens, _list_prompt_mask = self._to_tokens_and_mask(
                     input,
                     prepend_bos=prepend_bos,
                     padding_side="left" if _is_batched_list else None,
@@ -3981,7 +4026,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 mamba_conv_kernel=mamba_conv_kernel,
                 is_encoder_decoder=is_encoder_decoder,
                 batched_prompt_mask=(
-                    self._left_padded_prompt_mask(input, input_tokens, prepend_bos)
+                    _list_prompt_mask
                     if _is_batched_list
                     and isinstance(input, list)
                     and not is_encoder_decoder
@@ -4248,6 +4293,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             self.original_model.config, "is_encoder_decoder", False
         )
         encoder_attention_mask = None
+        _list_prompt_mask: Optional[torch.Tensor] = None
         if _encdec_early:
             use_past_kv_cache = False
         if isinstance(input, str):
@@ -4268,7 +4314,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 encoder_attention_mask = encoded.get("attention_mask")
             else:
                 # Pass the side as a kwarg, as generate() does, instead of mutating the tokenizer.
-                input_tokens = self.to_tokens(
+                input_tokens, _list_prompt_mask = self._to_tokens_and_mask(
                     input,
                     prepend_bos=prepend_bos,
                     padding_side="left" if _is_batched_list else None,
@@ -4442,7 +4488,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     mamba_conv_kernel=0,
                     is_encoder_decoder=_encdec_early,
                     batched_prompt_mask=(
-                        self._left_padded_prompt_mask(input, input_tokens, prepend_bos)
+                        _list_prompt_mask
                         if _is_batched_list
                         and isinstance(input, list)
                         and not _encdec_early

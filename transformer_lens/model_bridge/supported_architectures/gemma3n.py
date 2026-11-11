@@ -64,7 +64,8 @@ class Gemma3nArchitectureAdapter(ArchitectureAdapter):
         self.cfg.gated_mlp = True
         self.cfg.uses_rms_norm = True
         self.cfg.normalization_type = "RMS"
-        self.cfg.rmsnorm_uses_offset = True  # Gemma RMSNorm uses (1.0 + weight)
+        # Unlike Gemma 1-3, Gemma3nRMSNorm scales by the raw weight (initialized to ones).
+        self.cfg.rmsnorm_uses_offset = False
         self.cfg.positional_embedding_type = "rotary"
         self.cfg.attn_implementation = "eager"
         # AltUp + per-layer-embedding residual topology isn't fold-safe.

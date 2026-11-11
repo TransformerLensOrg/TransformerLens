@@ -8,6 +8,7 @@ from transformers.models.nemotron.modeling_nemotron import NemotronLayerNorm1P
 
 from transformer_lens.model_bridge.generalized_components.normalization import (
     NormalizationBridge,
+    norm_uses_weight_offset,
 )
 
 
@@ -60,3 +61,33 @@ def test_python_layernorm1p_preserves_offset():
     bridge, component = _make_norm(native=False)
     x = torch.randn(2, 4, 16)
     torch.testing.assert_close(bridge(x), component(x), atol=1e-6, rtol=1e-5)
+
+
+@pytest.mark.parametrize("cfg_offset", [True, False])
+def test_norm_uses_weight_offset_prefers_mounted_norm(cfg_offset):
+    """A mounted norm's own declaration wins over the config; others fall back to it."""
+    cfg = SimpleNamespace(uses_rms_norm=True, rmsnorm_uses_offset=cfg_offset)
+    for declared in (True, False):
+        bridge = NormalizationBridge("ln2", cfg, uses_weight_offset=declared)
+        assert norm_uses_weight_offset(bridge, cfg) is declared
+    assert norm_uses_weight_offset(torch.nn.Identity(), cfg) is cfg_offset
+    assert norm_uses_weight_offset(None, cfg) is cfg_offset
+
+
+def test_python_fallback_keeps_the_wrapped_norms_eps():
+    """A backward hook routes the native path through the python norm, which must keep the
+    module's eps (Muse Glimmer's post_norm_eps) rather than the config's rms_norm_eps."""
+    component = NemotronLayerNorm1P(16, eps=1e-2)
+    bridge = NormalizationBridge(
+        "ln1_post",
+        SimpleNamespace(uses_rms_norm=False, rmsnorm_uses_offset=True, eps=1e-5),
+        use_native_layernorm_autograd=True,
+        uses_weight_offset=True,
+    )
+    bridge.set_original_component(component)
+    bridge.hook_scale.add_hook(lambda grad, hook: None, dir="bwd")
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 16) * 1e-2
+    with pytest.warns(UserWarning, match="python-norm path"):
+        out = bridge(x)
+    torch.testing.assert_close(out, component(x), atol=1e-6, rtol=0)

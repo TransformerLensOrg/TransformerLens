@@ -86,8 +86,10 @@ def test_bad_kwargs_are_rejected_before_forward_state_is_armed(bridge, monkeypat
 
     monkeypatch.setattr(bridge._driver, "forward", unexpected_forward)
     with pytest.raises(TypeError, match="fwd_hooks"):
-        bridge(_tokens(), fwd_hooks=[], stop_at_layer=1, start_at_layer=0)
+        bridge(_tokens(), fwd_hooks=[], stop_at_layer=0, start_at_layer=0)
+    # Arming either leaves the attribute behind (teardown resets it to None, not absent).
     assert not hasattr(bridge.blocks[0], "_stop_at_layer_idx")
+    assert not hasattr(bridge.blocks[0], "_start_residual")
 
 
 @torch.no_grad()

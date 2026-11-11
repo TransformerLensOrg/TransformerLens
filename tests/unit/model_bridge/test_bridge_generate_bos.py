@@ -321,20 +321,16 @@ class TestBatchedPromptMask:
         prompts = [bos + prompt for prompt in self.PROMPTS]
         self._assert_rows_match_single_prompts(distilgpt2_bridge, stream, prompts, False)
 
-    def test_explicit_mask_skips_derived_mask(self, distilgpt2_bridge, stream, monkeypatch):
-        """The loop ignores the derived mask when one is passed, so it must not be built."""
+    def test_explicit_mask_wins(self, distilgpt2_bridge, stream):
+        """An all-ones mask attends the pads, so the batch runs as its bare tensor does."""
         bridge = distilgpt2_bridge
-        expected = self._run(bridge, stream, self.PROMPTS, False)
         tokens = bridge.to_tokens(
             self.PROMPTS, prepend_bos=False, padding_side="left", truncate=False
         )
-        mask = bridge._left_padded_prompt_mask(self.PROMPTS, tokens, False)
+        unmasked = self._run(bridge, stream, tokens, False)
+        assert not torch.equal(unmasked, self._run(bridge, stream, self.PROMPTS, False))
 
-        def _fail(*args, **kwargs):
-            raise AssertionError("_left_padded_prompt_mask ran under an explicit attention_mask")
-
-        monkeypatch.setattr(bridge, "_left_padded_prompt_mask", _fail)
-        kwargs = {**self.KWARGS, "attention_mask": mask}
+        kwargs = {**self.KWARGS, "attention_mask": torch.ones_like(tokens)}
         if stream:
             chunks = bridge.generate_stream(
                 self.PROMPTS, prepend_bos=False, max_tokens_per_yield=100, **kwargs
@@ -342,15 +338,48 @@ class TestBatchedPromptMask:
             out = torch.cat(list(chunks), dim=-1)
         else:
             out = bridge.generate(self.PROMPTS, prepend_bos=False, **kwargs)
-        assert torch.equal(out, expected)
+        assert torch.equal(out, unmasked)
 
 
-def test_empty_prompt_attends_only_its_last_pad(distilgpt2_bridge):
-    prompts = ["", "Hello there friend"]
-    tokens = distilgpt2_bridge.to_tokens(
-        prompts, prepend_bos=False, padding_side="left", truncate=False
+@pytest.mark.parametrize(
+    "padding_side, expected",
+    [("left", [[0, 0, 1], [1, 1, 1]]), ("right", [[1, 0, 0], [1, 1, 1]])],
+)
+def test_empty_prompt_attends_one_pad(distilgpt2_bridge, padding_side, expected):
+    """A row with no real token keeps one slot attended; an all-masked row softmaxes to NaN."""
+    _, mask = distilgpt2_bridge._to_tokens_and_mask(
+        ["", "Hello there friend"], prepend_bos=False, padding_side=padding_side
     )
 
-    mask = distilgpt2_bridge._left_padded_prompt_mask(prompts, tokens, False)
+    assert mask.tolist() == expected
 
-    assert mask.tolist() == [[0, 0, 1], [1, 1, 1]]
+
+@pytest.mark.parametrize("prepend_bos", [True, False])
+def test_forward_and_generate_keep_a_literal_pad_prefix_as_context(distilgpt2_bridge, prepend_bos):
+    """A leading literal <|endoftext|> is real context to both forward and generate.
+
+    Each batched path is compared with the prompt run alone: a mask rebuilt from the ids
+    would break forward and generate in the same way, so comparing them with each other
+    could not see it.
+    """
+    bridge = distilgpt2_bridge
+    prompts = [
+        bridge.tokenizer.eos_token + " The capital of France is",
+        "the cat sat on a mat and then went",
+    ]
+    generate_kwargs = {
+        "max_new_tokens": 3,
+        "do_sample": False,
+        "stop_at_eos": False,
+        "prepend_bos": prepend_bos,
+        "return_type": "tokens",
+        "verbose": False,
+    }
+    with torch.no_grad():
+        alone_logits = bridge(prompts[0], prepend_bos=prepend_bos)[0, -1]
+        alone_tokens = bridge.generate(prompts[0], **generate_kwargs)[0]
+        logits = bridge(prompts, prepend_bos=prepend_bos, padding_side="left")
+        generated = bridge.generate(prompts, **generate_kwargs)
+
+    torch.testing.assert_close(logits[0, -1], alone_logits, rtol=0, atol=1e-4)
+    assert torch.equal(generated[0, -alone_tokens.shape[-1] :], alone_tokens)

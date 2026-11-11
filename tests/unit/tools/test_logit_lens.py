@@ -150,6 +150,31 @@ def test_incl_mid_adds_mid_entries(tiny):
     torch.testing.assert_close(result.values[-1], ref, atol=1e-5, rtol=1e-5)
 
 
+def test_incl_mid_skips_parallel_blocks_without_resid_mid():
+    """Parallel blocks have no resid_mid by design, so the resid_mid check must not refuse them."""
+    from transformers import GPTNeoXConfig, GPTNeoXForCausalLM
+
+    torch.manual_seed(0)
+    cfg = GPTNeoXConfig(
+        vocab_size=D_VOCAB,
+        hidden_size=D_MODEL,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        max_position_embeddings=32,
+        use_parallel_residual=True,
+    )
+    hf = GPTNeoXForCausalLM(cfg).eval()
+    model = build_bridge_from_module(
+        hf, "GPTNeoXForCausalLM", hf_config=cfg, dtype=torch.float32, device="cpu"
+    )
+    with torch.no_grad():
+        ref = model(TOKENS)
+    result = logit_lens(model, TOKENS, incl_mid=True, positions=None)
+    assert result.labels == ["0_pre", "1_pre", "final_post"]
+    torch.testing.assert_close(result.values[-1], ref, atol=1e-5, rtol=1e-5)
+
+
 def test_positions_and_batch_slices(tiny):
     model, ref, cache = tiny
     last = logit_lens(cache)  # default positions=-1
