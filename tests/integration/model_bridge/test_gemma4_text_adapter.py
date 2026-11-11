@@ -77,11 +77,13 @@ class TestGemma4TextBridge:
         for name, shape in expected.items():
             assert captured.get(name) == shape, f"{name}: {captured.get(name)}"
 
-    def test_neuron_results_reject_unbridged_post_norm(self) -> None:
-        """ln2_post is a plain component with no cached scale; pre-norm values would be wrong."""
+    def test_neuron_results_map_through_post_norm(self) -> None:
+        """ln2_post caches hook_scale, so the neurons sum to the post-norm MLP output."""
         bridge, _ = _tiny_gemma4_text_pair()
         ids = torch.randint(3, VOCAB, (1, 8), generator=torch.Generator().manual_seed(0))
         with torch.no_grad():
             _, cache = bridge.run_with_cache(ids)
-        with pytest.raises(KeyError, match=r"blocks\.0\.ln2_post .*no hook_scale"):
-            cache.get_neuron_results(0)
+        neurons = cache.get_neuron_results(0)
+        torch.testing.assert_close(
+            neurons.sum(-2), cache["blocks.0.hook_mlp_out"], atol=1e-5, rtol=0
+        )

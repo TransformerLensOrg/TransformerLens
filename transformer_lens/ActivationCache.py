@@ -494,6 +494,93 @@ class ActivationCache:
             labels.append(self._mixer_label(layer, name))
         return components, labels
 
+    def _residual_output_scales(self) -> List[Optional[torch.Tensor]]:
+        """Per block, the scale it applies to the whole residual stream after its residual adds.
+
+        Gemma 4 multiplies each layer's output by a learned ``layer_scalar``, so everything
+        written before it is rescaled too. None for blocks without such a scale (or a scale of
+        1). Read once per cache.
+        """
+        memo = self.__dict__.get("_residual_output_scales_memo")
+        if memo is not None:
+            return memo
+        scales: List[Optional[torch.Tensor]] = []
+        for block in list(getattr(self.model, "blocks", None) or []):
+            scale = getattr(block, "residual_output_scale", None)
+            if scale is not None and not isinstance(scale, torch.Tensor):
+                scale = torch.tensor(float(scale))
+            if scale is not None and bool(torch.all(scale == 1)):
+                scale = None
+            scales.append(None if scale is None else scale.detach())
+        self.__dict__["_residual_output_scales_memo"] = scales
+        return scales
+
+    def _downstream_scale(self, layer: int, target: int) -> Optional[torch.Tensor]:
+        """Factor by which a contribution written in block ``layer`` reaches ``target``.
+
+        The product of the residual output scales of blocks ``layer`` to ``target - 1``; for the
+        embeddings use ``layer=0``. None when it is 1.
+        """
+        total: Optional[torch.Tensor] = None
+        for scale in self._residual_output_scales()[max(layer, 0) : max(target, 0)]:
+            if scale is not None:
+                total = scale if total is None else total * scale
+        return total
+
+    @staticmethod
+    def _rescale(x: torch.Tensor, scale: Optional[torch.Tensor]) -> torch.Tensor:
+        return x if scale is None else x * scale.to(device=x.device, dtype=x.dtype)
+
+    def _side_outputs(self, layer: int, pos_slice: Slice) -> Tuple[List[torch.Tensor], List[str]]:
+        """Residual writes of block ``layer`` after its MLP, e.g. Gemma 4's per-layer input.
+
+        A block lists them in ``residual_side_outputs`` as ``{submodule: label}``; each writes
+        its submodule's ``hook_out`` and is labelled ``{layer}_{label}_out``.
+        """
+        block = self.model.blocks[layer]
+        outputs: List[torch.Tensor] = []
+        labels: List[str] = []
+        for name, label in (getattr(block, "residual_side_outputs", None) or {}).items():
+            if name in block._modules:
+                outputs.append(pos_slice.apply(self[f"blocks.{layer}.{name}.hook_out"], dim=-2))
+                labels.append(f"{layer}_{label}_out")
+        return outputs, labels
+
+    def _check_neurons_expandable(self, layer: int) -> None:
+        """Raise when block ``layer``'s ``mlp`` neurons do not map linearly onto its MLP output.
+
+        E.g. Gemma 4's MoE layers normalize the dense MLP output and add the experts' output
+        before the post-feedforward norm.
+        """
+        reason = getattr(self.model.blocks[layer], "neuron_expansion_unsupported_reason", None)
+        if reason:
+            raise NotImplementedError(
+                f"blocks.{layer}: {reason} Use expand_neurons=False or decompose_resid instead."
+            )
+
+    def _scaled_accumulated_bias(
+        self, layer: int, mlp_input: bool, include_mlp_biases: bool
+    ) -> torch.Tensor:
+        """``accumulated_bias`` with each layer's biases carried through later residual scales."""
+        if self._downstream_scale(0, layer) is None:
+            return self.model.accumulated_bias(
+                layer, mlp_input, include_mlp_biases=include_mlp_biases
+            )
+        total = self.model.accumulated_bias(0, mlp_input=False)
+        previous = total
+        for l in range(layer):
+            current = self.model.accumulated_bias(
+                l + 1, mlp_input=False, include_mlp_biases=include_mlp_biases
+            )
+            total = total + self._rescale(current - previous, self._downstream_scale(l, layer))
+            previous = current
+        if mlp_input:
+            with_attn = self.model.accumulated_bias(
+                layer, mlp_input=True, include_mlp_biases=include_mlp_biases
+            )
+            total = total + (with_attn - previous)
+        return total
+
     def accumulated_resid(
         self,
         layer: Optional[int] = None,
@@ -845,7 +932,9 @@ class ActivationCache:
                 attention components. Defaults to "all". On SSM / hybrid models, blocks without
                 attention contribute their sequence-mixer output (e.g. ``0_linear_attn_out``,
                 ``0_mixer_out``) in the attention slot, and blocks without an MLP contribute no
-                ``mlp_out``.
+                ``mlp_out``. Residual writes after the MLP (Gemma 4's ``0_per_layer_input_out``)
+                are in the MLP slot. When later blocks rescale the whole residual stream
+                (Gemma 4's ``layer_scalar``), each component is carried through those scales.
             apply_ln:
                 Whether to apply LayerNorm to the stack.
             pos_slice:
@@ -874,23 +963,29 @@ class ActivationCache:
         incl_mlp = mode != "attn" and not self.model.cfg.attn_only
         components_list = []
         labels = []
+        # Block each component is written in, for residual scales applied after it (embeds: 0).
+        sources: List[int] = []
         if incl_embeds:
             if self.has_embed:
                 components_list = [self["hook_embed"]]
                 labels.append("embed")
+                sources.append(0)
             if self.has_pos_embed:
                 components_list.append(self["hook_pos_embed"])
                 labels.append("pos_embed")
+                sources.append(0)
 
         def add_mixer(l: int) -> None:
             mixers, mixer_labels = self._mixer_stack(l, Slice(None))
             components_list.extend(mixers)
             labels.extend(mixer_labels)
+            sources.extend([l] * len(mixers))
 
         def add_attn_slot(l: int) -> None:
             if self._has_attn(l):
                 components_list.append(self[("attn_out", l)])
                 labels.append(f"{l}_attn_out")
+                sources.append(l)
             elif self._mixer_role(l) == "attn":
                 add_mixer(l)
 
@@ -901,11 +996,19 @@ class ActivationCache:
                 if self._has_mlp(l):
                     components_list.append(self[("mlp_out", l)])
                     labels.append(f"{l}_mlp_out")
+                    sources.append(l)
                 elif not self._has_attn(l) and self._mixer_role(l) == "mlp":
                     add_mixer(l)
+                side_outputs, side_labels = self._side_outputs(l, Slice(None))
+                components_list.extend(side_outputs)
+                labels.extend(side_labels)
+                sources.extend([l] * len(side_outputs))
         if mlp_input and incl_attn and self._mlp_input_includes_attn(layer):
             add_attn_slot(layer)
-        components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
+        components_list = [
+            self._rescale(pos_slice.apply(c, dim=-2), self._downstream_scale(src, layer))
+            for c, src in zip(components_list, sources)
+        ]
         if components_list:
             components = torch.stack(components_list, dim=0)
         else:
@@ -1237,6 +1340,7 @@ class ActivationCache:
             if norm_bias is not None:
                 mapped = mapped + norm_bias.to(device=scale.device)
             delta = (mapped - raw) * getattr(block, "residual_contribution_scale", 1.0)
+            delta = self._rescale(delta, self._downstream_scale(l, layer))
             correction = delta if correction is None else correction + delta
         return correction
 
@@ -1287,7 +1391,24 @@ class ActivationCache:
             raise ValueError(
                 f"layer must be >= 0 with incl_remainder=True (-1/None mean n_layers); got {layer}."
             )
+        return self._stack_head_results(
+            layer, return_labels, incl_remainder, pos_slice, apply_ln, scale_target=layer
+        )
 
+    def _stack_head_results(
+        self,
+        layer: int,
+        return_labels: bool,
+        incl_remainder: bool,
+        pos_slice: Slice,
+        apply_ln: bool,
+        scale_target: int,
+    ) -> Any:
+        """``stack_head_results`` with heads carried to the residual stream at ``scale_target``.
+
+        ``get_full_resid_decomposition(mlp_input=True)`` stacks the heads of ``layer`` itself,
+        which reach ``resid_mid`` before that block's residual output scale.
+        """
         # Idempotent; cleans up stale Bridge entries without the 'already cached' warning,
         # which is only meaningful for direct compute_head_results callers.
         self._ensure_head_results()
@@ -1304,7 +1425,7 @@ class ActivationCache:
             if post is not None:
                 scale, weight, centers, _ = post
                 result = self._apply_post_norm_map(result, scale.unsqueeze(-2), weight, centers)
-            components.append(result)
+            components.append(self._rescale(result, self._downstream_scale(l, scale_target)))
             labels.extend([f"L{l}H{h}" for h in range(self.model.cfg.n_heads)])
         if components:
             components = torch.cat(components, dim=-2)
@@ -1411,6 +1532,7 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
+        self._check_neurons_expandable(layer)
         neuron_acts = self[("post", layer, "mlp")]
         block = self.model.blocks[layer]
         W_out = block.mlp.W_out
@@ -1550,7 +1672,11 @@ class ActivationCache:
             if post is not None:
                 a_l = a_l / post_scale
             # (a_l / s)[..., None] is [..., d_mlp, 1]; broadcast with lin_form_l [d_mlp, n_outs]
-            components.append((a_l / scale)[..., None] * lin_form_l)
+            components.append(
+                self._rescale(
+                    (a_l / scale)[..., None] * lin_form_l, self._downstream_scale(l, layer)
+                )
+            )
         if not components:
             empty_src = pos_slice.apply(self["hook_embed"], dim=-2)
             return torch.zeros(
@@ -1659,6 +1785,7 @@ class ActivationCache:
                     f"({names}), so its neurons cannot be expanded. Use "
                     "expand_neurons=False or decompose_resid instead."
                 )
+            self._check_neurons_expandable(l)
         labels = [f"L{l}N{h}" for l in mlp_layers for h in neuron_labels]
         if mlp_input and layer < self.model.cfg.n_layers:
             stream = "resid_mid" if self._mlp_input_includes_attn(layer) else "resid_pre"
@@ -1687,14 +1814,13 @@ class ActivationCache:
         else:
             per_layer: list = []
             for l in mlp_layers:
-                per_layer.append(
-                    self.get_neuron_results(
-                        l,
-                        pos_slice=pos_slice,
-                        neuron_slice=neuron_slice,
-                        project_output_onto=project_2d,
-                    )
+                neuron_results = self.get_neuron_results(
+                    l,
+                    pos_slice=pos_slice,
+                    neuron_slice=neuron_slice,
+                    project_output_onto=project_2d,
                 )
+                per_layer.append(self._rescale(neuron_results, self._downstream_scale(l, layer)))
             if per_layer:
                 components = torch.cat(per_layer, dim=-2)
                 components = einops.rearrange(
@@ -1916,10 +2042,13 @@ class ActivationCache:
             stack = self.apply_ln_to_stack(stack, layer, pos_slice=pos_slice, mlp_input=mlp_input)
             return stack @ project_2d if project_2d is not None else stack
 
-        head_stack, head_labels = self.stack_head_results(
+        head_stack, head_labels = self._stack_head_results(
             layer + int(mlp_input and self._mlp_input_includes_attn(layer)),
-            pos_slice=pos_slice,
             return_labels=True,
+            incl_remainder=False,
+            pos_slice=pos_slice,
+            apply_ln=False,
+            scale_target=layer,
         )
         if ln_folded:
             head_stack = _ln_then_project(head_stack)
@@ -1936,7 +2065,7 @@ class ActivationCache:
         mixer_list: List[torch.Tensor] = []
         for l in mixer_layers:
             mixers, mixer_labels = self._mixer_stack(l, pos_slice, subtract_bias=True)
-            mixer_list.extend(mixers)
+            mixer_list.extend(self._rescale(m, self._downstream_scale(l, layer)) for m in mixers)
             labels.extend(mixer_labels)
         if mixer_list:
             mixer_stack = torch.stack(mixer_list, dim=0)
@@ -1959,6 +2088,21 @@ class ActivationCache:
                 )
                 labels.extend(neuron_labels)
                 components.append(neuron_stack)
+                # Residual writes besides the MLP; decompose_resid(mode="mlp") has them otherwise.
+                side_list: List[torch.Tensor] = []
+                for l in range(layer):
+                    side_outputs, side_labels = self._side_outputs(l, pos_slice)
+                    side_list.extend(
+                        self._rescale(o, self._downstream_scale(l, layer)) for o in side_outputs
+                    )
+                    labels.extend(side_labels)
+                if side_list:
+                    side_stack = torch.stack(side_list, dim=0)
+                    if ln_folded:
+                        side_stack = _ln_then_project(side_stack)
+                    elif project_2d is not None:
+                        side_stack = side_stack @ project_2d
+                    components.append(side_stack)
             else:
                 # Get the stack of just the MLP outputs
                 # mlp_input included for completeness, but it doesn't actually matter, since it's
@@ -1978,8 +2122,9 @@ class ActivationCache:
                 labels.extend(mlp_labels)
                 components.append(mlp_stack)
 
+        embed_scale = self._downstream_scale(0, layer)
         if self.has_embed:
-            embed = pos_slice.apply(self["hook_embed"], -2)[None]
+            embed = self._rescale(pos_slice.apply(self["hook_embed"], -2)[None], embed_scale)
             if ln_folded:
                 embed = _ln_then_project(embed)
             elif project_2d is not None:
@@ -1987,7 +2132,7 @@ class ActivationCache:
             labels.append("embed")
             components.append(embed)
         if self.has_pos_embed:
-            pos_embed = pos_slice.apply(self["pos_embed"], -2)[None]
+            pos_embed = self._rescale(pos_slice.apply(self["pos_embed"], -2)[None], embed_scale)
             if ln_folded:
                 pos_embed = _ln_then_project(pos_embed)
             elif project_2d is not None:
@@ -1995,7 +2140,9 @@ class ActivationCache:
             labels.append("pos_embed")
             components.append(pos_embed)
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
-        bias_full = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
+        bias_full = self._scaled_accumulated_bias(
+            layer, mlp_input, include_mlp_biases=expand_neurons
+        )
         bias_correction = self._post_norm_bias_correction(
             layer, mlp_input, include_mlp_biases=expand_neurons, pos_slice=pos_slice
         )
