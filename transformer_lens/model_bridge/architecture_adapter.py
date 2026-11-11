@@ -294,19 +294,23 @@ class ArchitectureAdapter:
     def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
         """Apply the architecture's declared post-unembedding transform.
 
-        Most causal decoders only apply the shared optional Gemma-style soft cap.
-        Adapters with additional scaling override this method instead of relying
-        on similarly named configuration fields used by unrelated architectures.
+        Scales the logits by ``output_logits_scale()``, then applies the shared
+        optional Gemma-style soft cap. Adapters with a constant output scale
+        override ``output_logits_scale`` rather than this method, so linear
+        readouts that use the scale stay in sync with the forward path.
         """
+        scale = self.output_logits_scale()
+        if scale != 1.0:
+            logits = logits * scale
         return apply_softcap(logits, getattr(self.cfg, "output_logits_soft_cap", None))
 
     def output_logits_scale(self) -> float:
-        """Return the constant factor the output transform applies before any soft cap.
+        """Return the constant factor applied to the logits before any soft cap.
 
-        Linear readouts such as ``ActivationCache.logit_attrs`` multiply ``W_U``
-        directions by it so their attributions add up to the model's logits.
-        Adapters whose ``apply_output_logits_transform`` scales the logits
-        override this to return the same factor.
+        ``apply_output_logits_transform`` multiplies by it, and linear readouts
+        such as ``ActivationCache.logit_attrs`` multiply ``W_U`` directions by it
+        so their attributions add up to the model's logits. Adapters whose
+        architecture scales the logits override this instead of the transform.
         """
         return 1.0
 

@@ -202,16 +202,13 @@ class CohereArchitectureAdapter(ArchitectureAdapter):
         self._logit_scale_already_folded = True
         self._logit_scale_fold_pending = False
 
-    def apply_output_logits_transform(self, logits: torch.Tensor) -> torch.Tensor:
+    def output_logits_scale(self) -> float:
         """Match Cohere's ``lm_head -> logit_scale -> optional softcap`` path.
 
         Once preprocess_weights has folded the scale into the live unembed, the
         head output already carries it, so applying cfg.logit_scale again would
         double-scale every reader of this transform.
         """
-        return super().apply_output_logits_transform(logits * self.output_logits_scale())
-
-    def output_logits_scale(self) -> float:
         return 1.0 if self._logit_scale_already_folded else getattr(self.cfg, "logit_scale")
 
 
