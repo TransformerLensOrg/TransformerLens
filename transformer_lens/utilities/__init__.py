@@ -87,6 +87,7 @@ from .tokenize_utils import (
     get_input_with_manually_prepended_bos,
     get_tokenizer_with_bos,
     get_tokens_with_bos_removed,
+    readout_token_exclusions,
     tokenize_and_concatenate,
 )
 from .typed_module_list import TypedModuleList
