@@ -19,12 +19,14 @@ Architecture overview:
   needed for forward parity. Folding would only matter for compatibility mode.
 
 Key adapter decisions:
-- ``BlockBridge`` is the block container: the block has two norms
+- ``ScaledResidualBlockBridge`` is the block container: the block has two norms
   (``input_layernorm`` + ``pre_ff_layernorm``) and a real post-attention
   residual, so transformer-shaped hooks (``hook_resid_mid`` via ``ln2``) are
   meaningful — unlike single-norm SSM blocks that need ``SSMBlockBridge``.
-  ``BlockBridge.forward`` delegates the whole block to HF, so the parallel
-  attn+mamba combine happens natively.
+  The forward delegates the whole block to HF, so the parallel attn+mamba
+  combine happens natively. ``hook_attn_out`` exposes the attention output times
+  ``attention_out_multiplier``, and the residual decompositions add the Mamba
+  output times ``ssm_out_multiplier``.
 - ``SSM2MixerBridge`` wraps the Mamba-2 mixer (passthrough forward). Its inner
   ``in_proj`` / ``conv1d`` / ``out_proj`` are mapped for hookability; the gated
   ``inner_norm`` is optional (absent when ``mamba_rms_norm=false``).
@@ -45,7 +47,6 @@ import torch
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
-    BlockBridge,
     DepthwiseConv1DBridge,
     EmbeddingBridge,
     GatedRMSNormBridge,
@@ -53,6 +54,7 @@ from transformer_lens.model_bridge.generalized_components import (
     PositionEmbeddingsAttentionBridge,
     RMSNormalizationBridge,
     RotaryEmbeddingBridge,
+    ScaledResidualBlockBridge,
     SSM2MixerBridge,
     UnembeddingBridge,
 )
@@ -119,10 +121,24 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
         # forward parity.
         self.weight_processing_conversions = {}
 
+        mlp = self._gated_mlp(name="feed_forward")
+        # feed_forward multiplies down_proj's output by mlp_multipliers[1]; hook_mlp_out
+        # includes it, the neuron expansion (post @ W_out) does not.
+        mlp_multipliers = getattr(self.cfg, "mlp_multipliers", None) or (1.0, 1.0)
+        mlp._neuron_contribution_scale = float(mlp_multipliers[1])
+
         self.component_mapping = {
-            "embed": EmbeddingBridge(name="model.embed_tokens"),
+            # HF multiplies the embeddings by embedding_multiplier before block 0.
+            "embed": EmbeddingBridge(
+                name="model.embed_tokens",
+                output_contribution_scale=getattr(self.cfg, "embedding_multiplier", 1.0),
+            ),
             "rotary_emb": RotaryEmbeddingBridge(name="model.rotary_emb", config=self.cfg),
-            "blocks": BlockBridge(
+            # HF scales the attention and Mamba outputs inline before their shared residual
+            # add, so hook_attn_out exposes the scaled attention contribution and the
+            # decompositions scale the Mamba output by ssm_out_multiplier. The MLP's
+            # multipliers are inside feed_forward.
+            "blocks": ScaledResidualBlockBridge(
                 name="model.layers",
                 submodules={
                     "ln1": RMSNormalizationBridge(name="input_layernorm", config=self.cfg),
@@ -152,7 +168,12 @@ class FalconH1ArchitectureAdapter(ArchitectureAdapter):
                             "out_proj": LinearBridge(name="out_proj"),
                         },
                     ),
-                    "mlp": self._gated_mlp(name="feed_forward"),
+                    "mlp": mlp,
+                },
+                residual_contribution_scale=getattr(self.cfg, "attention_out_multiplier", 1.0),
+                mlp_contribution_scale=1.0,
+                mixer_contribution_scales={
+                    "mamba": getattr(self.cfg, "ssm_out_multiplier", 1.0),
                 },
             ),
             "ln_final": RMSNormalizationBridge(name="model.final_layernorm", config=self.cfg),

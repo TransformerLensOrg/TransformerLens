@@ -2,7 +2,8 @@
 
 Blocks without attention (gated-delta-net, Mamba) expose their sequence-mixer
 output instead of ``hook_attn_out``; blocks without an MLP (Mamba, NemotronH)
-write only through their mixer. Every decomposition must still sum to the
+write only through their mixer. Parallel hybrids (Falcon-H1) add a Mamba output
+beside attention in every block. Every decomposition must still sum to the
 residual stream it decomposes.
 """
 from unittest.mock import MagicMock
@@ -169,6 +170,51 @@ def _granite_dense():
     return _boot(AutoModelForCausalLM.from_config(c).eval(), "GraniteMoeHybridForCausalLM")
 
 
+def _falcon_h1():
+    from transformers import AutoModelForCausalLM
+    from transformers.models.falcon_h1 import FalconH1Config
+
+    torch.manual_seed(0)
+    c = FalconH1Config(
+        hidden_size=64,
+        intermediate_size=128,
+        num_hidden_layers=3,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=16,
+        vocab_size=64,
+        max_position_embeddings=64,
+        mamba_d_ssm=128,
+        mamba_n_heads=4,
+        mamba_d_head=32,
+        mamba_n_groups=1,
+        mamba_d_state=16,
+        mamba_d_conv=4,
+        mamba_chunk_size=8,
+        attention_bias=True,
+        mlp_bias=True,
+        mamba_proj_bias=True,
+        projectors_bias=True,
+        # Released checkpoints scale every branch; 1.0 would hide a missing multiplier.
+        embedding_multiplier=2.0,
+        attention_in_multiplier=1.1,
+        attention_out_multiplier=0.7,
+        key_multiplier=0.8,
+        ssm_in_multiplier=1.4,
+        ssm_out_multiplier=1.9,
+        ssm_multipliers=[0.5, 1.5, 0.8, 1.2, 0.9],
+        mlp_multipliers=[1.3, 0.6],
+        pad_token_id=0,
+    )
+    c.architectures = ["FalconH1ForCausalLM"]
+    model = AutoModelForCausalLM.from_config(c).eval()
+    with torch.no_grad():
+        for param in model.parameters():
+            if param.ndim == 1:
+                param.normal_(std=0.3)  # nonzero biases and norm weights
+    return _boot(model, "FalconH1ForCausalLM")
+
+
 def _zamba2():
     """Zamba2 with hybrid layers: the shared transformer feeds the Mamba-2 input of layers 1
     and 3 but does not write to the residual stream."""
@@ -250,6 +296,7 @@ def _lfm2():
 
 
 _FACTORIES = {
+    "falcon_h1": _falcon_h1,
     "granite_dense": _granite_dense,
     "lfm2": _lfm2,
     "mamba2": _mamba2,
@@ -307,6 +354,7 @@ class TestDecomposeResid:
         name, bridge, cache = bridge_and_cache
         _, labels = cache.decompose_resid(return_labels=True)
         expected = {
+            "falcon_h1": ["0_attn_out", "0_mamba_out", "0_mlp_out", "1_attn_out", "1_mamba_out"],
             "qwen3_5": ["0_linear_attn_out", "0_mlp_out", "3_attn_out", "3_mlp_out"],
             "granite_dense": ["0_mixer_out", "0_mlp_out", "1_attn_out", "1_mlp_out"],
             "lfm2": ["0_conv_out", "0_mlp_out", "1_attn_out", "1_mlp_out", "2_conv_out"],
@@ -346,13 +394,28 @@ class TestDecomposeResid:
 
     def test_mlp_input_sums_to_resid_mid(self, bridge_and_cache):
         name, bridge, cache = bridge_and_cache
-        if name not in ("qwen3_5", "recurrent_gemma"):
-            pytest.skip("only Qwen3.5 and RecurrentGemma blocks have a separate MLP input")
-        for layer in (0, 2, 3):
+        if name not in ("qwen3_5", "falcon_h1", "recurrent_gemma"):
+            pytest.skip("Qwen3.5, RecurrentGemma and Falcon-H1 blocks have a separate MLP input")
+        for layer in (0, 3) if name == "qwen3_5" else (0, 2):
             comps = cache.decompose_resid(layer=layer, mlp_input=True)
             torch.testing.assert_close(
                 comps.sum(0), cache[f"blocks.{layer}.hook_resid_mid"], atol=ATOL, rtol=0
             )
+
+    def test_parallel_branches_sum_to_their_residual_add(self, bridge_and_cache):
+        name, bridge, cache = bridge_and_cache
+        if name != "falcon_h1":
+            pytest.skip("only Falcon-H1 runs a mixer beside attention")
+        ssm_out_multiplier = bridge.cfg.ssm_out_multiplier
+        for layer in range(bridge.cfg.n_layers):
+            added = (
+                cache[f"blocks.{layer}.hook_resid_mid"] - cache[f"blocks.{layer}.hook_resid_pre"]
+            )
+            branches = (
+                cache[f"blocks.{layer}.hook_attn_out"]
+                + cache[f"blocks.{layer}.mamba.hook_out"] * ssm_out_multiplier
+            )
+            torch.testing.assert_close(branches, added, atol=ATOL, rtol=0)
 
     def test_logit_attrs_runs(self, bridge_and_cache):
         _, bridge, cache = bridge_and_cache
@@ -379,7 +442,9 @@ class TestHeadResults:
             heads = cache[f"blocks.{layer}.attn.hook_result"].sum(-2)
             b_O = bridge.blocks[layer].attn.b_O
             if b_O is not None:
-                heads = heads + b_O
+                heads = heads + b_O * getattr(
+                    bridge.blocks[layer], "residual_contribution_scale", 1.0
+                )
             torch.testing.assert_close(
                 heads, cache[f"blocks.{layer}.hook_attn_out"], atol=ATOL, rtol=0
             )

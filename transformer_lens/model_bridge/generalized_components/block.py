@@ -520,10 +520,17 @@ class ScaledResidualBlockBridge(BlockBridge):
         residual_contribution_scale: float = 1.0,
         scaled_attn_submodule: str = "attn",
         scaled_mlp_submodule: Optional[str] = "mlp",
+        mlp_contribution_scale: Optional[float] = None,
+        mixer_contribution_scales: Optional[Dict[str, float]] = None,
     ):
         """scaled_mlp_submodule=None when no single submodule feeds the MLP-side
         add (GraniteMoeHybrid sums moe + shared_mlp inline) — hook_mlp_out then
-        stays absent rather than firing with a partial tensor."""
+        stays absent rather than firing with a partial tensor.
+
+        ``residual_contribution_scale`` scales the attention side, and the MLP side
+        unless ``mlp_contribution_scale`` is given. ``mixer_contribution_scales`` maps
+        a sequence mixer that runs beside attention (Falcon-H1's ``mamba``) to the
+        multiplier HF applies after its ``hook_out``."""
         super().__init__(
             name,
             config=config,
@@ -538,6 +545,16 @@ class ScaledResidualBlockBridge(BlockBridge):
                 f"must be nonzero (the write path divides by it)."
             )
         self.residual_contribution_scale = scale
+        mlp_scale = scale if mlp_contribution_scale is None else float(mlp_contribution_scale)
+        if mlp_scale == 0.0:
+            raise ValueError(
+                f"ScaledResidualBlockBridge at '{name}': mlp_contribution_scale "
+                f"must be nonzero (the write path divides by it)."
+            )
+        self.mlp_contribution_scale = mlp_scale
+        self.mixer_contribution_scales = {
+            k: float(v) for k, v in (mixer_contribution_scales or {}).items()
+        }
         self.scaled_attn_submodule = scaled_attn_submodule
         self.scaled_mlp_submodule = scaled_mlp_submodule
         attn = self.submodules.get(scaled_attn_submodule) if self.submodules else None
@@ -585,10 +602,10 @@ class ScaledResidualBlockBridge(BlockBridge):
         if self._capture_hooks_wired:
             return
         super()._maybe_wire_capture_hooks()
-        targets = [(self.scaled_attn_submodule, "hook_attn_out")]
+        targets = [(self.scaled_attn_submodule, "hook_attn_out", self.residual_contribution_scale)]
         if self.scaled_mlp_submodule is not None:
-            targets.append((self.scaled_mlp_submodule, "hook_mlp_out"))
-        for sub_name, hook_name in targets:
+            targets.append((self.scaled_mlp_submodule, "hook_mlp_out", self.mlp_contribution_scale))
+        for sub_name, hook_name, scale in targets:
             hook_point = getattr(self, hook_name, None)
             sub = self.submodules.get(sub_name) if self.submodules else None
             if (
@@ -597,14 +614,15 @@ class ScaledResidualBlockBridge(BlockBridge):
                 or getattr(sub, "original_component", None) is None
             ):
                 continue
-            handle = sub.register_forward_hook(self._make_scaled_contribution_hook(hook_point))
+            handle = sub.register_forward_hook(
+                self._make_scaled_contribution_hook(hook_point, scale)
+            )
             self._capture_hook_handles.append(handle)
 
     def _make_scaled_contribution_hook(
-        self, hook_point: HookPoint
+        self, hook_point: HookPoint, scale: float
     ) -> Callable[[torch.nn.Module, tuple, Any], Any]:
         """Build a forward hook exposing ``output * scale`` through hook_point."""
-        scale = self.residual_contribution_scale
 
         def _hook(_module: torch.nn.Module, _args: tuple, output: Any) -> Any:
             if not hook_point.has_hooks(dir="both"):

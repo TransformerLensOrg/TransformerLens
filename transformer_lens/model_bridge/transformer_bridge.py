@@ -1842,7 +1842,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             if include_mlp_biases and "mlp" in block._modules:
                 b_out = getattr(block.mlp, "b_out", None)
                 if b_out is not None:
-                    accumulated = accumulated + b_out.to(accumulated.device) * scale
+                    mlp_scale = getattr(block, "mlp_contribution_scale", scale) * getattr(
+                        block.mlp, "_neuron_contribution_scale", 1.0
+                    )
+                    accumulated = accumulated + b_out.to(accumulated.device) * mlp_scale
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             block = self.blocks[layer]
