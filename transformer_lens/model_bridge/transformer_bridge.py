@@ -261,7 +261,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             model_name: str,
             hf_config_overrides: Optional[dict] = None,
             device: Optional[Union[str, torch.device]] = None,
-            dtype: torch.dtype = torch.float32,
+            dtype: Optional[torch.dtype] = None,
             tokenizer: Optional[PreTrainedTokenizerBase] = None,
             load_weights: bool = True,
             trust_remote_code: bool = False,
