@@ -30,6 +30,16 @@ from transformer_lens.model_bridge.sources._hf_format import (
 from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 from transformer_lens.utilities import get_device
 from transformer_lens.utilities.attn_implementation import force_eager_attention
+from transformer_lens.utilities.multi_gpu import (
+    MIXED_OFFLOAD_GPU_ERROR,
+    count_unique_devices,
+    find_embedding_device,
+    find_misplaced_modules,
+    is_mixed_offload_gpu,
+    maybe_cast_floating_params,
+    model_floating_dtype,
+    resolve_device_map,
+)
 
 from .helpers import (
     _resolve_checkpoint_to_revision,
@@ -47,7 +57,7 @@ def boot(
     model_name: str,
     hf_config_overrides: dict | None = None,
     device: str | torch.device | None = None,
-    dtype: torch.dtype = torch.float32,
+    dtype: torch.dtype | None = None,
     tokenizer: PreTrainedTokenizerBase | None = None,
     load_weights: bool = True,
     trust_remote_code: bool = False,
@@ -81,7 +91,9 @@ def boot(
         hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
         device: The device to use. If None, will be determined automatically. Mutually exclusive
             with ``device_map``.
-        dtype: The dtype to use for the model.
+        dtype: The dtype to load or cast the model to. ``None`` means float32 for a fresh
+            load and, for a pre-loaded ``hf_model``, the dtype it already has. After boot,
+            ``cfg.dtype`` reports the parameters' actual dtype.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, build the model with ``from_config`` instead of loading the
             checkpoint: real parameters with the architecture's random initialisation, on the CPU,
@@ -93,8 +105,9 @@ def boot(
             adapter is selected automatically (e.g., BertForNextSentencePrediction).
         hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
-            When provided, load_weights is ignored, and without ``device=`` the bridge reads
-            ``cfg.device`` from the model's weights.
+            When provided, load_weights is ignored; an explicit ``dtype`` is applied to its
+            floating parameters (quantized models excepted), and without ``device=`` the
+            bridge reads ``cfg.device`` from the model's weights.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
             dispatched inference. Explicit maps may include CPU and disk targets; meta targets
             are still rejected when ``load_weights=True`` (meta has no real data to offload from,
@@ -217,6 +230,12 @@ def boot(
     if hf_config_overrides:
         hf_config.__dict__.update(hf_config_overrides)
     architecture = determine_architecture_from_hf_config(hf_config)
+    # None means "as loaded": float32 for a fresh load, while a pre-loaded model keeps its
+    # own dtype, which cfg.dtype reads back after construction. A float32 default here
+    # made cfg.dtype misreport a bf16 hf_model.
+    requested_dtype = dtype
+    if dtype is None:
+        dtype = torch.float32
     bridge_config = build_bridge_config_from_hf(hf_config, architecture, model_name, dtype)
     bridge_config.trust_remote_code = trust_remote_code
     adapter = architecture_adapter_factory.ArchitectureAdapterFactory.select_architecture_adapter(
@@ -246,16 +265,6 @@ def boot(
     # Resolve device_map before defaulting `device` — the two are mutually exclusive and the
     # resolver raises on conflict. If n_devices>1 is passed it's translated into a device_map +
     # max_memory pair here so downstream code only needs to check the resolved values.
-    from transformer_lens.utilities.multi_gpu import (
-        MIXED_OFFLOAD_GPU_ERROR,
-        count_unique_devices,
-        find_embedding_device,
-        find_misplaced_modules,
-        is_mixed_offload_gpu,
-        maybe_cast_floating_params,
-        resolve_device_map,
-    )
-
     resolved_device_map, resolved_max_memory = resolve_device_map(
         n_devices, device_map, device, max_memory
     )
@@ -314,13 +323,17 @@ def boot(
                 "(the map is not applied; parameters load on CPU via from_config)."
             )
     if hf_model is not None:
-        # Pre-loaded weights stay untouched (quantized models with custom device_map are
-        # why this branch takes the model as-is), but attn-impl selection is runtime
+        # Pre-loaded weights stay where they are (quantized models with custom device_map
+        # are why this branch takes the model as-is), but attn-impl selection is runtime
         # dispatch — safe to switch in place. Without it, transformers' default sdpa
         # returns attn_weights=None and hook_pattern / hook_attn_scores silently never
         # fire. An explicit adapter/user choice wins, matching the load path above.
         if getattr(adapter.cfg, "attn_implementation", None) is None:
             force_eager_attention(hf_model)
+        # Only an explicit dtype casts; the default means "as loaded". The helper skips
+        # quantized models, whose dtype is the quantizer's to choose.
+        if requested_dtype is not None:
+            maybe_cast_floating_params(hf_model, requested_dtype)
     elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:
@@ -419,6 +432,19 @@ def boot(
             adapter.cfg.device = str(next(hf_model.parameters()).device)
         except StopIteration:
             adapter.cfg.device = "cpu"
+    # cfg.dtype reports what the parameters are, not what was asked for: a quantizer may
+    # override the request, and the no-weights path builds in the config's dtype.
+    actual_dtype = model_floating_dtype(hf_model)
+    if actual_dtype is not None:
+        if requested_dtype is not None and actual_dtype != requested_dtype:
+            logging.warning(
+                "dtype=%s was requested but the model's parameters are %s after load; "
+                "cfg.dtype reports %s.",
+                requested_dtype,
+                actual_dtype,
+                actual_dtype,
+            )
+        adapter.cfg.dtype = actual_dtype
     # Verify the n_ctx override actually took effect on the loaded model. If HF's config class
     # silently dropped or normalized the value, warn so the user isn't misled.
     if n_ctx is not None and _n_ctx_field is not None and hf_model is not None:

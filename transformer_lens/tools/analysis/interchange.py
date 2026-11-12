@@ -693,9 +693,12 @@ def random_init_bridge(
     with torch.random.fork_rng(devices=[]):
         torch.default_generator.manual_seed(seed)
         bridge = TransformerBridge.boot_transformers(
-            model_name, load_weights=False, dtype=dtype, device=device, **boot_kwargs
+            model_name, load_weights=False, device=device, **boot_kwargs
         )
     # Building from a config follows the config's dtype and leaves the weights on the CPU,
-    # whatever device boot recorded; HuggingFace also leaves the model in training mode
+    # whatever device boot recorded; HuggingFace also leaves the model in training mode.
+    # boot is not asked for the dtype (it would warn that the request was not applied),
+    # so cfg.dtype is set here, after the cast that makes it true.
     maybe_cast_floating_params(bridge.original_model, dtype)
+    bridge.cfg.dtype = dtype
     return bridge.to(bridge.cfg.device).eval()
