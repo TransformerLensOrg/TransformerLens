@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any, Callable, Optional
 
 import torch
@@ -23,6 +24,10 @@ from transformer_lens.utilities.heterogeneous_config import (
     het_safe_view,
     per_layer_attr_names,
     safe_config_get,
+)
+from transformer_lens.utilities.multi_gpu import (
+    maybe_cast_floating_params,
+    model_floating_dtype,
 )
 
 # Architecture-agnostic; do not extend per-architecture.
@@ -304,9 +309,10 @@ def build_bridge_from_module(
 ) -> TransformerBridge:
     """Build a :class:`TransformerBridge` around a pre-loaded model.
 
-    The bridge never moves or casts the supplied model, but modifies it in place:
-    bridge components replace its submodules, and ``adapter.prepare_model`` may
-    switch it to eager attention or patch forwards and buffers.
+    The bridge never moves the supplied model and casts it only when ``dtype`` is
+    given, but it does modify it in place: bridge components replace its submodules,
+    and ``adapter.prepare_model`` may switch it to eager attention or patch forwards
+    and buffers.
 
     Args:
         model: Any ``nn.Module`` whose submodule tree matches the adapter's
@@ -320,8 +326,9 @@ def build_bridge_from_module(
             HF translation. Mutually exclusive with ``hf_config``.
         tokenizer: Optional tokenizer. If supplied, passes through
             ``setup_tokenizer`` and detects BOS/EOS behavior.
-        dtype: Recorded on ``cfg.dtype``. Default ``None`` reads from the model's
-            first parameter; explicit values override.
+        dtype: Applied to the model's floating parameters when given (quantized
+            models excepted); ``None`` keeps the model's dtype. Either way
+            ``cfg.dtype`` reports the parameters' actual dtype.
         device: Recorded on ``cfg.device``. Default ``None`` reads from the
             model's first parameter.
         model_name: Recorded on ``cfg.model_name``.
@@ -345,12 +352,22 @@ def build_bridge_from_module(
             "bypasses it."
         )
 
-    # Reading dtype from the model avoids silently lying about a bf16 model.
-    if dtype is None:
-        try:
-            dtype = next(model.parameters()).dtype
-        except StopIteration:
-            dtype = torch.float32
+    # An explicit dtype is applied through the helper that leaves quantized models alone;
+    # cfg.dtype then reports what the parameters are, so it cannot lie about a bf16 model
+    # or about a request the helper declined.
+    if dtype is not None:
+        maybe_cast_floating_params(model, dtype)
+    actual_dtype = model_floating_dtype(model)
+    if actual_dtype is None:
+        actual_dtype = dtype if dtype is not None else torch.float32
+    elif dtype is not None and actual_dtype != dtype:
+        logging.warning(
+            "dtype=%s was requested but the model's parameters are %s; cfg.dtype reports %s.",
+            dtype,
+            actual_dtype,
+            actual_dtype,
+        )
+    dtype = actual_dtype
 
     if tl_config is not None:
         # Defensive copy so adapter-init mutations (normalization_type, device,
