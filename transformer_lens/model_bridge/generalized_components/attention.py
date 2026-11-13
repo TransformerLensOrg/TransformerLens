@@ -1019,10 +1019,21 @@ class AttentionBridge(GeneralizedComponent):
         Read-only hooks (e.g. caching) return the tensor unchanged and stay
         silent.
         """
+        # Snapshot only active hooks: inference tensors have no mutation counter,
+        # and an in-place edit also changes every alias used for comparison.
+        original = (
+            tensor.detach().clone() if hook._forward_hooks or hook._forward_pre_hooks else tensor
+        )
         result = hook(tensor)
-        if isinstance(result, torch.Tensor) and result is not tensor:
+        if isinstance(result, torch.Tensor) and result is not original:
             try:
-                unchanged = result.shape == tensor.shape and torch.equal(result, tensor)
+                unchanged = result.shape == original.shape and (
+                    torch.equal(result, original)
+                    or (
+                        result.dtype == original.dtype
+                        and torch.allclose(result, original, rtol=0, atol=0, equal_nan=True)
+                    )
+                )
             except RuntimeError:
                 unchanged = False
             if not unchanged:
