@@ -1,4 +1,5 @@
 """Framework-agnostic bridge surface shared by TransformerBridge and RemoteBridge."""
+
 from __future__ import annotations
 
 import inspect
@@ -103,9 +104,7 @@ class BridgeCore:
         then do framework-specific setup."""
         self.adapter = adapter
         self.cfg = adapter.cfg
-        self._tokenizer = None
-        if tokenizer is not None:
-            self.tokenizer = tokenizer  # Use the property setter
+        self.tokenizer = tokenizer  # Use the property setter, including tokenizer-less boots.
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
         self.compatibility_mode = False
@@ -139,7 +138,7 @@ class BridgeCore:
         On reassignment, we re-run configure_tokenizer and update d_vocab to keep
         cfg in sync with the new tokenizer.
         """
-        is_reassignment = getattr(self, "_tokenizer", None) is not None
+        is_reassignment = hasattr(self, "_tokenizer")
         cfg = getattr(self, "cfg", None)
         if value is not None and cfg is not None:
             if is_reassignment:

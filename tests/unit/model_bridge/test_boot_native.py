@@ -122,14 +122,39 @@ def test_boot_native_input_to_embed_round_trip():
     torch.testing.assert_close(actual, expected)
 
 
-def test_input_to_embed_without_pad_id_attends_every_token():
+@pytest.mark.parametrize("clear_tokenizer", [False, True])
+def test_tokenizer_attached_after_boot_matches_boot_setup(clear_tokenizer):
+    from tokenizers.pre_tokenizers import Whitespace
+
+    def tokenizer():
+        backend = Tokenizer(models.WordLevel({str(i): i for i in range(16)}, unk_token="0"))
+        backend.pre_tokenizer = Whitespace()
+        return TokenizersBackend(tokenizer_object=backend, eos_token="0", padding_side="left")
+
+    expected = TransformerBridge.boot_native(_cfg(device="cpu"), tokenizer=tokenizer())
+    bridge = TransformerBridge.boot_native(_cfg(device="cpu"))
+    if clear_tokenizer:
+        bridge.tokenizer = tokenizer()
+        bridge.tokenizer = None
+    bridge.tokenizer = tokenizer()
+    assert bridge.tokenizer.pad_token_id == expected.tokenizer.pad_token_id == 0
+    assert bridge.cfg.tokenizer_prepends_bos == expected.cfg.tokenizer_prepends_bos is False
+    assert bridge.cfg.tokenizer_appends_eos == expected.cfg.tokenizer_appends_eos
+    assert bridge.cfg.d_vocab == expected.cfg.d_vocab == 16
+    assert bridge.cfg.d_vocab_out == expected.cfg.d_vocab_out == 16
+    torch.testing.assert_close(bridge.to_tokens("1 2"), expected.to_tokens("1 2"))
+    assert bridge.to_tokens("1 2").tolist() == [[0, 1, 2]]
+
+
+def test_input_to_embed_after_tokenizer_attachment_attends_every_token():
     bridge = TransformerBridge.boot_native(_cfg(device="cpu"))
     bridge.eval()
     bridge.tokenizer = TokenizersBackend(
-        tokenizer_object=Tokenizer(models.WordLevel({str(i): i for i in range(16)})),
+        tokenizer_object=Tokenizer(models.WordLevel({str(i): i for i in range(16)}, unk_token="0")),
+        eos_token="0",
         padding_side="left",
     )
-    assert bridge.tokenizer.pad_token_id is None
+    assert bridge.tokenizer.pad_token_id == 0
     tokens = torch.tensor([[1, 2, 3], [4, 5, 6]])
 
     with torch.no_grad():
