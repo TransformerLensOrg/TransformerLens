@@ -98,3 +98,79 @@ def test_hook_returning_equal_copy_does_not_warn(bridge, hidden_states):
     finally:
         handle.remove()
     assert _discard_warnings(records) == []
+
+
+@pytest.mark.parametrize("inference", [False, True])
+@pytest.mark.parametrize("return_kind", ["same", "none", "view", "clone"])
+def test_inplace_pattern_edit_warns(bridge, hidden_states, inference, return_kind):
+    def edit(module, args, weights):
+        weights.zero_()
+        if return_kind == "none":
+            return None
+        if return_kind == "view":
+            return weights.view_as(weights)
+        if return_kind == "clone":
+            return weights.clone()
+        return weights
+
+    with torch.inference_mode(inference):
+        base_out, _ = _run(bridge, hidden_states)
+        handle = bridge.hook_pattern.register_forward_hook(edit)
+        try:
+            with pytest.warns(UserWarning, match="edit is discarded"):
+                actual, weights = _run(bridge, hidden_states)
+        finally:
+            handle.remove()
+    assert torch.equal(actual, base_out)
+    assert torch.count_nonzero(weights) == 0
+
+
+@pytest.mark.parametrize("inference", [False, True])
+def test_inplace_scores_edit_warns(bridge, hidden_states, inference):
+    handle = bridge.hook_attn_scores.register_forward_hook(lambda m, i, t: t.add_(1))
+    try:
+        with torch.inference_mode(inference), pytest.warns(UserWarning, match="edit is discarded"):
+            bridge._fire_post_hoc_hook(
+                bridge.hook_attn_scores, torch.ones(2, 2, 3, 3), "hook_attn_scores"
+            )
+    finally:
+        handle.remove()
+
+
+@pytest.mark.parametrize("inference", [False, True])
+def test_inplace_noop_does_not_warn(bridge, hidden_states, inference):
+    handle = bridge.hook_attn_scores.register_forward_hook(lambda m, i, t: t.add_(0))
+    try:
+        with torch.inference_mode(inference), warnings.catch_warnings(record=True) as records:
+            warnings.simplefilter("always")
+            bridge._fire_post_hoc_hook(
+                bridge.hook_attn_scores, torch.ones(2, 2, 3, 3), "hook_attn_scores"
+            )
+    finally:
+        handle.remove()
+    assert _discard_warnings(records) == []
+
+
+@pytest.mark.parametrize("inference", [False, True])
+def test_read_only_nonfinite_values_do_not_warn(bridge, inference):
+    hook = bridge.hook_pattern
+    handle = hook.register_forward_hook(lambda m, i, t: None)
+    try:
+        with torch.inference_mode(inference), warnings.catch_warnings(record=True) as records:
+            warnings.simplefilter("always")
+            values = torch.tensor([float("nan"), float("inf"), -float("inf")])
+            result = bridge._fire_post_hoc_hook(hook, values, "hook_pattern")
+    finally:
+        handle.remove()
+    assert result is values
+    assert _discard_warnings(records) == []
+
+
+def test_no_hooks_do_not_clone_tensor(bridge, monkeypatch):
+    values = torch.ones(2, 3)
+
+    def unexpected_clone(*args, **kwargs):
+        pytest.fail("unhooked post-hoc tensors must not be copied")
+
+    monkeypatch.setattr(torch.Tensor, "clone", unexpected_clone)
+    assert bridge._fire_post_hoc_hook(bridge.hook_pattern, values, "hook_pattern") is values
