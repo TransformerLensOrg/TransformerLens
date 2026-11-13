@@ -40,6 +40,7 @@ def copy_demos(_app: Optional[Any] = None):
     copy_to_dir = GENERATED_DIR / "demos"
     notebooks_to_copy = [
         "Backward_Lens_Demo.ipynb",
+        "Diffusion_Trajectory_Patching_Demo.ipynb",
         "Exploratory_Analysis_Demo.ipynb",
         "Jacobian_Lens_Coordinate_Patch_Benchmark_Demo.ipynb",
         "Jacobian_Lens_Decomposition_Demo.ipynb",
