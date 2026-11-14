@@ -190,7 +190,8 @@ class TestBridgeWithoutWeights:
     TINY_GPT2 = {"n_layer": 1, "n_embd": 8, "n_head": 2, "n_positions": 4, "vocab_size": 20}
 
     def boot(self, model_name="gpt2", **kwargs):
-        overrides = self.TINY_GPT2 if model_name == "gpt2" else None
+        default_overrides = self.TINY_GPT2 if model_name == "gpt2" else None
+        overrides = kwargs.pop("hf_config_overrides", default_overrides)
         return TransformerBridge.boot_transformers(
             model_name, hf_config_overrides=overrides, load_weights=False, **kwargs
         )
@@ -208,6 +209,20 @@ class TestBridgeWithoutWeights:
         )
         inv_freqs = [b for n, b in bridge.original_model.named_buffers() if "inv_freq" in n]
         assert inv_freqs and all(b.dtype == torch.float32 for b in inv_freqs)
+
+    def test_buffers_built_at_init_follow_the_requested_dtype(self):
+        # XGLM computes its sinusoidal position table at init; casting only the
+        # parameters afterwards left it float32 and the first forward pass failed
+        bridge = self.boot(
+            "facebook/xglm-564M",
+            hf_config_overrides={"num_layers": 1, "d_model": 16, "ffn_dim": 32},
+            dtype=torch.float16,
+            device="cpu",
+        )
+        assert bridge.original_model.model.embed_positions.weights.dtype == torch.float16
+        with torch.no_grad():
+            logits = bridge(torch.tensor([[2, 5, 9, 17]]))
+        assert logits.dtype == torch.float16
 
     def test_model_is_in_eval_mode_and_deterministic(self):
         bridge = self.boot(device="cpu")

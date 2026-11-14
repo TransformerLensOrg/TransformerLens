@@ -97,7 +97,7 @@ def boot(
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, build the model with ``from_config`` instead of loading the
             checkpoint: real parameters with the architecture's random initialisation, moved to
-            ``device``, cast to ``dtype`` and in evaluation mode, as with loaded weights.
+            ``device``, built in ``dtype`` and in evaluation mode, as with loaded weights.
             ``device_map`` is not applied; the parameters stay on the CPU.
         model_class: Optional HuggingFace model class to use instead of the default auto-detected
             class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
@@ -342,12 +342,12 @@ def boot(
         # text-only extraction); honor that here so the no-weights path uses the
         # same config the load-weights path would.
         prepared_config = model_kwargs.get("config", hf_config)
+        # Build in the requested dtype, as from_pretrained does on the weights path, so
+        # buffers created at init (e.g. XGLM's sinusoidal table) follow it too
         with contextlib.redirect_stdout(None):
-            hf_model = model_class.from_config(prepared_config, **from_config_kwargs)
+            hf_model = model_class.from_config(prepared_config, dtype=dtype, **from_config_kwargs)
         # Match the weights path: from_pretrained returns an eval-mode model, from_config doesn't
         hf_model.eval()
-        # Initialise in the config's dtype, then cast like the weights path, so float32
-        # buffers (e.g. RotaryEmbedding.inv_freq) are preserved
         maybe_cast_floating_params(hf_model, dtype)
         # Moved once the bridge is built: splitting fused QKV at boot reads the weight values,
         # which a meta-device model doesn't have. from_config builds on the CPU, so a CPU
@@ -447,7 +447,7 @@ def boot(
         except StopIteration:
             adapter.cfg.device = "cpu"
     # cfg.dtype reports what the parameters are, not what was asked for: a quantizer may
-    # override the request, and the no-weights path builds in the config's dtype.
+    # override the request.
     actual_dtype = model_floating_dtype(hf_model)
     if actual_dtype is not None:
         if requested_dtype is not None and actual_dtype != requested_dtype:
