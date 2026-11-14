@@ -182,3 +182,58 @@ class TestBridgeOfflineWithHfModel:
         _, cache = bridge.run_with_cache("Hello", names_filter=pattern_name)
         assert pattern_name in cache, "attention pattern hook never fired"
         assert torch.isfinite(cache[pattern_name]).all()
+
+
+class TestBridgeWithoutWeights:
+    """load_weights=False must honour dtype, device and eval mode like the weights path (#2017)."""
+
+    TINY_GPT2 = {"n_layer": 1, "n_embd": 8, "n_head": 2, "n_positions": 4, "vocab_size": 20}
+
+    def boot(self, model_name="gpt2", **kwargs):
+        default_overrides = self.TINY_GPT2 if model_name == "gpt2" else None
+        overrides = kwargs.pop("hf_config_overrides", default_overrides)
+        return TransformerBridge.boot_transformers(
+            model_name, hf_config_overrides=overrides, load_weights=False, **kwargs
+        )
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_parameters_are_cast_to_the_requested_dtype(self, dtype):
+        bridge = self.boot(dtype=dtype, device="cpu")
+        assert bridge.cfg.dtype == dtype
+        floating = [p for p in bridge.original_model.parameters() if p.is_floating_point()]
+        assert floating and all(p.dtype == dtype for p in floating)
+
+    def test_float32_buffers_survive_the_cast(self):
+        bridge = self.boot(
+            "hf-internal-testing/tiny-random-LlamaForCausalLM", dtype=torch.bfloat16, device="cpu"
+        )
+        inv_freqs = [b for n, b in bridge.original_model.named_buffers() if "inv_freq" in n]
+        assert inv_freqs and all(b.dtype == torch.float32 for b in inv_freqs)
+
+    def test_buffers_built_at_init_follow_the_requested_dtype(self):
+        # XGLM computes its sinusoidal position table at init; casting only the
+        # parameters afterwards left it float32 and the first forward pass failed
+        bridge = self.boot(
+            "facebook/xglm-564M",
+            hf_config_overrides={"num_layers": 1, "d_model": 16, "ffn_dim": 32},
+            dtype=torch.float16,
+            device="cpu",
+        )
+        assert bridge.original_model.model.embed_positions.weights.dtype == torch.float16
+        with torch.no_grad():
+            logits = bridge(torch.tensor([[2, 5, 9, 17]]))
+        assert logits.dtype == torch.float16
+
+    def test_model_is_in_eval_mode_and_deterministic(self):
+        bridge = self.boot(device="cpu")
+        assert not any(m.training for m in bridge.modules())
+        assert not any(m.training for m in bridge.original_model.modules())
+        tokens = torch.tensor([[0, 2, 3, 4]])
+        with torch.no_grad():
+            # GPT-2's dropout would make these differ in training mode
+            assert torch.equal(bridge(tokens), bridge(tokens))
+
+    def test_parameters_are_moved_to_the_requested_device(self):
+        bridge = self.boot(device="meta")
+        assert str(bridge.cfg.device) == "meta"
+        assert all(p.device.type == "meta" for p in bridge.original_model.parameters())
