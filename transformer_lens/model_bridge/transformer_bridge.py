@@ -2260,6 +2260,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
+                Pass the original ``attention_mask`` and any explicit ``position_ids``
+                when resuming. Mask-derived positions follow the same policy as token
+                input; ordinary external ``inputs_embeds`` retain HF's position defaults.
             stop_at_layer: Return the residual stream entering this block instead of the
                 model output. ``n_layers`` returns what leaves the last block, before the
                 final norm and unembed, and a value outside ``[-n_layers, n_layers]``
@@ -2477,13 +2480,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # The mask spans any cached prefix as well as the new tokens, so it is
             # offset back to just the tokens actually being passed — matching how
             # AbstractAttention/PosEmbed use past_kv_pos_offset.
+            # Residual re-entry uses token coordinates despite travelling via inputs_embeds.
             if (
                 attention_mask is not None
                 and "position_ids" not in kwargs
-                and not _is_inputs_embeds
+                and (not _is_inputs_embeds or start_at_layer is not None)
                 and attention_mask.ndim == 2
                 and isinstance(input_ids, torch.Tensor)
-                and input_ids.ndim == 2
+                and (input_ids.ndim == 2 or start_at_layer is not None)
                 and attention_mask.shape[1] >= input_ids.shape[1]
                 and self._accepts_derived_position_ids()
             ):
