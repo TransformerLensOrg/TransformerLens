@@ -155,8 +155,10 @@ def test_random_init_bridge_casts_to_a_dtype_other_than_the_configs():
 
 
 def test_random_init_bridge_puts_its_weights_on_the_device_it_records(monkeypatch):
-    # Stand in for a GPU machine, where the default device is not the CPU the model is built on
-    monkeypatch.setattr("transformer_lens.utilities.get_device", lambda: "meta")
+    # Stand in for a GPU machine, where boot's default device is not the CPU
+    import transformer_lens.model_bridge.sources.transformers.source as source
+
+    monkeypatch.setattr(source, "get_device", lambda: "meta")
     untrained = random_init_bridge("gpt2", seed=0)
     assert str(untrained.cfg.device) == "meta"
     assert all(p.device.type == "meta" for p in untrained.original_model.parameters())

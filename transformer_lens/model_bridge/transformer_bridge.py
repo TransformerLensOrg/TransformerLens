@@ -137,6 +137,14 @@ def _extend_prompt_attention_mask(prompt_mask: torch.Tensor, tokens: torch.Tenso
     )
 
 
+def _extend_prompt_position_ids(positions: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+    """Keep prompt coordinates and advance from each row's final position."""
+    n_generated = tokens.shape[1] - positions.shape[1]
+    offsets = torch.arange(1, n_generated + 1, dtype=positions.dtype, device=tokens.device)
+    positions = positions.to(tokens.device)
+    return torch.cat([positions, positions[:, -1:] + offsets], dim=-1)
+
+
 class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
     """Torch-backed bridge: HF, vLLM-via-torch, anything that wraps an ``nn.Module``.
 
@@ -2252,6 +2260,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 output is discarded when block k swaps in the residual) but are excluded
                 from ``run_with_cache`` output. Requires an HF model that accepts
                 ``inputs_embeds``; only supported on the standard ``blocks`` stack.
+                Pass the original ``attention_mask`` and any explicit ``position_ids``
+                when resuming. Mask-derived positions follow the same policy as token
+                input; ordinary external ``inputs_embeds`` retain HF's position defaults.
             stop_at_layer: Return the residual stream entering this block instead of the
                 model output. ``n_layers`` returns what leaves the last block, before the
                 final norm and unembed, and a value outside ``[-n_layers, n_layers]``
@@ -2469,13 +2480,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # The mask spans any cached prefix as well as the new tokens, so it is
             # offset back to just the tokens actually being passed — matching how
             # AbstractAttention/PosEmbed use past_kv_pos_offset.
+            # Residual re-entry uses token coordinates despite travelling via inputs_embeds.
             if (
                 attention_mask is not None
                 and "position_ids" not in kwargs
-                and not _is_inputs_embeds
+                and (not _is_inputs_embeds or start_at_layer is not None)
                 and attention_mask.ndim == 2
                 and isinstance(input_ids, torch.Tensor)
-                and input_ids.ndim == 2
+                and (input_ids.ndim == 2 or start_at_layer is not None)
                 and attention_mask.shape[1] >= input_ids.shape[1]
                 and self._accepts_derived_position_ids()
             ):
@@ -3126,6 +3138,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         forced_eos_token_id: Optional[int] = None,
         suppress_processors: Sequence[Any] = (),
         encoder_outputs: Optional[Any] = None,
+        prompt_position_ids: Optional[torch.Tensor] = None,
     ) -> Generator[Tuple[torch.Tensor, torch.Tensor, bool], None, None]:
         """Core generation loop. Yields (sampled_tokens, raw_logits, all_finished) per step.
 
@@ -3221,6 +3234,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                             forward_kwargs["pixel_values"] = pixel_values
                         if multimodal_kwargs:
                             forward_kwargs.update(multimodal_kwargs)
+                    if prompt_position_ids is not None:
+                        forward_kwargs["position_ids"] = _extend_prompt_position_ids(
+                            prompt_position_ids, current_tokens
+                        )
                     if use_stateful_cache:
                         forward_kwargs[stateful_cache_kwarg] = mamba_cache
                         forward_kwargs["use_cache"] = True
@@ -3269,19 +3286,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                                     dtype=torch.long,
                                     device=device,
                                 )
-                            # Gated as a whole (#1626): every branch below supplies
-                            # position_ids, so gating only the prompt derivation
-                            # above would divert a refused model into the
-                            # total_len - 1 fallback, which counts pad slots and is
-                            # wrong per row for a left-padded batch. A model that
-                            # owns its position derivation gets the mask alone,
-                            # matching the uncached path.
-                            if self._accepts_derived_position_ids():
-                                if "position_ids" in forward_kwargs:
-                                    forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
-                                        :, -1:
-                                    ]
-                                elif running_attention_mask is not None:
+                            # Slice explicit positions too; only derived positions use
+                            # the model-compatibility gate.
+                            if "position_ids" in forward_kwargs:
+                                forward_kwargs["position_ids"] = forward_kwargs["position_ids"][
+                                    :, -1:
+                                ]
+                            elif self._accepts_derived_position_ids():
+                                if running_attention_mask is not None:
                                     # total_len - 1 counts pad slots, so it is wrong
                                     # for a left-padded prompt. Derive the new token's
                                     # position from the mask instead.
@@ -3484,6 +3496,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         stopping_criteria: Optional[Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         forced_bos_token_id: Optional[int] = None,
+        position_ids: Optional[torch.Tensor] = None,
         **multimodal_kwargs,
     ) -> (
         str
@@ -3598,6 +3611,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 after ``decoder_start`` on encoder-decoder models. Multilingual
                 translators (M2M100/MBart/NLLB) select their target language this way.
                 Raises ValueError on decoder-only models.
+            position_ids: Optional integer ``[batch, prompt_pos]`` positions for
+                decoder-only text generation; a single row may broadcast over the batch.
+                Preserve these prompt coordinates and extend each row by one from its
+                final position per generated token, overriding mask-derived positions.
+                Cache replay uses the same positions. Encoder-decoder, stateful/SSM,
+                inputs_embeds and multimodal inputs are not supported.
 
         Returns:
             Generated sequence as string, list of strings, or tensor depending on input type and return_type.
@@ -3687,6 +3706,32 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         else:
             input_tokens = input.to(self.cfg.device)
             input_type = "tokens"
+
+        if position_ids is not None:
+            if (
+                _encdec_early
+                or is_stateful_model
+                or _generate_from_embeds
+                or pixel_values is not None
+            ):
+                raise NotImplementedError(
+                    "Explicit position_ids in generate() are supported only for decoder-only "
+                    "text inputs. Use hf_generate() for encoder-decoder, stateful/SSM, "
+                    "inputs_embeds or pixel_values inputs."
+                )
+            if (
+                position_ids.ndim != 2
+                or position_ids.shape[0] not in (1, input_tokens.shape[0])
+                or position_ids.shape[1] != input_tokens.shape[1]
+                or position_ids.shape[1] == 0
+            ):
+                raise ValueError(
+                    "position_ids must have shape [batch, prompt_pos] (or [1, prompt_pos]) "
+                    "covering exactly the prompt tokens."
+                )
+            if position_ids.dtype not in (torch.int32, torch.int64):
+                raise ValueError("position_ids must have integer dtype (int32 or int64).")
+            position_ids = position_ids.to(input_tokens.device)
 
         # Without one of these a pre-padded tensor generates as though its pads were
         # real context, shifting every real token's position (#1612). An explicit
@@ -4050,6 +4095,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 ),
                 suppress_processors=suppress_processors,
                 encoder_outputs=audio_encoder_outputs,
+                prompt_position_ids=position_ids,
             ):
                 sampled_tokens_list.append(sampled_tokens.unsqueeze(1))
                 if logits_seq_list is not None:
@@ -4117,6 +4163,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         if return_cache:
             # Replay the loop's final mask so the cache sees the context and positions
             # generation did.
+            cache_forward_kwargs: Dict[str, Any] = {}
+            if position_ids is not None:
+                cache_forward_kwargs["position_ids"] = _extend_prompt_position_ids(
+                    position_ids, output_tokens
+                )
             _, cache = self.run_with_cache(
                 output_tokens,
                 names_filter=names_filter,
@@ -4126,6 +4177,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     if initial_attention_mask is not None
                     else None
                 ),
+                **cache_forward_kwargs,
             )
             if return_input_tokens:
                 return result, cache, input_tokens

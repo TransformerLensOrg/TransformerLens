@@ -687,16 +687,10 @@ def random_init_bridge(
         The untrained ``TransformerBridge``, in evaluation mode.
     """
     from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.utilities import get_device
-    from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
     # The model is built on the CPU, so seed only the CPU generator, inside a fork that restores it
     with torch.random.fork_rng(devices=[]):
         torch.default_generator.manual_seed(seed)
-        bridge = TransformerBridge.boot_transformers(model_name, load_weights=False, **boot_kwargs)
-    # Building from a config leaves the weights on the CPU, in the config's dtype and in training
-    # mode. boot is asked for neither dtype nor device (it would warn that they were not applied);
-    # both are applied here, with cfg following the cast and the move.
-    maybe_cast_floating_params(bridge.original_model, dtype)
-    bridge.cfg.dtype = dtype
-    return bridge.to(device if device is not None else get_device()).eval()
+        return TransformerBridge.boot_transformers(
+            model_name, load_weights=False, dtype=dtype, device=device, **boot_kwargs
+        )

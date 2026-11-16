@@ -98,11 +98,9 @@ def boot(
             ``cfg.dtype`` reports the parameters' actual dtype.
         tokenizer: Optional pre-initialized tokenizer to use; if not provided one will be created.
         load_weights: If False, build the model with ``from_config`` instead of loading the
-            checkpoint: real parameters with the architecture's random initialisation, on the CPU,
-            in the config's dtype and in training mode. ``device``, ``dtype`` and ``device_map``
-            are not applied; ``cfg.device`` and ``cfg.dtype`` report the model as built, with a
-            warning when an explicit request differs. Move, cast and ``eval()`` the model before
-            running it on another device or in another dtype.
+            checkpoint: real parameters with the architecture's random initialisation, moved to
+            ``device``, built in ``dtype`` and in evaluation mode, as with loaded weights.
+            ``device_map`` is not applied; the parameters stay on the CPU.
         model_class: Optional HuggingFace model class to use instead of the default auto-detected
             class. When the class name matches a key in SUPPORTED_ARCHITECTURES, the corresponding
             adapter is selected automatically (e.g., BertForNextSentencePrediction).
@@ -272,8 +270,6 @@ def boot(
     resolved_device_map, resolved_max_memory = resolve_device_map(
         n_devices, device_map, device, max_memory
     )
-    preloaded = hf_model is not None
-    requested_device = device
     if resolved_device_map is None:
         # Without device= a pre-loaded hf_model keeps its placement, read back below.
         if device is None and hf_model is None:
@@ -328,6 +324,7 @@ def boot(
                 "Set load_weights=False for config inspection only "
                 "(the map is not applied; parameters load on CPU via from_config)."
             )
+    no_weights_device: str | torch.device | None = None
     if hf_model is not None:
         # Pre-loaded weights stay put unless device= asks otherwise (quantized models with
         # custom device_map are why this branch takes the model as-is), but attn-impl
@@ -352,8 +349,22 @@ def boot(
         # text-only extraction); honor that here so the no-weights path uses the
         # same config the load-weights path would.
         prepared_config = model_kwargs.get("config", hf_config)
+        # Build in the requested dtype, as from_pretrained does on the weights path, so
+        # buffers created at init (e.g. XGLM's sinusoidal table) follow it too
         with contextlib.redirect_stdout(None):
-            hf_model = model_class.from_config(prepared_config, **from_config_kwargs)
+            hf_model = model_class.from_config(prepared_config, dtype=dtype, **from_config_kwargs)
+        # Match the weights path: from_pretrained returns an eval-mode model, from_config doesn't
+        hf_model.eval()
+        maybe_cast_floating_params(hf_model, dtype)
+        # Moved once the bridge is built: splitting fused QKV at boot reads the weight values,
+        # which a meta-device model doesn't have. from_config builds on the CPU, so a CPU
+        # target needs no move. device_map stays unapplied.
+        if (
+            resolved_device_map is None
+            and device is not None
+            and torch.device(device) != torch.device("cpu")
+        ):
+            no_weights_device = device
     else:
         # Only Auto classes resolve remote code, so only they accept code_revision;
         # a concrete PreTrainedModel subclass rejects it with a TypeError. The pin
@@ -436,12 +447,12 @@ def boot(
     if embedding_device is not None:
         adapter.cfg.device = str(embedding_device)
         adapter.cfg.n_devices = count_unique_devices(hf_model)
-    elif adapter.cfg.device is None or (not preloaded and not load_weights):
-        # Nothing moved the model here (a pre-loaded model without device=, or a no-weights
-        # build, which stays on the CPU): read the placement back rather than echo a request.
-        adapter.cfg.device = report_device(hf_model, None if preloaded else requested_device)
+    elif adapter.cfg.device is None:
+        # Nothing placed the model here (a pre-loaded one without device=, or a no-weights
+        # build whose device_map is not applied): read its placement back.
+        adapter.cfg.device = report_device(hf_model, None)
     # cfg.dtype reports what the parameters are, not what was asked for: a quantizer may
-    # override the request, and the no-weights path builds in the config's dtype.
+    # override the request.
     actual_dtype = model_floating_dtype(hf_model)
     if actual_dtype is not None:
         if requested_dtype is not None and actual_dtype != requested_dtype:
@@ -503,6 +514,8 @@ def boot(
 
     driver = TransformersDriver(hf_model, adapter, tokenizer)
     bridge = TransformerBridge(hf_model, adapter, tokenizer, driver=driver)
+    if no_weights_device is not None:
+        bridge.to(no_weights_device, print_details=False)
     load_modality_processor(bridge, adapter.cfg, model_name, trust_remote_code, _hf_token)
     # Mirror the legacy loader: record which training checkpoint this is, so
     # checkpoint sweeps (e.g. induction-head formation) can read it back.

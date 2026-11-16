@@ -77,22 +77,3 @@ def test_owned_placement_rejects_a_conflicting_device_and_accepts_its_own(owner)
     )
     assert _param_devices(hf_model) == {"cpu"}
     assert bridge.cfg.device == "cpu"
-
-
-def test_no_weights_build_reports_the_cpu_it_was_built_on(monkeypatch, caplog):
-    # from_config builds on the CPU and nothing applies device there, so cfg must not echo it.
-    monkeypatch.setattr(
-        "transformer_lens.model_bridge.sources.transformers.source.get_device", lambda: "cuda"
-    )
-    with caplog.at_level(logging.WARNING):
-        by_default = TransformerBridge.boot_transformers(
-            "EleutherAI/pythia-70m", load_weights=False, hf_config_overrides=TINY
-        )
-        assert by_default.cfg.device == "cpu"
-        assert "was requested" not in caplog.text
-        explicit = TransformerBridge.boot_transformers(
-            "EleutherAI/pythia-70m", load_weights=False, hf_config_overrides=TINY, device="meta"
-        )
-
-    assert explicit.cfg.device == "cpu"
-    assert "device=meta was requested" in caplog.text

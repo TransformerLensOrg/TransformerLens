@@ -740,14 +740,15 @@ def run_benchmark_suite(
     hf_model = None
     phase1_reference = PhaseReferenceData()
 
-    # Load bridge without weights first to detect attn_implementation and dtype
+    # Load bridge without weights first to detect attn_implementation
     if verbose:
         print("Detecting model configuration...")
     bridge_dtype = dtype
     attn_implementation = None
     try:
-        # Load a lightweight version without weights to get config
-        bridge_config_only = TransformerBridge.boot_transformers(model_name, device=device, dtype=bridge_dtype, load_weights=False, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
+        # Load a lightweight version without weights to get config. Only the adapter config
+        # is read, so it stays on the CPU in the default dtype: no cast, no accelerator move.
+        bridge_config_only = TransformerBridge.boot_transformers(model_name, device="cpu", load_weights=False, trust_remote_code=trust_remote_code)  # type: ignore[attr-defined]
         # Match bridge's attn_implementation: check adapter config first, then
         # default to "eager" (bridge uses output_attentions=True which forces eager).
         if hasattr(bridge_config_only.adapter.cfg, "attn_implementation"):
