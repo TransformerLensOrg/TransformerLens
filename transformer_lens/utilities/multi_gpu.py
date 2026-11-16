@@ -5,6 +5,7 @@ Utilities for managing multiple GPU devices and distributing model layers across
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -348,6 +349,69 @@ def find_embedding_device(hf_model: Any) -> Optional[torch.device]:
     if isinstance(first_device, int):
         return torch.device("cuda", first_device)
     return torch.device(first_device)
+
+
+def _satisfies(requested: torch.device, actual: torch.device) -> bool:
+    """Whether ``actual`` is what ``requested`` names; an index-less request fits any index."""
+    if requested.type != actual.type:
+        return False
+    return requested.index is None or actual.index is None or requested.index == actual.index
+
+
+def first_parameter_device(model: Any) -> Optional[torch.device]:
+    """The device of ``model``'s first parameter, or None when it has none."""
+    parameters = getattr(model, "parameters", None)
+    if not callable(parameters):
+        return None
+    return next((p.device for p in parameters()), None)
+
+
+def report_device(model: Any, requested: str | torch.device | None) -> str:
+    """The ``cfg.device`` string for a model the bridge did not move.
+
+    Reads the parameters' device and warns when an explicit ``requested`` device is not it.
+    """
+    actual = first_parameter_device(model)
+    if actual is None:
+        return "cpu" if requested is None else str(requested)
+    if requested is not None and not _satisfies(torch.device(requested), actual):
+        logging.warning(
+            "device=%s was requested but the model's parameters are on %s; cfg.device reports %s.",
+            requested,
+            actual,
+            actual,
+        )
+    return str(actual)
+
+
+def place_on_device(model: nn.Module, device: str | torch.device) -> str:
+    """Move ``model`` to ``device`` where the bridge may, returning the ``cfg.device`` string.
+
+    Dispatched (``hf_device_map``) and quantized models keep the placement they were loaded
+    with: ``device`` must name where their input embedding already is, else ``ValueError``.
+    Meta parameters have nothing to move, so the request is logged and their device returned.
+    """
+    from transformer_lens.utilities.quantization import quantization_method
+
+    requested = torch.device(device)
+    dispatched = bool(getattr(model, "hf_device_map", None))
+    quantized = quantization_method(getattr(model, "config", None)) is not None
+    if dispatched or quantized:
+        actual = find_embedding_device(model)
+        if actual is None:
+            actual = first_parameter_device(model)
+        if actual is not None and not _satisfies(requested, actual):
+            owner = "its device_map" if dispatched else "its quantizer"
+            raise ValueError(
+                f"device={device} was requested but the model is on {actual}, placed by {owner}; "
+                "the bridge does not move dispatched or quantized models. Pass device=None to "
+                "read the placement from the model, or move it before handing it over."
+            )
+        return str(device)
+    if any(p.device.type == "meta" for p in model.parameters()):
+        return report_device(model, device)
+    model.to(device)
+    return str(device)
 
 
 def count_unique_devices(hf_model: Any) -> int:

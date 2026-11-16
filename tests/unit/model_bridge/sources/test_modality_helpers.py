@@ -229,6 +229,13 @@ class _FakeBridge(TransformerBridge):
         self.tokenizer = tokenizer
 
 
+def _fake_model(config):
+    # boot moves hf_model on an explicit device, so the stand-in must be a module.
+    model = nn.Module()
+    model.config = config
+    return model
+
+
 class TestBootTransformersVisualModel:
     def test_visual_boot_gets_image_processor_and_no_tokenizer(self, monkeypatch):
         """End-to-end wiring through boot(): a vision model skips the AutoTokenizer
@@ -255,8 +262,8 @@ class TestBootTransformersVisualModel:
             "transformer_lens.utilities.multi_gpu.find_embedding_device", lambda m: None
         )
         # Pre-loaded fake model: skips the from_pretrained path entirely.
-        hf_model = SimpleNamespace(
-            config=SimpleNamespace(architectures=["ViTForImageClassification"], model_type="vit")
+        hf_model = _fake_model(
+            SimpleNamespace(architectures=["ViTForImageClassification"], model_type="vit")
         )
 
         from transformer_lens.model_bridge.sources.transformers.source import boot
@@ -303,10 +310,8 @@ class TestBootTransformersAudioSeq2Seq:
         monkeypatch.setattr(
             "transformer_lens.utilities.multi_gpu.find_embedding_device", lambda m: None
         )
-        hf_model = SimpleNamespace(
-            config=SimpleNamespace(
-                architectures=["WhisperForConditionalGeneration"], model_type="whisper"
-            )
+        hf_model = _fake_model(
+            SimpleNamespace(architectures=["WhisperForConditionalGeneration"], model_type="whisper")
         )
 
         from transformer_lens.model_bridge.sources.transformers.source import boot
