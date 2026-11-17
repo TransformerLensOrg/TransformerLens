@@ -15,6 +15,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
@@ -174,3 +176,153 @@ def test_no_hooks_do_not_clone_tensor(bridge, monkeypatch):
 
     monkeypatch.setattr(torch.Tensor, "clone", unexpected_clone)
     assert bridge._fire_post_hoc_hook(bridge.hook_pattern, values, "hook_pattern") is values
+
+
+@pytest.mark.parametrize("inference", [False, True])
+def test_inplace_pre_hook_warns(bridge, inference):
+    def edit(module, args):
+        args[0].zero_()
+
+    handle = bridge.hook_pattern.register_forward_pre_hook(edit)
+    try:
+        with torch.inference_mode(inference), pytest.warns(UserWarning, match="edit is discarded"):
+            bridge._fire_post_hoc_hook(bridge.hook_pattern, torch.ones(2, 3), "hook_pattern")
+    finally:
+        handle.remove()
+
+
+@pytest.mark.parametrize("inference", [False, True])
+def test_read_only_pre_hook_stays_silent(bridge, inference):
+    handle = bridge.hook_pattern.register_forward_pre_hook(lambda m, args: None)
+    try:
+        with torch.inference_mode(inference), warnings.catch_warnings(record=True) as records:
+            warnings.simplefilter("always")
+            bridge._fire_post_hoc_hook(bridge.hook_pattern, torch.ones(2, 3), "hook_pattern")
+    finally:
+        handle.remove()
+    assert _discard_warnings(records) == []
+
+
+@pytest.fixture()
+def cached_bridge():
+    cfg = TransformerBridgeConfig(
+        d_model=4,
+        d_head=2,
+        n_heads=2,
+        n_layers=1,
+        n_ctx=8,
+        d_vocab=16,
+        d_mlp=8,
+        act_fn="gelu",
+        normalization_type="LN",
+        seed=0,
+    )
+    model = TransformerBridge.boot_native(cfg)
+    model.blocks[0].attn.set_original_component(_PatternReturningAttention())
+    return model
+
+
+PATTERN = "blocks.0.attn.hook_pattern"
+
+
+def _cache_with(model, method, tokens):
+    if method in ("run", "retained", "sweep"):
+        _, cache = model.run_with_cache(
+            tokens,
+            names_filter=None if method == "sweep" else PATTERN,
+            reset_hooks_end=method != "retained",
+        )
+        if method == "retained":
+            model(tokens)
+        return cache
+    if method == "add":
+        cache = model.add_caching_hooks(names_filter=PATTERN)
+        model(tokens)
+        return cache
+    cache, fwd, _ = model.get_caching_hooks(names_filter=PATTERN)
+    model.run_with_hooks(tokens, fwd_hooks=fwd, remove_batch_dim=method == "squeezed")
+    return cache
+
+
+@pytest.mark.parametrize("method", ["run", "get", "add", "squeezed", "retained", "sweep"])
+@pytest.mark.parametrize("inference", [False, True])
+def test_internal_cache_does_not_snapshot_or_compare(cached_bridge, monkeypatch, method, inference):
+    tokens = torch.tensor([[1, 2, 3]])
+    _, expected = cached_bridge.run_with_cache(tokens, names_filter=PATTERN)
+    original_clone = torch.Tensor.clone
+    original_equal = torch.equal
+    original_close = torch.allclose
+
+    def clone(tensor, *args, **kwargs):
+        if tensor.ndim == 4:
+            pytest.fail("read-only attention caching must not snapshot the pattern")
+        return original_clone(tensor, *args, **kwargs)
+
+    def compare(original):
+        def check(left, right, *args, **kwargs):
+            if left.ndim == 4:
+                pytest.fail("read-only attention caching must not compare the pattern")
+            return original(left, right, *args, **kwargs)
+
+        return check
+
+    try:
+        with monkeypatch.context() as patch, torch.inference_mode(inference):
+            patch.setattr(torch.Tensor, "clone", clone)
+            patch.setattr(torch, "equal", compare(original_equal))
+            patch.setattr(torch, "allclose", compare(original_close))
+            cache = _cache_with(cached_bridge, method, tokens)
+        assert PATTERN in cache
+        reference = expected[PATTERN].squeeze(0) if method == "squeezed" else expected[PATTERN]
+        torch.testing.assert_close(cache[PATTERN], reference, rtol=0, atol=0)
+    finally:
+        cached_bridge.reset_hooks()
+
+
+@pytest.mark.parametrize("method", ["run", "get", "add"])
+@pytest.mark.parametrize("inference", [False, True])
+def test_cache_with_user_edit_still_warns(cached_bridge, method, inference):
+    try:
+        with torch.inference_mode(inference), cached_bridge.hooks(
+            fwd_hooks=[(PATTERN, lambda t, hook: t.zero_())]
+        ), pytest.warns(UserWarning, match="edit is discarded"):
+            _cache_with(cached_bridge, method, torch.tensor([[1, 2, 3]]))
+    finally:
+        cached_bridge.reset_hooks()
+
+
+@pytest.mark.parametrize("inference", [False, True])
+def test_removing_cache_hooks_does_not_mark_future_user_hooks_read_only(cached_bridge, inference):
+    tokens = torch.tensor([[1, 2, 3]])
+    with torch.inference_mode(inference):
+        cached_bridge.run_with_cache(tokens, names_filter=PATTERN, reset_hooks_end=False)
+        cached_bridge.reset_hooks()
+        with cached_bridge.hooks(fwd_hooks=[(PATTERN, lambda t, hook: t.zero_())]):
+            with pytest.warns(UserWarning, match="edit is discarded"):
+                cached_bridge(tokens)
+
+
+@pytest.mark.parametrize("inference", [False, True])
+@pytest.mark.parametrize("pre", [False, True])
+def test_global_user_hook_is_not_bypassed_by_cache_fast_path(cached_bridge, inference, pre):
+    point = cached_bridge.hook_dict[PATTERN]
+
+    def edit_before(module, args):
+        if module is point:
+            args[0].zero_()
+
+    def edit_after(module, args, output):
+        if module is point:
+            output.zero_()
+
+    module_hooks = torch.nn.modules.module
+    handle = (
+        module_hooks.register_module_forward_pre_hook(edit_before)
+        if pre
+        else module_hooks.register_module_forward_hook(edit_after)
+    )
+    try:
+        with torch.inference_mode(inference), pytest.warns(UserWarning, match="edit is discarded"):
+            cached_bridge.run_with_cache(torch.tensor([[1, 2, 3]]), names_filter=PATTERN)
+    finally:
+        handle.remove()
