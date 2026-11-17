@@ -4,7 +4,6 @@ import logging
 from types import SimpleNamespace
 
 import pytest
-import torch
 from torch import nn
 
 from transformer_lens.utilities.multi_gpu import (
