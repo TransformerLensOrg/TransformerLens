@@ -29,6 +29,12 @@ verified against frozen `HookedTransformer` reference activations. Omit it to
 work with raw HuggingFace weights (the equivalent of the old
 `from_pretrained_no_processing`).
 
+Legacy TransformerLens-format repos (`NeelNanda/*`, `ArthurConmy/*`,
+`Baidicoot/*`, e.g. `gelu-2l` or `solu-1l`) have no HuggingFace `model_type`.
+Load them with `TransformerBridge.boot_tl_legacy("NeelNanda/GELU_2L512W_C4_Code")`.
+`boot_transformers` also accepts them and their aliases, but routes them to
+`boot_tl_legacy` with a warning.
+
 ## Removed names and their replacements
 
 | Removed in 4.0 | Replacement |
