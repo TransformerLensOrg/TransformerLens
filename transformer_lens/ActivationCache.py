@@ -80,7 +80,7 @@ class ActivationCache:
     >>> print(labels[0:3])
     ['embed', 'pos_embed', '0_attn_out']
 
-    >>> answer = " road" # Note the proceeding space to match the model's tokenization
+    >>> answer = " road" # Note the preceding space to match the model's tokenization
     >>> logit_attrs = cache.logit_attrs(residual_stream, answer)
     >>> print(logit_attrs.shape) # Attention layers
     torch.Size([10, 1, 7])
@@ -1423,8 +1423,6 @@ class ActivationCache:
             sublayer_type:
                 The sub layer type of the activation, passed to utils.get_act_name. Can normally be
                 inferred.
-            incl_remainder:
-                Whether to return a final term which is "the rest of the residual stream".
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1445,7 +1443,7 @@ class ActivationCache:
     ) -> torch.Tensor:
         """Get Neuron Results.
 
-        Get the results of for neurons in a specific layer (i.e, how much each neuron contributes to
+        Get the results for neurons in a specific layer (i.e, how much each neuron contributes to
         the residual stream). Does it for the subset of neurons specified by neuron_slice, defaults
         to all of them. Does *not* cache these because it's expensive in space and cheap to compute.
 
