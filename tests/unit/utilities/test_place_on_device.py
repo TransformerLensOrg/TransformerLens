@@ -28,7 +28,7 @@ def test_dispatched_model_keeps_its_map_and_an_index_less_request_fits_any_index
     model = nn.Linear(2, 2)
     model.hf_device_map = {"": 1}
 
-    assert place_on_device(model, "cuda") == "cuda"
+    assert place_on_device(model, "cuda") == "cuda:1"
     with pytest.raises(ValueError, match="device_map"):
         place_on_device(model, "cuda:0")
     with pytest.raises(ValueError, match="device_map"):
@@ -44,6 +44,13 @@ def test_quantized_model_keeps_its_placement():
     with pytest.raises(ValueError, match="quantizer"):
         place_on_device(model, "meta")
     assert _devices(model) == {"cpu"}
+
+
+def test_owned_model_without_parameters_cannot_contradict_a_request():
+    model = nn.Module()
+    model.config = SimpleNamespace(quantization_config=SimpleNamespace(quant_method="mxfp4"))
+
+    assert place_on_device(model, "cuda") == "cuda"
 
 
 def test_meta_parameters_are_reported_not_moved(caplog):

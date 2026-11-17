@@ -45,6 +45,19 @@ def test_explicit_device_is_applied_to_hf_model():
     assert bridge.cfg.device == "meta"
 
 
+def test_explicit_dtype_is_cast_before_the_move():
+    # Meta parameters are never cast, so the dtype lands only if the cast ran before the move.
+    hf_model = _tiny_neox()
+
+    bridge = TransformerBridge.boot_transformers(
+        "EleutherAI/pythia-70m", hf_model=hf_model, device="meta", dtype=torch.float16
+    )
+
+    assert {p.dtype for p in hf_model.parameters() if p.is_floating_point()} == {torch.float16}
+    assert _param_devices(hf_model) == {"meta"}
+    assert bridge.cfg.dtype is torch.float16
+
+
 def test_cfg_device_reports_the_parameters_when_a_request_is_not_applied(caplog):
     # Meta parameters have nothing to move, so the request cannot land.
     with torch.device("meta"):

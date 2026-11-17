@@ -333,14 +333,15 @@ def boot(
         # never fire. An explicit adapter/user choice wins, matching the load path above.
         if getattr(adapter.cfg, "attn_implementation", None) is None:
             force_eager_attention(hf_model)
+        # Only an explicit dtype casts; the default means "as loaded". The helper skips
+        # quantized models, whose dtype is the quantizer's to choose. Cast before moving,
+        # so a narrower dtype is what reaches the device.
+        if requested_dtype is not None:
+            maybe_cast_floating_params(hf_model, requested_dtype)
         # An explicit device moves the model unless a device_map or quantizer owns its
         # placement, where a conflicting request is an error rather than a recorded lie.
         if device is not None:
             adapter.cfg.device = place_on_device(hf_model, device)
-        # Only an explicit dtype casts; the default means "as loaded". The helper skips
-        # quantized models, whose dtype is the quantizer's to choose.
-        if requested_dtype is not None:
-            maybe_cast_floating_params(hf_model, requested_dtype)
     elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:

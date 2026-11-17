@@ -388,8 +388,9 @@ def place_on_device(model: nn.Module, device: str | torch.device) -> str:
     """Move ``model`` to ``device`` where the bridge may, returning the ``cfg.device`` string.
 
     Dispatched (``hf_device_map``) and quantized models keep the placement they were loaded
-    with: ``device`` must name where their input embedding already is, else ``ValueError``.
-    Meta parameters have nothing to move, so the request is logged and their device returned.
+    with, and that placement is returned: ``device`` must name where their input embedding
+    already is, else ``ValueError``. Meta parameters have nothing to move, so the request is
+    logged and their device returned.
     """
     from transformer_lens.utilities.quantization import quantization_method
 
@@ -407,7 +408,8 @@ def place_on_device(model: nn.Module, device: str | torch.device) -> str:
                 "the bridge does not move dispatched or quantized models. Pass device=None to "
                 "read the placement from the model, or move it before handing it over."
             )
-        return str(device)
+        # The matched placement, not the request: an index-less "cuda" also fits cuda:1.
+        return str(device if actual is None else actual)
     if any(p.device.type == "meta" for p in model.parameters()):
         return report_device(model, device)
     model.to(device)
