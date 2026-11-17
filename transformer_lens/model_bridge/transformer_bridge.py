@@ -1879,7 +1879,23 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
         to target ``layer``'s MLP input, adding its variant bias unless the block is parallel.
         """
-        accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
+        first_param = next(self.parameters(), None)
+        cfg_dtype = getattr(self.cfg, "dtype", None)
+        dtype = (
+            cfg_dtype
+            if isinstance(cfg_dtype, torch.dtype)
+            else (
+                first_param.dtype
+                if first_param is not None and first_param.is_floating_point()
+                else None
+            )
+        )
+        device = (
+            self.cfg.device
+            if getattr(self.cfg, "n_devices", 1) > 1 and self.cfg.device is not None
+            else (first_param.device if first_param is not None else self.cfg.device)
+        )
+        accumulated = torch.zeros(self.cfg.d_model, device=device, dtype=dtype)
         for i in range(layer):
             block = self.blocks[i]
             scale = getattr(block, "residual_contribution_scale", 1.0)

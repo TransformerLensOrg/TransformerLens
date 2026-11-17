@@ -51,6 +51,18 @@ def _normalize_projection_to_2d(
     return project, False
 
 
+def _project_onto(tensor: torch.Tensor, project: torch.Tensor) -> torch.Tensor:
+    """Project ``tensor``'s trailing ``d_model`` axis onto ``project``, promoting mixed dtypes.
+
+    Half-precision models cache norm scales in float32, so ``apply_ln_to_stack`` promotes
+    bf16/fp16 stacks to float32 while ``project`` (e.g. from ``W_U``) stays in model dtype.
+    """
+    common_dtype = torch.promote_types(tensor.dtype, project.dtype)
+    return tensor.to(device=tensor.device, dtype=common_dtype) @ project.to(
+        device=tensor.device, dtype=common_dtype
+    )
+
+
 class ActivationCache:
     """Activation Cache.
 
@@ -975,7 +987,11 @@ class ActivationCache:
             )
         if apply_ln:
             components = self.apply_ln_to_stack(
-                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                components,
+                layer,
+                pos_slice=pos_slice,
+                mlp_input=mlp_input,
+                has_batch_dim=self.has_batch_dim,
             )
         if return_labels:
             return components, labels
@@ -1269,7 +1285,12 @@ class ActivationCache:
         return x.to(input_dtype)
 
     def _post_norm_bias_correction(
-        self, layer: int, mlp_input: bool, include_mlp_biases: bool, pos_slice: Slice
+        self,
+        layer: int,
+        mlp_input: bool,
+        include_mlp_biases: bool,
+        pos_slice: Slice,
+        dtype: Optional[torch.dtype] = None,
     ) -> Optional[torch.Tensor]:
         """Per-position ``accumulated_bias`` fix: post-norm blocks add ``norm_map(b) + norm_b``."""
         correction: Optional[torch.Tensor] = None
@@ -1289,13 +1310,22 @@ class ActivationCache:
                 out_bias = getattr(self.model, "_get_block_variant_bias")(block)
             else:
                 out_bias = getattr(block.mlp, "b_out", None) if "mlp" in block._modules else None
-            raw = torch.zeros(self.model.cfg.d_model, device=scale.device, dtype=scale.dtype)
+            bias_dtype = (
+                dtype
+                or (out_bias.dtype if out_bias is not None else None)
+                or (weight.dtype if weight is not None else None)
+                or (norm_bias.dtype if norm_bias is not None else None)
+                or scale.dtype
+            )
+            raw = torch.zeros(self.model.cfg.d_model, device=scale.device, dtype=bias_dtype)
             if out_bias is not None:
-                raw = out_bias.to(device=scale.device, dtype=scale.dtype)
+                raw = out_bias.to(device=scale.device, dtype=bias_dtype)
             mapped = self._apply_post_norm_map(raw, scale, weight, centers)
             if norm_bias is not None:
-                mapped = mapped + norm_bias.to(device=scale.device)
-            delta = (mapped - raw) * getattr(block, "residual_contribution_scale", 1.0)
+                mapped = mapped + norm_bias.to(device=scale.device, dtype=bias_dtype)
+            delta = ((mapped - raw) * getattr(block, "residual_contribution_scale", 1.0)).to(
+                bias_dtype
+            )
             correction = delta if correction is None else correction + delta
         return correction
 
@@ -1397,7 +1427,9 @@ class ActivationCache:
             )
 
         if apply_ln:
-            components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice, has_batch_dim=self.has_batch_dim
+            )
 
         if return_labels:
             return components, labels
@@ -1493,7 +1525,7 @@ class ActivationCache:
         if project_output_onto is None:
             return neuron_acts[..., None] * W_out
         # W_out: [d_mlp, d_model]; project: [d_model] or [d_model, n_outs]
-        projected = W_out @ project_output_onto
+        projected = _project_onto(W_out, project_output_onto)
         if project_output_onto.ndim == 1:
             return neuron_acts * projected
         return neuron_acts[..., None] * projected
@@ -1595,7 +1627,7 @@ class ActivationCache:
                     W_out_l, torch.ones(()), post_weight, post_centers
                 )
             W_out_l_sliced = neuron_slice.apply(W_out_l, dim=0)
-            W_proj_l = W_out_l_sliced @ project_2d  # [d_mlp, n_outs]
+            W_proj_l = _project_onto(W_out_l_sliced, project_2d)  # [d_mlp, n_outs]
             if apply_centering:
                 assert sum_p is not None  # set when apply_centering, narrow for mypy
                 W_means_l = W_out_l_sliced.mean(dim=-1)  # [d_mlp]
@@ -1737,9 +1769,13 @@ class ActivationCache:
                 # Linearity of cached-scale LN: remainder is LN_s(target) @ p - sum(neurons).
                 target = pos_slice.apply(self[remainder_target], dim=-2)
                 target_ln = self.apply_ln_to_stack(
-                    target[None], layer, pos_slice=pos_slice, mlp_input=mlp_input
+                    target[None],
+                    layer,
+                    pos_slice=pos_slice,
+                    mlp_input=mlp_input,
+                    has_batch_dim=self.has_batch_dim,
                 )[0]
-                remainder = target_ln @ project_2d
+                remainder = _project_onto(target_ln, project_2d)
                 if components.shape[0] > 0:
                     remainder = remainder - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
@@ -1764,14 +1800,14 @@ class ActivationCache:
                 if incl_remainder:
                     remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                     if project_2d is not None:
-                        remainder_full = remainder_full @ project_2d
+                        remainder_full = _project_onto(remainder_full, project_2d)
                     remainder = remainder_full - components.sum(dim=0)
                     components = torch.cat([components, remainder[None]], dim=0)
                     labels.append("remainder")
             elif incl_remainder:
                 remainder_full = pos_slice.apply(self[remainder_target], dim=-2)
                 if project_2d is not None:
-                    remainder_full = remainder_full @ project_2d
+                    remainder_full = _project_onto(remainder_full, project_2d)
                 components = torch.cat([remainder_full[None]], dim=0)
                 labels.append("remainder")
             else:
@@ -1788,7 +1824,11 @@ class ActivationCache:
 
             if apply_ln:
                 components = self.apply_ln_to_stack(
-                    components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                    components,
+                    layer,
+                    pos_slice=pos_slice,
+                    mlp_input=mlp_input,
+                    has_batch_dim=self.has_batch_dim,
                 )
 
         if squeeze_projected:
@@ -1973,18 +2013,26 @@ class ActivationCache:
         ln_folded = apply_ln and project_2d is not None
 
         def _ln_then_project(stack: torch.Tensor) -> torch.Tensor:
-            stack = self.apply_ln_to_stack(stack, layer, pos_slice=pos_slice, mlp_input=mlp_input)
-            return stack @ project_2d if project_2d is not None else stack
+            stack = self.apply_ln_to_stack(
+                stack,
+                layer,
+                pos_slice=pos_slice,
+                mlp_input=mlp_input,
+                has_batch_dim=self.has_batch_dim,
+            )
+            return _project_onto(stack, project_2d) if project_2d is not None else stack
 
         head_stack, head_labels = self.stack_head_results(
             layer + int(mlp_input and self._mlp_input_includes_attn(layer)),
             pos_slice=pos_slice,
             return_labels=True,
         )
+        resid_dtype = head_stack.dtype
+        resid_device = head_stack.device
         if ln_folded:
             head_stack = _ln_then_project(head_stack)
         elif project_2d is not None:
-            head_stack = head_stack @ project_2d
+            head_stack = _project_onto(head_stack, project_2d)
         labels = head_labels
         components = [head_stack]
         # Blocks without attention heads: add each mixer output whole. Its output bias is dropped
@@ -2003,7 +2051,7 @@ class ActivationCache:
             if ln_folded:
                 mixer_stack = _ln_then_project(mixer_stack)
             elif project_2d is not None:
-                mixer_stack = mixer_stack @ project_2d
+                mixer_stack = _project_onto(mixer_stack, project_2d)
             components.append(mixer_stack)
         if not self.model.cfg.attn_only and layer > 0:
             if expand_neurons:
@@ -2034,7 +2082,7 @@ class ActivationCache:
                 if ln_folded:
                     mlp_stack = _ln_then_project(mlp_stack)
                 elif project_2d is not None:
-                    mlp_stack = mlp_stack @ project_2d
+                    mlp_stack = _project_onto(mlp_stack, project_2d)
                 labels.extend(mlp_labels)
                 components.append(mlp_stack)
 
@@ -2043,7 +2091,7 @@ class ActivationCache:
             if ln_folded:
                 embed = _ln_then_project(embed)
             elif project_2d is not None:
-                embed = embed @ project_2d
+                embed = _project_onto(embed, project_2d)
             labels.append("embed")
             components.append(embed)
         if self.has_pos_embed:
@@ -2051,13 +2099,19 @@ class ActivationCache:
             if ln_folded:
                 pos_embed = _ln_then_project(pos_embed)
             elif project_2d is not None:
-                pos_embed = pos_embed @ project_2d
+                pos_embed = _project_onto(pos_embed, project_2d)
             labels.append("pos_embed")
             components.append(pos_embed)
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
-        bias_full = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
+        bias_full = self.model.accumulated_bias(
+            layer, mlp_input, include_mlp_biases=expand_neurons
+        ).to(device=resid_device, dtype=resid_dtype)
         bias_correction = self._post_norm_bias_correction(
-            layer, mlp_input, include_mlp_biases=expand_neurons, pos_slice=pos_slice
+            layer,
+            mlp_input,
+            include_mlp_biases=expand_neurons,
+            pos_slice=pos_slice,
+            dtype=resid_dtype,
         )
         if ln_folded:
             # Expand bias to per-position d_model shape so LN can center, then project.
@@ -2071,14 +2125,18 @@ class ActivationCache:
                 bias_full = bias_full + bias_correction
             if project_2d is not None:
                 # Bias is [d_model], so project post-hoc for shape compatibility — no memory win here.
-                bias_full = bias_full @ project_2d
+                bias_full = _project_onto(bias_full, project_2d)
             bias = bias_full.expand((1,) + head_stack.shape[1:])
         labels.append("bias")
         components.append(bias)
         residual_stack = torch.cat(components, dim=0)
         if apply_ln and not ln_folded:
             residual_stack = self.apply_ln_to_stack(
-                residual_stack, layer, pos_slice=pos_slice, mlp_input=mlp_input
+                residual_stack,
+                layer,
+                pos_slice=pos_slice,
+                mlp_input=mlp_input,
+                has_batch_dim=self.has_batch_dim,
             )
 
         if squeeze_projected:
