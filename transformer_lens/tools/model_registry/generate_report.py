@@ -107,6 +107,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "Exaone4ForCausalLM": "LG AI Research's EXAONE 4.0 (post-norms in residual, per-head QK-norm, hybrid sliding attention)",
     "BlenderbotForConditionalGeneration": "Meta's Blenderbot dialogue encoder-decoder (asymmetric stacks)",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
+    "MiniCPMForCausalLM": "OpenBMB's dense MiniCPM decoder with muP embedding/residual/logit scaling (remote code)",
     "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
     "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",
     "T5Gemma2ForConditionalGeneration": "Google's T5Gemma2 multimodal encoder-decoder model with merged self+cross decoder attention, QK-norm, and dual RoPE (text-only bridge support)",

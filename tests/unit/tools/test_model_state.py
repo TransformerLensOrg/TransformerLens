@@ -8,8 +8,9 @@ import pytest
 import torch
 
 from transformer_lens.tools.analysis._model_state import (
-    hybrid_block_types,
+    blocks_without_resid_mid,
     require_int,
+    require_resid_mid,
     to_token_ids,
 )
 
@@ -49,12 +50,21 @@ def test_require_int_message_replaces_both_failures(value: object) -> None:
         require_int(value, "k", message="ks must hold integers")
 
 
-def test_hybrid_block_types_are_sorted_distinct_and_default_to_none() -> None:
+def test_blocks_without_resid_mid_exempts_parallel_blocks() -> None:
     model = SimpleNamespace(
-        layer_types=lambda: ["mamba+mlp", "attn+mlp", "linear_attn", "mamba+mlp"]
+        blocks=[
+            SimpleNamespace(),
+            SimpleNamespace(mlp_input_includes_attn=False),
+            SimpleNamespace(),
+        ],
+        hook_dict={"blocks.0.hook_resid_mid": object()},
     )
-    assert hybrid_block_types(model) == ["linear_attn", "mamba+mlp"]
-    assert hybrid_block_types(SimpleNamespace()) == []
+    assert blocks_without_resid_mid(model) == [2]
+    assert blocks_without_resid_mid(SimpleNamespace()) == []
+    with pytest.raises(ValueError, match=r"^op reads hook_resid_mid .* blocks \[2\] .*; do x$"):
+        require_resid_mid(model, operation="op", alternative="do x")
+    model.hook_dict["blocks.2.hook_resid_mid"] = object()
+    require_resid_mid(model, operation="op", alternative="do x")
 
 
 def _vocab_model(d_vocab: int = 10) -> SimpleNamespace:

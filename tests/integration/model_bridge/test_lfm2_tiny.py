@@ -84,6 +84,12 @@ class TestLfm2TinyStructure:
     def test_layer_types_populated(self, bridge):
         assert getattr(bridge.cfg, "layer_types", None) == LAYERS
 
+    def test_d_mlp_matches_hf_mlp_width(self, bridge):
+        # HF auto-adjusts intermediate_size=128 to 256 (block_auto_adjust_ff_dim).
+        hf_width = bridge.original_model.model.layers[0].feed_forward.w2.in_features
+        assert hf_width != 128
+        assert bridge.cfg.d_mlp == hf_width
+
 
 class TestLfm2TinyForwardPass:
     def test_forward_matches_hf_exactly(self, bridge, tokens):
@@ -108,6 +114,10 @@ class TestLfm2TinyHookCoverage:
         for i in CONV_LAYER:
             for submod in ("in", "conv", "out"):
                 assert f"blocks.{i}.conv.{submod}.hook_out" in cache
+
+    def test_stack_neuron_results_labels_match_rows(self, bridge, cache):
+        out, labels = cache.stack_neuron_results(len(LAYERS), return_labels=True)
+        assert out.shape[0] == len(labels) == len(LAYERS) * bridge.cfg.d_mlp
 
     def test_attn_submodule_hooks_fire(self, cache):
         for i in ATTN_LAYER:

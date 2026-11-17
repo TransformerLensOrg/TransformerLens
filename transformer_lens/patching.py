@@ -138,9 +138,14 @@ class PatchingResult:
         has_metric_axis: Whether ``values`` carries a leading metric axis.
         patch_type_names: Names of the ``patch_type`` axis entries when the
             result came from a ``*_every`` helper (``"out"``, ``"q"``, ...).
-            GQA ``k``/``v`` sweeps are zero-padded to ``n_heads`` there, so the
-            padded cells appear as zero-valued rows in ``index_df`` and
-            :meth:`to_dataframe`.
+            GQA ``k``/``v`` sweeps are zero-padded to ``n_heads`` there.
+        valid: Bool mask over the swept cells (``values`` without the metric and
+            batch axes), ``False`` on GQA-padded ``k``/``v`` cells that no sweep
+            ran; ``None`` when nothing was padded. Padded cells stay zero in
+            ``values`` and :meth:`mean` (matching the tensor return), are ``NaN``
+            in every statistic, and are left out of :meth:`to_dataframe`;
+            ``index_df`` keeps the full grid, aligned with ``valid.flatten()``;
+            ``stat[..., valid]`` selects the live cells under any metric axis.
     """
 
     values: torch.Tensor
@@ -151,6 +156,7 @@ class PatchingResult:
     baseline: Optional[torch.Tensor] = None
     has_metric_axis: bool = False
     patch_type_names: Optional[List[str]] = None
+    valid: Optional[torch.Tensor] = None
 
     def __getitem__(self, metric_name: str) -> "PatchingResult":
         """One metric's result, with the metric axis dropped."""
@@ -168,7 +174,18 @@ class PatchingResult:
             baseline=None if self.baseline is None else self.baseline[i],
             has_metric_axis=False,
             patch_type_names=self.patch_type_names,
+            valid=self.valid,
         )
+
+    def _mask_invalid(self, t: torch.Tensor) -> torch.Tensor:
+        """``NaN`` on padded cells, so no statistic reports a patch that never ran."""
+        if self.valid is None:
+            return t
+        lead = 1 if self.has_metric_axis else 0
+        cells = tuple(self.valid.shape)
+        assert tuple(t.shape[lead : lead + len(cells)]) == cells
+        mask = self.valid.reshape((1,) * lead + cells + (1,) * (t.ndim - lead - len(cells)))
+        return torch.where(mask.to(t.device), t, torch.nan)
 
     def _require_per_example(self, what: str) -> None:
         if self.reduced:
@@ -181,7 +198,7 @@ class PatchingResult:
     def stderr(self) -> torch.Tensor:
         """Standard error of the batch mean per cell."""
         self._require_per_example("stderr")
-        return standard_error(self.values, dim=-1)
+        return self._mask_invalid(standard_error(self.values, dim=-1))
 
     def _broadcast_baseline(self) -> torch.Tensor:
         if self.baseline is None:
@@ -195,7 +212,7 @@ class PatchingResult:
 
     def effect(self) -> torch.Tensor:
         """``values - baseline``: the change each patch makes to the corrupted run, per example."""
-        return self.values - self._broadcast_baseline()
+        return self._mask_invalid(self.values - self._broadcast_baseline())
 
     def normalized(self, clean_baseline: torch.Tensor) -> torch.Tensor:
         """``(values - corrupted) / (clean - corrupted)`` per example.
@@ -216,7 +233,7 @@ class PatchingResult:
                 f"got {tuple(clean.shape)}"
             )
         clean = clean.reshape(corrupted.shape)
-        return (self.values - corrupted) / (clean - corrupted)
+        return self._mask_invalid((self.values - corrupted) / (clean - corrupted))
 
     def bootstrap_ci(
         self,
@@ -234,7 +251,7 @@ class PatchingResult:
         """
         self._require_per_example("bootstrap_ci")
         data = self.effect() if of_effect else self.values
-        return bootstrap_ci(
+        low, high = bootstrap_ci(
             data,
             dim=-1,
             statistic=statistic,
@@ -242,6 +259,7 @@ class PatchingResult:
             n_resamples=n_resamples,
             generator=derive_generator(seed, "bootstrap", statistic),
         )
+        return self._mask_invalid(low), self._mask_invalid(high)
 
     def permutation_pvalue(
         self,
@@ -256,22 +274,26 @@ class PatchingResult:
         examples, Monte Carlo above that.
         """
         self._require_per_example("permutation_pvalue")
-        return sign_flip_permutation_pvalue(
+        pvalue = sign_flip_permutation_pvalue(
             self.effect(),
             dim=-1,
             n_permutations=n_permutations,
             generator=derive_generator(seed, "permutation"),
             alternative=alternative,
         )
+        return self._mask_invalid(pvalue)
 
     def to_dataframe(self) -> pd.DataFrame:
-        """Long form: one row per (metric, swept cell, example) with the value."""
+        """Long form: one row per (metric, swept cell, example); padded cells are left out."""
         rows = []
         n_metrics = len(self.metric_names)
         values = self.values if self.has_metric_axis else self.values.unsqueeze(0)
         flat_cells = values.reshape(n_metrics, len(self.index_df), -1).detach().cpu()
+        live = None if self.valid is None else self.valid.flatten().tolist()
         for m, name in enumerate(self.metric_names):
             for c, (_, index_row) in enumerate(self.index_df.iterrows()):
+                if live is not None and not live[c]:
+                    continue
                 for b in range(flat_cells.shape[-1]):
                     row = {"metric": name, **index_row.to_dict()}
                     if self.patch_type_names is not None and "patch_type" in row:
@@ -1044,8 +1066,8 @@ def _stack_patch_types(
     ``axis_order`` (``head_index`` / ``dest_pos`` renamed to ``head`` / ``pos``)
     and the head axis zero-padded to ``n_heads`` for GQA ``k``/``v`` sweeps,
     keeping the metric axis first and the batch axis last. ``index_df`` is
-    rebuilt from the padded grid so it stays one row per cell of ``values``;
-    padded GQA cells therefore appear as zero-valued rows.
+    rebuilt from the padded grid so it stays one row per cell of ``values``, and
+    ``valid`` marks the padded cells (``None`` when no sweep was padded).
     """
     if all(isinstance(r, torch.Tensor) for r in results):
         return torch.stack([r for r in results if isinstance(r, torch.Tensor)], dim=0)
@@ -1058,6 +1080,7 @@ def _stack_patch_types(
             raise ValueError("every sweep must use the same metrics and reduce mode to be stacked")
     head_axis = list(axis_order).index("head") if "head" in axis_order else None
     values = []
+    widths = []
     for r in typed:
         names = [_RESULT_AXIS_RENAMES.get(n, n) for n in r.axis_names]
         if sorted(names) != sorted(axis_order):
@@ -1067,6 +1090,7 @@ def _stack_patch_types(
         tail = list(range(lead + len(names), r.values.ndim))
         v = r.values.permute(*perm, *tail)
         pad = 0 if head_axis is None else n_heads - v.shape[lead + head_axis]
+        widths.append(n_heads - pad)
         if head_axis is not None and pad > 0:
             pad_shape = list(v.shape)
             pad_shape[lead + head_axis] = pad
@@ -1075,6 +1099,11 @@ def _stack_patch_types(
     stacked = torch.stack(values, dim=1 if first.has_metric_axis else 0)
     lead = 1 if first.has_metric_axis else 0
     cell_shape = list(stacked.shape[lead : lead + 1 + len(axis_order)])
+    valid = None
+    if head_axis is not None and min(widths) < n_heads:
+        valid = torch.ones(cell_shape, dtype=torch.bool, device=stacked.device)
+        for type_i, width in enumerate(widths):
+            valid[type_i].narrow(head_axis, width, n_heads - width).fill_(False)
     return PatchingResult(
         values=stacked,
         axis_names=["patch_type", *axis_order],
@@ -1084,6 +1113,7 @@ def _stack_patch_types(
         baseline=first.baseline,
         has_metric_axis=first.has_metric_axis,
         patch_type_names=list(type_names),
+        valid=valid,
     )
 
 

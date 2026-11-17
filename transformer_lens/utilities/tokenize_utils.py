@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
-from typing import Any, Optional, cast
+from typing import Any, Optional, Sequence, cast
 
 import einops
 import numpy as np
@@ -18,6 +18,42 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase, PreTrainedToken
 
 from transformer_lens.utilities.hf_utils import keep_single_column
 from transformer_lens.utilities.tensors import get_cumsum_along_dim
+
+
+def readout_token_exclusions(
+    tokenizer: Any, vocab_size: int, *, keep_token_ids: Sequence[int] = ()
+) -> list[int]:
+    """Ids whose individual decode contains no Unicode letter or digit.
+
+    Scan the LM-head width, not ``len(tokenizer)``, to include padded output
+    rows that decode to an empty string. Special tokens are treated like any
+    other decoded text. ``keep_token_ids`` spares scored symbols (e.g. ``+``).
+    This builds a ranking policy; it does not modify the tokenizer or logits.
+    """
+    if (
+        isinstance(vocab_size, bool)
+        or not isinstance(vocab_size, (int, np.integer))
+        or vocab_size < 1
+    ):
+        raise ValueError("vocab_size must be a positive integer")
+    kept = set()
+    for token in keep_token_ids:
+        if (
+            isinstance(token, bool)
+            or not isinstance(token, (int, np.integer))
+            or not 0 <= token < vocab_size
+        ):
+            raise ValueError("keep_token_ids must contain integer ids within vocab_size")
+        kept.add(int(token))
+    if callable(getattr(tokenizer, "batch_decode", None)):
+        decoded = tokenizer.batch_decode([[token] for token in range(vocab_size)])
+    else:
+        decoded = [tokenizer.decode([token]) for token in range(vocab_size)]
+    return [
+        token
+        for token, text in enumerate(decoded)
+        if token not in kept and not any(char.isalnum() for char in text)
+    ]
 
 
 def tokenize_and_concatenate(

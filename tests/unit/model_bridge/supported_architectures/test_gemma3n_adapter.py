@@ -71,7 +71,22 @@ def test_config_flags():
     assert a.supports_fold_ln is False
     assert a.weight_processing_conversions == {}
     assert a.cfg.normalization_type == "RMS"
-    assert a.cfg.rmsnorm_uses_offset is True
+
+
+def test_rmsnorm_offset_flag_matches_hf_norm():
+    """cfg.rmsnorm_uses_offset describes how Gemma3nRMSNorm applies its weight."""
+    from transformers.models.gemma3n.modeling_gemma3n import Gemma3nRMSNorm
+
+    torch.manual_seed(0)
+    d_model = 16
+    norm = Gemma3nRMSNorm(d_model, eps=1e-6)
+    with torch.no_grad():
+        norm.weight.copy_(torch.rand(d_model) + 0.5)
+        x = torch.randn(3, d_model)
+        x_hat = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + norm.eps)
+        w = norm.weight
+        expected = x_hat * ((1.0 + w) if _adapter().cfg.rmsnorm_uses_offset else w)
+        torch.testing.assert_close(norm(x), expected)
 
 
 def test_text_path_nested_under_language_model():

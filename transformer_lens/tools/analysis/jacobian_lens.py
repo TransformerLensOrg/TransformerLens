@@ -61,7 +61,7 @@ Example::
 """
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import version
 from typing import (
     Any,
@@ -83,7 +83,11 @@ from jaxtyping import Float, Int
 from tqdm.auto import tqdm
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.tools.analysis._model_state import require_eval_mode, to_token_ids
+from transformer_lens.tools.analysis._model_state import (
+    require_eval_mode,
+    require_int,
+    to_token_ids,
+)
 from transformer_lens.tools.analysis.jacobian_lens_coordinate_patch import (
     CoordinatePatch,
     solve_coordinate_patch,
@@ -98,7 +102,10 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     estimate_occupancy,
     get_sparse_decomposition,
 )
-from transformer_lens.tools.analysis.logit_lens import logit_readout
+from transformer_lens.tools.analysis.logit_lens import (
+    _require_direct_readout,
+    logit_readout,
+)
 from transformer_lens.tools.analysis.projection_kernel import orthonormal_subspace
 from transformer_lens.utilities.hf_utils import call_hf_with_retry
 
@@ -222,6 +229,8 @@ class JacobianLensReadout:
             with the ``pos`` axis of retained top-k and optional full logits.
         use_jacobian:
             Whether the Jacobian transport was applied (``False`` = logit lens).
+        exclude_token_ids:
+            Sorted, deduplicated vocabulary ids excluded from lens rankings only.
     """
 
     lens_topk_values: Dict[int, Float[torch.Tensor, "pos k"]]
@@ -233,6 +242,7 @@ class JacobianLensReadout:
     use_jacobian: bool = True
     lens_logits: Optional[Dict[int, Float[torch.Tensor, "pos d_vocab"]]] = None
     model_logits: Optional[Float[torch.Tensor, "pos d_vocab"]] = None
+    exclude_token_ids: List[int] = field(default_factory=list)
 
     def top_tokens(self, tokenizer: Any, k: int = 5) -> Dict[int, List[List[str]]]:
         """Decode the top-``k`` tokens per layer and position.
@@ -355,6 +365,10 @@ class JacobianLens:
         indices to transport matrices, plus ``n_prompts``, ``d_model``, and an
         optional ``metadata`` dict.
 
+        Converted workspace lenses may also carry top-level ``provenance``.
+        It is preserved under ``metadata["provenance"]`` for save/load round
+        trips, without turning source model names into validation constraints.
+
         **Fit checkpoint** (running-sum format, written by the reference
         implementation's ``write_checkpoint()`` during fitting): must contain
         a ``jacobian_sum`` key mapping layer indices to *running-sum* matrices
@@ -400,11 +414,18 @@ class JacobianLens:
         """
         payload = torch.load(path, map_location="cpu", weights_only=True)
         if "J" in payload:
+            metadata = dict(payload.get("metadata") or {})
+            if "provenance" in payload:
+                _validate_metadata(metadata)
+                _validate_metadata({"provenance": payload["provenance"]})
+                if "provenance" in metadata and metadata["provenance"] != payload["provenance"]:
+                    raise ValueError("Artifact has conflicting metadata and top-level provenance")
+                metadata["provenance"] = payload["provenance"]
             return cls(
                 {int(layer): matrix for layer, matrix in payload["J"].items()},
                 n_prompts=int(payload.get("n_prompts", 0)),
                 d_model=int(payload["d_model"]),
-                metadata=payload.get("metadata"),
+                metadata=metadata,
             )
         if "jacobian_sum" in payload:
             return cls._from_checkpoint_payload(path, payload)
@@ -741,6 +762,7 @@ class JacobianLens:
         use_jacobian: bool = True,
         top_k: int = DEFAULT_TOP_K,
         return_full_logits: bool = False,
+        exclude_token_ids: Optional[Sequence[int]] = None,
     ) -> JacobianLensReadout:
         """Read per-layer vocabulary logits for a prompt.
 
@@ -765,6 +787,9 @@ class JacobianLens:
             return_full_logits: Also retain full vocabulary tensors on CPU.
                 This is opt-in because a 64-token Gemma readout across all
                 layers is roughly 1.7 GB.
+            exclude_token_ids: Vocabulary ids to exclude before lens top-k,
+                including the final-layer and logit-lens readouts. Model top-k
+                and full logits stay unfiltered. Duplicates are ignored.
 
         Returns:
             A :class:`JacobianLensReadout`.
@@ -808,6 +833,31 @@ class JacobianLens:
                 f"{selected_model_logits.shape[-1]}"
             )
         model_topk = selected_model_logits.topk(top_k, dim=-1)
+        excluded = sorted(
+            {
+                require_int(
+                    token,
+                    "exclude_token_ids entry",
+                    minimum=0,
+                    maximum=selected_model_logits.shape[-1] - 1,
+                )
+                for token in (() if exclude_token_ids is None else exclude_token_ids)
+            }
+        )
+        eligible = selected_model_logits.shape[-1] - len(excluded)
+        if top_k > eligible:
+            raise ValueError(
+                f"top_k={top_k} exceeds the {eligible} eligible tokens after exclusions"
+            )
+        eligible_ids = None
+        if excluded:
+            keep = torch.ones(
+                selected_model_logits.shape[-1],
+                dtype=torch.bool,
+                device=selected_model_logits.device,
+            )
+            keep[excluded] = False
+            eligible_ids = torch.arange(keep.numel(), device=keep.device)[keep]
         full_model_logits = selected_model_logits.cpu() if return_full_logits else None
         lens_topk_values: Dict[int, torch.Tensor] = {}
         lens_topk_indices: Dict[int, torch.Tensor] = {}
@@ -815,7 +865,6 @@ class JacobianLens:
         for layer in layers:
             if layer == final_layer:
                 layer_logits = selected_model_logits
-                layer_topk = model_topk
             else:
                 activation = cache[hook_names[layer]]
                 _validate_residual_activation(
@@ -827,9 +876,18 @@ class JacobianLens:
                 transported = self.transport(residual, layer) if use_jacobian else residual.float()
                 # fp32 only after the output transform: the model soft-caps in W_U's dtype.
                 layer_logits = logit_readout(model, transported, apply_ln=True).values.float()
-                layer_topk = layer_logits.topk(top_k, dim=-1)
+            if eligible_ids is not None:
+                ids = eligible_ids.to(layer_logits.device)
+                ranked = layer_logits.index_select(-1, ids)
+                layer_topk = ranked.topk(top_k, dim=-1)
+                topk_indices = ids[layer_topk.indices]
+            else:
+                layer_topk = (
+                    model_topk if layer == final_layer else layer_logits.topk(top_k, dim=-1)
+                )
+                topk_indices = layer_topk.indices
             lens_topk_values[layer] = layer_topk.values.cpu()
-            lens_topk_indices[layer] = layer_topk.indices.cpu()
+            lens_topk_indices[layer] = topk_indices.cpu()
             if full_lens_logits is not None:
                 if layer == final_layer:
                     assert full_model_logits is not None
@@ -846,6 +904,7 @@ class JacobianLens:
             use_jacobian=use_jacobian,
             lens_logits=full_lens_logits,
             model_logits=full_model_logits,
+            exclude_token_ids=excluded,
         )
 
     @torch.no_grad()
@@ -1900,18 +1959,7 @@ def _require_raw_bridge(model: Any, *, estimator: str) -> None:
             f"{estimator} requires the standard direct ln_final -> unembed output path; "
             f"this Bridge is missing {missing_components}."
         )
-    blocks_component = component_mapping["blocks"]
-    if not getattr(blocks_component, "hook_out_is_single_residual_stream", False):
-        raise ValueError(
-            f"{estimator} requires single-stream [batch, position, d_model] block "
-            f"outputs; {type(blocks_component).__name__} does not provide that "
-            "contract."
-        )
-    if "project_out" in component_mapping:
-        raise ValueError(
-            f"{estimator} does not yet support a final output projection between "
-            "the residual stream and unembedding."
-        )
+    _require_direct_readout(model, operation=estimator)
     unembed_width = model.W_U.shape[0]
     if unembed_width != model.cfg.d_model:
         raise ValueError(

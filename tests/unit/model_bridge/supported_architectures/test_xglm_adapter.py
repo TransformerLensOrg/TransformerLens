@@ -9,6 +9,7 @@ from transformer_lens.model_bridge.generalized_components import (
     EmbeddingBridge,
     LinearBridge,
     NormalizationBridge,
+    PosEmbedBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.supported_architectures.xglm import (
@@ -103,9 +104,14 @@ class TestXGLMComponentMappingPresence:
     """Component slots exist (deletion guard)."""
 
     def test_all_expected_top_level_keys_present(self, adapter: XGLMArchitectureAdapter) -> None:
-        # No top-level rotary_emb (sinusoidal) and no pos_embed (non-persistent).
-        expected = {"embed", "blocks", "ln_final", "unembed"}
+        # No top-level rotary_emb: positions are a sinusoidal table added to the embedding.
+        expected = {"embed", "pos_embed", "blocks", "ln_final", "unembed"}
         assert set(adapter.component_mapping.keys()) == expected
+
+    def test_pos_embed_wraps_sinusoidal_table(self, adapter: XGLMArchitectureAdapter) -> None:
+        pos_embed = adapter.component_mapping["pos_embed"]
+        assert isinstance(pos_embed, PosEmbedBridge)
+        assert pos_embed.name == "model.embed_positions"
 
 
 class TestXGLMBlockSubmodules:
@@ -187,7 +193,7 @@ class TestXGLMArchitectureGuards:
             assert "mlp" not in key
 
     def test_center_writing_weights_disabled(self, adapter: XGLMArchitectureAdapter) -> None:
-        # Sinusoidal pos_embed has no params → cannot center pos_embed.
+        # The sinusoidal table is a non-persistent buffer, not a weight → cannot center it.
         assert adapter.supports_center_writing_weights is False
 
     def test_no_rotary_in_blocks(self, adapter: XGLMArchitectureAdapter) -> None:

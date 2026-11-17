@@ -139,6 +139,32 @@ class TestLfm2AdapterConfig:
         """Adapter forces eager attention so component-level activations are hookable."""
         assert adapter.cfg.attn_implementation == "eager"
 
+    @pytest.mark.parametrize(
+        "auto_adjust, multiplier, multiple_of, expected",
+        [
+            (False, 1.0, 256, 6656),  # no adjustment: d_mlp is intermediate_size
+            (True, None, 256, 4437),  # 2/3 shrink only
+            (True, 1.0, 256, 4608),  # LFM2-350M: 2/3 shrink, rounded up to 256
+            (True, 1.25, 128, 5632),  # multiplier then round to 128
+        ],
+    )
+    def test_d_mlp_follows_hf_ff_dim_auto_adjust(
+        self,
+        auto_adjust: bool,
+        multiplier: float | None,
+        multiple_of: int,
+        expected: int,
+    ) -> None:
+        """d_mlp matches the w1/w3/w2 width HF Lfm2MLP builds from intermediate_size."""
+        cfg = _make_cfg(d_mlp=6656)
+        cfg.intermediate_size = 6656
+        cfg.block_auto_adjust_ff_dim = auto_adjust
+        cfg.block_ffn_dim_multiplier = multiplier
+        cfg.block_multiple_of = multiple_of
+        assert Lfm2ArchitectureAdapter(cfg).cfg.d_mlp == expected
+        # Rebuilding the adapter on the same config must not shrink d_mlp again.
+        assert Lfm2ArchitectureAdapter(cfg).cfg.d_mlp == expected
+
 
 # ---------------------------------------------------------------------------
 # Component mapping structure tests

@@ -40,7 +40,9 @@ def restore_rotary_inv_freq(hf_model: Any) -> int:
     """
     restored = 0
     for module in hf_model.modules():
-        if "RotaryEmbedding" not in type(module).__name__:
+        class_name = type(module).__name__
+        # Some remote code drops the suffix on scaled variants (MiniCPM's LongRoPE).
+        if "RotaryEmbedding" not in class_name and "RoPE" not in class_name:
             continue
         inv_freq = getattr(module, "inv_freq", None)
         dim = getattr(module, "dim", None)

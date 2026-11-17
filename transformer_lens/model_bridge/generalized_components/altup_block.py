@@ -1,7 +1,6 @@
 """Block bridge for AltUp (Alternating Updates) decoder layers."""
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, Optional
 
 import torch
@@ -109,11 +108,8 @@ class AltUpBlockBridge(GeneralizedComponent):
         return primary
 
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
-        """Raise StopAtLayerException (carrying the AltUp stack) at the configured stop index."""
-        if getattr(self, "_stop_at_layer_idx", None) is None or self.name is None:
-            return
-        match = re.search(r"\.layers\.(\d+)", self.name) or re.search(r"blocks\.(\d+)", self.name)
-        if not match or int(match.group(1)) != self._stop_at_layer_idx:
+        """Raise StopAtLayerException (carrying the AltUp stack) if the bridge armed this block."""
+        if getattr(self, "_stop_at_layer_idx", None) is None:
             return
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             tensor = args[0]

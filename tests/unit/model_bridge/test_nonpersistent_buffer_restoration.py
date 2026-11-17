@@ -208,6 +208,59 @@ class TestLegacyCosSinCacheRebuild:
         assert not torch.allclose(rotary.cos_cached, torch.ones_like(rotary.cos_cached))
 
 
+class TestLongRoPEClassNameRestoration:
+    """MiniCPM's scaled rotary class is ``MiniCPMLongRoPE``, without the usual suffix."""
+
+    def _long_rope_model(self, inv_freq: torch.Tensor):
+        class _LongRoPE(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.dim = 8
+                self.base = 10000
+                self.max_seq_len_cached = 16
+                self.short_factor = [1.0, 2.0, 4.0, 8.0]
+                self.scaling_factor = 1.5
+                self.inv_freq = inv_freq
+                self.cos_cached = torch.full((16, 8), float("nan"))
+                self.sin_cached = torch.full((16, 8), float("nan"))
+
+            def _set_cos_sin_cache(self, seq_len, device, dtype):
+                t = torch.arange(seq_len, dtype=torch.float32)
+                freqs = torch.outer(t, 1.0 / torch.tensor(self.short_factor)) * self.inv_freq
+                emb = torch.cat((freqs, freqs), dim=-1)
+                self.cos_cached = emb.cos().to(dtype) * self.scaling_factor
+                self.sin_cached = emb.sin().to(dtype) * self.scaling_factor
+
+        _LongRoPE.__name__ = "MiniCPMLongRoPE"
+        rotary = _LongRoPE()
+
+        class _Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.rotary_emb = rotary
+
+        return _Model(), rotary
+
+    def test_garbage_table_and_cache_are_rebuilt(self) -> None:
+        from transformer_lens.model_bridge.buffer_restore import restore_rotary_inv_freq
+
+        model, rotary = self._long_rope_model(torch.full((4,), float("nan")))
+        assert restore_rotary_inv_freq(model) == 1
+        expected = 1.0 / (10000 ** (torch.arange(0, 8, 2, dtype=torch.int64).float() / 8))
+        assert torch.allclose(rotary.inv_freq, expected)
+        # The rebuild goes through the class's own LongRoPE cache (factors + scaling).
+        assert torch.isfinite(rotary.cos_cached).all()
+        assert torch.allclose(rotary.cos_cached[0], torch.full((8,), 1.5))
+
+    def test_valid_table_is_left_alone(self) -> None:
+        from transformer_lens.model_bridge.buffer_restore import restore_rotary_inv_freq
+
+        good = 1.0 / (10000 ** (torch.arange(0, 8, 2, dtype=torch.int64).float() / 8))
+        model, rotary = self._long_rope_model(good.clone())
+        assert restore_rotary_inv_freq(model) == 0
+        assert torch.isnan(rotary.cos_cached).all()
+
+
 class TestInternLM2PositionEmbeddingInjection:
     """internlm2 keeps rotary per attention module, so its decoder layer passes
     no position_embeddings — the bridge must supply them or RoPE is skipped."""

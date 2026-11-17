@@ -41,8 +41,8 @@ from jaxtyping import Float, Int
 
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.tools.analysis._model_state import (
-    hybrid_block_types,
     require_eval_mode,
+    require_resid_mid,
     to_token_ids,
 )
 from transformer_lens.utilities import Slice, SliceInput
@@ -686,8 +686,9 @@ def logit_lens(
         cache: An existing cache to read instead of running the model.
         layers: Indices into the accumulated stack (negative allowed); ``None``
             keeps every entry.
-        incl_mid: Include ``resid_mid`` entries. Raises on hybrid stacks whose
-            SSM blocks have no ``resid_mid``.
+        incl_mid: Include ``resid_mid`` entries. Raises when a sequential block has
+            no ``resid_mid`` (Mamba and other mixer-only blocks); parallel blocks are
+            skipped.
         positions: Position selection (``Slice`` semantics); default last token.
         batch_slice: Batch selection (``Slice`` semantics).
         lens: Optional ``f(entry, index) -> entry`` applied to each stack entry
@@ -721,12 +722,9 @@ def logit_lens(
         chunk_size=chunk_size,
     )
     if incl_mid:
-        hybrid = hybrid_block_types(model)
-        if hybrid:
-            raise ValueError(
-                f"incl_mid=True needs a resid_mid hook on every block, but this stack has "
-                f"block types {hybrid} without one; use incl_mid=False."
-            )
+        require_resid_mid(
+            model, operation="logit_lens(incl_mid=True)", alternative="use incl_mid=False"
+        )
     pos_slice = positions if isinstance(positions, Slice) else Slice(positions)
     if cache is None:
         if input is None:

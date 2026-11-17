@@ -5,7 +5,6 @@ This module contains the bridge component for transformer blocks.
 from __future__ import annotations
 
 import inspect
-import re
 import weakref
 from typing import Any, Callable, Dict, Optional, cast
 
@@ -321,44 +320,30 @@ class BlockBridge(GeneralizedComponent):
             and isinstance(kwargs["hidden_states"], torch.Tensor)
         )
 
-    def _extract_layer_idx(self) -> Optional[int]:
-        """Parse this block's layer index from its name (TL/GPT-2/LLaMA patterns)."""
-        if self.name is None:
-            return None
-        match = re.search(r"(?:^|\.)(?:blocks|h|layers)\.(\d+)", self.name)
-        return int(match.group(1)) if match else None
-
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
-        """Check if execution should stop before this block. Raises StopAtLayerException.
-
-        The _stop_at_layer_idx attribute is set by the bridge's forward method.
-        Supports TL/GPT-2/LLaMA naming patterns for layer index extraction.
-        """
-        if getattr(self, "_stop_at_layer_idx", None) is None:
+        """Raise StopAtLayerException with the hooked input if the bridge armed this block."""
+        layer_idx = getattr(self, "_stop_at_layer_idx", None)
+        if layer_idx is None:
             return
-        layer_idx = self._extract_layer_idx()
-        if layer_idx is not None and layer_idx == self._stop_at_layer_idx:
-            if len(args) > 0 and isinstance(args[0], torch.Tensor):
-                input_tensor = args[0]
-            elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
-                input_tensor = kwargs["hidden_states"]
-            else:
-                raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
-            input_tensor = self.hook_in(input_tensor)
-            raise StopAtLayerException(input_tensor)
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            input_tensor = args[0]
+        elif "hidden_states" in kwargs and isinstance(kwargs["hidden_states"], torch.Tensor):
+            input_tensor = kwargs["hidden_states"]
+        else:
+            raise ValueError(f"Cannot find input tensor to stop at layer {layer_idx}")
+        input_tensor = self.hook_in(input_tensor)
+        raise StopAtLayerException(input_tensor)
 
     def _maybe_inject_start_residual(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
         """If this is the start_at_layer block, swap in the caller's residual.
 
-        Mirror of ``_check_stop_at_layer``: the bridge's forward stashes the
-        residual-stream input on the block via ``_start_residual`` and sets
+        Mirror of ``_check_stop_at_layer``: the bridge's forward arms only the start
+        block, stashing the residual-stream input via ``_start_residual`` and setting
         ``_start_at_layer_idx``. This block replaces its incoming hidden states
         with that residual; ``_hook_input_hidden_states`` then fires ``hook_in``
         on it, so ``hook_resid_pre`` reflects the injected value.
         """
         if getattr(self, "_start_at_layer_idx", None) is None:
-            return args, kwargs
-        if self._extract_layer_idx() != self._start_at_layer_idx:
             return args, kwargs
         residual = getattr(self, "_start_residual", None)
         if residual is None:

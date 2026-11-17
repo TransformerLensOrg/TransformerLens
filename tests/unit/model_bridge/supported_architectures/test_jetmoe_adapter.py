@@ -48,6 +48,31 @@ class TestJetMoeMapping:
         assert "hook_kv" in attn.hook_aliases
         assert "hook_q" not in attn.hook_aliases
 
+    def test_moa_exposes_hook_z_and_head_results(self, adapter):
+        from transformer_lens.hook_points import HookPoint
+
+        attn = adapter.component_mapping["blocks"].submodules["attn"]
+        assert isinstance(attn.hook_z, HookPoint)
+        assert "hook_z" not in attn.hook_aliases  # no o_proj to alias it to
+        assert attn.supports_attn_result is True
+        assert callable(attn.head_results_from_cache)
+
+    def test_slot_routing_inverts_hf_expert_sort(self):
+        """HF's gating sorts (token, slot) pairs by expert; slot k must get top-k entry k."""
+        import torch
+        from transformers.models.jetmoe.modeling_jetmoe import JetMoeTopKGating
+
+        torch.manual_seed(0)
+        gating = JetMoeTopKGating(input_size=8, num_experts=5, top_k=2)
+        x = torch.randn(6, 8)
+        index_sorted, batch_index, batch_gates, expert_size, logits = gating(x)
+        experts_idx, gates = _JetMoeAttentionBridge._slot_routing(
+            (index_sorted, batch_index, batch_gates, expert_size), [2, 3], 2, 5
+        )
+        top_logits, top_idx = logits.topk(2, dim=-1)
+        assert torch.equal(experts_idx, top_idx.reshape(2, 3, 2))
+        torch.testing.assert_close(gates, torch.softmax(top_logits, -1).reshape(2, 3, 2))
+
     def test_moe_mlp_router_hookable(self, adapter):
         mlp = adapter.component_mapping["blocks"].submodules["mlp"]
         assert isinstance(mlp, MoEBridge)

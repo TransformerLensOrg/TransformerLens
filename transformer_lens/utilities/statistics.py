@@ -9,15 +9,15 @@ consumer derives independent, reproducible streams the same way.
 from __future__ import annotations
 
 import hashlib
-import itertools
 import math
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple
+from typing import Iterator, Optional, Sequence, Tuple
 
 import torch
 
 _ALTERNATIVES = ("two-sided", "greater", "less")
 _STATISTICS = ("mean", "median")
+_SIGN_FLIP_CHUNK = 256
 
 
 def derive_generator(seed: int, *labels: object) -> torch.Generator:
@@ -114,8 +114,10 @@ def sign_flip_permutation_pvalue(
     ``alternative`` is ``"two-sided"`` (``|null| >= |observed|``), ``"greater"``
     or ``"less"``. A null mean within a relative ``100 * eps`` of the observed one
     counts as a tie, absorbing summation-order error; there is no absolute floor, so
-    near-zero observed effects get essentially no tolerance. Returns a tensor with
-    ``dim`` removed.
+    near-zero observed effects get essentially no tolerance. Sign patterns are
+    evaluated 256 at a time in both modes, so memory stays at ``256 × n`` per
+    leading cell. A leading cell with any non-finite effect gets a NaN p-value. Returns a
+    tensor with ``dim`` removed.
     """
     if alternative not in _ALTERNATIVES:
         raise ValueError(f"alternative must be one of {_ALTERNATIVES}, got {alternative!r}")
@@ -127,23 +129,47 @@ def sign_flip_permutation_pvalue(
         raise ValueError("cannot permute an empty axis")
     observed = moved.mean(dim=-1, keepdim=True)  # [..., 1]
     if n <= exact_max_n:
-        signs = torch.tensor(
-            list(itertools.product((1.0, -1.0), repeat=n)), dtype=moved.dtype, device=moved.device
-        )  # [2^n, n]
-        null = (moved.unsqueeze(-2) * signs).mean(dim=-1)  # [..., 2^n]
-        hits = _count_hits(null, observed, alternative)
-        return hits / signs.shape[0]
-    gen = generator if generator is not None else derive_generator(0)
-    hits_total = torch.zeros(moved.shape[:-1], dtype=moved.dtype, device=moved.device)
-    chunk = 256
-    for start in range(0, n_permutations, chunk):
-        count = min(chunk, n_permutations - start)
-        signs = (
-            torch.randint(0, 2, (count, n), generator=gen).to(moved.device).to(moved.dtype) * 2 - 1
-        )
-        null = (moved.unsqueeze(-2) * signs).mean(dim=-1)
-        hits_total = hits_total + _count_hits(null, observed, alternative)
-    return (hits_total + 1.0) / (n_permutations + 1.0)
+        hits = _sign_flip_hits(moved, observed, alternative, _exact_sign_chunks(n, moved))
+        pvalue = hits / 2**n
+    else:
+        gen = generator if generator is not None else derive_generator(0)
+        signs = _random_sign_chunks(n, n_permutations, gen, moved)
+        hits = _sign_flip_hits(moved, observed, alternative, signs)
+        pvalue = (hits + 1.0) / (n_permutations + 1.0)
+    # NaN compares false against every null mean and an infinite effect makes the tie
+    # tolerance infinite, so either would read as a maximally significant 0.
+    return pvalue.masked_fill((~moved.isfinite()).any(dim=-1), math.nan)
+
+
+def _sign_flip_hits(
+    moved: torch.Tensor,
+    observed: torch.Tensor,
+    alternative: str,
+    sign_chunks: Iterator[torch.Tensor],
+) -> torch.Tensor:
+    hits = torch.zeros(moved.shape[:-1], dtype=moved.dtype, device=moved.device)
+    for signs in sign_chunks:
+        null = (moved.unsqueeze(-2) * signs).mean(dim=-1)  # [..., chunk]
+        hits = hits + _count_hits(null, observed, alternative)
+    return hits
+
+
+def _exact_sign_chunks(n: int, like: torch.Tensor) -> Iterator[torch.Tensor]:
+    # Bit i of the row index, most significant first, reproduces itertools.product((1, -1)) order.
+    shifts = torch.arange(n - 1, -1, -1, device=like.device)
+    for start in range(0, 2**n, _SIGN_FLIP_CHUNK):
+        rows = torch.arange(start, min(start + _SIGN_FLIP_CHUNK, 2**n), device=like.device)
+        bits = (rows.unsqueeze(-1) >> shifts) & 1
+        yield (1 - 2 * bits).to(like.dtype)
+
+
+def _random_sign_chunks(
+    n: int, n_permutations: int, gen: torch.Generator, like: torch.Tensor
+) -> Iterator[torch.Tensor]:
+    for start in range(0, n_permutations, _SIGN_FLIP_CHUNK):
+        count = min(_SIGN_FLIP_CHUNK, n_permutations - start)
+        signs = torch.randint(0, 2, (count, n), generator=gen).to(like.device).to(like.dtype)
+        yield signs * 2 - 1
 
 
 def _count_hits(null: torch.Tensor, observed: torch.Tensor, alternative: str) -> torch.Tensor:

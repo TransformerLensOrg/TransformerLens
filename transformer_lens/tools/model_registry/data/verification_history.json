@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-11-04T22:04:08.549906",
+  "last_updated": "2026-11-06T15:30:47.946280",
   "records": [
     {
       "model_id": "Macropodus/macbert4mdcspell_v1",
@@ -41518,6 +41518,42 @@
       "prompt_profile": null,
       "p4_scoring_version": null,
       "notes": "Full verification completed",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openbmb/MiniCPM4-0.5B",
+      "architecture_id": "MiniCPMForCausalLM",
+      "verified_date": "2026-11-06",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": "Below threshold: P1=0.0% < 100.0% (failed: load_bridge_unprocessed) \u2014 Failed to load unprocessed TransformerBridge: The repository openbmb/MiniCPM4-0.5B contains custom code which must be executed to correctly load the m",
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openbmb/MiniCPM4-0.5B",
+      "architecture_id": "MiniCPMForCausalLM",
+      "verified_date": "2026-11-06",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": null,
+      "p4_scoring_version": null,
+      "notes": null,
+      "invalidated": false,
+      "invalidation_reason": null
+    },
+    {
+      "model_id": "openbmb/MiniCPM4-0.5B",
+      "architecture_id": "MiniCPMForCausalLM",
+      "verified_date": "2026-11-06",
+      "verified_by": "verify_models",
+      "transformerlens_version": "0.0.0",
+      "prompt_profile": "continuation",
+      "p4_scoring_version": 2,
+      "notes": "Core verification completed",
       "invalidated": false,
       "invalidation_reason": null
     }

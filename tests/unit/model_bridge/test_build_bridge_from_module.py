@@ -5,6 +5,8 @@ v4 merge is a no-op for users importing from this module.
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 import torch
 
@@ -78,6 +80,33 @@ def test_device_defaults_to_model_first_param():
     model = _native(cfg)  # CPU by default
     bridge = build_bridge_from_module(model, architecture="TransformerLensNative", tl_config=cfg)
     assert "cpu" in bridge.cfg.device.lower()
+
+
+def test_explicit_dtype_is_applied_to_the_model():
+    cfg = _build_cfg()
+    model = _native(cfg)
+
+    bridge = build_bridge_from_module(
+        model, architecture="TransformerLensNative", tl_config=cfg, dtype=torch.float16
+    )
+
+    assert {p.dtype for p in model.parameters() if p.is_floating_point()} == {torch.float16}
+    assert bridge.cfg.dtype is torch.float16
+
+
+def test_cfg_dtype_reports_the_parameters_when_a_request_is_not_applied(caplog):
+    # Meta parameters are never cast (accelerate's offload placeholders live there too),
+    # so the request cannot take effect; cfg must say what the model is, and say why.
+    cfg = _build_cfg()
+    model = _native(cfg).to("meta")
+
+    with caplog.at_level(logging.WARNING):
+        bridge = build_bridge_from_module(
+            model, architecture="TransformerLensNative", tl_config=cfg, dtype=torch.float16
+        )
+
+    assert bridge.cfg.dtype is torch.float32
+    assert "dtype=torch.float16 was requested" in caplog.text
 
 
 def test_does_not_mutate_supplied_model_dtype():

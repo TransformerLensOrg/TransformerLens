@@ -85,6 +85,40 @@ def test_component_dla_reconstructs_logit_difference(granite):
     )
 
 
+@pytest.mark.parametrize("unit", ["component", "head"])
+def test_dla_reconstructs_logit_difference_under_logits_scaling(unit):
+    """Granite divides lm_head's output by logits_scaling; DLA must carry that factor."""
+    torch.manual_seed(0)
+    config = GraniteConfig(
+        vocab_size=32,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        max_position_embeddings=32,
+        logits_scaling=8.0,
+        attn_implementation="eager",
+    )
+    model = GraniteForCausalLM(config).eval()
+    bridge = build_bridge_from_module(model, "GraniteForCausalLM", hf_config=config, device="cpu")
+    try:
+        bridge.enable_compatibility_mode()
+        with torch.no_grad():
+            logits, cache = bridge.run_with_cache(torch.tensor([[3, 4, 5]]))
+        result = direct_logit_attribution(
+            bridge, answer_tokens=7, incorrect_tokens=9, unit=unit, cache=cache
+        )
+        torch.testing.assert_close(
+            result.attribution.sum(0),
+            logits[:, -1, 7] - logits[:, -1, 9],
+            rtol=1e-5,
+            atol=1e-6,
+        )
+    finally:
+        bridge.close()
+
+
 def test_embedding_hook_exposes_residual_contribution_without_changing_forward(granite):
     bridge, reference, multiplier = granite
     tokens = torch.tensor([[3, 4, 5]])

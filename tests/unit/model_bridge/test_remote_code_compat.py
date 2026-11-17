@@ -15,9 +15,12 @@ import torch
 import torch.nn as nn
 
 from transformer_lens.model_bridge.supported_architectures._remote_code_compat import (
+    backfill_is_torch_fx_available,
     compute_default_rope_inv_freq,
+    create_dynamic_cache_when_missing,
     disable_tied_weights_lookup,
     force_import_remote_class,
+    hide_default_rope_scaling_from_init_rope,
     iter_remote_modeling_modules,
     patch_init_weights_skip_loaded,
     restore_default_rope_init,
@@ -158,6 +161,153 @@ class TestRetieWeightsKeysV5:
 
         retie_weights_keys_v5(Model, {"a": "b"})
         assert "_tied_weights_keys" not in Model.__dict__
+
+
+class TestBackfillIsTorchFxAvailable:
+    @pytest.fixture
+    def import_utils(self, monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+        import transformers.utils.import_utils as import_utils
+
+        # setattr-then-delattr registers an undo that removes whatever the test installs.
+        monkeypatch.setattr(import_utils, "is_torch_fx_available", None, raising=False)
+        monkeypatch.delattr(import_utils, "is_torch_fx_available")
+        return import_utils
+
+    def test_restores_the_removed_name(self, import_utils: ModuleType) -> None:
+        """4.x modeling files import it at module level, so it must exist."""
+        backfill_is_torch_fx_available()
+        from transformers.utils.import_utils import is_torch_fx_available  # noqa: F401
+
+        assert is_torch_fx_available() is False
+
+    def test_existing_definition_is_kept(
+        self, import_utils: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        original = lambda: True  # noqa: E731
+        monkeypatch.setattr(import_utils, "is_torch_fx_available", original, raising=False)
+        backfill_is_torch_fx_available()
+        assert getattr(import_utils, "is_torch_fx_available") is original
+
+
+def _make_cached_model_class() -> type:
+    """Mirrors MiniCPMModel: rejects use_cache=True without a Cache object."""
+    from transformers import PretrainedConfig
+    from transformers.cache_utils import Cache
+
+    class RemoteModel:
+        def __init__(self, use_cache: bool = True) -> None:
+            # The base config stores neither; model configs set them (DynamicCache reads both).
+            self.config = PretrainedConfig()
+            self.config.use_cache = use_cache
+            self.config.num_hidden_layers = 2
+
+        def forward(
+            self, input_ids: Any = None, past_key_values: Any = None, use_cache: Any = None
+        ) -> Any:
+            use_cache = use_cache if use_cache is not None else self.config.use_cache
+            if use_cache and not isinstance(past_key_values, Cache):
+                raise ValueError("You must use the new past_key_values format")
+            return past_key_values
+
+    return RemoteModel
+
+
+class TestCreateDynamicCacheWhenMissing:
+    def test_config_default_use_cache_gets_a_cache(self) -> None:
+        from transformers.cache_utils import DynamicCache
+
+        cls = _make_cached_model_class()
+        create_dynamic_cache_when_missing(cls)
+        assert isinstance(cls().forward(torch.ones(1, 2)), DynamicCache)
+
+    def test_explicit_use_cache_true_gets_a_cache(self) -> None:
+        from transformers.cache_utils import DynamicCache
+
+        cls = _make_cached_model_class()
+        create_dynamic_cache_when_missing(cls)
+        assert isinstance(cls(use_cache=False).forward(use_cache=True), DynamicCache)
+
+    def test_use_cache_off_passes_nothing(self) -> None:
+        cls = _make_cached_model_class()
+        create_dynamic_cache_when_missing(cls)
+        assert cls().forward(use_cache=False) is None
+        assert cls(use_cache=False).forward() is None
+
+    def test_caller_cache_is_kept(self) -> None:
+        from transformers.cache_utils import DynamicCache
+
+        cls = _make_cached_model_class()
+        create_dynamic_cache_when_missing(cls)
+        cache = DynamicCache()
+        assert cls().forward(past_key_values=cache) is cache
+
+    def test_positional_none_cache_is_replaced(self) -> None:
+        """A positional past_key_values=None must not collide with the injected keyword."""
+        from transformers.cache_utils import DynamicCache
+
+        cls = _make_cached_model_class()
+        create_dynamic_cache_when_missing(cls)
+        assert isinstance(cls().forward(torch.ones(1, 2), None), DynamicCache)
+
+    def test_double_patch_wraps_once(self) -> None:
+        cls = _make_cached_model_class()
+        create_dynamic_cache_when_missing(cls)
+        forward = cls.forward
+        create_dynamic_cache_when_missing(cls)
+        assert cls.forward is forward
+
+
+def _make_init_rope_attention_class() -> Any:
+    """A stand-in for 1/2-era remote attention whose _init_rope indexes ``"type"``."""
+
+    class Config:
+        def __init__(self, rope_scaling: Any) -> None:
+            self.rope_scaling = rope_scaling
+
+    class RemoteAttention:
+        def __init__(self, rope_scaling: Any) -> None:
+            self.config = Config(rope_scaling)
+            self._init_rope()
+
+        def _init_rope(self) -> None:
+            if self.config.rope_scaling is None:
+                self.rotary_emb = "plain"
+            else:
+                self.rotary_emb = self.config.rope_scaling["type"]
+
+    return RemoteAttention
+
+
+class TestHideDefaultRopeScalingFromInitRope:
+    def test_unpatched_default_dict_fails(self) -> None:
+        cls = _make_init_rope_attention_class()
+        with pytest.raises(KeyError):
+            cls({"rope_type": "default", "rope_theta": 10000.0})
+
+    @pytest.mark.parametrize(
+        "rope_scaling",
+        [{"rope_type": "default", "rope_theta": 10000.0}, {"type": "default"}],
+    )
+    def test_default_dict_builds_the_plain_rotary(self, rope_scaling: dict) -> None:
+        cls = _make_init_rope_attention_class()
+        hide_default_rope_scaling_from_init_rope(cls)
+        attention = cls(rope_scaling)
+        assert attention.rotary_emb == "plain"
+        assert attention.config.rope_scaling == rope_scaling
+
+    @pytest.mark.parametrize("rope_scaling", [None, {"type": "linear", "factor": 2.0}])
+    def test_other_rope_scaling_is_untouched(self, rope_scaling: Any) -> None:
+        cls = _make_init_rope_attention_class()
+        hide_default_rope_scaling_from_init_rope(cls)
+        expected = "plain" if rope_scaling is None else "linear"
+        assert cls(rope_scaling).rotary_emb == expected
+
+    def test_double_patch_wraps_once(self) -> None:
+        cls = _make_init_rope_attention_class()
+        hide_default_rope_scaling_from_init_rope(cls)
+        init_rope = cls._init_rope
+        hide_default_rope_scaling_from_init_rope(cls)
+        assert cls._init_rope is init_rope
 
 
 class TestDisableTiedWeightsLookup:

@@ -184,3 +184,19 @@ def test_right_padded_logits_still_run_unmasked(distilgpt2_bridge) -> None:
         both_logits, _ = distilgpt2_bridge(padded, return_type="both", padding_side="right")
 
     torch.testing.assert_close(both_logits, logits, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("prepend_bos", [True, False])
+def test_right_padded_loss_keeps_a_real_trailing_eos(distilgpt2_bridge, prepend_bos) -> None:
+    """A real trailing EOS shares the pad id here, yet its transition still counts."""
+    bridge = distilgpt2_bridge
+    eos = bridge.tokenizer.eos_token
+    prompts = ["hello" + eos, "the cat sat on a mat" + eos]
+    with torch.no_grad():
+        per_token = [
+            bridge(prompt, prepend_bos=prepend_bos, return_type="loss", loss_per_token=True)[0]
+            for prompt in prompts
+        ]
+        batched = bridge(prompts, prepend_bos=prepend_bos, padding_side="right", return_type="loss")
+
+    torch.testing.assert_close(batched, torch.cat(per_token).mean())

@@ -46,6 +46,7 @@ from transformer_lens.tools.analysis.jacobian_lens_decomposition import (
     JSpaceOccupancy,
     JSpaceVarianceProfile,
 )
+from transformer_lens.tools.analysis.logit_lens import _READOUT_TRANSFORM_COMPONENTS
 from transformer_lens.utilities.activation_functions import apply_softcap
 from transformer_lens.utilities.parameter_swap import temporarily_swap_parameter
 
@@ -695,32 +696,37 @@ def test_validate_model_rejects_unsupported_final_output_paths() -> None:
         _lens().validate_model(projected_unembed)
 
     projected_output = _ToyBridge()
-    projected_output.adapter.get_component_mapping = lambda: {
-        "blocks": SimpleNamespace(hook_out_is_single_residual_stream=True),
-        "ln_final": object(),
-        "project_out": object(),
-        "unembed": object(),
-    }
-    with pytest.raises(ValueError, match="final output projection"):
+    projected_output.add_module("project_out", nn.Identity())
+    with pytest.raises(ValueError, match=r"mounts \['project_out'\]"):
         _lens().validate_model(projected_output)
 
     altup_model = _ToyBridge()
-    altup_model.adapter.get_component_mapping = lambda: {
-        "blocks": AltUpBlockBridge(name="blocks"),
-        "ln_final": object(),
-        "unembed": object(),
-    }
-    with pytest.raises(ValueError, match="single-stream.*AltUpBlockBridge"):
+    altup_model.blocks[0] = AltUpBlockBridge(name="blocks.0")
+    with pytest.raises(ValueError, match=r"single-stream.*blocks\.0 \(AltUpBlockBridge\)"):
         _lens().validate_model(altup_model)
 
     mhc_model = _ToyBridge()
-    mhc_model.adapter.get_component_mapping = lambda: {
-        "blocks": DeepseekV4BlockBridge(name="blocks"),
-        "ln_final": object(),
-        "unembed": object(),
-    }
-    with pytest.raises(ValueError, match="single-stream.*DeepseekV4BlockBridge"):
+    mhc_model.blocks[0] = DeepseekV4BlockBridge(name="blocks.0")
+    with pytest.raises(ValueError, match=r"single-stream.*blocks\.0 \(DeepseekV4BlockBridge\)"):
         _lens().validate_model(mhc_model)
+
+
+@pytest.mark.parametrize("component", _READOUT_TRANSFORM_COMPONENTS)
+def test_mounted_readout_transform_is_rejected_before_fit(component: str) -> None:
+    model = _ToyBridge()
+    model.add_module(component, nn.Identity().eval())
+    match = rf"JacobianLens .* mounts \['{component}'\]"
+
+    with pytest.raises(ValueError, match=match):
+        _lens().validate_model(model)
+    with pytest.raises(ValueError, match=match):
+        JacobianLens.fit(
+            model,
+            ["a toy prompt"],
+            corpus=CORPUS,
+            skip_first_positions=SKIP_FIRST,
+            show_progress=False,
+        )
 
 
 def test_residual_runtime_shape_guard() -> None:

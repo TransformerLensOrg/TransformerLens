@@ -112,9 +112,12 @@ class TestSampleLogitsTopK:
         outs = [sample_logits(logits, top_k=1).item() for _ in range(20)]
         assert set(outs) == {1}
 
-    def test_top_k_rejects_non_positive(self):
-        with pytest.raises(AssertionError):
-            sample_logits(torch.randn(1, 4), top_k=0)
+    @pytest.mark.parametrize("temperature", [1.0, 0.0])
+    @pytest.mark.parametrize("top_k", [0, -5])
+    def test_top_k_rejects_non_positive(self, temperature, top_k):
+        # Greedy sampling skips the filtering branch, so the check has to come before it.
+        with pytest.raises(AssertionError, match="top_k has to be greater than 0"):
+            sample_logits(torch.randn(1, 4), top_k=top_k, temperature=temperature)
 
 
 class TestSampleLogitsTemperature:
@@ -172,11 +175,12 @@ class TestSampleLogitsTopP:
         outs = [sample_logits(logits, top_p=0.5).item() for _ in range(20)]
         assert set(outs) == {1}
 
-    def test_top_p_rejects_out_of_range(self):
-        with pytest.raises(AssertionError):
-            sample_logits(torch.randn(1, 4), top_p=0.0)
-        with pytest.raises(AssertionError):
-            sample_logits(torch.randn(1, 4), top_p=1.5)
+    @pytest.mark.parametrize("temperature", [1.0, 0.0])
+    @pytest.mark.parametrize("top_p", [0.0, -0.5, 1.5])
+    def test_top_p_rejects_out_of_range(self, temperature, top_p):
+        # Same gap as top_k: a greedy call used to accept any top_p without complaint.
+        with pytest.raises(AssertionError, match=r"top_p has to be in \(0, 1\]"):
+            sample_logits(torch.randn(1, 4), top_p=top_p, temperature=temperature)
 
 
 class TestSampleLogitsFreqPenalty:

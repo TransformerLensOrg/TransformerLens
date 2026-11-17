@@ -32,6 +32,18 @@ class Lfm2ArchitectureAdapter(ArchitectureAdapter):
         if hasattr(cfg, "n_key_value_heads") and cfg.n_key_value_heads is not None:
             self.cfg.n_key_value_heads = cfg.n_key_value_heads
 
+        # HF Lfm2MLP shrinks intermediate_size when block_auto_adjust_ff_dim is set, so
+        # d_mlp must be recomputed to match the real w1/w3/w2 width.
+        intermediate_size = getattr(cfg, "intermediate_size", None)
+        if getattr(cfg, "block_auto_adjust_ff_dim", False) and intermediate_size is not None:
+            d_mlp = int(2 * intermediate_size / 3)
+            multiplier = getattr(cfg, "block_ffn_dim_multiplier", None)
+            if multiplier is not None:
+                multiple_of = getattr(cfg, "block_multiple_of", 256)
+                d_mlp = int(multiplier * d_mlp)
+                d_mlp = multiple_of * ((d_mlp + multiple_of - 1) // multiple_of)
+            self.cfg.d_mlp = d_mlp
+
         self.weight_processing_conversions = {
             **self._qkvo_weight_conversions(),
         }

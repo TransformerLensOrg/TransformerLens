@@ -1,11 +1,12 @@
 """Unit tests for Direct Logit Attribution guards and argument validation.
 
 These exercise the fast-failing checks (argument validation, the Bridge
-compatibility-mode requirement, and the hybrid-architecture refusal) without
+compatibility-mode requirement, and the structural refusals) without
 loading a real model — using a ``spec``-ed mock TransformerBridge so the checks
 fire before any forward pass.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,15 +19,17 @@ from transformer_lens.model_bridge.generalized_components import (
     LinearBridge,
 )
 from transformer_lens.tools.analysis import direct_logit_attribution
+from transformer_lens.tools.analysis.direct_logit_attribution import (
+    _require_every_writer_decomposed,
+)
 
 TOKENS = torch.tensor([[1, 2, 3, 4]])
 
 
-def _mock_bridge(compatibility_mode=True, layer_types=("attn+mlp",)):
+def _mock_bridge(compatibility_mode=True):
     """A mock TransformerBridge that satisfies isinstance checks."""
     bridge = MagicMock(spec=TransformerBridge)
     bridge.compatibility_mode = compatibility_mode
-    bridge.layer_types.return_value = list(layer_types)
     return bridge
 
 
@@ -48,10 +51,41 @@ def test_requires_compatibility_mode():
         direct_logit_attribution(bridge, "hi", answer_tokens=" world")
 
 
-def test_rejects_hybrid_architecture():
-    bridge = _mock_bridge(layer_types=("attn+mlp", "mamba+mlp"))
-    with pytest.raises(NotImplementedError, match="hybrid"):
-        direct_logit_attribution(bridge, "hi", answer_tokens=" world")
+def test_layer_unit_refuses_blocks_without_resid_mid_before_any_forward():
+    bridge = _mock_bridge()
+    bridge.blocks = [SimpleNamespace(), SimpleNamespace()]
+    bridge.hook_dict = {"blocks.0.hook_resid_mid": object()}
+    with pytest.raises(ValueError, match=r"unit='layer' .* blocks \[1\]"):
+        direct_logit_attribution(bridge, "hi", answer_tokens=" world", unit="layer")
+    bridge.run_with_cache.assert_not_called()
+
+
+def _model_over_blocks(*slots_per_block):
+    blocks = [
+        SimpleNamespace(_modules={slot: object() for slot in slots}) for slots in slots_per_block
+    ]
+    return SimpleNamespace(
+        blocks=blocks, cfg=SimpleNamespace(n_layers=len(blocks), attn_only=False)
+    )
+
+
+def test_component_unit_refuses_a_mixer_decompose_resid_would_not_emit():
+    with pytest.raises(ValueError, match="block 1: its mamba output is not decomposed yet"):
+        _require_every_writer_decomposed(_model_over_blocks(("attn",), ("attn", "mamba")))
+    _require_every_writer_decomposed(_model_over_blocks(("attn",), ("mamba",)))
+    _require_every_writer_decomposed(_model_over_blocks(("linear_attn",), ("attn",)))
+
+
+def test_component_unit_refuses_a_parallel_mixer_before_any_forward():
+    bridge = _mock_bridge()
+    bridge.cfg = SimpleNamespace(n_layers=2, attn_only=False)
+    bridge.blocks = [
+        SimpleNamespace(_modules={"attn": object()}),
+        SimpleNamespace(_modules={"attn": object(), "mamba": object()}),
+    ]
+    with pytest.raises(ValueError, match="block 1: its mamba output is not decomposed yet"):
+        direct_logit_attribution(bridge, "hi", answer_tokens=" world", unit="component")
+    bridge.run_with_cache.assert_not_called()
 
 
 def test_direct_logit_attribution_is_exported_from_analysis_package():

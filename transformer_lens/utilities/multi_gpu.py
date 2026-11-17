@@ -304,6 +304,17 @@ def maybe_cast_floating_params(model: nn.Module, dtype: torch.dtype) -> None:
         cast_floating_params_to_dtype(model, dtype)
 
 
+def model_floating_dtype(model: Any) -> Optional[torch.dtype]:
+    """The dtype of ``model``'s first floating parameter, or None when it has none.
+
+    Quantizer-owned storage is integer-typed and skipped.
+    """
+    parameters = getattr(model, "parameters", None)
+    if not callable(parameters):
+        return None
+    return next((p.dtype for p in parameters() if p.is_floating_point()), None)
+
+
 def find_embedding_device(hf_model: Any) -> Optional[torch.device]:
     """Return the device that input tokens should be placed on for a dispatched HF model.
 

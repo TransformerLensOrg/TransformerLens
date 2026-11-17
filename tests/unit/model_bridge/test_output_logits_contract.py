@@ -12,6 +12,9 @@ from transformer_lens.model_bridge.supported_architectures.falcon_h1 import (
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.minicpm import (
+    MiniCPMArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.muse_glimmer import (
     MuseGlimmerArchitectureAdapter,
 )
@@ -134,4 +137,31 @@ def test_muse_glimmer_applies_multiplier_before_the_softcap() -> None:
     torch.testing.assert_close(
         MuseGlimmerArchitectureAdapter(cfg).apply_output_logits_transform(logits),
         20.0 * torch.tanh(logits * 0.5 / 20.0),
+    )
+
+
+@pytest.mark.parametrize(
+    ("adapter_cls", "architecture", "field", "value"),
+    [
+        (GraniteArchitectureAdapter, "GraniteForCausalLM", "logits_scaling", 4.0),
+        (FalconH1ArchitectureAdapter, "FalconH1ForCausalLM", "lm_head_multiplier", 0.25),
+        (MiniCPMArchitectureAdapter, "MiniCPMForCausalLM", "dim_model_base", 4),
+    ],
+)
+def test_output_logits_scale_matches_the_transform(
+    adapter_cls: type, architecture: str, field: str, value: float
+) -> None:
+    """Linear readouts (logit_attrs) use output_logits_scale in place of the transform."""
+    cfg = build_bridge_config_from_hf(
+        _text_config(**{field: value}),
+        architecture,
+        "tiny-output-scale-contract",
+        torch.float32,
+    )
+    adapter = adapter_cls(cfg)
+    logits = torch.tensor([[-8.0, 4.0]])
+
+    assert adapter.output_logits_scale() != 1.0
+    torch.testing.assert_close(
+        adapter.apply_output_logits_transform(logits), logits * adapter.output_logits_scale()
     )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, Optional
 
 import torch
@@ -63,6 +62,7 @@ class OpaqueBlockBridge(GeneralizedComponent):
                 "Call set_original_component() first."
             )
 
+        args, kwargs = self._maybe_inject_start_residual(args, kwargs)
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
         output = self.original_component(*args, **kwargs)
@@ -89,18 +89,23 @@ class OpaqueBlockBridge(GeneralizedComponent):
             kwargs["hidden_states"] = self.hook_in(kwargs["hidden_states"])
         return args, kwargs
 
+    def _maybe_inject_start_residual(self, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+        """Swap in the caller's residual when the bridge armed this block as the start layer."""
+        if getattr(self, "_start_at_layer_idx", None) is None:
+            return args, kwargs
+        residual = getattr(self, "_start_residual", None)
+        if residual is None:
+            return args, kwargs
+        if len(args) > 0 and isinstance(args[0], torch.Tensor):
+            return (residual,) + args[1:], kwargs
+        if "hidden_states" in kwargs:
+            kwargs = {**kwargs, "hidden_states": residual}
+        return args, kwargs
+
     def _check_stop_at_layer(self, *args: Any, **kwargs: Any) -> None:
-        """Raise StopAtLayerException when the configured stop index matches this block."""
-        if not (hasattr(self, "_stop_at_layer_idx") and self._stop_at_layer_idx is not None):
-            return
-        if self.name is None:
-            return
-        # Mamba uses `.layers.{i}`; `blocks.{i}` is the fallback TL convention.
-        match = re.search(r"\.layers\.(\d+)", self.name) or re.search(r"blocks\.(\d+)", self.name)
-        if not match:
-            return
-        layer_idx = int(match.group(1))
-        if layer_idx != self._stop_at_layer_idx:
+        """Raise StopAtLayerException with the hooked input if the bridge armed this block."""
+        layer_idx = getattr(self, "_stop_at_layer_idx", None)
+        if layer_idx is None:
             return
         if len(args) > 0 and isinstance(args[0], torch.Tensor):
             input_tensor = args[0]

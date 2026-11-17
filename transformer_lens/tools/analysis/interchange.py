@@ -687,15 +687,10 @@ def random_init_bridge(
         The untrained ``TransformerBridge``, in evaluation mode.
     """
     from transformer_lens.model_bridge import TransformerBridge
-    from transformer_lens.utilities.multi_gpu import maybe_cast_floating_params
 
     # The model is built on the CPU, so seed only the CPU generator, inside a fork that restores it
     with torch.random.fork_rng(devices=[]):
         torch.default_generator.manual_seed(seed)
-        bridge = TransformerBridge.boot_transformers(
+        return TransformerBridge.boot_transformers(
             model_name, load_weights=False, dtype=dtype, device=device, **boot_kwargs
         )
-    # Building from a config follows the config's dtype and leaves the weights on the CPU,
-    # whatever device boot recorded; HuggingFace also leaves the model in training mode
-    maybe_cast_floating_params(bridge.original_model, dtype)
-    return bridge.to(bridge.cfg.device).eval()

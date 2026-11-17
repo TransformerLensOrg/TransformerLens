@@ -890,3 +890,36 @@ def test_layer_zero_ln_projected_stack_follows_float32_scales_of_a_bf16_model(
     ]
     assert projected[0].shape[0] == 0
     assert projected[0].dtype == projected[1].dtype
+
+
+def _single_block_cache(hook_mlp_out: bool) -> ActivationCache:
+    """One sequential attn + MoE block; ``hook_mlp_out`` registered and cached only on request."""
+    torch.manual_seed(0)
+    cache_dict = {
+        "hook_embed": torch.randn(2, 4, 8),
+        "blocks.0.hook_attn_out": torch.randn(2, 4, 8),
+        "blocks.0.hook_resid_mid": torch.randn(2, 4, 8),
+        "blocks.0.hook_resid_post": torch.randn(2, 4, 8),
+    }
+    if hook_mlp_out:
+        cache_dict["blocks.0.hook_mlp_out"] = torch.randn(2, 4, 8)
+    block = SimpleNamespace(_modules={"attn": object(), "moe": object()})
+    model = SimpleNamespace(
+        cfg=SimpleNamespace(n_layers=1, attn_only=False),
+        blocks=[block],
+        hook_dict={name: object() for name in cache_dict},
+    )
+    return ActivationCache(cache_dict, model)
+
+
+def test_decompose_resid_derives_mlp_out_from_the_residual_when_the_block_has_no_hook():
+    cache = _single_block_cache(hook_mlp_out=False)
+    components, labels = cache.decompose_resid(return_labels=True)
+    assert labels == ["embed", "0_attn_out", "0_mlp_out"]
+    expected = cache["blocks.0.hook_resid_post"] - cache["blocks.0.hook_resid_mid"]
+    assert torch.equal(components[2], expected)
+
+
+def test_decompose_resid_reads_hook_mlp_out_when_the_block_has_one():
+    cache = _single_block_cache(hook_mlp_out=True)
+    assert torch.equal(cache.decompose_resid()[2], cache["blocks.0.hook_mlp_out"])

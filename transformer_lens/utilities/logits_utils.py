@@ -107,6 +107,11 @@ def sample_logits(
     if repetition_penalty <= 0:
         # Zero divides logits by zero (NaN) and a negative value flips their signs.
         raise ValueError(f"repetition_penalty must be positive, got {repetition_penalty}.")
+    if top_k is not None:
+        # Checked before the greedy branch, so an invalid filter is never silently ignored.
+        assert top_k > 0, "top_k has to be greater than 0"
+    if top_p is not None:
+        assert 1.0 >= top_p > 0.0, "top_p has to be in (0, 1]"
     if temperature == 0.0:
         # Greedy sampling - still apply repetition penalty before argmax
         if repetition_penalty != 1.0 and tokens is not None:
@@ -133,7 +138,6 @@ def sample_logits(
                     tokens[batch_index], minlength=final_logits.shape[-1]
                 )
         if top_k is not None:
-            assert top_k > 0, "top_k has to be greater than 0"
             # Clamp top_k to the vocab size so a large value does not raise
             # "selected index k out of range" (matches HuggingFace's
             # TopKLogitsWarper, which does top_k = min(top_k, logits.size(-1))).
@@ -142,7 +146,6 @@ def sample_logits(
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
         elif top_p is not None:
-            assert 1.0 >= top_p > 0.0, "top_p has to be in (0, 1]"
             sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p

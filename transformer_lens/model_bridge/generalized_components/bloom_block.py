@@ -79,6 +79,7 @@ class BloomBlockBridge(BlockBridge):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        args, kwargs = self._maybe_inject_start_residual(args, kwargs)
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
 

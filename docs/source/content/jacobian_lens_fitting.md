@@ -21,7 +21,9 @@ manifest, and set of estimator options.
 ## Requirements
 
 `JacobianLens.fit` requires a freshly booted, causal decoder-only
-`TransformerBridge` with raw Hugging Face weights:
+`TransformerBridge` with raw Hugging Face weights, whose logits are
+`unembed(ln_final(...))` of the last block's single-stream output (a head
+transform such as ModernBERT-decoder's `prediction_head` is rejected):
 
 ```python
 import torch
