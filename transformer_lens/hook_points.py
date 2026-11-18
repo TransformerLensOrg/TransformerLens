@@ -29,6 +29,12 @@ from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion i
 )
 
 
+def _mark_caching_hook(hook: Callable) -> Callable:
+    """Identify library-owned cache callbacks that only observe their input."""
+    setattr(hook, "_is_caching_hook", True)
+    return hook
+
+
 @dataclass
 class LensHandle:
     """Dataclass that holds information about a PyTorch hook."""
@@ -260,6 +266,9 @@ class HookPoint(nn.Module):
                 )
 
             return hook_result
+
+        if getattr(hook, "_is_caching_hook", False):
+            _mark_caching_hook(full_hook)
 
         # annotate the `full_hook` with the string representation of the `hook` function
         if isinstance(hook, partial):

@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import einops
 import torch
+from torch.nn.modules import module as module_hooks
 from transformers.pytorch_utils import Conv1D
 
 logger = logging.getLogger(__name__)
@@ -1019,10 +1020,25 @@ class AttentionBridge(GeneralizedComponent):
         Read-only hooks (e.g. caching) return the tensor unchanged and stay
         silent.
         """
+        if not (
+            hook._forward_pre_hooks
+            or module_hooks._global_forward_hooks
+            or module_hooks._global_forward_pre_hooks
+        ) and all(
+            getattr(callback, "_is_caching_hook", False)
+            for callback in hook._forward_hooks.values()
+        ):
+            return hook(tensor)
+        # Snapshot only unknown callbacks: inference tensors have no mutation counter,
+        # and an in-place edit also changes every alias used for comparison.
+        original = tensor.detach().clone()
         result = hook(tensor)
-        if isinstance(result, torch.Tensor) and result is not tensor:
+        if isinstance(result, torch.Tensor):
             try:
-                unchanged = result.shape == tensor.shape and torch.equal(result, tensor)
+                unchanged = result.shape == original.shape and (
+                    torch.equal(result, original)
+                    or torch.allclose(result, original, rtol=0, atol=0, equal_nan=True)
+                )
             except RuntimeError:
                 unchanged = False
             if not unchanged:

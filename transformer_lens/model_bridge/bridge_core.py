@@ -27,7 +27,7 @@ import torch
 from torch.nn import functional as F
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.hook_points import HookPoint, LensHandle
+from transformer_lens.hook_points import HookPoint, LensHandle, _mark_caching_hook
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.driver_protocol import to_torch
 from transformer_lens.model_bridge.exceptions import StopAtLayerException
@@ -1079,7 +1079,14 @@ class BridgeCore:
                 continue
             # The unfiltered sweep matches every alias too; keep it canonical-only.
             extra_names = () if names_filter is None else tuple(alias_names)
-            fwd_hooks.append((name, partial(save_hook, is_backward=False, alias_names=extra_names)))
+            fwd_hooks.append(
+                (
+                    name,
+                    _mark_caching_hook(
+                        partial(save_hook, is_backward=False, alias_names=extra_names)
+                    ),
+                )
+            )
             if incl_bwd:
                 bwd_hooks.append(
                     (name, partial(save_hook, is_backward=True, alias_names=extra_names))
@@ -1398,6 +1405,8 @@ class BridgeCore:
                         else:
                             return _orig_fn(tensor, hook)
 
+                    if getattr(original_hook_fn, "_is_caching_hook", False):
+                        _mark_caching_hook(wrapped_hook_fn)
                     hook_fn = wrapped_hook_fn
                 if isinstance(hook_name_or_filter, str):
                     # Resolve BEFORE gating: an aliased HT name may point at an
@@ -1591,7 +1600,7 @@ class BridgeCore:
                         pass
                 return tensor
 
-            return cache_hook
+            return _mark_caching_hook(cache_hook)
 
         hook_dict = self.hook_dict
         n_blocks = self._registered_block_count()
