@@ -27,6 +27,8 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
 from transformer_lens.model_bridge.sources._hf_format import (
     determine_architecture_from_hf_config,
 )
+from transformer_lens.model_bridge.sources.tl_legacy import TL_LEGACY_MODEL_NAMES
+from transformer_lens.model_bridge.sources.tl_legacy import boot as _boot_tl_legacy
 from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 from transformer_lens.utilities import get_device
 from transformer_lens.utilities.attn_implementation import force_eager_attention
@@ -51,6 +53,44 @@ from .helpers import (
 # on unexpected stderr output.
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 logging.getLogger("transformers").setLevel(logging.ERROR)
+
+
+def _route_to_tl_legacy(
+    model_name: str,
+    *,
+    device: str | torch.device | None,
+    dtype: torch.dtype | None,
+    tokenizer: PreTrainedTokenizerBase | None,
+    checkpoint_index: int | None,
+    checkpoint_value: int | None,
+    unsupported: dict[str, Any],
+) -> TransformerBridge:
+    """Load a legacy TransformerLens-format repo via ``boot_tl_legacy``.
+
+    These repos have no HF ``model_type``, so ``AutoConfig`` can't read them.
+    Options ``boot_tl_legacy`` can't honor raise rather than being dropped.
+    """
+    passed = sorted(name for name, value in unsupported.items() if value is not None)
+    if passed:
+        raise ValueError(
+            f"{model_name!r} is a legacy TransformerLens-format repo, loaded with "
+            f"TransformerBridge.boot_tl_legacy, which doesn't support: {', '.join(passed)}. "
+            "Remove these arguments or call boot_tl_legacy directly."
+        )
+    logging.warning(
+        f"{model_name!r} is a legacy TransformerLens-format repo, so boot_transformers is "
+        "loading it with TransformerBridge.boot_tl_legacy. Call "
+        f"TransformerBridge.boot_tl_legacy({model_name!r}) directly to avoid this warning."
+    )
+    return _boot_tl_legacy(
+        model_name,
+        checkpoint_index=checkpoint_index,
+        checkpoint_value=checkpoint_value,
+        device=device,
+        # boot_transformers' None means float32 for a fresh load, as here.
+        dtype=dtype if dtype is not None else torch.float32,
+        tokenizer=tokenizer,
+    )
 
 
 def boot(
@@ -87,7 +127,13 @@ def boot(
     shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
 
     Args:
-        model_name: The name of the model to load.
+        model_name: The name of the model to load. The known legacy TransformerLens-format
+            repos (``TL_LEGACY_MODEL_NAMES``: e.g. ``NeelNanda/GELU_1L512W_C4_Code``) and their
+            aliases are loaded with ``boot_tl_legacy`` instead, with a warning. Other repos in
+            those namespaces load as ordinary HF models. Only ``device``, ``dtype``,
+            ``tokenizer`` and the checkpoint arguments apply to them; HF loading options
+            (``device_map``, ``revision``, ``load_weights=False``, ...) raise. Passing
+            ``hf_model`` skips this routing.
         hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
         device: The device to use. If None, will be determined automatically. Mutually exclusive
             with ``device_map``.
@@ -150,6 +196,28 @@ def boot(
             f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases may be removed in a future version of TransformerLens, so please do the update now."
         )
         model_name = official_name
+    # A pre-loaded hf_model is HF-format by construction, whatever its repo name.
+    if hf_model is None and model_name in TL_LEGACY_MODEL_NAMES:
+        return _route_to_tl_legacy(
+            model_name,
+            device=device,
+            dtype=dtype,
+            tokenizer=tokenizer,
+            checkpoint_index=checkpoint_index,
+            checkpoint_value=checkpoint_value,
+            unsupported={
+                "hf_config_overrides": hf_config_overrides,
+                "load_weights": None if load_weights else False,
+                "model_class": model_class,
+                "n_ctx": n_ctx,
+                "revision": revision,
+                "code_revision": code_revision,
+                "device_map": device_map,
+                "n_devices": n_devices,
+                "max_memory": max_memory,
+                "offload_folder": offload_folder,
+            },
+        )
     if checkpoint_index is not None or checkpoint_value is not None:
         if revision is not None:
             raise ValueError(

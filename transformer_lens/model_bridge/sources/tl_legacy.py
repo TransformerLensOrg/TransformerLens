@@ -27,6 +27,42 @@ from transformer_lens.utilities.tl_checkpoint_conversion import convert_tl_check
 
 TL_LEGACY_PREFIXES = ("NeelNanda/", "ArthurConmy/", "Baidicoot/")
 
+# The known legacy TL-format repos. These namespaces also host ordinary HF-format
+# models (e.g. Baidicoot/Llama-3-8B-Instruct-LAT), so boot_transformers routes on
+# this exact list rather than on TL_LEGACY_PREFIXES.
+TL_LEGACY_MODEL_NAMES = frozenset(
+    {
+        "ArthurConmy/redwood_attn_2l",
+        "Baidicoot/Othello-GPT-Transformer-Lens",
+        "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
+        "NeelNanda/Attn_Only_1L512W_C4_Code",
+        "NeelNanda/Attn_Only_2L512W_C4_Code",
+        "NeelNanda/Attn_Only_3L512W_C4_Code",
+        "NeelNanda/Attn_Only_4L512W_C4_Code",
+        "NeelNanda/GELU_1L512W_C4_Code",
+        "NeelNanda/GELU_2L512W_C4_Code",
+        "NeelNanda/GELU_3L512W_C4_Code",
+        "NeelNanda/GELU_4L512W_C4_Code",
+        "NeelNanda/SoLU_10L1280W_C4_Code",
+        "NeelNanda/SoLU_10L_v22_old",
+        "NeelNanda/SoLU_12L1536W_C4_Code",
+        "NeelNanda/SoLU_12L_v23_old",
+        "NeelNanda/SoLU_1L512W_C4_Code",
+        "NeelNanda/SoLU_1L512W_Wiki_Finetune",
+        "NeelNanda/SoLU_1L_v9_old",
+        "NeelNanda/SoLU_2L512W_C4_Code",
+        "NeelNanda/SoLU_2L_v10_old",
+        "NeelNanda/SoLU_3L512W_C4_Code",
+        "NeelNanda/SoLU_4L512W_C4_Code",
+        "NeelNanda/SoLU_4L512W_Wiki_Finetune",
+        "NeelNanda/SoLU_4L_v11_old",
+        "NeelNanda/SoLU_6L768W_C4_Code",
+        "NeelNanda/SoLU_6L_v13_old",
+        "NeelNanda/SoLU_8L1024W_C4_Code",
+        "NeelNanda/SoLU_8L_v21_old",
+    }
+)
+
 
 def _fetch_json(repo_id: str, filename: str) -> dict:
     from huggingface_hub import hf_hub_download
