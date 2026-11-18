@@ -401,3 +401,22 @@ def test_native_inference_observers_do_not_treat_nonfinite_values_as_edits(inval
         bridge.hook_scale.remove_hooks()
         bridge.hook_normalized.remove_hooks()
         torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
+
+
+def test_native_path_unhooked_returns_hf_output(monkeypatch):
+    """With nothing hooked, the native path skips the intermediates and returns HF's output."""
+    import transformer_lens.model_bridge.generalized_components.normalization as norm
+
+    monkeypatch.setattr(norm, "_run_intermediate_hook", lambda *a: pytest.fail("computed"))
+    bridge = _make_bridge(native=True, rms=True)
+    x = torch.randn(2, 5, 16)
+    assert torch.equal(bridge(x), bridge.original_component(x))
+
+
+def test_native_path_raw_torch_hook_on_hook_scale_fires():
+    """A hook registered on hook_scale with plain torch still runs."""
+    bridge = _make_bridge(native=True)
+    seen = []
+    bridge.hook_scale.register_forward_hook(lambda module, args, out: seen.append(out))
+    bridge(torch.randn(2, 5, 16))
+    assert len(seen) == 1

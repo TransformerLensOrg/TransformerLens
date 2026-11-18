@@ -202,6 +202,11 @@ class NormalizationBridge(GeneralizedComponent):
         if self.hook_scale.bwd_hooks or self.hook_normalized.bwd_hooks:
             warnings.warn(NATIVE_PATH_BWD_FALLBACK_WARNING)
             return self._python_norm_forward(x)
+        if not any(
+            p._forward_hooks or p._forward_pre_hooks
+            for p in (self.hook_scale, self.hook_normalized)
+        ):
+            return self.original_component(x).to(x.dtype)
         has_fwd_hooks = bool(self.hook_scale.fwd_hooks or self.hook_normalized.fwd_hooks)
         # No hooks: skip building a graph for observation-only intermediates. With hooks,
         # keep grad so an edited value stays connected to the input.
