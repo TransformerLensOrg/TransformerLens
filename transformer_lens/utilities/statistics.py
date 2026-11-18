@@ -270,10 +270,12 @@ def success_rate_ci(
     zero successes out of six). Deterministic: no resampling and no seed.
 
     Raises:
-        ValueError: If ``successes`` is empty.
+        ValueError: If ``successes`` is empty or ``confidence`` is not in (0, 1).
     """
     if len(successes) == 0:
         raise ValueError("successes must be a non-empty sequence")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError(f"confidence must be in (0, 1), got {confidence}")
     n_trials = len(successes)
     n_successes = sum(1 for success in successes if success)
     tail = (1.0 - confidence) / 2.0

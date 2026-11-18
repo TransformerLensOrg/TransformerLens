@@ -359,6 +359,21 @@ def test_success_rate_ci_rejects_empty_input():
         success_rate_ci([])
 
 
+@pytest.mark.parametrize("confidence", [0.0, 1.0, -0.2, 1.5, math.nan])
+def test_success_rate_ci_rejects_confidence_outside_the_open_unit_interval(confidence: float):
+    # Without a check these return an inverted interval (nan), a narrow interval that
+    # does not mean what the caller asked for (0 and negative values) or [0, 1] (1 and above).
+    with pytest.raises(ValueError, match="confidence"):
+        success_rate_ci([True, False, True, False], confidence=confidence)
+
+
+@pytest.mark.parametrize("confidence", [0.5, 0.9, 0.99])
+def test_success_rate_ci_accepts_confidence_inside_the_open_unit_interval(confidence: float):
+    result = success_rate_ci([True, False, True, False], confidence=confidence)
+    assert result.confidence == confidence
+    assert 0.0 <= result.ci_low <= result.point_estimate <= result.ci_high <= 1.0
+
+
 def test_success_rate_ci_old_analysis_path_forwards_with_a_deprecation_warning():
     with pytest.warns(DeprecationWarning, match="import it from transformer_lens.utilities"):
         from transformer_lens.tools.analysis import success_rate_ci as forwarded
