@@ -80,7 +80,7 @@ class ActivationCache:
     >>> print(labels[0:3])
     ['embed', 'pos_embed', '0_attn_out']
 
-    >>> answer = " road" # Note the proceeding space to match the model's tokenization
+    >>> answer = " road" # Note the preceding space to match the model's tokenization
     >>> logit_attrs = cache.logit_attrs(residual_stream, answer)
     >>> print(logit_attrs.shape) # Attention layers
     torch.Size([10, 1, 7])
@@ -1418,13 +1418,11 @@ class ActivationCache:
             activation_name:
                 The name of the activation to be stacked
             layer:
-                'Layer index - heads' at all layers strictly before this are included. layer must be
-                in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer.
+                Activations from all layers strictly before this one are stacked. Must be in
+                [1, n_layers]; -1 or None (the default) means all layers.
             sublayer_type:
                 The sub layer type of the activation, passed to utils.get_act_name. Can normally be
                 inferred.
-            incl_remainder:
-                Whether to return a final term which is "the rest of the residual stream".
         """
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
@@ -1445,7 +1443,7 @@ class ActivationCache:
     ) -> torch.Tensor:
         """Get Neuron Results.
 
-        Get the results of for neurons in a specific layer (i.e, how much each neuron contributes to
+        Get the results for neurons in a specific layer (i.e, how much each neuron contributes to
         the residual stream). Does it for the subset of neurons specified by neuron_slice, defaults
         to all of them. Does *not* cache these because it's expensive in space and cheap to compute.
 
