@@ -27,7 +27,7 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
 from transformer_lens.model_bridge.sources._hf_format import (
     determine_architecture_from_hf_config,
 )
-from transformer_lens.model_bridge.sources.tl_legacy import TL_LEGACY_PREFIXES
+from transformer_lens.model_bridge.sources.tl_legacy import TL_LEGACY_MODEL_NAMES
 from transformer_lens.model_bridge.sources.tl_legacy import boot as _boot_tl_legacy
 from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 from transformer_lens.utilities import get_device
@@ -127,9 +127,10 @@ def boot(
     shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
 
     Args:
-        model_name: The name of the model to load. Legacy TransformerLens-format repos
-            (``NeelNanda/*``, ``ArthurConmy/*``, ``Baidicoot/*``) and their aliases are loaded
-            with ``boot_tl_legacy`` instead, with a warning. Only ``device``, ``dtype``,
+        model_name: The name of the model to load. The known legacy TransformerLens-format
+            repos (``TL_LEGACY_MODEL_NAMES``: e.g. ``NeelNanda/GELU_1L512W_C4_Code``) and their
+            aliases are loaded with ``boot_tl_legacy`` instead, with a warning. Other repos in
+            those namespaces load as ordinary HF models. Only ``device``, ``dtype``,
             ``tokenizer`` and the checkpoint arguments apply to them; HF loading options
             (``device_map``, ``revision``, ``load_weights=False``, ...) raise. Passing
             ``hf_model`` skips this routing.
@@ -196,7 +197,7 @@ def boot(
         )
         model_name = official_name
     # A pre-loaded hf_model is HF-format by construction, whatever its repo name.
-    if hf_model is None and model_name.startswith(TL_LEGACY_PREFIXES):
+    if hf_model is None and model_name in TL_LEGACY_MODEL_NAMES:
         return _route_to_tl_legacy(
             model_name,
             device=device,

@@ -8,6 +8,10 @@ import torch
 from transformers import GPT2Config, PreTrainedTokenizerBase
 
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources.tl_legacy import (
+    TL_LEGACY_MODEL_NAMES,
+    TL_LEGACY_PREFIXES,
+)
 from transformer_lens.model_bridge.sources.transformers import source
 
 GELU_1L = "NeelNanda/GELU_1L512W_C4_Code"
@@ -42,20 +46,25 @@ def test_alias_and_repo_id_route_to_boot_tl_legacy(legacy_boot, name, caplog):
     assert f"TransformerBridge.boot_tl_legacy('{GELU_1L}')" in caplog.text
 
 
-def test_supported_options_are_forwarded(legacy_boot):
+@pytest.mark.parametrize(
+    "checkpoint",
+    [{"checkpoint_index": 3}, {"checkpoint_value": 1024}],
+    ids=lambda checkpoint: next(iter(checkpoint)),
+)
+def test_supported_options_are_forwarded(legacy_boot, checkpoint):
     tokenizer = MagicMock(spec=PreTrainedTokenizerBase, name="tokenizer")
     source.boot(
         GELU_1L,
         device="cpu",
         dtype=torch.float16,
         tokenizer=tokenizer,
-        checkpoint_index=3,
         trust_remote_code=True,  # irrelevant to .pth repos, so harmlessly ignored
+        **checkpoint,
     )
     legacy_boot.assert_called_once_with(
         GELU_1L,
-        checkpoint_index=3,
-        checkpoint_value=None,
+        checkpoint_index=checkpoint.get("checkpoint_index"),
+        checkpoint_value=checkpoint.get("checkpoint_value"),
         device="cpu",
         dtype=torch.float16,
         tokenizer=tokenizer,
@@ -84,12 +93,22 @@ def test_unsupported_options_raise_instead_of_being_dropped(legacy_boot, kwargs)
     legacy_boot.assert_not_called()
 
 
-def test_hf_format_repos_are_not_routed(legacy_boot):
+# The legacy namespaces also host HF-format models, which must not be routed.
+@pytest.mark.parametrize("name", ["gpt2", "Baidicoot/Llama-3-8B-Instruct-LAT"])
+def test_hf_format_repos_are_not_routed(legacy_boot, name):
     with patch.object(source.AutoConfig, "from_pretrained", side_effect=_TookHFPath), pytest.raises(
         _TookHFPath
     ):
-        source.boot("gpt2", device="cpu")
+        source.boot(name, device="cpu")
     legacy_boot.assert_not_called()
+
+
+def test_legacy_list_matches_the_model_registry():
+    """Every legacy-namespace model TL ships is routed, and nothing else is."""
+    from transformer_lens.supported_models import OFFICIAL_MODEL_NAMES
+
+    registry = {name for name in OFFICIAL_MODEL_NAMES if name.startswith(TL_LEGACY_PREFIXES)}
+    assert TL_LEGACY_MODEL_NAMES == registry
 
 
 def test_preloaded_hf_model_is_not_routed(legacy_boot):
