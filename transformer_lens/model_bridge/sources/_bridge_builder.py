@@ -28,6 +28,8 @@ from transformer_lens.utilities.heterogeneous_config import (
 from transformer_lens.utilities.multi_gpu import (
     maybe_cast_floating_params,
     model_floating_dtype,
+    place_on_device,
+    report_device,
 )
 
 # Architecture-agnostic; do not extend per-architecture.
@@ -309,10 +311,10 @@ def build_bridge_from_module(
 ) -> TransformerBridge:
     """Build a :class:`TransformerBridge` around a pre-loaded model.
 
-    The bridge never moves the supplied model and casts it only when ``dtype`` is
-    given, but it does modify it in place: bridge components replace its submodules,
-    and ``adapter.prepare_model`` may switch it to eager attention or patch forwards
-    and buffers.
+    The bridge moves the supplied model only when ``device`` is given and casts it only
+    when ``dtype`` is given, but it does modify it in place: bridge components replace
+    its submodules, and ``adapter.prepare_model`` may switch it to eager attention or
+    patch forwards and buffers.
 
     Args:
         model: Any ``nn.Module`` whose submodule tree matches the adapter's
@@ -329,8 +331,10 @@ def build_bridge_from_module(
         dtype: Applied to the model's floating parameters when given (quantized
             models excepted); ``None`` keeps the model's dtype. Either way
             ``cfg.dtype`` reports the parameters' actual dtype.
-        device: Recorded on ``cfg.device``. Default ``None`` reads from the
-            model's first parameter.
+        device: Applied to the model when given, unless a device_map or quantizer
+            owns its placement (then the request must match it); ``None`` leaves the
+            model where it is. Either way ``cfg.device`` reports where the
+            parameters are.
         model_name: Recorded on ``cfg.model_name``.
         post_adapter_hook: Optional callback invoked after adapter selection and
             before :meth:`adapter.prepare_model`. Source-specific overlays mutate
@@ -388,13 +392,11 @@ def build_bridge_from_module(
     if post_adapter_hook is not None:
         post_adapter_hook(adapter)
 
-    if device is not None:
-        adapter.cfg.device = str(device)
-    else:
-        try:
-            adapter.cfg.device = str(next(model.parameters()).device)
-        except StopIteration:
-            adapter.cfg.device = "cpu"
+    # An explicit device moves the model unless a device_map or quantizer owns its
+    # placement; cfg.device then reports where the parameters are, not what was asked.
+    adapter.cfg.device = (
+        place_on_device(model, device) if device is not None else report_device(model, None)
+    )
 
     adapter.prepare_model(model)
 

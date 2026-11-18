@@ -40,6 +40,8 @@ from transformer_lens.utilities.multi_gpu import (
     is_mixed_offload_gpu,
     maybe_cast_floating_params,
     model_floating_dtype,
+    place_on_device,
+    report_device,
     resolve_device_map,
 )
 
@@ -151,8 +153,9 @@ def boot(
         hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored; an explicit ``dtype`` is applied to its
-            floating parameters (quantized models excepted), and without ``device=`` the
-            bridge reads ``cfg.device`` from the model's weights.
+            floating parameters (quantized models excepted) and an explicit ``device`` moves it
+            unless a device_map or quantizer owns its placement, in which case the request must
+            match. Without ``device=`` the bridge reads ``cfg.device`` from the model's weights.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
             dispatched inference. Explicit maps may include CPU and disk targets; meta targets
             are still rejected when ``load_weights=True`` (meta has no real data to offload from,
@@ -336,7 +339,7 @@ def boot(
         n_devices, device_map, device, max_memory
     )
     if resolved_device_map is None:
-        # hf_model is never moved; without device= cfg.device is read from it below.
+        # Without device= a pre-loaded hf_model keeps its placement, read back below.
         if device is None and hf_model is None:
             device = get_device()
         adapter.cfg.device = None if device is None else str(device)
@@ -391,17 +394,22 @@ def boot(
             )
     no_weights_device: str | torch.device | None = None
     if hf_model is not None:
-        # Pre-loaded weights stay where they are (quantized models with custom device_map
-        # are why this branch takes the model as-is), but attn-impl selection is runtime
-        # dispatch — safe to switch in place. Without it, transformers' default sdpa
-        # returns attn_weights=None and hook_pattern / hook_attn_scores silently never
-        # fire. An explicit adapter/user choice wins, matching the load path above.
+        # Pre-loaded weights stay put unless device= asks otherwise (quantized models with
+        # custom device_map are why this branch takes the model as-is), but attn-impl
+        # selection is runtime dispatch — safe to switch in place. Without it, transformers'
+        # default sdpa returns attn_weights=None and hook_pattern / hook_attn_scores silently
+        # never fire. An explicit adapter/user choice wins, matching the load path above.
         if getattr(adapter.cfg, "attn_implementation", None) is None:
             force_eager_attention(hf_model)
         # Only an explicit dtype casts; the default means "as loaded". The helper skips
-        # quantized models, whose dtype is the quantizer's to choose.
+        # quantized models, whose dtype is the quantizer's to choose. Cast before moving,
+        # so a narrower dtype is what reaches the device.
         if requested_dtype is not None:
             maybe_cast_floating_params(hf_model, requested_dtype)
+        # An explicit device moves the model unless a device_map or quantizer owns its
+        # placement, where a conflicting request is an error rather than a recorded lie.
+        if device is not None:
+            adapter.cfg.device = place_on_device(hf_model, device)
     elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:
@@ -509,11 +517,9 @@ def boot(
         adapter.cfg.device = str(embedding_device)
         adapter.cfg.n_devices = count_unique_devices(hf_model)
     elif adapter.cfg.device is None:
-        # Pre-loaded single-device model with no hf_device_map — fall back to first param.
-        try:
-            adapter.cfg.device = str(next(hf_model.parameters()).device)
-        except StopIteration:
-            adapter.cfg.device = "cpu"
+        # Nothing placed the model here (a pre-loaded one without device=, or a no-weights
+        # build whose device_map is not applied): read its placement back.
+        adapter.cfg.device = report_device(hf_model, None)
     # cfg.dtype reports what the parameters are, not what was asked for: a quantizer may
     # override the request.
     actual_dtype = model_floating_dtype(hf_model)

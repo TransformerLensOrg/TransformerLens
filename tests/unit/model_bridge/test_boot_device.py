@@ -1,22 +1,92 @@
-"""boot()'s device for a pre-loaded ``hf_model``."""
+"""boot()'s device for a pre-loaded ``hf_model``: applied when asked for, reported as it is."""
 
+import logging
+
+import pytest
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
 
 from transformer_lens.model_bridge import TransformerBridge
 
+TINY = dict(hidden_size=32, num_hidden_layers=1, num_attention_heads=4, intermediate_size=64)
+
+
+def _tiny_neox():
+    return AutoModelForCausalLM.from_config(AutoConfig.for_model("gpt_neox", **TINY))
+
+
+def _param_devices(model):
+    return {p.device.type for p in model.parameters()}
+
 
 def test_device_defaults_to_hf_model_device(monkeypatch):
-    # boot never moves hf_model, so cfg.device must be the model's device, not get_device()'s.
+    # Without device= boot never moves hf_model, so cfg.device must be the model's device,
+    # not get_device()'s.
     monkeypatch.setattr(
         "transformer_lens.model_bridge.sources.transformers.source.get_device", lambda: "cuda"
     )
-    hf_config = AutoConfig.for_model(
-        "gpt_neox", hidden_size=32, num_hidden_layers=1, num_attention_heads=4, intermediate_size=64
-    )
     with torch.device("meta"):
-        hf_model = AutoModelForCausalLM.from_config(hf_config)
+        hf_model = _tiny_neox()
 
     bridge = TransformerBridge.boot_transformers("EleutherAI/pythia-70m", hf_model=hf_model)
 
     assert bridge.cfg.device == "meta"
+
+
+def test_explicit_device_is_applied_to_hf_model():
+    # meta is the one target besides cpu that every machine can move to, so the move shows.
+    hf_model = _tiny_neox()
+
+    bridge = TransformerBridge.boot_transformers(
+        "EleutherAI/pythia-70m", hf_model=hf_model, device="meta"
+    )
+
+    assert _param_devices(hf_model) == {"meta"}
+    assert bridge.cfg.device == "meta"
+
+
+def test_explicit_dtype_is_cast_before_the_move():
+    # Meta parameters are never cast, so the dtype lands only if the cast ran before the move.
+    hf_model = _tiny_neox()
+
+    bridge = TransformerBridge.boot_transformers(
+        "EleutherAI/pythia-70m", hf_model=hf_model, device="meta", dtype=torch.float16
+    )
+
+    assert {p.dtype for p in hf_model.parameters() if p.is_floating_point()} == {torch.float16}
+    assert _param_devices(hf_model) == {"meta"}
+    assert bridge.cfg.dtype is torch.float16
+
+
+def test_cfg_device_reports_the_parameters_when_a_request_is_not_applied(caplog):
+    # Meta parameters have nothing to move, so the request cannot land.
+    with torch.device("meta"):
+        hf_model = _tiny_neox()
+
+    with caplog.at_level(logging.WARNING):
+        bridge = TransformerBridge.boot_transformers(
+            "EleutherAI/pythia-70m", hf_model=hf_model, device="cpu"
+        )
+
+    assert bridge.cfg.device == "meta"
+    assert "device=cpu was requested" in caplog.text
+
+
+@pytest.mark.parametrize("owner", ["device_map", "quantizer"])
+def test_owned_placement_rejects_a_conflicting_device_and_accepts_its_own(owner):
+    hf_model = _tiny_neox()
+    if owner == "device_map":
+        hf_model.hf_device_map = {"": "cpu"}
+    else:
+        hf_model.config.quantization_config = {"quant_method": "mxfp4"}
+
+    with pytest.raises(ValueError, match="does not move dispatched or quantized"):
+        TransformerBridge.boot_transformers(
+            "EleutherAI/pythia-70m", hf_model=hf_model, device="cuda"
+        )
+
+    bridge = TransformerBridge.boot_transformers(
+        "EleutherAI/pythia-70m", hf_model=hf_model, device="cpu"
+    )
+    assert _param_devices(hf_model) == {"cpu"}
+    assert bridge.cfg.device == "cpu"
