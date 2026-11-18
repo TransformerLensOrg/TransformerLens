@@ -460,3 +460,13 @@ def test_unembedding_forward_preserves_input_dtype():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_original_forward_signature_cached_until_forward_replaced():
+    component = MockGeneralizedComponent()
+    original = MockOriginalComponent()
+    component.set_original_component(original)
+    signature = component._original_forward_signature()
+    assert component._original_forward_signature() is signature
+    original.forward = lambda x, y=None: x
+    assert list(component._original_forward_signature().parameters) == ["x", "y"]
