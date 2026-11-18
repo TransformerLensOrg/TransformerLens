@@ -1035,3 +1035,17 @@ def test_half_precision_post_norm_full_resid_decomposition(
     projected = cache.get_full_resid_decomposition(apply_ln=apply_ln, project_output_onto=direction)
     assert projected.dtype == expected_dtype
     torch.testing.assert_close(projected.float().sum(0), expected.float(), atol=atol, rtol=atol)
+
+@torch.no_grad()
+def test_accumulated_bias_prefers_parameter_dtype_after_half(
+    activation_cache: ActivationCache,
+) -> None:
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model = TransformerBridge.boot_native(
+            activation_cache.model.cfg, dtype=torch.float32
+        ).eval()
+    model.half()
+    assert model.cfg.dtype == torch.float32
+    assert model.accumulated_bias(0).dtype == torch.float16
+    assert model.accumulated_bias(model.cfg.n_layers).dtype == torch.float16
