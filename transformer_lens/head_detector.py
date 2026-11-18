@@ -193,7 +193,7 @@ def detect_head(
 def get_previous_token_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
+    """Outputs a detection pattern for [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
 
     Args:
       tokens: Tokens being fed to the model.
@@ -208,7 +208,7 @@ def get_previous_token_head_detection_pattern(
 def get_duplicate_token_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
+    """Outputs a detection pattern for [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
 
     Args:
       tokens: Tokens being fed to the model.
@@ -228,7 +228,7 @@ def get_duplicate_token_head_detection_pattern(
 def get_induction_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
+    """Outputs a detection pattern for [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
 
     Args:
       tokens: Tokens being fed to the model.
