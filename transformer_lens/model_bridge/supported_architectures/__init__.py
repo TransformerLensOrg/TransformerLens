@@ -154,6 +154,9 @@ from transformer_lens.model_bridge.supported_architectures.mingpt import MingptA
 from transformer_lens.model_bridge.supported_architectures.minicpm import (
     MiniCPMArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.minicpm3 import (
+    MiniCPM3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.minimax_m2 import (
     MiniMaxM2ArchitectureAdapter,
 )
@@ -412,6 +415,7 @@ __all__ = [
     "MBartArchitectureAdapter",
     "MingptArchitectureAdapter",
     "MiniCPMArchitectureAdapter",
+    "MiniCPM3ArchitectureAdapter",
     "MiniMaxM2ArchitectureAdapter",
     "MistralArchitectureAdapter",
     "Mistral3ArchitectureAdapter",

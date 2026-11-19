@@ -15,6 +15,9 @@ from transformer_lens.model_bridge.supported_architectures.granite import (
 from transformer_lens.model_bridge.supported_architectures.minicpm import (
     MiniCPMArchitectureAdapter,
 )
+from transformer_lens.model_bridge.supported_architectures.minicpm3 import (
+    MiniCPM3ArchitectureAdapter,
+)
 from transformer_lens.model_bridge.supported_architectures.muse_glimmer import (
     MuseGlimmerArchitectureAdapter,
 )
@@ -146,6 +149,7 @@ def test_muse_glimmer_applies_multiplier_before_the_softcap() -> None:
         (GraniteArchitectureAdapter, "GraniteForCausalLM", "logits_scaling", 4.0),
         (FalconH1ArchitectureAdapter, "FalconH1ForCausalLM", "lm_head_multiplier", 0.25),
         (MiniCPMArchitectureAdapter, "MiniCPMForCausalLM", "dim_model_base", 4),
+        (MiniCPM3ArchitectureAdapter, "MiniCPM3ForCausalLM", "dim_model_base", 4),
     ],
 )
 def test_output_logits_scale_matches_the_transform(
