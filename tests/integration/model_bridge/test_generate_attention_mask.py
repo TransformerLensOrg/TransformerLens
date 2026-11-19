@@ -61,8 +61,8 @@ def test_without_a_mask_the_pads_are_treated_as_context(
 ) -> None:
     """The unfixed behaviour, pinned so a regression is visible rather than silent.
 
-    padding_side defaults to "right", so leading pads are not recognised and the
-    continuation drifts. This is the case #1612 reported.
+    With neither a mask nor a padding_side nothing reads the pads, so they stay
+    context and the continuation drifts. This is the case #1612 reported.
     """
     padded, _ = _left_pad(distilgpt2_bridge, prompt, 4)
 
@@ -74,8 +74,8 @@ def test_without_a_mask_the_pads_are_treated_as_context(
 def test_padding_side_left_is_applied_to_token_input(
     distilgpt2_bridge, prompt, unpadded_continuation
 ) -> None:
-    """generate() has always documented a padding_side argument, but applied it
-    only when tokenizing string or list input. For a token tensor it was inert."""
+    """generate() used to accept a padding_side argument without reading it, so for a
+    token tensor it was inert."""
     padded, _ = _left_pad(distilgpt2_bridge, prompt, 4)
 
     out = distilgpt2_bridge.generate(padded, padding_side="left", **GREEDY)
@@ -84,7 +84,7 @@ def test_padding_side_left_is_applied_to_token_input(
 
 
 def test_padding_side_is_restored_afterwards(distilgpt2_bridge, prompt) -> None:
-    """The tokenizer is shared across a session, so the override must not leak."""
+    """The tokenizer is shared across a session, so its padding_side must come back unchanged."""
     before = distilgpt2_bridge.tokenizer.padding_side
     padded, _ = _left_pad(distilgpt2_bridge, prompt, 3)
 

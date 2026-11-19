@@ -105,7 +105,7 @@ class TestGeneratePrependBos:
         assert torch.equal(tokens_default, tokens_explicit)
 
     def test_prepend_bos_ignored_for_tensor_input(self, distilgpt2_bridge):
-        """prepend_bos should be ignored when input is already a token tensor."""
+        """prepend_bos never prepends to an input that is already a token tensor."""
         bridge = distilgpt2_bridge
         tokens = bridge.to_tokens("Hello", prepend_bos=False)
 
@@ -294,13 +294,14 @@ class TestBatchedPromptMask:
         "verbose": False,
     }
 
-    def _run(self, bridge, stream, prompts, prepend_bos):
+    def _run(self, bridge, stream, prompts, prepend_bos, **extra):
+        kwargs = {**self.KWARGS, **extra}
         if stream:
             chunks = bridge.generate_stream(
-                prompts, prepend_bos=prepend_bos, max_tokens_per_yield=100, **self.KWARGS
+                prompts, prepend_bos=prepend_bos, max_tokens_per_yield=100, **kwargs
             )
             return torch.cat(list(chunks), dim=-1)
-        return bridge.generate(prompts, prepend_bos=prepend_bos, **self.KWARGS)
+        return bridge.generate(prompts, prepend_bos=prepend_bos, **kwargs)
 
     def _assert_rows_match_single_prompts(self, bridge, stream, prompts, prepend_bos):
         batched = self._run(bridge, stream, prompts, prepend_bos)
@@ -320,6 +321,54 @@ class TestBatchedPromptMask:
         bos = distilgpt2_bridge.tokenizer.bos_token
         prompts = [bos + prompt for prompt in self.PROMPTS]
         self._assert_rows_match_single_prompts(distilgpt2_bridge, stream, prompts, False)
+
+    def test_padding_side_reads_the_pads_off_a_token_batch(self, distilgpt2_bridge, stream):
+        """A token tensor carries no mask, so padding_side says which edge its pads are on."""
+        bridge = distilgpt2_bridge
+        tokens = bridge.to_tokens(
+            self.PROMPTS, prepend_bos=False, padding_side="left", truncate=False
+        )
+        batched = self._run(bridge, stream, tokens, False, padding_side="left")
+        for row, prompt in enumerate(self.PROMPTS):
+            single = self._run(bridge, stream, prompt, False)
+            assert torch.equal(batched[row, -single.shape[-1] :], single[0])
+
+    def test_explicit_mask_outranks_padding_side(self, distilgpt2_bridge, stream):
+        """The side only stands in for a missing mask: all ones keeps the pads attended."""
+        bridge = distilgpt2_bridge
+        tokens = bridge.to_tokens(
+            self.PROMPTS, prepend_bos=False, padding_side="left", truncate=False
+        )
+        ones = torch.ones_like(tokens)
+        both = self._run(bridge, stream, tokens, False, padding_side="left", attention_mask=ones)
+        assert torch.equal(both, self._run(bridge, stream, tokens, False))
+
+    def test_padding_side_leaves_string_input_to_the_tokenizer(self, distilgpt2_bridge, stream):
+        """Only the tokenizer's mask can tell a literal BOS from the pads it shares an id with."""
+        bos = distilgpt2_bridge.tokenizer.bos_token
+        prompts = [bos + prompt for prompt in self.PROMPTS]
+        batched = self._run(distilgpt2_bridge, stream, prompts, False, padding_side="left")
+        for row, prompt in enumerate(prompts):
+            single = self._run(distilgpt2_bridge, stream, prompt, False)
+            assert torch.equal(batched[row, -single.shape[-1] :], single[0])
+
+    def test_padding_side_on_unpadded_tokens_passes_no_mask(self, distilgpt2_bridge, stream):
+        """An all-ones mask is what the model assumes anyway, so the prompt runs as before."""
+        bridge = distilgpt2_bridge
+        tokens = bridge.to_tokens(self.PROMPTS[0], prepend_bos=False)
+        seen = []
+
+        def record(module, args, kwargs):
+            seen.append(kwargs.get("attention_mask"))
+
+        handle = bridge.register_forward_pre_hook(record, with_kwargs=True)
+        try:
+            # Uncached, since the cached loop writes its own all-ones mask from step 1.
+            self._run(bridge, stream, tokens, False, padding_side="left", use_past_kv_cache=False)
+        finally:
+            handle.remove()
+        assert len(seen) == self.KWARGS["max_new_tokens"]
+        assert all(mask is None for mask in seen)
 
     def test_explicit_mask_wins(self, distilgpt2_bridge, stream):
         """An all-ones mask attends the pads, so the batch runs as its bare tensor does."""
