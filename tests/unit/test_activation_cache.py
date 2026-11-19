@@ -1036,6 +1036,7 @@ def test_half_precision_post_norm_full_resid_decomposition(
     assert projected.dtype == expected_dtype
     torch.testing.assert_close(projected.float().sum(0), expected.float(), atol=atol, rtol=atol)
 
+
 @torch.no_grad()
 def test_accumulated_bias_prefers_parameter_dtype_after_half(
     activation_cache: ActivationCache,
