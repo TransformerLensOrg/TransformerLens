@@ -157,7 +157,14 @@ def get_rotary_pct_from_config(config: Any) -> float:
 
 def select_compatible_kwargs(kwargs_dict: Dict[str, Any], callable: Callable) -> Dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
-    return {k: v for k, v in kwargs_dict.items() if k in inspect.getfullargspec(callable).args}
+    parameters = inspect.signature(callable).parameters
+    return {
+        k: v
+        for k, v in kwargs_dict.items()
+        if k in parameters
+        and parameters[k].kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
 
 
 def download_file_from_hf(
