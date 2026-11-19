@@ -333,7 +333,12 @@ class GeneralizedComponent(nn.Module):
 
     def _original_forward_signature(self) -> inspect.Signature:
         """Cached signature of the wrapped forward, re-read if that forward is replaced."""
-        forward = self.original_component.forward  # type: ignore[union-attr]
+        original_component = self.original_component
+        if original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        forward = original_component.forward
         key = getattr(forward, "__func__", forward)
         cached = self.__dict__.get("_forward_signature")
         if cached is None or cached[0] is not key:
