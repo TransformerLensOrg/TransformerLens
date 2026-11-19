@@ -70,20 +70,26 @@ def _model_over_blocks(*slots_per_block):
 
 
 def test_component_unit_refuses_a_mixer_decompose_resid_would_not_emit():
-    with pytest.raises(ValueError, match="block 1: its mamba output is not decomposed yet"):
-        _require_every_writer_decomposed(_model_over_blocks(("attn",), ("attn", "mamba")))
+    # A mixer beside attention (Falcon-H1) gets its own row, so the parallel block passes.
+    _require_every_writer_decomposed(_model_over_blocks(("attn",), ("attn", "mamba")))
     _require_every_writer_decomposed(_model_over_blocks(("attn",), ("mamba",)))
     _require_every_writer_decomposed(_model_over_blocks(("linear_attn",), ("attn",)))
+    # An attn-only config drops the MLP slot, and an MLP-typed mixer's row with it.
+    model = _model_over_blocks(("attn",), ("mixer",))
+    model.cfg.attn_only = True
+    model.cfg.layers_block_type = ["attention", "mlp"]
+    with pytest.raises(ValueError, match="block 1: its mixer output is not decomposed yet"):
+        _require_every_writer_decomposed(model)
 
 
-def test_component_unit_refuses_a_parallel_mixer_before_any_forward():
+def test_component_unit_refuses_an_undecomposed_mixer_before_any_forward():
     bridge = _mock_bridge()
-    bridge.cfg = SimpleNamespace(n_layers=2, attn_only=False)
+    bridge.cfg = SimpleNamespace(n_layers=2, attn_only=True, layers_block_type=["attention", "mlp"])
     bridge.blocks = [
         SimpleNamespace(_modules={"attn": object()}),
-        SimpleNamespace(_modules={"attn": object(), "mamba": object()}),
+        SimpleNamespace(_modules={"mixer": object()}),
     ]
-    with pytest.raises(ValueError, match="block 1: its mamba output is not decomposed yet"):
+    with pytest.raises(ValueError, match="block 1: its mixer output is not decomposed yet"):
         direct_logit_attribution(bridge, "hi", answer_tokens=" world", unit="component")
     bridge.run_with_cache.assert_not_called()
 
