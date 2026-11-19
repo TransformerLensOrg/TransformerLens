@@ -413,6 +413,36 @@ def test_native_path_unhooked_returns_hf_output(monkeypatch):
     assert torch.equal(bridge(x), bridge.original_component(x))
 
 
+@pytest.mark.parametrize("pre", [False, True])
+def test_native_path_global_hook_is_not_bypassed_by_unhooked_fast_path(pre):
+    """A global module hook editing hook_scale must change the output, as in AttentionBridge."""
+    bridge = _make_bridge(native=True)
+    x = torch.randn(2, 5, 16)
+    baseline = bridge(x)
+    point = bridge.hook_scale
+
+    def edit_before(module, args):
+        if module is point:
+            return (args[0] * 2.0,)
+
+    def edit_after(module, args, output):
+        if module is point:
+            return output * 2.0
+
+    module_hooks = torch.nn.modules.module
+    handle = (
+        module_hooks.register_module_forward_pre_hook(edit_before)
+        if pre
+        else module_hooks.register_module_forward_hook(edit_after)
+    )
+    try:
+        with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+            patched = bridge(x)
+    finally:
+        handle.remove()
+    assert not torch.allclose(baseline, patched)
+
+
 def test_native_path_raw_torch_hook_on_hook_scale_fires():
     """A hook registered on hook_scale with plain torch still runs."""
     bridge = _make_bridge(native=True)

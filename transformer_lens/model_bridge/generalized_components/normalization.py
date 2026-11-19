@@ -4,6 +4,7 @@ import warnings
 from typing import Any, ContextManager, Dict, Optional, cast
 
 import torch
+from torch.nn.modules import module as module_hooks
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
@@ -202,9 +203,14 @@ class NormalizationBridge(GeneralizedComponent):
         if self.hook_scale.bwd_hooks or self.hook_normalized.bwd_hooks:
             warnings.warn(NATIVE_PATH_BWD_FALLBACK_WARNING)
             return self._python_norm_forward(x)
-        if not any(
-            p._forward_hooks or p._forward_pre_hooks
-            for p in (self.hook_scale, self.hook_normalized)
+        # Global module hooks keep the intermediates in view, as in AttentionBridge._fire_post_hoc_hook.
+        if not (
+            module_hooks._global_forward_hooks
+            or module_hooks._global_forward_pre_hooks
+            or any(
+                p._forward_hooks or p._forward_pre_hooks
+                for p in (self.hook_scale, self.hook_normalized)
+            )
         ):
             return self.original_component(x).to(x.dtype)
         has_fwd_hooks = bool(self.hook_scale.fwd_hooks or self.hook_normalized.fwd_hooks)
