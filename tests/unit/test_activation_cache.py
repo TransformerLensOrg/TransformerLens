@@ -2,10 +2,12 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from transformers import Gemma2Config, Gemma2ForCausalLM
 
 from transformer_lens import ActivationCache
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.model_bridge import TransformerBridge
+from transformer_lens.model_bridge.sources import build_bridge_from_module
 from transformer_lens.utilities import Slice
 
 
@@ -923,3 +925,128 @@ def test_decompose_resid_derives_mlp_out_from_the_residual_when_the_block_has_no
 def test_decompose_resid_reads_hook_mlp_out_when_the_block_has_one():
     cache = _single_block_cache(hook_mlp_out=True)
     assert torch.equal(cache.decompose_resid()[2], cache["blocks.0.hook_mlp_out"])
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("apply_ln", [False, True], ids=["raw", "ln"])
+@pytest.mark.parametrize("direction_dtype", ["model", "fp32"])
+@pytest.mark.parametrize("batchless", [False, True], ids=["batched", "batchless"])
+@torch.no_grad()
+def test_half_precision_projected_and_full_resid_decompositions(
+    activation_cache: ActivationCache,
+    dtype: torch.dtype,
+    apply_ln: bool,
+    direction_dtype: str,
+    batchless: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    atol = 5e-2 if dtype == torch.bfloat16 else 1e-2
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model = TransformerBridge.boot_native(activation_cache.model.cfg, dtype=dtype).eval()
+    tokens = torch.tensor([[1, 2, 3, 4]])
+    _, cache = model.run_with_cache(tokens)
+    if batchless:
+        cache = cache.apply_slice_to_batch_dim(0)
+    monkeypatch.setattr(model.cfg, "device", "meta")
+
+    assert model.accumulated_bias(model.cfg.n_layers).dtype == dtype
+    if not apply_ln and direction_dtype == "model":
+        unprojected = cache.get_full_resid_decomposition(apply_ln=False)
+        assert unprojected.dtype == dtype
+        torch.testing.assert_close(
+            unprojected.float().sum(0),
+            cache["blocks.1.hook_resid_post"].float(),
+            atol=atol,
+            rtol=atol,
+        )
+
+    proj_dtype = dtype if direction_dtype == "model" else torch.float32
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(1)
+        direction = torch.randn(model.cfg.d_model, 2, dtype=proj_dtype)
+
+    target = cache["blocks.1.hook_resid_post"]
+    if apply_ln:
+        target = cache.apply_ln_to_stack(target[None], has_batch_dim=cache.has_batch_dim)[0]
+    expected_dtype = torch.promote_types(target.dtype, direction.dtype)
+    expected = target.to(expected_dtype) @ direction.to(expected_dtype)
+
+    for expand_neurons in (False, True):
+        full = cache.get_full_resid_decomposition(
+            expand_neurons=expand_neurons,
+            apply_ln=apply_ln,
+            project_output_onto=direction,
+        )
+        assert full.dtype == expected_dtype
+        torch.testing.assert_close(full.float().sum(0), expected.float(), atol=atol, rtol=atol)
+
+    neurons = cache.stack_neuron_results(
+        model.cfg.n_layers,
+        apply_ln=apply_ln,
+        incl_remainder=True,
+        project_output_onto=direction[:, 0],
+    )
+    assert neurons.dtype == expected_dtype
+    torch.testing.assert_close(
+        neurons.float().sum(0), expected[..., 0].float(), atol=atol, rtol=atol
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16], ids=["bf16", "fp16"])
+@pytest.mark.parametrize("apply_ln", [False, True], ids=["raw", "ln"])
+@torch.no_grad()
+def test_half_precision_post_norm_full_resid_decomposition(
+    dtype: torch.dtype, apply_ln: bool
+) -> None:
+    atol = 5e-2 if dtype == torch.bfloat16 else 1e-2
+    config = Gemma2Config(
+        vocab_size=32,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=4,
+        attn_logit_softcapping=None,
+        final_logit_softcapping=None,
+    )
+    config._attn_implementation = "eager"
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        hf_model = Gemma2ForCausalLM(config).eval().to(dtype)
+    bridge = build_bridge_from_module(
+        hf_model, "Gemma2ForCausalLM", hf_config=config, dtype=dtype, device="cpu"
+    ).eval()
+    _, cache = bridge.run_with_cache(torch.tensor([[1, 2, 3, 4]]))
+    direction = bridge.tokens_to_residual_directions(torch.tensor(5))
+
+    target = cache["blocks.1.hook_resid_post"]
+    if apply_ln:
+        target = cache.apply_ln_to_stack(target[None])[0]
+    expected_dtype = torch.promote_types(target.dtype, direction.dtype)
+    expected = target.to(expected_dtype) @ direction.to(expected_dtype)
+
+    if not apply_ln:
+        raw_full = cache.get_full_resid_decomposition(apply_ln=False)
+        assert raw_full.dtype == dtype
+        torch.testing.assert_close(raw_full.float().sum(0), target.float(), atol=atol, rtol=atol)
+
+    projected = cache.get_full_resid_decomposition(apply_ln=apply_ln, project_output_onto=direction)
+    assert projected.dtype == expected_dtype
+    torch.testing.assert_close(projected.float().sum(0), expected.float(), atol=atol, rtol=atol)
+
+
+@torch.no_grad()
+def test_accumulated_bias_prefers_parameter_dtype_after_half(
+    activation_cache: ActivationCache,
+) -> None:
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(0)
+        model = TransformerBridge.boot_native(
+            activation_cache.model.cfg, dtype=torch.float32
+        ).eval()
+    model.half()
+    assert model.cfg.dtype == torch.float32
+    assert model.accumulated_bias(0).dtype == torch.float16
+    assert model.accumulated_bias(model.cfg.n_layers).dtype == torch.float16

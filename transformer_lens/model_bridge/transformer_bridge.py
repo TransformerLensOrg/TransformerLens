@@ -1879,7 +1879,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
         to target ``layer``'s MLP input, adding its variant bias unless the block is parallel.
         """
-        accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
+        # Walk registered submodules via nn.Module rather than self.parameters(), which
+        # delegates to original_model and raises on bridges without a wrapped module
+        # (nn.Module.parameters calls self.named_parameters, so use named_parameters).
+        first_param: Optional[nn.Parameter] = None
+        param_dtype: Optional[torch.dtype] = None
+        if "_modules" in self.__dict__:
+            for _, param in nn.Module.named_parameters(self):
+                if first_param is None:
+                    first_param = param
+                if param.is_floating_point() and param.dtype.itemsize >= 2:
+                    param_dtype = param.dtype
+                    break
+        cfg_dtype = getattr(self.cfg, "dtype", None)
+        dtype = param_dtype or (cfg_dtype if isinstance(cfg_dtype, torch.dtype) else None)
+        device = (
+            self.cfg.device
+            if getattr(self.cfg, "n_devices", 1) > 1 and self.cfg.device is not None
+            else (first_param.device if first_param is not None else self.cfg.device)
+        )
+        accumulated = torch.zeros(self.cfg.d_model, device=device, dtype=dtype)
         for i in range(layer):
             block = self.blocks[i]
             scale = getattr(block, "residual_contribution_scale", 1.0)
