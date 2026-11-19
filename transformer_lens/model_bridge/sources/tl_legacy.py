@@ -78,11 +78,6 @@ def derive_tl_legacy_config(repo_id: str) -> TransformerBridgeConfig:
         "architecture", "neel" if "_old" not in repo_id else "neel-solu-old"
     )
     normalization = cfg_json.get("normalization", cfg_json.get("normalization_type"))
-    if cfg_json.get("shortformer_pos", False):
-        raise NotImplementedError(
-            f"{repo_id} uses shortformer positional embeddings, which the native "
-            "bridge does not implement."
-        )
     cfg = TransformerBridgeConfig(
         d_model=cfg_json["d_model"],
         n_layers=cfg_json["n_layers"],
@@ -95,7 +90,9 @@ def derive_tl_legacy_config(repo_id: str) -> TransformerBridgeConfig:
         attn_only=cfg_json["attn_only"],
         final_rms=cfg_json.get("final_rms", False),
         normalization_type=normalization,
-        positional_embedding_type="standard",
+        positional_embedding_type=(
+            "shortformer" if cfg_json.get("shortformer_pos", False) else "standard"
+        ),
         tokenizer_name=cfg_json.get("tokenizer_name"),
         architecture="TransformerLensNative",
     )

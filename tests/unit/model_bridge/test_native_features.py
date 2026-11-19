@@ -809,3 +809,119 @@ def test_llama_shaped_config_works_end_to_end():
     logits, cache = bridge.run_with_cache(inputs, return_type="logits")
     assert logits.shape == (2, cfg.n_ctx, cfg.d_vocab)
     assert cache["blocks.0.attn.hook_pattern"].shape == (2, cfg.n_heads, cfg.n_ctx, cfg.n_ctx)
+
+
+# ---------------------------------------------------------------------------
+# positional_embedding_type="shortformer"
+# ---------------------------------------------------------------------------
+
+
+def _shortformer_cfg(**overrides) -> TransformerBridgeConfig:
+    base = dict(
+        positional_embedding_type="shortformer",
+        attn_only=True,
+        normalization_type=None,
+        n_layers=2,
+        attention_dir="causal",
+    )
+    base.update(overrides)
+    return _cfg(**base)
+
+
+def _shortformer_reference_logits(bridge: TransformerBridge, tokens: torch.Tensor) -> torch.Tensor:
+    """Attention-only shortformer forward written out from the TL-format weights:
+    queries and keys read ``resid + pos_embed``, values read ``resid`` alone."""
+    cfg = bridge.cfg
+    seq = tokens.shape[1]
+    resid = bridge.W_E[tokens]
+    pos_embed = bridge.W_pos[:seq]
+    future = torch.triu(torch.ones(seq, seq, dtype=torch.bool), diagonal=1)
+    for layer in range(cfg.n_layers):
+        qk_input = resid + pos_embed
+        q = torch.einsum("bpd,hde->bphe", qk_input, bridge.W_Q[layer]) + bridge.b_Q[layer]
+        k = torch.einsum("bpd,hde->bphe", qk_input, bridge.W_K[layer]) + bridge.b_K[layer]
+        v = torch.einsum("bpd,hde->bphe", resid, bridge.W_V[layer]) + bridge.b_V[layer]
+        scores = torch.einsum("bqhe,bkhe->bhqk", q, k) / cfg.d_head**0.5
+        pattern = scores.masked_fill(future, float("-inf")).softmax(-1)
+        z = torch.einsum("bhqk,bkhe->bqhe", pattern, v)
+        resid = resid + torch.einsum("bqhe,hed->bqd", z, bridge.W_O[layer]) + bridge.b_O[layer]
+    return resid @ bridge.W_U + bridge.b_U
+
+
+def test_shortformer_forward_matches_reference():
+    bridge = TransformerBridge.boot_native(_shortformer_cfg())
+    tokens = torch.tensor([[1, 5, 3, 5, 2, 7], [4, 4, 0, 9, 9, 1]])
+    with torch.no_grad():
+        torch.testing.assert_close(
+            bridge(tokens), _shortformer_reference_logits(bridge, tokens), atol=1e-5, rtol=1e-4
+        )
+
+
+def test_shortformer_keeps_positions_out_of_the_residual_stream():
+    """Positions reach every layer's query/key inputs and nothing else."""
+    bridge = TransformerBridge.boot_native(_shortformer_cfg())
+    tokens = torch.tensor([[1, 5, 3, 5, 2, 7]])
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(tokens)
+    pos_embed = cache["hook_pos_embed"]
+    assert pos_embed.abs().max() > 0
+    torch.testing.assert_close(cache["blocks.0.hook_resid_pre"], cache["hook_embed"])
+    for layer in range(bridge.cfg.n_layers):
+        resid_pre = cache[f"blocks.{layer}.hook_resid_pre"]
+        torch.testing.assert_close(cache[f"blocks.{layer}.attn.v.hook_in"], resid_pre)
+        torch.testing.assert_close(cache[f"blocks.{layer}.attn.q.hook_in"], resid_pre + pos_embed)
+        torch.testing.assert_close(cache[f"blocks.{layer}.attn.k.hook_in"], resid_pre + pos_embed)
+
+
+def test_shortformer_input_to_embed_round_trip():
+    """The residual from input_to_embed has no positions; resuming from it still
+    gives the full forward, because the blocks re-derive positions themselves."""
+    bridge = TransformerBridge.boot_native(_shortformer_cfg())
+    tokens = torch.tensor([[1, 5, 3, 5, 2, 7]])
+    with torch.no_grad():
+        expected = bridge(tokens)
+        residual, _, _, attention_mask = bridge.input_to_embed(tokens)
+        _, cache = bridge.run_with_cache(tokens)
+        torch.testing.assert_close(residual, cache["hook_embed"])
+        actual = bridge(residual, start_at_layer=0, attention_mask=attention_mask)
+    torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("normalization_type", [None, "LN", "LNPre", "RMS", "RMSPre"])
+@pytest.mark.filterwarnings("ignore:NativeArchitectureAdapter does not support")
+def test_shortformer_compatibility_mode_preserves_predictions(normalization_type):
+    cfg = _shortformer_cfg(normalization_type=normalization_type, attn_only=False)
+    bridge = TransformerBridge.boot_native(cfg)
+    tokens = torch.tensor([[1, 5, 3, 5, 2, 7], [4, 4, 0, 9, 9, 1]])
+    with torch.no_grad():
+        before = bridge(tokens).log_softmax(-1)
+    bridge.enable_compatibility_mode()
+    with torch.no_grad():
+        after = bridge(tokens).log_softmax(-1)
+    torch.testing.assert_close(after, before, atol=1e-4, rtol=1e-4)
+
+
+def test_legacy_shortformer_config_maps_to_shortformer():
+    from transformer_lens.model_bridge.sources import tl_legacy
+
+    cfg_json = dict(
+        d_model=32,
+        n_layers=2,
+        d_mlp=64,
+        d_head=16,
+        n_heads=2,
+        n_ctx=8,
+        d_vocab=16,
+        act_fn="gelu",
+        attn_only=True,
+        normalization=None,
+        shortformer_pos=True,
+    )
+    with patch.object(tl_legacy, "_fetch_json", return_value=cfg_json):
+        cfg = tl_legacy.derive_tl_legacy_config("NeelNanda/some-shortformer-repo")
+    assert cfg.positional_embedding_type == "shortformer"
+    with patch.object(
+        tl_legacy, "_fetch_json", return_value={**cfg_json, "shortformer_pos": False}
+    ):
+        cfg = tl_legacy.derive_tl_legacy_config("NeelNanda/some-standard-repo")
+    assert cfg.positional_embedding_type == "standard"
