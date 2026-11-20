@@ -217,6 +217,31 @@ class TestFalconNewArchVariant:
         adapter = FalconArchitectureAdapter(_make_cfg(new_decoder_architecture=True))
         assert adapter.component_mapping["blocks"].submodules["ln1"].name == "ln_attn"
 
+    def test_unset_num_ln_maps_ln_mlp(self) -> None:
+        """HF turns an unset num_ln_in_parallel_attn into 2 on this architecture."""
+        adapter = FalconArchitectureAdapter(_make_cfg(new_decoder_architecture=True))
+        assert adapter.component_mapping["blocks"].submodules["ln2"].name == "ln_mlp"
+
+    def test_single_ln_maps_input_layernorm(self) -> None:
+        """num_ln_in_parallel_attn=1 (Falcon-11B): input_layernorm feeds attention and MLP."""
+        adapter = FalconArchitectureAdapter(
+            _make_cfg(new_decoder_architecture=True, num_ln_in_parallel_attn=1)
+        )
+        submodules = adapter.component_mapping["blocks"].submodules
+        assert submodules["ln1"].name == "input_layernorm"
+        assert "ln2" not in submodules
+
+    def test_multi_query_is_ignored(self) -> None:
+        """HF reads K/V heads from num_kv_heads here, whatever multi_query says."""
+        adapter = FalconArchitectureAdapter(
+            _make_cfg(
+                n_heads=32, n_key_value_heads=8, new_decoder_architecture=True, multi_query=True
+            )
+        )
+        assert adapter.cfg.n_key_value_heads == 8
+        conv = adapter.weight_processing_conversions["blocks.{i}.attn.k"]
+        assert conv.tensor_conversion.axes_lengths["n"] == 8
+
 
 # ---------------------------------------------------------------------------
 # Anti-drift config flags
