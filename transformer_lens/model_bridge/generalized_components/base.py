@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
-from accelerate.utils import align_module_device
+from accelerate.utils import align_module_device, has_offloaded_params
 
 from transformer_lens.conversion_utils.conversion_steps.base_tensor_conversion import (
     BaseTensorConversion,
@@ -226,7 +226,7 @@ class GeneralizedComponent(nn.Module):
         bridge __call__ at all (see JointQKVAttentionBridge.set_original_component).
         """
         original_component = self._modules.get("_original_component")
-        if original_component is None:
+        if original_component is None or not has_offloaded_params(original_component):
             return super().__call__(*args, **kwargs)
         with align_module_device(original_component):
             return super().__call__(*args, **kwargs)

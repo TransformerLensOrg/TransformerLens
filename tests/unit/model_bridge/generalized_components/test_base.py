@@ -460,3 +460,12 @@ def test_unembedding_forward_preserves_input_dtype():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_call_skips_align_module_device_when_not_offloaded(monkeypatch):
+    import transformer_lens.model_bridge.generalized_components.base as base
+
+    monkeypatch.setattr(base, "align_module_device", lambda module: pytest.fail("entered"))
+    component = MockGeneralizedComponent()
+    component.set_original_component(MockOriginalComponent())
+    component(torch.ones(2))
