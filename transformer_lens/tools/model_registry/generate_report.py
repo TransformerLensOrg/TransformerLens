@@ -108,6 +108,7 @@ ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
     "BlenderbotForConditionalGeneration": "Meta's Blenderbot dialogue encoder-decoder (asymmetric stacks)",
     "MiniMaxM2ForCausalLM": "MiniMax's M2 sparse-MoE decoder with sigmoid routing",
     "MiniCPMForCausalLM": "OpenBMB's dense MiniCPM decoder with muP embedding/residual/logit scaling (remote code)",
+    "MiniCPM3ForCausalLM": "OpenBMB's MiniCPM3: DeepSeek-V2 Multi-head Latent Attention with MiniCPM muP scaling, all layers dense",
     "ExaoneForCausalLM": "LG AI Research's EXAONE-3.x Korean-English decoder (remote code)",
     "FalconMambaForCausalLM": "TII's FalconMamba pure-SSM decoder (Mamba-1 with B/C/dt RMS)",
     "T5Gemma2ForConditionalGeneration": "Google's T5Gemma2 multimodal encoder-decoder model with merged self+cross decoder attention, QK-norm, and dual RoPE (text-only bridge support)",
