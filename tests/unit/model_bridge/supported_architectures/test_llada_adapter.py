@@ -6,7 +6,10 @@ from typing import Any
 import pytest
 import torch
 
-from tests.unit.model_bridge.supported_architectures.helpers import make_bridge_cfg
+from tests.unit.model_bridge.supported_architectures.helpers import (
+    DiffusionContractTests,
+    make_bridge_cfg,
+)
 from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.conversion_utils.conversion_steps import RearrangeTensorConversion
 from transformer_lens.conversion_utils.param_processing_conversion import (
@@ -323,3 +326,22 @@ def test_existing_causal_attention_default_remains_triangular() -> None:
     pattern = cache["blocks.0.attn.hook_pattern"]
     assert pattern.shape == (1, 4, 5, 5)
     assert torch.count_nonzero(torch.triu(pattern, diagonal=1)) == 0
+
+
+class TestLLaDADiffusionContract(DiffusionContractTests):
+    adapter_cls = LLaDAArchitectureAdapter
+    architecture = "LLaDAModelLM"
+    expected_sampler = "diffusion_generate"
+
+    def _make_adapter(self) -> LLaDAArchitectureAdapter:
+        return LLaDAArchitectureAdapter(_bridge_config())
+
+
+def test_prepare_model_binds_diffusion_generate_sampler(
+    adapter: LLaDAArchitectureAdapter,
+) -> None:
+    dummy = SimpleNamespace(config=SimpleNamespace(output_attentions=True, use_cache=True))
+    adapter.prepare_model(dummy)
+    assert dummy.config.output_attentions is False
+    assert dummy.config.use_cache is False
+    assert callable(getattr(dummy, "diffusion_generate", None))

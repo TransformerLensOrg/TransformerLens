@@ -17,9 +17,11 @@ exposing the standard attention scores and pattern hooks.
 from __future__ import annotations
 
 import math
+import types
 from typing import Any, Dict, Optional, cast
 
 import torch
+import torch.nn.functional as F
 
 from transformer_lens.model_bridge.architecture_adapter import ArchitectureAdapter
 from transformer_lens.model_bridge.generalized_components import (
@@ -248,21 +250,138 @@ class _LLaDAGatedMLPBridge(GatedMLPBridge):
         return self.hook_out(output)
 
 
+def _llada_diffusion_generate(
+    self: Any,
+    input_ids: torch.Tensor,
+    *,
+    max_new_tokens: int = 32,
+    steps: Optional[int] = None,
+    block_length: Optional[int] = None,
+    temperature: float = 0.0,
+    remasking: str = "low_confidence",
+    mask_token_id: Optional[int] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    **kwargs: Any,
+) -> torch.Tensor:
+    """Blockwise masked-diffusion denoising sampler for ``LLaDAModelLM``.
+
+    Calls ``self(x, ...)`` on every denoising step so ``TransformerBridge`` hooks
+    and trajectory-step caching fire on each intermediate canvas ``x_s``.
+    """
+    gen_length = int(kwargs.pop("gen_length", max_new_tokens))
+    if gen_length <= 0:
+        raise ValueError(f"max_new_tokens/gen_length must be > 0; got {gen_length}")
+    block_len = int(block_length if block_length is not None else min(32, gen_length))
+    if block_len <= 0 or gen_length % block_len != 0:
+        raise ValueError(
+            f"gen_length ({gen_length}) must be divisible by positive block_length ({block_len})"
+        )
+    num_blocks = gen_length // block_len
+    total_steps = int(steps if steps is not None else gen_length)
+    if total_steps <= 0 or total_steps % num_blocks != 0:
+        raise ValueError(
+            f"steps ({total_steps}) must be positive and divisible by num_blocks ({num_blocks})"
+        )
+    steps_per_block = total_steps // num_blocks
+    base_transfer = block_len // steps_per_block
+    rem_transfer = block_len % steps_per_block
+    schedule = [base_transfer + (1 if i < rem_transfer else 0) for i in range(steps_per_block)]
+
+    cfg = getattr(self, "config", None)
+    resolved_mask_id = (
+        int(mask_token_id)
+        if mask_token_id is not None
+        else int(getattr(cfg, "mask_token_id", None) or 126336)
+    )
+    prompt_len = int(input_ids.shape[-1])
+    device = input_ids.device
+    x = torch.full(
+        (input_ids.shape[0], prompt_len + gen_length),
+        resolved_mask_id,
+        dtype=input_ids.dtype,
+        device=device,
+    )
+    x[:, :prompt_len] = input_ids
+
+    full_attn: Optional[torch.Tensor] = None
+    if attention_mask is not None:
+        full_attn = torch.cat(
+            [
+                attention_mask.to(device),
+                torch.ones(
+                    (input_ids.shape[0], gen_length),
+                    dtype=attention_mask.dtype,
+                    device=device,
+                ),
+            ],
+            dim=-1,
+        )
+
+    for b_idx in range(num_blocks):
+        block_start = prompt_len + b_idx * block_len
+        block_end = prompt_len + (b_idx + 1) * block_len
+        for s_idx in range(steps_per_block):
+            mask_index = x == resolved_mask_id
+            forward_out = self(x, attention_mask=full_attn) if full_attn is not None else self(x)
+            logits = getattr(forward_out, "logits", forward_out)
+            if temperature > 0.0:
+                logits_f64 = logits.to(torch.float64)
+                noise = torch.rand_like(logits_f64, dtype=torch.float64)
+                gumbel = (-torch.log(noise.clamp_min(1e-12))) ** temperature
+                x0 = torch.argmax(logits_f64.exp() / gumbel, dim=-1)
+            else:
+                x0 = torch.argmax(logits, dim=-1)
+
+            if remasking == "low_confidence":
+                probs = F.softmax(logits.to(torch.float64), dim=-1)
+                x0_p = torch.gather(probs, dim=-1, index=x0.unsqueeze(-1)).squeeze(-1)
+            elif remasking == "random":
+                x0_p = torch.rand(x0.shape, device=device, dtype=torch.float64)
+            else:
+                raise NotImplementedError(f"Unsupported remasking strategy: {remasking!r}")
+
+            x0_p[:, :block_start] = -torch.inf
+            x0_p[:, block_end:] = -torch.inf
+            x0 = torch.where(mask_index, x0, x)
+            confidence = torch.where(mask_index, x0_p, torch.full_like(x0_p, -torch.inf))
+
+            k_transfer = schedule[s_idx]
+            if k_transfer > 0:
+                for row in range(confidence.shape[0]):
+                    _, select_idx = torch.topk(confidence[row], k=k_transfer)
+                    x[row, select_idx] = x0[row, select_idx]
+
+    return x
+
+
 class LLaDAArchitectureAdapter(ArchitectureAdapter):
     """Adapter for the dense ``LLaDAModelLM`` architecture.
 
     Support is deliberately limited to the released dense LLaDA block contract:
     Llama-style blocks, RMSNorm, separate bias-free projections, RoPE,
-    bidirectional attention, an untied LM head, and no KV cache. The external
-    iterative denoising/remasking loop is not a TransformerBridge generation API.
+    bidirectional attention, an untied LM head, and no KV cache. Iterative
+    masked-diffusion sampling runs through ``bridge.diffusion_generate``.
     Loading the Hugging Face checkpoint requires the caller to opt in with
     ``trust_remote_code=True``.
     """
 
-    applicable_phases: list[int] = []
+    applicable_phases: list[int] = [1, 2, 3, 4]
     supports_generation: bool = False
     supports_hf_output_attentions: bool = False
     supports_causal_loss: bool = False
+    native_sampler: str = "diffusion_generate"
+
+    def native_sampler_kwargs(self, max_new_tokens: int, prompt_len: int) -> dict:
+        """LLaDA denoises whole blocks; cap block_length at the token budget."""
+        del prompt_len
+        block_length = min(32, max_new_tokens)
+        blocks = max(1, -(-max_new_tokens // block_length))
+        gen_length = blocks * block_length
+        return {
+            "gen_length": gen_length,
+            "block_length": block_length,
+            "steps": gen_length,
+        }
 
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
@@ -366,7 +485,7 @@ class LLaDAArchitectureAdapter(ArchitectureAdapter):
             config.use_cache = False
 
     def prepare_model(self, hf_model: Any) -> None:
-        """Keep the wrapper and underlying model on the no-cache path."""
+        """Keep the wrapper and underlying model on the no-cache path and bind the sampler."""
         for config in (
             getattr(hf_model, "config", None),
             getattr(getattr(hf_model, "model", None), "config", None),
@@ -374,3 +493,9 @@ class LLaDAArchitectureAdapter(ArchitectureAdapter):
             if config is not None:
                 config.output_attentions = False
                 config.use_cache = False
+        if hf_model is not None and not hasattr(hf_model, "diffusion_generate"):
+            setattr(
+                hf_model,
+                "diffusion_generate",
+                types.MethodType(_llada_diffusion_generate, hf_model),
+            )
