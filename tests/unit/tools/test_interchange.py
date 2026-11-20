@@ -10,9 +10,11 @@ from transformer_lens.HookedRootModule import HookedRootModule
 from transformer_lens.tools.analysis import SubspaceInterchange as exported_interchange
 from transformer_lens.tools.analysis import fit_sparse_probe
 from transformer_lens.tools.analysis.interchange import (
+    PAD_POSITION,
     LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
+    _check_pool,
     _model_device,
     arbitrary_targets,
     collect_activations,
@@ -718,3 +720,308 @@ def test_the_neuron_a_sparse_probe_selects_carries_a_planted_variable():
 
     assert iia(neuron_basis(d_mlp, probe.selected_features)) == 1.0
     assert iia(random_neuron_basis(d_mlp, 1, seed=0, exclude=probe.selected_features)) == 0.0
+
+
+# Several positions per example
+
+P = PAD_POSITION
+
+
+def _seq(n: int = 4, pos: int = 3, seed: int = 0):
+    generator = torch.Generator().manual_seed(seed)
+    return torch.randn(n, pos, D_MODEL, generator=generator)
+
+
+def test_aligned_positions_collect_one_row_per_slot_padded_with_nan():
+    model = _SumToy()
+    x = _seq()
+    rows = torch.tensor([[0, 2], [1, P], [2, 1], [P, 0]])
+    acts = collect_activations(model, "hook_mid", x, model, positions=rows, batch_size=3)
+    _, cache = model.run_with_cache(x)
+    real = rows != P
+    assert acts.shape == (4, 2, D_MODEL)
+    assert acts[~real].isnan().all() and not acts[real].isnan().any()
+    expected = cache["hook_mid"][torch.arange(4)[:, None].expand_as(rows)[real], rows[real]]
+    assert torch.allclose(acts[real], expected)
+
+
+def test_aligned_slot_j_of_the_base_takes_slot_j_of_the_source():
+    model = _SumToy()
+    base, source = _seq(seed=0), _seq(seed=1)
+    base_at = torch.tensor([[0, 2], [1, P], [2, 1], [0, 1]])
+    source_at = torch.tensor([[1, 0], [2, P], [0, 2], [1, 0]])
+    full = SubspaceInterchange(torch.eye(D_MODEL))
+    source_acts = collect_activations(model, "hook_mid", source, model, positions=source_at)
+    out = run_with_intervention(
+        model, "hook_mid", full, base, source_acts, model, positions=base_at
+    )
+    with torch.no_grad():
+        expected = model.inp(base)
+        source_h = model.inp(source)
+        for i in range(4):
+            for j in range(2):
+                if base_at[i, j] != P:
+                    expected[i, base_at[i, j]] = source_h[i, source_at[i, j]]
+        assert torch.allclose(out, model.out(expected.sum(1)), atol=1e-5)
+
+
+def test_one_aligned_slot_is_one_position_per_example():
+    model = _SumToy()
+    base, source = _seq(seed=0), _seq(seed=1)
+    at = torch.tensor([0, 2, 1, 2])
+    intervention = SubspaceInterchange(random_basis(D_MODEL, 2, seed=0))
+    single = intervened_logits(
+        model,
+        "hook_mid",
+        intervention,
+        base,
+        collect_activations(model, "hook_mid", source, model, positions=at),
+        model,
+        positions=at,
+    )
+    aligned = intervened_logits(
+        model,
+        "hook_mid",
+        intervention,
+        base,
+        collect_activations(model, "hook_mid", source, model, positions=at[:, None]),
+        model,
+        positions=at[:, None],
+    )
+    assert torch.allclose(aligned, single, atol=1e-6)
+
+
+def test_each_real_slot_is_one_row_of_the_intervention():
+    model = _SumToy()
+    base, source = _seq(seed=0), _seq(seed=1)
+    at = torch.tensor([[0, 2], [1, P], [2, 1], [0, P]])
+    seen = []
+
+    def record(b: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
+        seen.append((b.shape, s.shape))
+        return b
+
+    source_acts = collect_activations(model, "hook_mid", source, model, positions=at)
+    out = run_with_intervention(model, "hook_mid", record, base, source_acts, model, positions=at)
+    assert seen == [((6, D_MODEL), (6, D_MODEL))]
+    assert torch.allclose(out, model(base), atol=1e-6)
+
+
+def test_base_and_source_must_pad_the_same_slots():
+    model = _SumToy()
+    base, source = _seq(seed=0), _seq(seed=1)
+    full = SubspaceInterchange(torch.eye(D_MODEL))
+    source_acts = collect_activations(
+        model, "hook_mid", source, model, positions=torch.tensor([[0, 1], [0, P], [1, 2], [2, 0]])
+    )
+    base_at = torch.tensor([[0, 1], [0, 1], [1, 2], [2, 0]])
+    with pytest.raises(ValueError, match="padded in the same slots"):
+        run_with_intervention(model, "hook_mid", full, base, source_acts, model, positions=base_at)
+    with pytest.raises(ValueError, match="collected with \\[batch, k\\] source positions"):
+        run_with_intervention(
+            model, "hook_mid", full, base, source_acts[:, 0], model, positions=base_at
+        )
+    with pytest.raises(ValueError, match="must be \\[batch, d_model\\]"):
+        run_with_intervention(
+            model, "hook_mid", full, base, source_acts, model, positions=base_at[:, 0]
+        )
+
+
+@pytest.mark.parametrize(
+    "rows, message",
+    [
+        ([[0, 3], [1, 0], [2, 0], [0, 1]], "below the sequence length 3"),
+        ([[0, -2], [1, 0], [2, 0], [0, 1]], "must be non-negative"),
+        ([[0, 0], [1, 0], [2, 0], [0, 1]], "repeats a position"),
+        ([[P, P], [1, 0], [2, 0], [0, 1]], "at least one position"),
+        ([[0, 1], [1, 0], [2, 0]], "with batch 4"),
+    ],
+)
+def test_invalid_positions_are_rejected(rows, message):
+    model = _SumToy()
+    with pytest.raises(ValueError, match=message):
+        collect_activations(model, "hook_mid", _seq(), model, positions=torch.tensor(rows))
+
+
+def test_minus_one_is_rejected_rather_than_read_as_padding():
+    """-1 is the last position in [batch] positions; in [batch, k] rows it must not silently
+    become padding and drop the position the caller meant."""
+    model = _SumToy()
+    x = _seq()
+    with pytest.raises(
+        ValueError, match="-1 means the last position only in \\[batch\\].*PAD_POSITION"
+    ):
+        collect_activations(model, "hook_mid", x, model, positions=torch.tensor([[0, -1]] * 4))
+    # Written out, the row reads the first and last positions; [batch] -1 is still the last
+    rows = collect_activations(model, "hook_mid", x, model, positions=torch.tensor([[0, 2]] * 4))
+    last = collect_activations(model, "hook_mid", x, model, positions=torch.full((4,), -1))
+    assert torch.equal(rows[:, 1], last)
+
+
+def test_pad_position_is_never_an_index_and_fits_int32():
+    assert PAD_POSITION < 0
+    model = _SumToy()
+    x = _seq()
+    rows = torch.tensor([[0, 2], [1, P], [2, 1], [P, 0]], dtype=torch.int32)
+    acts = collect_activations(model, "hook_mid", x, model, positions=rows)
+    assert acts[rows == P].isnan().all() and not acts[rows != P].isnan().any()
+
+
+def test_pooled_spans_collect_their_means():
+    model = _SumToy()
+    x = _seq()
+    spans = torch.tensor([[0, 1, 2], [1, P, P], [2, 0, P], [1, 2, P]])
+    means = collect_activations(model, "hook_mid", x, model, positions=spans, pool="mean")
+    _, cache = model.run_with_cache(x)
+    expected = torch.stack(
+        [
+            cache["hook_mid"][i, [p for p in row if p != P]].mean(0)
+            for i, row in enumerate(spans.tolist())
+        ]
+    )
+    assert means.shape == (4, D_MODEL)
+    assert torch.allclose(means, expected, atol=1e-6)
+
+
+class _Echo(HookedRootModule):
+    """Returns the hook's activation flattened, so a run shows the activation after the
+    intervention."""
+
+    def __init__(self):
+        super().__init__()
+        self.hook_mid = HookPoint()
+        self.setup()
+        self.eval()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.hook_mid(x).flatten(1)
+
+
+def test_pooling_moves_every_span_position_by_the_change_in_the_mean():
+    model = _Echo()
+    before, source = _seq(seed=0), _seq(seed=1)
+    base_spans = torch.tensor([[0, 1], [1, P], [0, 2], [2, P]])
+    source_spans = torch.tensor([[0, 1, 2], [2, P, P], [1, P, P], [0, 1, P]])  # other lengths
+    basis = random_basis(D_MODEL, 2, seed=0)
+    source_means = collect_activations(
+        model, "hook_mid", source, model, positions=source_spans, pool="mean"
+    )
+    after = run_with_intervention(
+        model,
+        "hook_mid",
+        SubspaceInterchange(basis),
+        before,
+        source_means,
+        model,
+        positions=base_spans,
+        pool="mean",
+    ).view_as(before)
+    complement = torch.eye(D_MODEL) - basis @ basis.T
+    for i, row in enumerate(base_spans.tolist()):
+        span = [p for p in row if p != P]
+        rest = [p for p in range(3) if p not in span]
+        old_mean, new_mean = before[i, span].mean(0), after[i, span].mean(0)
+        # The span's mean takes the source's coordinates inside the subspace and keeps its own
+        # outside it
+        assert torch.allclose(new_mean @ basis, source_means[i] @ basis, atol=1e-5)
+        assert torch.allclose(new_mean @ complement, old_mean @ complement, atol=1e-5)
+        # Each position keeps its offset from the mean; positions outside the span are untouched
+        assert torch.allclose(after[i, span] - new_mean, before[i, span] - old_mean, atol=1e-5)
+        assert torch.equal(after[i, rest], before[i, rest])
+
+
+def test_pool_needs_spans_and_a_known_mode():
+    model = _SumToy()
+    x = _seq()
+    with pytest.raises(ValueError, match="pool needs \\[batch, k\\] positions"):
+        collect_activations(
+            model, "hook_mid", x, model, positions=torch.zeros(4).long(), pool="mean"
+        )
+    with pytest.raises(ValueError, match='pool must be None or "mean"'):
+        _check_pool("max")
+    flat = _Toy()
+    with pytest.raises(ValueError, match="pool needs \\[batch, k\\] positions"):
+        collect_activations(flat, "hook_mid", torch.randn(4, D_MODEL), flat, pool="mean")
+
+
+class _TwoPositions(HookedRootModule):
+    """The output reads one planted direction, summed over positions 0 and 1 of three."""
+
+    def __init__(self, direction: torch.Tensor):
+        super().__init__()
+        self.register_buffer("direction", direction / direction.norm())
+        self.hook_mid = HookPoint()
+        self.setup()
+        self.eval()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        score = 4.0 * (self.hook_mid(x)[:, :2] @ self.direction).sum(1)
+        return torch.stack([-score, score], dim=-1)
+
+
+def _two_position_pairs(n: int = 256, seed: int = 0):
+    generator = torch.Generator().manual_seed(seed)
+    model = _TwoPositions(torch.randn(D_MODEL, generator=generator))
+    base = torch.randn(n, 3, D_MODEL, generator=generator)
+    source = torch.randn(n, 3, D_MODEL, generator=generator)
+    targets = ((source[:, :2] @ model.direction).sum(1) > 0).long()
+    return model, base, source, targets
+
+
+def test_das_learns_one_subspace_shared_by_aligned_positions():
+    model, base, source, targets = _two_position_pairs()
+    both = torch.tensor([[0, 1]]).expand(len(base), 2)
+    result = fit_das(
+        model,
+        "hook_mid",
+        base,
+        source,
+        targets,
+        model,
+        rank=1,
+        base_positions=both,
+        source_positions=both,
+        epochs=30,
+        lr=5e-2,
+    )
+    assert (result.basis[:, 0] @ model.direction).abs() > 0.95
+
+    def accuracy(at: torch.Tensor, pool=None) -> float:
+        acts = collect_activations(model, "hook_mid", source, model, positions=at, pool=pool)
+        logits = intervened_logits(
+            model,
+            "hook_mid",
+            SubspaceInterchange(result.subspace),
+            base,
+            acts,
+            model,
+            positions=at,
+            pool=pool,
+        )
+        return (logits.argmax(-1) == targets).float().mean().item()
+
+    # The variable is spread over both positions: one alone recovers it only partly
+    assert accuracy(both) > 0.97
+    assert accuracy(torch.zeros(len(base), dtype=torch.long)) < 0.85
+    # The output reads the span's sum, so interchanging the span's mean transfers it exactly
+    assert accuracy(both, pool="mean") > 0.97
+
+
+def test_das_can_train_on_pooled_spans():
+    model, base, source, targets = _two_position_pairs()
+    both = torch.tensor([[0, 1]]).expand(len(base), 2)
+    result = fit_das(
+        model,
+        "hook_mid",
+        base,
+        source,
+        targets,
+        model,
+        rank=1,
+        base_positions=both,
+        source_positions=both,
+        pool="mean",
+        epochs=30,
+        lr=5e-2,
+    )
+    assert (result.basis[:, 0] @ model.direction).abs() > 0.95
