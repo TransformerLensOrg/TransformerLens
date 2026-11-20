@@ -550,6 +550,15 @@ def benchmark_value_bias_folding(
         BenchmarkResult with value bias folding verification details
     """
     try:
+        adapter = getattr(bridge, "adapter", None)
+        if adapter and not getattr(adapter, "supports_fold_value_biases", True):
+            return BenchmarkResult(
+                name="value_bias_folding",
+                severity=BenchmarkSeverity.SKIPPED,
+                message="Skipped (architecture does not support fold_value_biases)",
+                passed=True,
+            )
+
         # Skip for GQA models (where n_key_value_heads != n_heads)
         # Value bias folding doesn't work the same way because V outputs are repeated
         if hasattr(bridge.cfg, "n_key_value_heads") and bridge.cfg.n_key_value_heads is not None:

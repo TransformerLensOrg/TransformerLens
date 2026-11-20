@@ -6,6 +6,9 @@ rescaled. A tiny unquantized ``GptOssForCausalLM`` exercises the same code path
 CPU-fast — sinks exist independent of MXFP4 quantization.
 """
 
+import copy
+import warnings
+
 import pytest
 import torch
 from transformers import (
@@ -15,7 +18,10 @@ from transformers import (
     GptOssForCausalLM,
 )
 
+from transformer_lens.benchmarks.utils import BenchmarkSeverity
+from transformer_lens.benchmarks.weight_processing import benchmark_value_bias_folding
 from transformer_lens.model_bridge.bridge import TransformerBridge
+from transformer_lens.model_bridge.sources import build_bridge_from_module
 
 # Ids stay below the tiny vocab_size=256.
 TOKENS = torch.tensor([[5, 17, 29, 3, 11, 42, 7, 23]])
@@ -123,3 +129,30 @@ def test_pattern_rows_leave_mass_for_the_sink(bridge):
     for layer in range(N_LAYERS):
         row_sums = cache[f"blocks.{layer}.attn.hook_pattern"].sum(dim=-1)
         assert (row_sums < 1.0).all(), f"layer {layer}: a pattern row ignored the sink's share"
+
+
+def test_compatibility_mode_keeps_log_probs_with_value_biases():
+    """Sinks keep part of every softmax row, so a head's value bias reaches its output
+    scaled by (1 - sink weight), which differs per position: folding it into o_proj's
+    bias, as if the rows summed to 1, changes the predictions."""
+    config = _tiny_config()
+    config._attn_implementation = "eager"
+    torch.manual_seed(0)
+    hf = GptOssForCausalLM(config).eval()
+    with torch.no_grad():
+        for layer in hf.model.layers:
+            # Random init leaves the biases at zero; trained checkpoints do not.
+            layer.self_attn.v_proj.bias.normal_()
+        expected = hf(TOKENS).logits.log_softmax(-1)
+    bridge = build_bridge_from_module(
+        copy.deepcopy(hf), "GptOssForCausalLM", hf_config=copy.deepcopy(config), device="cpu"
+    ).eval()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        bridge.enable_compatibility_mode()
+    with torch.no_grad():
+        actual = bridge(TOKENS).log_softmax(-1)
+    torch.testing.assert_close(actual, expected, atol=FP32_TOL, rtol=0)
+    assert any("fold_value_biases" in str(w.message) for w in caught)
+    # verify_models must not report the deliberately unfolded biases as a failure.
+    assert benchmark_value_bias_folding(bridge, "").severity == BenchmarkSeverity.SKIPPED
