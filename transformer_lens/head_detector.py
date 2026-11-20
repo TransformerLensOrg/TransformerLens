@@ -136,7 +136,9 @@ def detect_head(
         return torch.stack(batch_scores).mean(0)
 
     cfg = model.cfg
-    tokens = model.to_tokens(seq).to(cfg.device)
+    # Without truncation, so a sequence longer than the context window keeps
+    # its length and is rejected below rather than cut silently to n_ctx.
+    tokens = model.to_tokens(seq, truncate=False).to(cfg.device)
     seq_len = tokens.shape[-1]
 
     # Validate detection pattern if it's a string
@@ -154,7 +156,7 @@ def detect_head(
         )
 
     # Validate inputs and detection pattern shape
-    assert 1 < tokens.shape[-1] < cfg.n_ctx, SEQ_LEN_ERR
+    assert 1 < tokens.shape[-1] <= cfg.n_ctx, SEQ_LEN_ERR
     assert (
         is_lower_triangular(detection_pattern) and seq_len == detection_pattern.shape[0]
     ), DET_PAT_NOT_SQUARE_ERR % (seq_len, detection_pattern.shape)
