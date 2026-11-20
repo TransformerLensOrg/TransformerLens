@@ -8,6 +8,9 @@ long factors are actually used.
 
 import pytest
 import torch
+
+pytest.importorskip("transformers.models.minicpm3")
+
 from transformers import MiniCPM3Config
 
 from tests.integration.model_bridge.helpers import make_tiny_pair

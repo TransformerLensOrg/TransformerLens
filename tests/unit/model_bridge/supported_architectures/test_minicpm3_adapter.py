@@ -10,6 +10,9 @@ tests/integration/model_bridge/test_minicpm3_adapter.py.
 import math
 
 import pytest
+
+pytest.importorskip("transformers.models.minicpm3")
+
 from transformers import MiniCPM3Config
 
 from transformer_lens.config import TransformerBridgeConfig
@@ -115,3 +118,12 @@ def test_missing_muP_fields_fall_back_to_minicpm3_config_defaults() -> None:
         defaults.scale_depth / math.sqrt(N_LAYERS)
     )
     assert adapter.output_logits_scale() == pytest.approx(defaults.dim_model_base / D_MODEL)
+
+
+def test_verify_models_loads_minicpm3_natively() -> None:
+    # The remote-code prefixes for MiniCPM 1/2/4 must not catch MiniCPM3
+    from transformer_lens.tools.model_registry import REMOTE_CODE_MODEL_PREFIXES
+
+    assert not any(
+        "openbmb/MiniCPM3-4B".startswith(prefix) for prefix in REMOTE_CODE_MODEL_PREFIXES
+    )

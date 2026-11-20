@@ -389,7 +389,10 @@ REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
     "microsoft/phi-2",
     "microsoft/phi-4",
     "openai/gpt-oss-",
-    "openbmb/MiniCPM",  # MiniCPMForCausalLM — ships own modeling_minicpm.py
+    # MiniCPMForCausalLM — ships own modeling_minicpm.py. Not a bare "openbmb/MiniCPM":
+    # MiniCPM3 is native in transformers and must not load with trust_remote_code.
+    "openbmb/MiniCPM-",
+    "openbmb/MiniCPM4",
     "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
     "Qwen/Qwen-",
     "Qwen/Qwen3-",
