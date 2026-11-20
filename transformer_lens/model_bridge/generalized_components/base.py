@@ -331,6 +331,20 @@ class GeneralizedComponent(nn.Module):
         """Get the original component."""
         return self._modules.get("_original_component", None)
 
+    def _original_forward_signature(self) -> inspect.Signature:
+        """Cached signature of the wrapped forward, re-read if that forward is replaced."""
+        original_component = self.original_component
+        if original_component is None:
+            raise RuntimeError(
+                f"Original component not set for {self.name}. Call set_original_component() first."
+            )
+        forward = original_component.forward
+        key = getattr(forward, "__func__", forward)
+        cached = self.__dict__.get("_forward_signature")
+        if cached is None or cached[0] is not key:
+            cached = self._forward_signature = (key, inspect.signature(forward))
+        return cached[1]
+
     def add_hook(self, hook_fn: Callable[..., torch.Tensor], hook_name: str = "output") -> None:
         """Add a hook function (HookedTransformer-compatible interface).
 
