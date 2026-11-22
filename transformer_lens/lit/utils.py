@@ -240,8 +240,9 @@ def compute_token_gradients(
     Args:
         model: TransformerLens model.
         text: Input text.
-        target_idx: Target token index for gradient computation.
-                   If None, uses the last token.
+        target_idx: Index of the target token. Its logit at the previous
+                   position is the salience target. Negative values count
+                   from the end. If None, uses the last token.
         prepend_bos: Whether to prepend BOS token.
 
     Returns:
@@ -249,24 +250,43 @@ def compute_token_gradients(
         - grad_l2: L2 norm of gradients per token [seq_len]
         - grad_dot_input: Gradient dot input embedding per token [seq_len]
         - tokens: List of token strings
+
+    Raises:
+        ValueError: If target_idx does not point to a token after the first one.
     """
     # Tokenize
     tokens, token_ids = get_tokens_from_model(model, text, prepend_bos=prepend_bos)
     token_ids = token_ids.unsqueeze(0).to(model.cfg.device)
+    seq_len = token_ids.shape[1]
 
-    input_embeds = model.embed(token_ids)
-    input_embeds.requires_grad_(True)
-
-    # Forward pass
-    logits = model(input_embeds, start_at_layer=0)
-
-    # Determine target
+    # Determine target: the token at target_idx, predicted from the position before it
     if target_idx is None:
-        target_idx = -1  # Last token
+        target_idx = seq_len - 1  # Last token
+    elif target_idx < 0:
+        target_idx += seq_len
+    if not 1 <= target_idx < seq_len:
+        raise ValueError(
+            f"target_idx must point to a token after the first one, got {target_idx} "
+            f"for {seq_len} tokens"
+        )
 
-    # Get target logit and compute gradient
-    target_logit = logits[0, target_idx, token_ids[0, target_idx + 1]]
-    target_logit.backward()
+    with torch.enable_grad():
+        # Detach so the embeddings are a leaf tensor and their .grad is populated
+        input_embeds = model.embed(token_ids).detach().clone()
+        input_embeds.requires_grad_(True)
+
+        # start_at_layer=0 skips the embedding step, so add positional embeddings here
+        if model.cfg.positional_embedding_type == "standard":
+            residual = input_embeds + model.W_pos[:seq_len].unsqueeze(0)
+        else:
+            residual = input_embeds
+
+        # Forward pass
+        logits = model(residual, start_at_layer=0)
+
+        # Get target logit and compute gradient
+        target_logit = logits[0, target_idx - 1, token_ids[0, target_idx]]
+        target_logit.backward()
 
     gradients = input_embeds.grad[0]  # [seq_len, d_model]
 

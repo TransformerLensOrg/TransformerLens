@@ -229,6 +229,46 @@ class TestUtils:
         assert result[0]["logits"].shape == (5, 10)
         assert result[0]["tokens"] == ["a", "b"]
 
+    def test_compute_token_gradients_targets_last_token(self):
+        """Default salience targets the last token's logit at the position before it."""
+        from transformer_lens.lit.utils import compute_token_gradients
+
+        torch.manual_seed(0)
+        token_ids = torch.tensor([[0, 3, 1, 4]])
+        embed = torch.nn.Embedding(6, 8)
+        w_pos = torch.randn(4, 8)
+        unembed = torch.nn.Linear(8, 6)
+
+        def forward(residual, start_at_layer=0):
+            # Causal running mean so every logit depends on earlier tokens.
+            steps = torch.arange(1, residual.shape[1] + 1).view(1, -1, 1)
+            return unembed(residual.cumsum(dim=1) / steps)
+
+        model = MagicMock(side_effect=forward)
+        model.cfg.device = "cpu"
+        model.cfg.positional_embedding_type = "standard"
+        model.tokenizer.convert_ids_to_tokens.return_value = ["<s>", "a", "b", "c"]
+        model.to_tokens.return_value = token_ids
+        model.embed = embed
+        model.W_pos = w_pos
+
+        grad_l2, grad_dot_input, tokens = compute_token_gradients(model, "a b c")
+
+        inputs = embed(token_ids).detach().requires_grad_(True)
+        forward(inputs + w_pos.unsqueeze(0))[0, -2, 4].backward()
+        expected = inputs.grad[0]
+
+        assert tokens == ["<s>", "a", "b", "c"]
+        np.testing.assert_allclose(grad_l2, expected.norm(dim=-1).numpy(), rtol=1e-5)
+        np.testing.assert_allclose(
+            grad_dot_input, (expected * inputs[0].detach()).sum(dim=-1).numpy(), rtol=1e-5
+        )
+        # The last position predicts no token, so it gets no gradient.
+        assert grad_l2[-1] == 0
+
+        with pytest.raises(ValueError, match="target_idx"):
+            compute_token_gradients(model, "a b c", target_idx=0)
+
     def test_get_model_info(self, mock_hooked_transformer):
         """Test model info extraction."""
         from transformer_lens.lit.utils import get_model_info
