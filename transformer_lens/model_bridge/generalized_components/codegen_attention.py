@@ -10,7 +10,7 @@ Optional parameters (may be absent in some CodeGen checkpoints):
   - rotary_dim: if None, RoPE is applied to the full head dimension.
 """
 
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional, Tuple, cast
 
 import torch
 
@@ -301,8 +301,18 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(q, k, v, num_heads)
 
         # ---- RoPE ----
+        # transformers >= 5.24 computes (sin, cos) once in CodeGenModel.rotary_emb and
+        # passes them as position_embeddings; earlier versions keep the sinusoidal
+        # table on the attention module as embed_positions.
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = kwargs.get(
+            "position_embeddings", None
+        )
         position_ids: Optional[torch.Tensor] = kwargs.get("position_ids", None)
-        if position_ids is not None:
+        sin: Optional[torch.Tensor] = None
+        cos: Optional[torch.Tensor] = None
+        if position_embeddings is not None:
+            sin, cos = position_embeddings
+        elif position_ids is not None:
             embed_positions = cast(torch.Tensor, self.original_component.embed_positions)  # type: ignore[union-attr]
             # Move buffer to the right device if needed (mirrors HF forward)
             if embed_positions.device != position_ids.device:
@@ -313,6 +323,7 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
             half = sincos.shape[-1] // 2
             sin, cos = sincos[:, :, :half], sincos[:, :, half:]
 
+        if sin is not None and cos is not None:
             rotary_dim: Optional[int] = getattr(self.original_component, "rotary_dim", None)
             if rotary_dim is not None:
                 # Only rotate the first rotary_dim dimensions; pass the rest through.
@@ -329,7 +340,10 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         kv_seq_len = k.shape[-2]
 
         # ---- Scaled dot-product (fp32, matching HF CodeGen._attn) ----
-        scale = cast(torch.Tensor, self.original_component.scale_attn)  # type: ignore[union-attr]
+        # transformers >= 5.24 stores the reciprocal, head_dim ** -0.5, as `scaling`.
+        scale = getattr(self.original_component, "scale_attn", None)
+        if scale is None:
+            scale = 1.0 / cast(float, self.original_component.scaling)
         q_f32 = q.to(torch.float32)
         k_f32 = k.to(torch.float32)
 
