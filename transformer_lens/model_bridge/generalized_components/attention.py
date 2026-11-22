@@ -434,7 +434,10 @@ class AttentionBridge(GeneralizedComponent):
         have been applied, but before computing attention scores. If no cache is
         present in kwargs, K and V are returned unchanged.
         """
-        past_key_values = kwargs.get("past_key_values", None)
+        # transformers >= 5.24 passes the cache to attention modules as `cache`.
+        past_key_values = kwargs.get("cache", None)
+        if past_key_values is None:
+            past_key_values = kwargs.get("past_key_values", None)
         if past_key_values is None:
             # GPT-NeoX/GPT-J/Bloom/Falcon/MPT/CodeGen/GPTBigCode still name the
             # cache `layer_past`; missing it leaves the cache empty, so every

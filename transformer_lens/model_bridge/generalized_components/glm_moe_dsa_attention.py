@@ -90,7 +90,11 @@ class GlmMoeDsaAttentionBridge(MLAAttentionBridge):
 
         position_embeddings = kwargs.pop("position_embeddings", None)
         attention_mask = kwargs.pop("attention_mask", None)
-        past_key_values = kwargs.pop("past_key_values", None)
+        # transformers >= 5.24 passes the cache as `cache`, earlier versions as `past_key_values`.
+        past_key_values = kwargs.pop("cache", None)
+        legacy_cache = kwargs.pop("past_key_values", None)
+        if past_key_values is None:
+            past_key_values = legacy_cache
         prev_topk_indices = kwargs.pop("prev_topk_indices", None)
         position_ids = kwargs.pop("position_ids", None)
 
