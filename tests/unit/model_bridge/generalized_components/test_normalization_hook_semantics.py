@@ -401,3 +401,52 @@ def test_native_inference_observers_do_not_treat_nonfinite_values_as_edits(inval
         bridge.hook_scale.remove_hooks()
         bridge.hook_normalized.remove_hooks()
         torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
+
+
+def test_native_path_unhooked_returns_hf_output(monkeypatch):
+    """With nothing hooked, the native path skips the intermediates and returns HF's output."""
+    import transformer_lens.model_bridge.generalized_components.normalization as norm
+
+    monkeypatch.setattr(norm, "_run_intermediate_hook", lambda *a: pytest.fail("computed"))
+    bridge = _make_bridge(native=True, rms=True)
+    x = torch.randn(2, 5, 16)
+    assert torch.equal(bridge(x), bridge.original_component(x))
+
+
+@pytest.mark.parametrize("pre", [False, True])
+def test_native_path_global_hook_is_not_bypassed_by_unhooked_fast_path(pre):
+    """A global module hook editing hook_scale must change the output, as in AttentionBridge."""
+    bridge = _make_bridge(native=True)
+    x = torch.randn(2, 5, 16)
+    baseline = bridge(x)
+    point = bridge.hook_scale
+
+    def edit_before(module, args):
+        if module is point:
+            return (args[0] * 2.0,)
+
+    def edit_after(module, args, output):
+        if module is point:
+            return output * 2.0
+
+    module_hooks = torch.nn.modules.module
+    handle = (
+        module_hooks.register_module_forward_pre_hook(edit_before)
+        if pre
+        else module_hooks.register_module_forward_hook(edit_after)
+    )
+    try:
+        with pytest.warns(UserWarning, match="reconstructed from the hooked values"):
+            patched = bridge(x)
+    finally:
+        handle.remove()
+    assert not torch.allclose(baseline, patched)
+
+
+def test_native_path_raw_torch_hook_on_hook_scale_fires():
+    """A hook registered on hook_scale with plain torch still runs."""
+    bridge = _make_bridge(native=True)
+    seen = []
+    bridge.hook_scale.register_forward_hook(lambda module, args, out: seen.append(out))
+    bridge(torch.randn(2, 5, 16))
+    assert len(seen) == 1
