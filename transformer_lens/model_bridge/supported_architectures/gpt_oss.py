@@ -31,6 +31,10 @@ class GPTOSSArchitectureAdapter(ArchitectureAdapter):
         self.cfg.positional_embedding_type = "rotary"
         # GPT-OSS attention returns (output, attn_weights), not a 3-tuple
         # Note: attention_output_format is not a standard config attribute, handled in architecture code
+        # Attention sinks take a share of every softmax row, so a head's value bias reaches
+        # its output scaled by (1 - sink weight), which varies by position and head; it
+        # cannot be folded into the constant o_proj bias.
+        self.supports_fold_value_biases = False
 
         # Conversion rules for weight processing/folding
         # GPT-OSS uses MoE with batched experts, so we need special handling
