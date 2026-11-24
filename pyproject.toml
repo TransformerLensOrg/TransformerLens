@@ -1,7 +1,7 @@
 [project]
     authors=[{name="Neel Nanda", email="77788841+TransformerLensOrg@users.noreply.github.com"}]
     dependencies=[
-        "accelerate>=1.1.0",                                                 # align_module_device (device_map disk offload)
+        "accelerate>=1.1.0",       # align_module_device (device_map disk offload)
         "beartype>=0.14.1",
         "datasets>=2.7.1",
         "einops>=0.6.0",
@@ -20,7 +20,7 @@
         "torch>=2.6",
         "tqdm>=4.64.1",
         "transformers-stream-generator>=0.0.5,<0.1",
-        "transformers>=5.9.0",
+        "transformers>=5.9.0,<5.24",
         "typeguard>=4.2,<5",
         "typing-extensions",
         "wandb>=0.13.5",
@@ -36,7 +36,7 @@
     [project.optional-dependencies]
         # chardet<6 works around a `requests<=2.32` compatibility-check warning that fires
         # whenever chardet>=6 is installed. Remove the pin when psf/requests bumps the cap.
-        evals=["lm-eval>=0.4", "chardet<6"]
+        evals=["chardet<6", "lm-eval>=0.4"]
         inspect=["inspect_ai>=0.3"]
         lit=["lit-nlp>=1.3"]
         # The vLLM driver's validated version band (see sources/vllm/internals.py before
@@ -100,8 +100,8 @@
         "ipykernel>=6.30.0",
         "ipython>=8.0.0",
         "ipywidgets>=8.1.1",
-        "jupyter>=1.0.0",
         "jupyter-client>=8.0.0",
+        "jupyter>=1.0.0",
         "jupyterlab>=4.0.0",
         "notebook>=7.0.0",
     ]
@@ -121,7 +121,7 @@
     default-groups=["dev", "docs", "jupyter", "multimodal", "tokenizers"]
     # vllm and lit cannot co-install (numpy>=2 vs numpy<2); forking the resolution
     # lets each extra lock cleanly on its own.
-    conflicts=[[{extra="vllm"}, {extra="lit"}]]
+    conflicts=[[{extra="lit"}, {extra="vllm"}]]
 
 [tool.pytest]
 
@@ -139,9 +139,9 @@
             "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
         ]
         markers=[
-            "slow: marks tests as slow (deselect with '-m \"not slow\"')",
             "inspect: requires inspect_ai (deselect with '-m \"not inspect\"')",
             "multigpu: requires vllm and >= 2 CUDA devices (select with '-m multigpu')",
+            "slow: marks tests as slow (deselect with '-m \"not slow\"')",
         ]
         pythonpath=["."]
         testpaths=["tests", "transformer_lens"] # Only test these directories
