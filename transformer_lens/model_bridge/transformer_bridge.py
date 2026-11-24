@@ -3519,6 +3519,15 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # unpadded path byte-identical.
         return None if bool(mask.all()) else mask
 
+    def _decode_generated_tokens(
+        self, output_tokens: torch.Tensor, input_type: str
+    ) -> str | list[str]:
+        assert self.tokenizer is not None
+        if input_type == "str":
+            return self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
+        decoded = [self.tokenizer.decode(row, skip_special_tokens=True) for row in output_tokens]
+        return decoded[0] if len(decoded) == 1 else decoded
+
     def generate(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -4017,7 +4026,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # would let the model attend to pad positions on the stateful fallback.
             if initial_attention_mask is not None:
                 hf_kwargs["attention_mask"] = initial_attention_mask
-            return self.hf_generate(input, **hf_kwargs)
+            if is_encoder_decoder or _generate_from_embeds or pixel_values is not None:
+                return self.hf_generate(input, **hf_kwargs)
+
+            # Reuse the prepared prompt so BOS handling, padding and the returned
+            # input tokens all describe the same HF generation call.
+            if initial_attention_mask is None and _list_prompt_mask is not None:
+                hf_kwargs["attention_mask"] = _list_prompt_mask
+            hf_kwargs["return_dict_in_generate"] = output_logits
+            if output_logits:
+                hf_kwargs["output_logits"] = True
+            fallback_result = self.hf_generate(input_tokens, return_type="tokens", **hf_kwargs)
+            if not output_logits and return_type == "str":
+                assert isinstance(fallback_result, torch.Tensor)
+                fallback_result = self._decode_generated_tokens(fallback_result, input_type)
+            return (fallback_result, input_tokens) if return_input_tokens else fallback_result
 
         # SSM cache is built once and mutated in place across forward calls.
         # Adapter owns the cache-type choice; new SSMs just override
@@ -4168,15 +4191,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     logits=_logits_to_tuple(logits_seq_list),
                 )
         elif return_type == "str":
-            assert self.tokenizer is not None
-            if input_type == "str":
-                result = self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
-            else:
-                decoded_texts = [
-                    self.tokenizer.decode(tokens, skip_special_tokens=True)
-                    for tokens in output_tokens
-                ]
-                result = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+            result = self._decode_generated_tokens(output_tokens, input_type)
         else:  # return_type == "tokens"
             result = output_tokens
 
