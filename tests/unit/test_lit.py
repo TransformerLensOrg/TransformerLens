@@ -229,45 +229,100 @@ class TestUtils:
         assert result[0]["logits"].shape == (5, 10)
         assert result[0]["tokens"] == ["a", "b"]
 
-    def test_compute_token_gradients_targets_last_token(self):
-        """Default salience targets the last token's logit at the position before it."""
-        from transformer_lens.lit.utils import compute_token_gradients
+    @pytest.fixture(params=["gpt2", "bloom"])
+    def gradient_model(self, request):
+        """Tiny random bridges and an in-memory tokenizer keep salience tests offline."""
+        from tokenizers import Tokenizer
+        from tokenizers.models import WordLevel
+        from tokenizers.pre_tokenizers import Whitespace
+        from transformers import (
+            AutoModelForCausalLM,
+            BloomConfig,
+            GPT2Config,
+            PreTrainedTokenizerFast,
+        )
+
+        from transformer_lens.model_bridge.sources import build_bridge_from_module
 
         torch.manual_seed(0)
-        token_ids = torch.tensor([[0, 3, 1, 4]])
-        embed = torch.nn.Embedding(6, 8)
-        w_pos = torch.randn(4, 8)
-        unembed = torch.nn.Linear(8, 6)
-
-        def forward(residual, start_at_layer=0):
-            # Causal running mean so every logit depends on earlier tokens.
-            steps = torch.arange(1, residual.shape[1] + 1).view(1, -1, 1)
-            return unembed(residual.cumsum(dim=1) / steps)
-
-        model = MagicMock(side_effect=forward)
-        model.cfg.device = "cpu"
-        model.cfg.positional_embedding_type = "standard"
-        model.tokenizer.convert_ids_to_tokens.return_value = ["<s>", "a", "b", "c"]
-        model.to_tokens.return_value = token_ids
-        model.embed = embed
-        model.W_pos = w_pos
-
-        grad_l2, grad_dot_input, tokens = compute_token_gradients(model, "a b c")
-
-        inputs = embed(token_ids).detach().requires_grad_(True)
-        forward(inputs + w_pos.unsqueeze(0))[0, -2, 4].backward()
-        expected = inputs.grad[0]
-
-        assert tokens == ["<s>", "a", "b", "c"]
-        np.testing.assert_allclose(grad_l2, expected.norm(dim=-1).numpy(), rtol=1e-5)
-        np.testing.assert_allclose(
-            grad_dot_input, (expected * inputs[0].detach()).sum(dim=-1).numpy(), rtol=1e-5
+        vocab = {"UNK": 0, "BOS": 1, "EOS": 2, "a": 3, "b": 4, "c": 5}
+        raw_tokenizer = Tokenizer(WordLevel(vocab, unk_token="UNK"))
+        raw_tokenizer.pre_tokenizer = Whitespace()
+        tokenizer = PreTrainedTokenizerFast(
+            tokenizer_object=raw_tokenizer, bos_token="BOS", eos_token="EOS", unk_token="UNK"
         )
-        # The last position predicts no token, so it gets no gradient.
-        assert grad_l2[-1] == 0
+        # Untied weights keep the reference gradient free of the unembedding contribution.
+        config = (
+            GPT2Config(
+                vocab_size=len(vocab),
+                n_positions=8,
+                n_embd=16,
+                n_layer=1,
+                n_head=2,
+                tie_word_embeddings=False,
+            )
+            if request.param == "gpt2"
+            else BloomConfig(
+                vocab_size=len(vocab),
+                hidden_size=16,
+                n_layer=1,
+                n_head=2,
+                tie_word_embeddings=False,
+            )
+        )
+        config._attn_implementation = "eager"
+        hf_model = AutoModelForCausalLM.from_config(config).eval()
+        embedding_weight = hf_model.get_input_embeddings().weight
+        model = build_bridge_from_module(
+            hf_model,
+            type(hf_model).__name__,
+            hf_config=config,
+            tokenizer=tokenizer,
+            device="cpu",
+        ).eval()
+        return model, embedding_weight
 
+    @pytest.mark.parametrize("target_idx", [None, 1, 2, -1, -2])
+    def test_compute_token_gradients_matches_forward(self, gradient_model, target_idx):
+        """Salience includes learned positions and Bloom's embedding normalization."""
+        from transformer_lens.lit.utils import compute_token_gradients
+
+        model, embedding_weight = gradient_model
+        token_ids = model.to_tokens("a b c", prepend_bos=True)
+        assert token_ids.tolist() == [[1, 3, 4, 5]]
+        resolved_idx = {None: 3, 1: 1, 2: 2, -1: 3, -2: 2}[target_idx]
+
+        model.zero_grad(set_to_none=True)
+        model(token_ids)[0, resolved_idx - 1, token_ids[0, resolved_idx]].backward()
+        # Each id occurs once, so its weight-row gradient is its lookup-output gradient.
+        assert embedding_weight.grad is not None
+        expected = embedding_weight.grad[token_ids[0]].detach().clone()
+        inputs = embedding_weight.detach()[token_ids[0]]
+        model.zero_grad(set_to_none=True)
+
+        with torch.no_grad():
+            grad_l2, grad_dot_input, tokens = compute_token_gradients(
+                model, "a b c", target_idx=target_idx
+            )
+
+        assert tokens == ["BOS", "a", "b", "c"]
+        assert grad_l2 is not None and grad_dot_input is not None
+        np.testing.assert_allclose(grad_l2, expected.norm(dim=-1).numpy(), rtol=1e-5, atol=1e-7)
+        np.testing.assert_allclose(
+            grad_dot_input, (expected * inputs).sum(dim=-1).numpy(), rtol=1e-5, atol=1e-7
+        )
+        assert np.all(grad_l2[:resolved_idx] > 0)
+        assert np.all(grad_l2[resolved_idx:] == 0)
+        assert not model.hook_dict["embed.hook_out"].fwd_hooks
+
+    @pytest.mark.parametrize("target_idx", [0, 4, 5, -4, -5])
+    def test_compute_token_gradients_invalid_target(self, gradient_model, target_idx):
+        """Targets must resolve to an existing token with a preceding position."""
+        from transformer_lens.lit.utils import compute_token_gradients
+
+        model, _ = gradient_model
         with pytest.raises(ValueError, match="target_idx"):
-            compute_token_gradients(model, "a b c", target_idx=0)
+            compute_token_gradients(model, "a b c", target_idx=target_idx)
 
     def test_get_model_info(self, mock_hooked_transformer):
         """Test model info extraction."""

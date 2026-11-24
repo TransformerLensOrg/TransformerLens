@@ -234,8 +234,9 @@ def compute_token_gradients(
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], List[str]]:
     """Compute token-level gradients for salience.
 
-    Uses gradient of the loss with respect to token embeddings to compute
-    importance scores for each token.
+    Uses the gradient of the target logit with respect to raw token embeddings
+    to compute importance scores. The model's forward applies all subsequent
+    embedding processing, including positions, normalization, and scaling.
 
     Args:
         model: TransformerLens model.
@@ -270,24 +271,23 @@ def compute_token_gradients(
             f"for {seq_len} tokens"
         )
 
+    input_embeds: Optional[torch.Tensor] = None
+
+    def capture_embeddings(out: torch.Tensor, hook: Any) -> torch.Tensor:
+        nonlocal input_embeds
+        input_embeds = out.detach().clone().requires_grad_(True)
+        return input_embeds
+
     with torch.enable_grad():
-        # Detach so the embeddings are a leaf tensor and their .grad is populated
-        input_embeds = model.embed(token_ids).detach().clone()
-        input_embeds.requires_grad_(True)
-
-        # start_at_layer=0 skips the embedding step, so add positional embeddings here
-        if model.cfg.positional_embedding_type == "standard":
-            residual = input_embeds + model.W_pos[:seq_len].unsqueeze(0)
-        else:
-            residual = input_embeds
-
-        # Forward pass
-        logits = model(residual, start_at_layer=0)
+        # hook_embed can alias post-normalization embeddings (e.g. Bloom).
+        logits = model.run_with_hooks(token_ids, fwd_hooks=[("embed.hook_out", capture_embeddings)])
 
         # Get target logit and compute gradient
         target_logit = logits[0, target_idx - 1, token_ids[0, target_idx]]
         target_logit.backward()
 
+    if input_embeds is None or input_embeds.grad is None:
+        raise RuntimeError("embed.hook_out did not run, so no embedding gradient was captured")
     gradients = input_embeds.grad[0]  # [seq_len, d_model]
 
     # Compute gradient L2 norm per token
