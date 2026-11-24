@@ -71,7 +71,13 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
 
         self._is_alibi = getattr(cfg, "alibi", False)
         self._is_new_arch = getattr(cfg, "new_decoder_architecture", False)
-        self._is_multi_query = getattr(cfg, "multi_query", False)
+        # HF ignores multi_query on the new decoder architecture (Falcon-40B/180B/11B),
+        # whose K/V head count comes from num_kv_heads.
+        self._is_multi_query = getattr(cfg, "multi_query", False) and not self._is_new_arch
+        # HF's decoder layer turns an unset num_ln_in_parallel_attn into 2 there (Falcon-40B):
+        # separate ln_attn/ln_mlp; with 1 (Falcon-11B) input_layernorm feeds both.
+        num_ln = getattr(cfg, "num_ln_in_parallel_attn", None)
+        self._has_ln_mlp = self._is_new_arch and num_ln in (None, 2)
         is_parallel = getattr(cfg, "parallel_attn", True)
 
         self.cfg.normalization_type = "LN"
@@ -98,7 +104,7 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
             ),
         }
 
-        ln1_name = "ln_attn" if self._is_new_arch else "input_layernorm"
+        ln1_name = "ln_attn" if self._has_ln_mlp else "input_layernorm"
 
         if self._is_alibi:
             # ALiBi: reimplement attention with ALiBi bias fused into scores.
@@ -141,7 +147,7 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
             block_submodules["ln2"] = NormalizationBridge(
                 name="post_attention_layernorm", config=self.cfg
             )
-        elif self._is_new_arch and getattr(cfg, "num_ln_in_parallel_attn", None) == 2:
+        elif self._has_ln_mlp:
             block_submodules["ln2"] = NormalizationBridge(name="ln_mlp", config=self.cfg)
 
         # Falcon has both parallel (most checkpoints) and sequential variants.
@@ -201,14 +207,21 @@ class FalconArchitectureAdapter(ArchitectureAdapter):
         has_bias = qkv.bias is not None
 
         if self._is_new_arch:
+            # Rows are grouped per KV head: [q_0 .. q_{g-1}, k, v] for each of n_kv groups.
             n_kv = self.cfg.n_key_value_heads or self.cfg.n_heads
-            sizes = [self.cfg.n_heads * head_dim, n_kv * head_dim, n_kv * head_dim]
-            W_Q, W_K, W_V = torch.split(weight, sizes, dim=0)
+            group = self.cfg.n_heads // n_kv
+            weight_groups = weight.view(n_kv, group + 2, head_dim, d_model)
+            W_Q = weight_groups[:, :group].reshape(self.cfg.n_heads * head_dim, d_model)
+            W_K = weight_groups[:, group].reshape(n_kv * head_dim, d_model)
+            W_V = weight_groups[:, group + 1].reshape(n_kv * head_dim, d_model)
             b_Q: torch.Tensor | None
             b_K: torch.Tensor | None
             b_V: torch.Tensor | None
             if has_bias:
-                b_Q, b_K, b_V = torch.split(qkv.bias.detach().clone(), sizes, dim=0)
+                bias_groups = qkv.bias.detach().clone().view(n_kv, group + 2, head_dim)
+                b_Q = bias_groups[:, :group].reshape(self.cfg.n_heads * head_dim)
+                b_K = bias_groups[:, group].reshape(n_kv * head_dim)
+                b_V = bias_groups[:, group + 1].reshape(n_kv * head_dim)
             else:
                 b_Q = b_K = b_V = None
         elif self._is_multi_query:
