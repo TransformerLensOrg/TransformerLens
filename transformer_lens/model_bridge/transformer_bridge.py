@@ -1879,7 +1879,26 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         Includes all layer types (attn, SSM, linear-attn). Set mlp_input=True
         to target ``layer``'s MLP input, adding its variant bias unless the block is parallel.
         """
-        accumulated = torch.zeros(self.cfg.d_model, device=self.cfg.device)
+        # Walk registered submodules via nn.Module rather than self.parameters(), which
+        # delegates to original_model and raises on bridges without a wrapped module
+        # (nn.Module.parameters calls self.named_parameters, so use named_parameters).
+        first_param: Optional[nn.Parameter] = None
+        param_dtype: Optional[torch.dtype] = None
+        if "_modules" in self.__dict__:
+            for _, param in nn.Module.named_parameters(self):
+                if first_param is None:
+                    first_param = param
+                if param.is_floating_point() and param.dtype.itemsize >= 2:
+                    param_dtype = param.dtype
+                    break
+        cfg_dtype = getattr(self.cfg, "dtype", None)
+        dtype = param_dtype or (cfg_dtype if isinstance(cfg_dtype, torch.dtype) else None)
+        device = (
+            self.cfg.device
+            if getattr(self.cfg, "n_devices", 1) > 1 and self.cfg.device is not None
+            else (first_param.device if first_param is not None else self.cfg.device)
+        )
+        accumulated = torch.zeros(self.cfg.d_model, device=device, dtype=dtype)
         for i in range(layer):
             block = self.blocks[i]
             scale = getattr(block, "residual_contribution_scale", 1.0)
@@ -3184,10 +3203,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # Pure-SSM models (Mamba-1/2) take the stateful cache as `cache_params`;
         # modern hybrids (Bamba, NemotronH, FalconH1) take `past_key_values` and
         # would receive a duplicate cache_params via **kwargs cascade otherwise.
+        # transformers >= 5.24 names it `cache` on both.
         stateful_cache_kwarg = "cache_params"
         if use_stateful_cache:
             forward_params = inspect.signature(self.original_model.forward).parameters
-            if "cache_params" not in forward_params:
+            if "cache" in forward_params:
+                stateful_cache_kwarg = "cache"
+            elif "cache_params" not in forward_params:
                 stateful_cache_kwarg = "past_key_values"
 
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
@@ -3472,6 +3494,43 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 f"the {architecture} architecture.{hint}"
             )
 
+    def _padded_prompt_mask(
+        self,
+        api_name: str,
+        tokens: torch.Tensor,
+        padding_side: str,
+        prepend_bos: Optional[bool],
+    ) -> Optional[torch.Tensor]:
+        """Read a padded token prompt's mask off the pad token; None when nothing is padded."""
+        # Without a tokenizer or pad id the argument would be inert; say so rather than
+        # quietly generate with the pads as context.
+        if not isinstance(self.tokenizer, PreTrainedTokenizerBase):
+            raise ValueError(
+                f"{api_name}(padding_side=...) reads the padding off the pad token, "
+                "which needs a tokenizer; this bridge has none. Pass "
+                "attention_mask=... to state the padding directly instead."
+            )
+        if self.tokenizer.pad_token_id is None:
+            raise ValueError(
+                f"{api_name}(padding_side=...) reads the padding off the pad token, "
+                "but this tokenizer has no pad_token_id. Set one, or pass "
+                "attention_mask=... to state the padding directly instead."
+            )
+        prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
+        mask = utils.get_attention_mask(self.tokenizer, tokens, prepend, padding_side=padding_side)
+        # An all-ones mask is what the model assumes anyway; skipping it keeps the
+        # unpadded path byte-identical.
+        return None if bool(mask.all()) else mask
+
+    def _decode_generated_tokens(
+        self, output_tokens: torch.Tensor, input_type: str
+    ) -> str | list[str]:
+        assert self.tokenizer is not None
+        if input_type == "str":
+            return self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
+        decoded = [self.tokenizer.decode(row, skip_special_tokens=True) for row in output_tokens]
+        return decoded[0] if len(decoded) == 1 else decoded
+
     def generate(
         self,
         input: Union[str, List[str], torch.Tensor] = "",
@@ -3551,10 +3610,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
                 Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
                 text that already contains the BOS token to avoid double-BOS.
-                Ignored when input is already a token tensor.
-            padding_side: Which side to pad when tokenizing multiple strings of different
-                lengths. For batched list inputs, left-padding is forced internally for
-                correct generation behavior. Defaults to None (tokenizer default).
+                Never prepended to a token tensor, where it only tells ``padding_side``
+                whether the prompt was tokenized with one.
+            padding_side: For a token tensor, the side it was already padded on: the prompt
+                mask is then read off the pad token (see ``attention_mask``). Ignored for
+                string input, which the bridge pads itself.
             return_type: The type of output to return - 'input', 'str', or 'tokens'
             verbose: Not used in Bridge (kept for API compatibility)
             output_logits: If True, return a ModelOutput with sequences and a tuple of raw
@@ -3640,8 +3700,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             chat templates.
         """
         self._ensure_generation_supported("generate")
-        # padding_side is handled internally: for batched list inputs, left-padding
-        # is forced to ensure correct generation. See _is_batched_list logic below.
 
         # Stateful dispatch is decided after input parsing so we can fall back
         # to hf_generate() for input types the stateful loop doesn't handle.
@@ -3742,6 +3800,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # caller asked for that by passing padding_side. Deriving a mask on the
         # default path would silently change behaviour for every existing caller,
         # and would demand a real tokenizer where today none is required.
+        if attention_mask is None and padding_side is not None and input_type == "tokens":
+            attention_mask = self._padded_prompt_mask(
+                "generate", input_tokens, padding_side, prepend_bos
+            )
         initial_attention_mask: Optional[torch.Tensor] = attention_mask
         if initial_attention_mask is not None and (
             _generate_from_embeds
@@ -3762,36 +3824,6 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "covering exactly the prompt tokens; generate() extends it itself."
                 )
             initial_attention_mask = initial_attention_mask.to(self.cfg.device)
-        elif padding_side is not None and input_type == "tokens":
-            # Reading the padding off the tokens needs a tokenizer with a pad id.
-            # Without one the argument would be inert, leaving exactly the bug this
-            # fixes — silently, on a bridge booted without a tokenizer. Say so
-            # rather than generate something quietly wrong.
-            if not isinstance(self.tokenizer, PreTrainedTokenizerBase):
-                raise ValueError(
-                    "generate(padding_side=...) reads the padding off the pad token, "
-                    "which needs a tokenizer; this bridge has none. Pass "
-                    "attention_mask=... to state the padding directly instead."
-                )
-            if self.tokenizer.pad_token_id is None:
-                raise ValueError(
-                    "generate(padding_side=...) reads the padding off the pad token, "
-                    "but this tokenizer has no pad_token_id. Set one, or pass "
-                    "attention_mask=... to state the padding directly instead."
-                )
-            _prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
-            _orig_side = self.tokenizer.padding_side
-            self.tokenizer.padding_side = padding_side
-            try:
-                initial_attention_mask = utils.get_attention_mask(
-                    self.tokenizer, input_tokens, _prepend
-                ).to(self.cfg.device)
-            finally:
-                self.tokenizer.padding_side = _orig_side
-            # An all-ones mask is what the model assumes anyway; skipping it keeps
-            # the unpadded path byte-identical to before.
-            if initial_attention_mask is not None and bool(initial_attention_mask.all()):
-                initial_attention_mask = None
 
         # Determine return type
         if return_type == "input":
@@ -3997,7 +4029,21 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             # would let the model attend to pad positions on the stateful fallback.
             if initial_attention_mask is not None:
                 hf_kwargs["attention_mask"] = initial_attention_mask
-            return self.hf_generate(input, **hf_kwargs)
+            if is_encoder_decoder or _generate_from_embeds or pixel_values is not None:
+                return self.hf_generate(input, **hf_kwargs)
+
+            # Reuse the prepared prompt so BOS handling, padding and the returned
+            # input tokens all describe the same HF generation call.
+            if initial_attention_mask is None and _list_prompt_mask is not None:
+                hf_kwargs["attention_mask"] = _list_prompt_mask
+            hf_kwargs["return_dict_in_generate"] = output_logits
+            if output_logits:
+                hf_kwargs["output_logits"] = True
+            fallback_result = self.hf_generate(input_tokens, return_type="tokens", **hf_kwargs)
+            if not output_logits and return_type == "str":
+                assert isinstance(fallback_result, torch.Tensor)
+                fallback_result = self._decode_generated_tokens(fallback_result, input_type)
+            return (fallback_result, input_tokens) if return_input_tokens else fallback_result
 
         # SSM cache is built once and mutated in place across forward calls.
         # Adapter owns the cache-type choice; new SSMs just override
@@ -4148,15 +4194,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     logits=_logits_to_tuple(logits_seq_list),
                 )
         elif return_type == "str":
-            assert self.tokenizer is not None
-            if input_type == "str":
-                result = self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
-            else:
-                decoded_texts = [
-                    self.tokenizer.decode(tokens, skip_special_tokens=True)
-                    for tokens in output_tokens
-                ]
-                result = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+            result = self._decode_generated_tokens(output_tokens, input_type)
         else:  # return_type == "tokens"
             result = output_tokens
 
@@ -4304,9 +4342,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 Defaults to None (uses ``cfg.default_prepend_bos``, typically True).
                 Pass ``prepend_bos=False`` when the input is pre-formatted chat-template
                 text that already contains the BOS token to avoid double-BOS.
-                Ignored when input is already a token tensor.
-            padding_side: Which side to pad for batched list inputs. Left-padding
-                is forced internally for batched generation.
+                Never prepended to a token tensor, where it only tells ``padding_side``
+                whether the prompt was tokenized with one.
+            padding_side: For a token tensor, the side it was already padded on: the prompt
+                mask is then read off the pad token, as in generate(). Ignored for string
+                input, which the bridge pads itself.
             return_type: 'input' (match input type), 'str', or 'tokens'.
             verbose: Show progress bar.
             stop_strings: Optional string or list of strings. A sequence stops once its
@@ -4315,11 +4355,12 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             stopping_criteria: Optional transformers StoppingCriteria, list, or
                 StoppingCriteriaList, called as criterion(input_ids, scores) each step
                 (scores is the step's logits). See generate() for the full contract.
-            attention_mask: Optional ``[batch, pos]`` 0/1 mask over the prompt,
-                required to generate correctly from an already-padded token tensor.
-                Extended by one attended column per generated token on decoder-only
-                models; forwarded to the encoder as-is on encoder-decoder models.
-                See generate() for the full contract.
+            attention_mask: Optional ``[batch, pos]`` 0/1 mask over the prompt. An
+                already-padded token tensor needs this or ``padding_side`` to generate
+                correctly; the mask wins when both are passed. Extended by one attended
+                column per generated token on decoder-only models; forwarded to the
+                encoder as-is on encoder-decoder models. See generate() for the full
+                contract.
             forced_bos_token_id: Optional token id seeded as the first decoder token
                 after ``decoder_start`` on encoder-decoder models, overriding any
                 generation_config default. Raises ValueError on decoder-only models.
@@ -4389,6 +4430,11 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
 
         # An explicit mask wins over any tokenizer-derived one (mirrors generate()):
         # the encoder consumes it as-is, a decoder-only prompt mask is grown per step.
+        # Without one, padding_side on token input stands in for the mask it implies.
+        if attention_mask is None and padding_side is not None and input_type == "tokens":
+            attention_mask = self._padded_prompt_mask(
+                "generate_stream", input_tokens, padding_side, prepend_bos
+            )
         initial_attention_mask: Optional[torch.Tensor] = None
         if attention_mask is not None:
             if _encdec_early:

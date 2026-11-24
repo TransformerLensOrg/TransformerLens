@@ -147,6 +147,7 @@ HF_SUPPORTED_ARCHITECTURES: set[str] = {
     "MarianMTModel",
     "MBartForConditionalGeneration",
     "MiniCPMForCausalLM",
+    "MiniCPM3ForCausalLM",
     "MiniMaxM2ForCausalLM",
     "NemotronForCausalLM",
     "NemotronHForCausalLM",
@@ -313,6 +314,7 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "MarianMTModel": ["Helsinki-NLP"],
     "MBartForConditionalGeneration": ["facebook"],
     "MiniCPMForCausalLM": ["openbmb"],
+    "MiniCPM3ForCausalLM": ["openbmb"],
     "MiniMaxM2ForCausalLM": ["MiniMaxAI"],
     "NemotronForCausalLM": ["nvidia"],
     "NemotronHForCausalLM": ["nvidia"],
@@ -387,7 +389,10 @@ REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
     "microsoft/phi-2",
     "microsoft/phi-4",
     "openai/gpt-oss-",
-    "openbmb/MiniCPM",  # MiniCPMForCausalLM — ships own modeling_minicpm.py
+    # MiniCPMForCausalLM — ships own modeling_minicpm.py. Not a bare "openbmb/MiniCPM":
+    # MiniCPM3 is native in transformers and must not load with trust_remote_code.
+    "openbmb/MiniCPM-",
+    "openbmb/MiniCPM4",
     "poolside/",  # LagunaForCausalLM — ships own modeling_laguna.py
     "Qwen/Qwen-",
     "Qwen/Qwen3-",

@@ -154,6 +154,47 @@ def test_stream_tensor_attention_mask_matches_generate(seq2seq_bridge):
     torch.testing.assert_close(torch.cat(chunks, dim=1), expected, rtol=0, atol=0)
 
 
+def _drain_stream(bridge, *args, **kwargs):
+    return list(bridge.generate_stream(*args, **kwargs))
+
+
+@pytest.mark.parametrize(
+    "run", (TransformerBridge.generate, _drain_stream), ids=("generate", "generate_stream")
+)
+def test_padding_side_masks_a_padded_encoder_tensor(seq2seq_bridge, run, monkeypatch):
+    # The pad is read off the tokenizer; both configs pad with id 0.
+    pad_only = Tokenizer(WordLevel({"<pad>": 0}, unk_token="<pad>"))
+    monkeypatch.setattr(
+        seq2seq_bridge,
+        "tokenizer",
+        PreTrainedTokenizerFast(tokenizer_object=pad_only, pad_token="<pad>"),
+    )
+    source = torch.tensor([[4, 5, 6, 2], [9, 2, 0, 0]])
+    masks = []
+
+    def record(module, args, kwargs):
+        if "attention_mask" in kwargs:
+            masks.append(kwargs["attention_mask"].clone())
+
+    handle = seq2seq_bridge.register_forward_pre_hook(record, with_kwargs=True)
+    try:
+        run(
+            seq2seq_bridge,
+            source,
+            padding_side="right",
+            max_new_tokens=3,
+            do_sample=False,
+            stop_at_eos=False,
+            verbose=False,
+        )
+    finally:
+        handle.remove()
+    # The encoder gets the mask the side implies on every step, as it does an explicit one.
+    assert len(masks) == 3
+    for seen in masks:
+        torch.testing.assert_close(seen, torch.tensor([[1, 1, 1, 1], [1, 1, 0, 0]]), rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("batch_size", (1, 2))
 @pytest.mark.parametrize("use_cache", (False, True))
 def test_stream_matches_generate(seq2seq_bridge, batch_size, use_cache):

@@ -118,6 +118,10 @@ class T5BlockBridge(GeneralizedComponent):
             **kwargs,
         ):
             """Patched T5 block forward with hooks."""
+            # transformers >= 5.24 passes the cache as `cache`, earlier versions as `past_key_values`.
+            cache = kwargs.pop("cache", None)
+            if past_key_values is None:
+                past_key_values = cache
             hidden_states = self.hook_in(hidden_states)
             if not hasattr(block_self, "layer"):
                 raise RuntimeError(f"T5 block {block_self} does not have 'layer' attribute")
@@ -137,6 +141,8 @@ class T5BlockBridge(GeneralizedComponent):
             # leaves the cache empty and breaks incremental decoding.
             if "past_key_values" in self_attn_params:
                 self_attn_kwargs["past_key_values"] = past_key_values
+            elif "cache" in self_attn_params:
+                self_attn_kwargs["cache"] = past_key_values
             if "use_cache" in self_attn_params:
                 self_attn_kwargs["use_cache"] = use_cache
             if "layer_head_mask" in self_attn_params:
@@ -160,6 +166,8 @@ class T5BlockBridge(GeneralizedComponent):
                 )
                 if "past_key_values" in cross_attn_params:
                     cross_attn_kwargs["past_key_values"] = past_key_values
+                elif "cache" in cross_attn_params:
+                    cross_attn_kwargs["cache"] = past_key_values
                 if "use_cache" in cross_attn_params:
                     cross_attn_kwargs["use_cache"] = use_cache
                 if "layer_head_mask" in cross_attn_params:

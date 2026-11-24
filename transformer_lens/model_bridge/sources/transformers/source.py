@@ -27,6 +27,8 @@ from transformer_lens.model_bridge.sources._bridge_builder import (
 from transformer_lens.model_bridge.sources._hf_format import (
     determine_architecture_from_hf_config,
 )
+from transformer_lens.model_bridge.sources.tl_legacy import TL_LEGACY_MODEL_NAMES
+from transformer_lens.model_bridge.sources.tl_legacy import boot as _boot_tl_legacy
 from transformer_lens.tools.model_registry.registry_io import resolve_model_alias
 from transformer_lens.utilities import get_device
 from transformer_lens.utilities.attn_implementation import force_eager_attention
@@ -38,6 +40,8 @@ from transformer_lens.utilities.multi_gpu import (
     is_mixed_offload_gpu,
     maybe_cast_floating_params,
     model_floating_dtype,
+    place_on_device,
+    report_device,
     resolve_device_map,
 )
 
@@ -51,6 +55,44 @@ from .helpers import (
 # on unexpected stderr output.
 warnings.filterwarnings("ignore", message=".*generation flags.*not valid.*")
 logging.getLogger("transformers").setLevel(logging.ERROR)
+
+
+def _route_to_tl_legacy(
+    model_name: str,
+    *,
+    device: str | torch.device | None,
+    dtype: torch.dtype | None,
+    tokenizer: PreTrainedTokenizerBase | None,
+    checkpoint_index: int | None,
+    checkpoint_value: int | None,
+    unsupported: dict[str, Any],
+) -> TransformerBridge:
+    """Load a legacy TransformerLens-format repo via ``boot_tl_legacy``.
+
+    These repos have no HF ``model_type``, so ``AutoConfig`` can't read them.
+    Options ``boot_tl_legacy`` can't honor raise rather than being dropped.
+    """
+    passed = sorted(name for name, value in unsupported.items() if value is not None)
+    if passed:
+        raise ValueError(
+            f"{model_name!r} is a legacy TransformerLens-format repo, loaded with "
+            f"TransformerBridge.boot_tl_legacy, which doesn't support: {', '.join(passed)}. "
+            "Remove these arguments or call boot_tl_legacy directly."
+        )
+    logging.warning(
+        f"{model_name!r} is a legacy TransformerLens-format repo, so boot_transformers is "
+        "loading it with TransformerBridge.boot_tl_legacy. Call "
+        f"TransformerBridge.boot_tl_legacy({model_name!r}) directly to avoid this warning."
+    )
+    return _boot_tl_legacy(
+        model_name,
+        checkpoint_index=checkpoint_index,
+        checkpoint_value=checkpoint_value,
+        device=device,
+        # boot_transformers' None means float32 for a fresh load, as here.
+        dtype=dtype if dtype is not None else torch.float32,
+        tokenizer=tokenizer,
+    )
 
 
 def boot(
@@ -87,7 +129,13 @@ def boot(
     shows ~1e-3 fp32 drift from kernel-level op reordering, not a bridge bug.
 
     Args:
-        model_name: The name of the model to load.
+        model_name: The name of the model to load. The known legacy TransformerLens-format
+            repos (``TL_LEGACY_MODEL_NAMES``: e.g. ``NeelNanda/GELU_1L512W_C4_Code``) and their
+            aliases are loaded with ``boot_tl_legacy`` instead, with a warning. Other repos in
+            those namespaces load as ordinary HF models. Only ``device``, ``dtype``,
+            ``tokenizer`` and the checkpoint arguments apply to them; HF loading options
+            (``device_map``, ``revision``, ``load_weights=False``, ...) raise. Passing
+            ``hf_model`` skips this routing.
         hf_config_overrides: Optional overrides applied to the HuggingFace config before model load.
         device: The device to use. If None, will be determined automatically. Mutually exclusive
             with ``device_map``.
@@ -105,8 +153,9 @@ def boot(
         hf_model: Optional pre-loaded HuggingFace model to use instead of loading one. Useful for
             models loaded with custom configurations (e.g., quantization via BitsAndBytesConfig).
             When provided, load_weights is ignored; an explicit ``dtype`` is applied to its
-            floating parameters (quantized models excepted), and without ``device=`` the
-            bridge reads ``cfg.device`` from the model's weights.
+            floating parameters (quantized models excepted) and an explicit ``device`` moves it
+            unless a device_map or quantizer owns its placement, in which case the request must
+            match. Without ``device=`` the bridge reads ``cfg.device`` from the model's weights.
         device_map: HuggingFace-style device map (``"auto"``, ``"balanced"``, dict, etc.) for
             dispatched inference. Explicit maps may include CPU and disk targets; meta targets
             are still rejected when ``load_weights=True`` (meta has no real data to offload from,
@@ -150,6 +199,28 @@ def boot(
             f"DEPRECATED: You are using a deprecated, model_name alias '{model_name}'. TransformerLens will now load the official transformers model name, '{official_name}' instead.\n Please update your code to use the official name by changing model_name from '{model_name}' to '{official_name}'.\nSince TransformerLens v3, all model names should be the official transformers model names.\nThe aliases may be removed in a future version of TransformerLens, so please do the update now."
         )
         model_name = official_name
+    # A pre-loaded hf_model is HF-format by construction, whatever its repo name.
+    if hf_model is None and model_name in TL_LEGACY_MODEL_NAMES:
+        return _route_to_tl_legacy(
+            model_name,
+            device=device,
+            dtype=dtype,
+            tokenizer=tokenizer,
+            checkpoint_index=checkpoint_index,
+            checkpoint_value=checkpoint_value,
+            unsupported={
+                "hf_config_overrides": hf_config_overrides,
+                "load_weights": None if load_weights else False,
+                "model_class": model_class,
+                "n_ctx": n_ctx,
+                "revision": revision,
+                "code_revision": code_revision,
+                "device_map": device_map,
+                "n_devices": n_devices,
+                "max_memory": max_memory,
+                "offload_folder": offload_folder,
+            },
+        )
     if checkpoint_index is not None or checkpoint_value is not None:
         if revision is not None:
             raise ValueError(
@@ -268,7 +339,7 @@ def boot(
         n_devices, device_map, device, max_memory
     )
     if resolved_device_map is None:
-        # hf_model is never moved; without device= cfg.device is read from it below.
+        # Without device= a pre-loaded hf_model keeps its placement, read back below.
         if device is None and hf_model is None:
             device = get_device()
         adapter.cfg.device = None if device is None else str(device)
@@ -323,17 +394,22 @@ def boot(
             )
     no_weights_device: str | torch.device | None = None
     if hf_model is not None:
-        # Pre-loaded weights stay where they are (quantized models with custom device_map
-        # are why this branch takes the model as-is), but attn-impl selection is runtime
-        # dispatch — safe to switch in place. Without it, transformers' default sdpa
-        # returns attn_weights=None and hook_pattern / hook_attn_scores silently never
-        # fire. An explicit adapter/user choice wins, matching the load path above.
+        # Pre-loaded weights stay put unless device= asks otherwise (quantized models with
+        # custom device_map are why this branch takes the model as-is), but attn-impl
+        # selection is runtime dispatch — safe to switch in place. Without it, transformers'
+        # default sdpa returns attn_weights=None and hook_pattern / hook_attn_scores silently
+        # never fire. An explicit adapter/user choice wins, matching the load path above.
         if getattr(adapter.cfg, "attn_implementation", None) is None:
             force_eager_attention(hf_model)
         # Only an explicit dtype casts; the default means "as loaded". The helper skips
-        # quantized models, whose dtype is the quantizer's to choose.
+        # quantized models, whose dtype is the quantizer's to choose. Cast before moving,
+        # so a narrower dtype is what reaches the device.
         if requested_dtype is not None:
             maybe_cast_floating_params(hf_model, requested_dtype)
+        # An explicit device moves the model unless a device_map or quantizer owns its
+        # placement, where a conflicting request is an error rather than a recorded lie.
+        if device is not None:
+            adapter.cfg.device = place_on_device(hf_model, device)
     elif not load_weights:
         from_config_kwargs = {}
         if trust_remote_code:
@@ -441,11 +517,9 @@ def boot(
         adapter.cfg.device = str(embedding_device)
         adapter.cfg.n_devices = count_unique_devices(hf_model)
     elif adapter.cfg.device is None:
-        # Pre-loaded single-device model with no hf_device_map — fall back to first param.
-        try:
-            adapter.cfg.device = str(next(hf_model.parameters()).device)
-        except StopIteration:
-            adapter.cfg.device = "cpu"
+        # Nothing placed the model here (a pre-loaded one without device=, or a no-weights
+        # build whose device_map is not applied): read its placement back.
+        adapter.cfg.device = report_device(hf_model, None)
     # cfg.dtype reports what the parameters are, not what was asked for: a quantizer may
     # override the request.
     actual_dtype = model_floating_dtype(hf_model)

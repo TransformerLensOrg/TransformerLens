@@ -282,7 +282,11 @@ class MLAAttentionBridge(PositionEmbeddingHooksMixin, AttentionBridge):
         value_states = self.hook_v(value_states)
 
         # --- KV Cache ---
-        past_key_values = kwargs.pop("past_key_values", None)
+        # transformers >= 5.24 passes the cache as `cache`, earlier versions as `past_key_values`.
+        past_key_values = kwargs.pop("cache", None)
+        legacy_cache = kwargs.pop("past_key_values", None)
+        if past_key_values is None:
+            past_key_values = legacy_cache
         cache_position = kwargs.pop("cache_position", None)
         if past_key_values is not None:
             cache_kwargs: dict = {"cache_position": cache_position}

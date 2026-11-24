@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import wraps
 from types import SimpleNamespace
 from typing import Any, List
 
@@ -149,6 +150,32 @@ class TestEnableHfRetry:
         assert before is after
 
 
+class TestSelectCompatibleKwargs:
+    def test_keeps_keyword_only_parameters(self) -> None:
+        def target(repo_id: str, *, revision: str, local_files_only: bool) -> None:
+            pass
+
+        kwargs = {"repo_id": "any/repo", "revision": "abc", "local_files_only": True, "bogus": 1}
+
+        assert hf_utils.select_compatible_kwargs(kwargs, target) == {
+            "repo_id": "any/repo",
+            "revision": "abc",
+            "local_files_only": True,
+        }
+
+    def test_follows_wrapped_function_parameters(self) -> None:
+        def target(revision: str) -> str:
+            return revision
+
+        @wraps(target)
+        def wrapped(*args: Any, **kwargs: Any) -> str:
+            return target(*args, **kwargs)
+
+        assert hf_utils.select_compatible_kwargs({"revision": "abc", "bogus": 1}, wrapped) == {
+            "revision": "abc"
+        }
+
+
 class TestDownloadFileFromHf:
     """End-to-end coverage: download_file_from_hf must actually use the retry helper.
 
@@ -179,6 +206,28 @@ class TestDownloadFileFromHf:
         assert result == {"ok": True}
         assert state["calls"] == 2
         assert len(_no_sleep) == 1
+
+    def test_forwards_keyword_only_download_parameters(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        fake_file = tmp_path / "data.json"
+        fake_file.write_text('{"ok": true}')
+        calls = []
+
+        def fake_hub_download(
+            *, revision: str | None = None, local_files_only: bool = False, **kwargs: Any
+        ) -> str:
+            calls.append((revision, local_files_only))
+            return str(fake_file)
+
+        monkeypatch.setattr(hf_utils, "hf_hub_download", fake_hub_download)
+
+        result = hf_utils.download_file_from_hf(
+            "any/repo", "data.json", revision="abc", local_files_only=True
+        )
+
+        assert result == {"ok": True}
+        assert calls == [("abc", True)]
 
 
 class TestRemotePostInitCompat:

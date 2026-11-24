@@ -96,3 +96,10 @@ def test_boot_transformers_stamps_checkpoint_metadata():
     )
     assert bridge.cfg.checkpoint_index == 2
     assert bridge.cfg.checkpoint_value is not None
+
+
+def test_boot_transformers_routes_the_alias_to_boot_tl_legacy(solu_bridge):
+    routed = TransformerBridge.boot_transformers("solu-1l", device="cpu")
+    tokens = torch.tensor([[1, 2, 3, 4]])
+    with torch.no_grad():
+        torch.testing.assert_close(routed(tokens), solu_bridge(tokens), atol=0, rtol=0)

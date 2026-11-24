@@ -90,8 +90,6 @@ def detect_head(
         seq: String or list of strings being fed to the model. A list is scored one prompt at a
             time and averaged; with a tensor `detection_pattern`, every prompt in it must tokenise
             to the pattern's sequence length.
-        head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a
-            head_name or a detection_pattern, but not both!
         detection_pattern: (sequence_length, sequence_length) Tensor representing what attention
             pattern corresponds to the head we're looking for or the name of a pre-specified head.
             Currently available heads are: `["previous_token_head", "duplicate_token_head",
@@ -195,7 +193,7 @@ def detect_head(
 def get_previous_token_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
+    """Outputs a detection pattern for [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
 
     Args:
       tokens: Tokens being fed to the model.
@@ -210,10 +208,10 @@ def get_previous_token_head_detection_pattern(
 def get_duplicate_token_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
+    """Outputs a detection pattern for [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
 
     Args:
-      sequence: String being fed to the model.
+      tokens: Tokens being fed to the model.
     """
     # [pos x pos]
     token_pattern = tokens.repeat(tokens.shape[-1], 1).numpy()
@@ -230,10 +228,10 @@ def get_duplicate_token_head_detection_pattern(
 def get_induction_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
+    """Outputs a detection pattern for [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
 
     Args:
-      sequence: String being fed to the model.
+      tokens: Tokens being fed to the model.
     """
     duplicate_pattern = get_duplicate_token_head_detection_pattern(tokens)
 
@@ -267,7 +265,7 @@ def compute_head_attention_similarity_score(
       attention_pattern: Lower triangular matrix (Tensor) representing the attention pattern of a particular attention head.
       detection_pattern: Lower triangular matrix (Tensor) representing the attention pattern we are looking for.
       exclude_bos: `True` if the beginning-of-sentence (BOS) token should be omitted from comparison. `False` otherwise.
-      exclude_bcurrent_token: `True` if the current token at each position should be omitted from comparison. `False` otherwise.
+      exclude_current_token: `True` if the current token at each position should be omitted from comparison. `False` otherwise.
       error_measure: "abs" for using absolute values of element-wise differences as the error measure. "mul" for using element-wise multiplication (legacy code).
     """
     assert is_square(

@@ -72,9 +72,11 @@ class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
             hidden_states = self.hook_in(kwargs["hidden_states"])
             kwargs["hidden_states"] = hidden_states
 
-        # Eager-scan slow path: opt-in flag, prefill only (no cache_params). Keyed
-        # on explicit state, never on hook-registry introspection.
-        if self.eager_scan and hidden_states is not None and kwargs.get("cache_params") is None:
+        # Eager-scan slow path: opt-in flag, prefill only (no cache). Keyed on
+        # explicit state, never on hook-registry introspection. transformers >= 5.24
+        # passes the cache as `cache`, earlier versions as `cache_params`.
+        has_cache = kwargs.get("cache") is not None or kwargs.get("cache_params") is not None
+        if self.eager_scan and hidden_states is not None and not has_cache:
             output: Any = self._eager_scan_forward(hidden_states, kwargs.get("attention_mask"))
         else:
             output = self.original_component(*args, **kwargs)

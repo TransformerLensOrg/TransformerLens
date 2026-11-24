@@ -67,7 +67,8 @@ class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
             propagates through the scan.
         hook_out: final output to residual stream [batch, seq, d_model]
 
-    During generation (cache_params present), only hook_in/hook_out fire.
+    During generation (a cache passed as `cache`, or `cache_params` before
+    transformers 5.24), only hook_in/hook_out fire.
 
     Property aliases:
         W_in_proj_qkvz, W_in_proj_ba, W_out_proj, A_log, dt_bias
@@ -125,7 +126,8 @@ class GatedDeltaNetBridge(SSMStateHookMixin, GeneralizedComponent):
         if self.original_component is None:
             raise RuntimeError(f"Original component not set for {self.name}.")
 
-        if kwargs.get("cache_params") is not None:
+        # transformers >= 5.24 passes the cache as `cache`, earlier versions as `cache_params`.
+        if kwargs.get("cache") is not None or kwargs.get("cache_params") is not None:
             return self._native_forward(*args, **kwargs)
         return self._hooked_forward(*args, **kwargs)
 

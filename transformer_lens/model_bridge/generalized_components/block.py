@@ -384,7 +384,7 @@ class BlockBridge(GeneralizedComponent):
 
         try:
             # Get the signature of the original component's forward method
-            sig = inspect.signature(self.original_component.forward)
+            sig = self._original_forward_signature()
             param_list = list(sig.parameters.keys())
             valid_params = set(param_list)
 

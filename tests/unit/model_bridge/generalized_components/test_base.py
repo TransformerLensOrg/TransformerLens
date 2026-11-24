@@ -1,10 +1,14 @@
 """Tests for GeneralizedComponent base class functionality."""
 
+import inspect
+
 import pytest
 import torch
 import torch.nn as nn
 
+from transformer_lens.config import TransformerBridgeConfig
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.generalized_components.attention import (
     AttentionBridge,
 )
@@ -458,5 +462,61 @@ def test_unembedding_forward_preserves_input_dtype():
     assert output.dtype == torch.bfloat16
 
 
+def test_original_forward_signature_cached_until_forward_replaced():
+    component = MockGeneralizedComponent()
+    original = MockOriginalComponent()
+    component.set_original_component(original)
+    signature = component._original_forward_signature()
+    assert component._original_forward_signature() is signature
+    original.forward = lambda x, y=None: x
+    assert list(component._original_forward_signature().parameters) == ["x", "y"]
+
+
+def test_original_forward_signature_requires_original_component():
+    with pytest.raises(RuntimeError, match="Original component not set"):
+        MockGeneralizedComponent()._original_forward_signature()
+
+
+def test_block_and_embedding_forwards_reuse_cached_signature(monkeypatch):
+    cfg = TransformerBridgeConfig(
+        d_model=32,
+        d_head=16,
+        n_heads=2,
+        n_layers=2,
+        n_ctx=8,
+        d_vocab=16,
+        d_mlp=64,
+        act_fn="gelu",
+        normalization_type="LN",
+        seed=0,
+    )
+    bridge = TransformerBridge.boot_native(cfg)
+    tokens = torch.randint(0, 16, (1, 6))
+    bridge(tokens)  # first forward fills each component's cached signature
+    wrapped = [block.original_component for block in bridge.blocks] + [
+        bridge.embed.original_component
+    ]
+    seen: list[object] = []
+    real_signature = inspect.signature
+
+    def recording(obj, *args, **kwargs):
+        seen.append(getattr(obj, "__self__", None))
+        return real_signature(obj, *args, **kwargs)
+
+    monkeypatch.setattr(inspect, "signature", recording)
+    bridge(tokens)
+
+    assert not any(module in wrapped for module in seen)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_call_skips_align_module_device_when_not_offloaded(monkeypatch):
+    import transformer_lens.model_bridge.generalized_components.base as base
+
+    monkeypatch.setattr(base, "align_module_device", lambda module: pytest.fail("entered"))
+    component = MockGeneralizedComponent()
+    component.set_original_component(MockOriginalComponent())
+    component(torch.ones(2))

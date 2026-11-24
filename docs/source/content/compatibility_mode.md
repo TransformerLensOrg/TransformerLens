@@ -39,7 +39,7 @@ bridge.enable_compatibility_mode(
 | `fold_ln` | `True` | Folds LayerNorm scale + bias into the subsequent linear weights so the LayerNorm modules become pure normalization. Changes weights; mathematically equivalent. |
 | `center_writing_weights` | `True` | Subtracts the mean from each "writing" weight (`W_out` in attention, MLP-down). Makes residual contributions sum to zero per layer, which makes residual-stream norms interpretable. |
 | `center_unembed` | `True` | Subtracts the mean from the unembedding matrix. Logits become mean-zero — affects logit-lens output but not argmax. |
-| `fold_value_biases` | `True` | Folds attention value biases into the output bias. Same numerics, fewer parameters. |
+| `fold_value_biases` | `True` | Folds attention value biases into the output bias. Same numerics, fewer parameters. Skipped with a warning on GPT-OSS, whose attention sinks keep part of every softmax row. |
 | `refactor_factored_attn_matrices` | `False` | Refactors `W_Q @ W_K.T` and `W_V @ W_O` for analysis. Off by default because it's slow and only matters for specific factored-matrix research. |
 | `disable_warnings` | `False` | Suppresses warnings emitted by legacy component aliases when accessed. |
 

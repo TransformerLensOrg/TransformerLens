@@ -1844,6 +1844,20 @@ class ProcessWeights:
             state_dict = ProcessWeights.center_writing_weights(state_dict, cfg, adapter=adapter)
         if center_unembed:
             state_dict = ProcessWeights.center_unembed(state_dict, cfg=cfg, adapter=adapter)
+        # Folding assumes attention rows sum to 1; attention sinks (GPT-OSS) break that.
+        if (
+            fold_value_biases
+            and adapter
+            and not getattr(adapter, "supports_fold_value_biases", True)
+        ):
+            import warnings
+
+            warnings.warn(
+                f"{type(adapter).__name__} does not support fold_value_biases; "
+                "value biases stay unfolded.",
+                UserWarning,
+            )
+            fold_value_biases = False
         if fold_value_biases and layout is not None:
             state_dict = ProcessWeights.fold_value_biases_with_layout(
                 state_dict, layout, center_outputs=should_center_writing_weights

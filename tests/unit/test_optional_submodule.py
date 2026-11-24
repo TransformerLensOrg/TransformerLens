@@ -391,6 +391,21 @@ class TestAccumulatedBiasHybrid:
         result = bridge.accumulated_bias(layer=3, mlp_input=True)
         assert result.shape == (4,)
 
+    def test_follows_parameter_dtype_when_cfg_dtype_is_stale(self):
+        bridge = _make_bridge(
+            _setup_blocks(HybridModel(), MinimalAdapter(optional=True)),
+            dtype=torch.float32,
+        )
+        bridge.half()
+        assert bridge.cfg.dtype == torch.float32
+        assert bridge.accumulated_bias(layer=4).dtype == torch.float16
+
+    def test_parameterless_bridge_falls_back_to_cfg_dtype(self):
+        bridge = _make_bridge([BlockBridge(name="layers.0")], n_layers=1, dtype=torch.bfloat16)
+        result = bridge.accumulated_bias(layer=1)
+        assert result.shape == (4,)
+        assert result.dtype == torch.bfloat16
+
 
 # -- Tests: block introspection ------------------------------------------------
 

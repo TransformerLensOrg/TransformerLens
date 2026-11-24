@@ -121,6 +121,49 @@ def test_does_not_mutate_supplied_model_dtype():
     assert before_dtypes == after_dtypes == {torch.bfloat16}
 
 
+def test_explicit_device_is_applied_to_the_model():
+    # meta is the one target besides cpu that every machine can move to, so the move shows.
+    cfg = _build_cfg()
+    model = _native(cfg)
+
+    bridge = build_bridge_from_module(
+        model, architecture="TransformerLensNative", tl_config=cfg, device="meta"
+    )
+
+    assert {p.device.type for p in model.parameters()} == {"meta"}
+    assert bridge.cfg.device == "meta"
+
+
+def test_cfg_device_reports_the_parameters_when_a_request_is_not_applied(caplog):
+    # Meta parameters have nothing to move, so the request cannot land.
+    cfg = _build_cfg()
+    model = _native(cfg).to("meta")
+
+    with caplog.at_level(logging.WARNING):
+        bridge = build_bridge_from_module(
+            model, architecture="TransformerLensNative", tl_config=cfg, device="cpu"
+        )
+
+    assert bridge.cfg.device == "meta"
+    assert "device=cpu was requested" in caplog.text
+
+
+def test_dispatched_model_rejects_a_conflicting_device_and_accepts_its_own():
+    cfg = _build_cfg()
+    model = _native(cfg)
+    model.hf_device_map = {"": "cpu"}
+
+    with pytest.raises(ValueError, match="does not move dispatched or quantized"):
+        build_bridge_from_module(
+            model, architecture="TransformerLensNative", tl_config=cfg, device="cuda"
+        )
+
+    bridge = build_bridge_from_module(
+        model, architecture="TransformerLensNative", tl_config=cfg, device="cpu"
+    )
+    assert bridge.cfg.device == "cpu"
+
+
 def test_post_adapter_hook_runs_before_prepare_model():
     cfg = _build_cfg()
     model = _native(cfg)
