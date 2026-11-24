@@ -213,7 +213,7 @@ Load-bearing pins live in [pyproject.toml](pyproject.toml):
 
 | Pin | Where | Why it matters |
 |---|---|---|
-| `transformers>=5.9.0` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. |
+| `transformers>=5.9.0,<5.24` | `[project] dependencies` | The Bridge adapter contract is written against HF module layouts; every minor HF release can break adapter component-mappings. Bumping is a real test pass. The ceiling exists to keep us below some breaking changes introduced in 5.24.0 (the cache kwarg was renamed, which breaks cached generation silently); Once those issues are resolved, we will raise the ceiling |
 | `torch>=2.6` | `[project] dependencies` | Hook system relies on PyTorch's forward / backward hook semantics; major torch bumps occasionally change ordering. |
 | `accelerate>=1.1.0` | `[project] dependencies` | Required for Llama-family loading and `device_map` disk offload (`align_module_device`). |
 | `numpy>=1.24` / `>=1.26` | `[project] dependencies` (python-version-conditional) | Doctest float formatting can drift across NumPy versions. |
