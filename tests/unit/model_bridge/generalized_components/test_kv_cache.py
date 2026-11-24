@@ -271,6 +271,20 @@ class TestUpdateKVCache:
 
         mock_cache.update.assert_called_once_with(k, v, 3)
 
+    def test_cache_kwarg_is_updated(self):
+        """transformers >= 5.24 passes the cache to attention modules as `cache`."""
+        bridge = _make_bridge()
+        bridge._layer_idx = 3
+        k = torch.randn(1, 2, 4, 2)
+        v = torch.randn(1, 2, 4, 2)
+
+        mock_cache = MagicMock()
+        mock_cache.update.return_value = (k, v)
+
+        bridge._update_kv_cache(k, v, cache=mock_cache)
+
+        mock_cache.update.assert_called_once_with(k, v, 3)
+
 
 class TestLayerIdxCoercion:
     """Test that set_original_component correctly coerces layer_idx types.

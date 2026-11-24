@@ -3200,10 +3200,13 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         # Pure-SSM models (Mamba-1/2) take the stateful cache as `cache_params`;
         # modern hybrids (Bamba, NemotronH, FalconH1) take `past_key_values` and
         # would receive a duplicate cache_params via **kwargs cascade otherwise.
+        # transformers >= 5.24 names it `cache` on both.
         stateful_cache_kwarg = "cache_params"
         if use_stateful_cache:
             forward_params = inspect.signature(self.original_model.forward).parameters
-            if "cache_params" not in forward_params:
+            if "cache" in forward_params:
+                stateful_cache_kwarg = "cache"
+            elif "cache_params" not in forward_params:
                 stateful_cache_kwarg = "past_key_values"
 
         for gen_step_idx in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
