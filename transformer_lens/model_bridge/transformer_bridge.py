@@ -3169,6 +3169,24 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
         the running sequence each step and folded into the finished-sequence mask alongside
         EOS, so when it is ``None`` the loop runs the EOS-only path unchanged.
         """
+        last_prompt_positions = None
+        if (
+            initial_attention_mask is not None
+            and not is_encoder_decoder
+            and not use_stateful_cache
+            and not _generate_from_embeds
+            and pixel_values is None
+            and not multimodal_kwargs
+        ):
+            columns = torch.arange(
+                initial_attention_mask.shape[1], device=initial_attention_mask.device
+            )
+            last_prompt_positions = columns.masked_fill(initial_attention_mask == 0, -1).amax(
+                dim=-1
+            )
+            if bool((last_prompt_positions < 0).any()):
+                raise ValueError("Each prompt row must have at least one attended token.")
+
         _hf_kv_cache = None
         # A prior multimodal forward caches mrope deltas on the wrapped model, and a
         # text-only generation would inherit them through the KV-cache position path
@@ -3343,6 +3361,10 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                         _hf_kv_cache = self._last_hf_cache or _hf_kv_cache
                         del self._last_hf_cache
                 raw_logits = logits[:, -1, :]
+                if gen_step_idx == 0 and last_prompt_positions is not None:
+                    # Decode from the last real prompt token, not a right pad.
+                    rows = torch.arange(logits.shape[0], device=logits.device)
+                    raw_logits = logits[rows, last_prompt_positions.to(logits.device), :]
                 # Clone so processors may edit scores in place without leaking into raw_logits.
                 final_logits = raw_logits.clone()
 
@@ -3655,6 +3677,9 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                 paths the mask is forwarded to the model as-is rather than grown per
                 step, which is what processors emitting one alongside
                 ``pixel_values`` expect.
+                For ordinary decoder-only text generation, the first token is
+                sampled from each row's last attended prompt token, and every
+                row must contain at least one attended token.
             forced_bos_token_id: Optional token id seeded as the first decoder token
                 after ``decoder_start`` on encoder-decoder models. Multilingual
                 translators (M2M100/MBart/NLLB) select their target language this way.
