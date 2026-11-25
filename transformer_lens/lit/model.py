@@ -551,24 +551,19 @@ class TransformerLensLIT(_LITModelBase):  # type: ignore[valid-type,misc]
         # Get target mask if provided
         target_mask = example.get(INPUT_FIELDS.TARGET_MASK)
 
-        # Get embeddings with gradient tracking
+        input_embeds: Optional[torch.Tensor] = None
+
+        def capture_embeddings(out: torch.Tensor, hook: Any) -> torch.Tensor:
+            nonlocal input_embeds
+            input_embeds = out.detach().clone().requires_grad_(True)
+            return input_embeds
+
         with torch.enable_grad():
-            # Get input embeddings and make them a leaf tensor for gradients
-            embed = self.model.embed(input_tokens).detach().clone()
-            embed.requires_grad_(True)
-
-            # Add positional embeddings if applicable
-            if self.model.cfg.positional_embedding_type == "standard":
-                # W_pos indexed by POSITION. Calling pos_embed(input_tokens) on
-                # a bridge routes to HF's wpe, which embeds whatever ids it is
-                # given — token ids, here — silently producing wrong positions.
-                pos_embed = self.model.W_pos[: input_tokens.shape[1]].unsqueeze(0)
-                residual = embed + pos_embed
-            else:
-                residual = embed
-
-            # Forward through the rest of the model
-            logits = self.model(residual, start_at_layer=0)
+            # Make the raw token lookup a leaf tensor. The model's own forward then
+            # applies positions and any embedding normalization (e.g. Bloom's embed_ln).
+            logits = self.model.run_with_hooks(
+                input_tokens, fwd_hooks=[("embed.hook_out", capture_embeddings)]
+            )
 
             # Compute loss or target logit
             if target_mask is not None:
@@ -583,12 +578,9 @@ class TransformerLensLIT(_LITModelBase):  # type: ignore[valid-type,misc]
             # Backward pass
             target_logit.backward()
 
-            # Get gradients - now embed is a leaf tensor so grad should be populated
-            if embed.grad is None:
-                # Fallback: return zeros if gradients couldn't be computed
-                gradients = torch.zeros_like(embed[0])
-            else:
-                gradients = embed.grad[0]  # [seq_len, d_model]
+        if input_embeds is None or input_embeds.grad is None:
+            raise RuntimeError("embed.hook_out did not run, so no embedding gradient was captured")
+        gradients = input_embeds.grad[0]  # [seq_len, d_model]
 
         # Return the full gradient tensor - LIT computes norms internally
         # TokenGradients expects shape [num_tokens, emb_dim]

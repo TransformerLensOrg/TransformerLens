@@ -324,6 +324,34 @@ class TestUtils:
         with pytest.raises(ValueError, match="target_idx"):
             compute_token_gradients(model, "a b c", target_idx=target_idx)
 
+    def test_lit_model_compute_gradients_matches_forward(self, gradient_model):
+        """The LIT wrapper's salience gradients also cover positions and embed_ln."""
+        from types import SimpleNamespace
+
+        from transformer_lens.lit.constants import OUTPUT_FIELDS
+        from transformer_lens.lit.model import (
+            TransformerLensLIT,
+            TransformerLensLITConfig,
+        )
+
+        model, embedding_weight = gradient_model
+        token_ids = model.to_tokens("a b c", prepend_bos=True)
+        model.zero_grad(set_to_none=True)
+        model(token_ids)[0, -2, token_ids[0, -1]].backward()
+        assert embedding_weight.grad is not None
+        expected = embedding_weight.grad[token_ids[0]].detach().clone()
+        model.zero_grad(set_to_none=True)
+
+        # Only model and config are read, so LIT itself is not needed here.
+        wrapper = SimpleNamespace(model=model, config=TransformerLensLITConfig(device="cpu"))
+        with torch.no_grad():
+            output = TransformerLensLIT._compute_gradients(wrapper, "a b c", {})
+
+        np.testing.assert_allclose(
+            output[OUTPUT_FIELDS.GRAD_L2], expected.numpy(), rtol=1e-5, atol=1e-7
+        )
+        assert not model.hook_dict["embed.hook_out"].fwd_hooks
+
     def test_get_model_info(self, mock_hooked_transformer):
         """Test model info extraction."""
         from transformer_lens.lit.utils import get_model_info
