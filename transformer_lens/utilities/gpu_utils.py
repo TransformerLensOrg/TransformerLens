@@ -10,4 +10,5 @@ import torch
 
 
 def print_gpu_mem(step_name=""):
-    print(f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU.")
+    gib_allocated = torch.cuda.memory_allocated() / 2**30
+    print(f"{step_name} ~ {np.round(gib_allocated, 2)} GiB allocated on GPU.")
