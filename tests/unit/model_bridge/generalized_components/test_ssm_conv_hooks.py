@@ -9,13 +9,15 @@ The first group of tests uses a stand-in mixer shaped like transformers >= 5.15,
 so it checks the routing on any installed transformers. The second group wires
 the real HF mixers: on transformers < 5.15 they call the conv module themselves,
 on >= 5.15 the routing does; either way the hooks fire with the same shapes and
-the output stays bit-exact with HF's (torch path; no causal-conv1d kernel in CI).
+the output stays bit-exact with HF's (torch path; no causal-conv1d kernel in CI),
+and calls with packed-sequence arguments behave exactly as HF's.
 """
 
 from __future__ import annotations
 
 import copy
 import sys
+import threading
 
 import pytest
 import torch
@@ -33,7 +35,9 @@ from transformer_lens.model_bridge.generalized_components.depthwise_conv1d impor
 
 
 def causal_conv1d_fn(hidden_states, weight, bias=None, activation=None, **kwargs):
-    """Copy of the torch path of transformers' ``causal_conv1d_fn``."""
+    """Copy of the torch path of transformers' ``causal_conv1d_fn``, which refuses packed sequences."""
+    if kwargs.get("seq_idx") is not None or kwargs.get("cu_seqlens") is not None:
+        raise ValueError("can't keep packed sequences apart without the kernel")
     seq_len = hidden_states.shape[-1]
     out = F.conv1d(
         hidden_states.to(weight.dtype),
@@ -59,9 +63,9 @@ class _KernelStyleMixer(torch.nn.Module):
             channels, channels, kernel, groups=channels, padding=kernel - 1
         )
 
-    def forward(self, x: torch.Tensor, use_other: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, use_other: bool = False, **kwargs) -> torch.Tensor:
         conv = self.other if use_other else self.conv1d
-        return causal_conv1d_fn(x, conv.weight.squeeze(1), conv.bias, activation="silu")
+        return causal_conv1d_fn(x, conv.weight.squeeze(1), conv.bias, activation="silu", **kwargs)
 
 
 def _bridged_kernel_style_mixer():
@@ -110,11 +114,12 @@ def test_route_leaves_other_convs_and_the_module_function_alone() -> None:
     seen: dict = {}
     conv.hook_in.add_hook(_record(seen, "in"))
     x = torch.randn(2, 6, 5)
+    function_before = sys.modules[__name__].causal_conv1d_fn
     with torch.no_grad(), route_causal_conv1d(mixer, "conv1d"):
         out = mixer(x, use_other=True)
     torch.testing.assert_close(out, reference(x, use_other=True), rtol=0.0, atol=0.0)
     assert seen == {}
-    assert sys.modules[__name__].causal_conv1d_fn is causal_conv1d_fn
+    assert sys.modules[__name__].causal_conv1d_fn is function_before
 
 
 def test_route_restores_the_module_function_after_an_error() -> None:
@@ -124,21 +129,85 @@ def test_route_restores_the_module_function_after_an_error() -> None:
         raise RuntimeError("hook failed")
 
     conv.hook_in.add_hook(fail)
+    function_before = sys.modules[__name__].causal_conv1d_fn
     with pytest.raises(RuntimeError, match="hook failed"):
         with torch.no_grad(), route_causal_conv1d(mixer, "conv1d"):
             mixer(torch.randn(2, 6, 5))
-    assert sys.modules[__name__].causal_conv1d_fn is causal_conv1d_fn
+    assert sys.modules[__name__].causal_conv1d_fn is function_before
 
 
 def test_route_is_a_no_op_without_a_conv_bridge() -> None:
     torch.manual_seed(0)
     mixer = _KernelStyleMixer()
     x = torch.randn(2, 6, 5)
+    function_before = sys.modules[__name__].causal_conv1d_fn
     with torch.no_grad():
         expected = mixer(x)
         with route_causal_conv1d(mixer, "conv1d"):
-            assert sys.modules[__name__].causal_conv1d_fn is causal_conv1d_fn
+            assert sys.modules[__name__].causal_conv1d_fn is function_before
             torch.testing.assert_close(mixer(x), expected, rtol=0.0, atol=0.0)
+
+
+@pytest.mark.parametrize("name", ["seq_idx", "cu_seqlens"])
+def test_route_leaves_packed_sequences_to_the_function(name) -> None:
+    mixer, _, conv = _bridged_kernel_style_mixer()
+    seen: dict = {}
+    conv.hook_in.add_hook(_record(seen, "in"))
+    packed = {name: torch.zeros(2, 5, dtype=torch.int32)}
+    with torch.no_grad(), route_causal_conv1d(mixer, "conv1d"):
+        with pytest.raises(ValueError, match="packed sequences"):
+            mixer(torch.randn(2, 6, 5), **packed)
+    assert seen == {}
+
+
+def test_route_keeps_concurrent_forwards_apart() -> None:
+    """Thread B's route outlives thread A's: B's conv hook still fires and the function is put back."""
+    mixer_a, reference, conv_a = _bridged_kernel_style_mixer()
+    mixer_b, _, conv_b = _bridged_kernel_style_mixer()
+    seen: dict = {}
+    conv_a.hook_in.add_hook(_record(seen, "a"))
+    conv_b.hook_in.add_hook(_record(seen, "b"))
+    x = torch.randn(2, 6, 5)
+    function_before = sys.modules[__name__].causal_conv1d_fn
+    a_entered, b_entered, a_left = threading.Event(), threading.Event(), threading.Event()
+    outputs: dict = {}
+    errors: list = []
+
+    def run_a() -> None:
+        try:
+            with torch.no_grad(), route_causal_conv1d(mixer_a, "conv1d"):
+                a_entered.set()
+                assert b_entered.wait(10)
+                outputs["a"] = mixer_a(x)
+        except BaseException as exc:  # surfaced in the main thread below
+            errors.append(exc)
+        finally:
+            a_left.set()
+
+    def run_b() -> None:
+        try:
+            assert a_entered.wait(10)
+            with torch.no_grad(), route_causal_conv1d(mixer_b, "conv1d"):
+                b_entered.set()
+                assert a_left.wait(10)
+                outputs["b"] = mixer_b(x)
+        except BaseException as exc:  # surfaced in the main thread below
+            errors.append(exc)
+        finally:
+            b_entered.set()
+
+    threads = [threading.Thread(target=run_a), threading.Thread(target=run_b)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    assert not errors, errors
+    assert set(seen) == {"a", "b"}
+    with torch.no_grad():
+        expected = reference(x)
+    torch.testing.assert_close(outputs["a"], expected, rtol=0.0, atol=0.0)
+    torch.testing.assert_close(outputs["b"], expected, rtol=0.0, atol=0.0)
+    assert sys.modules[__name__].causal_conv1d_fn is function_before
 
 
 # --- Real HF mixers, wired as the adapters wire them --------------------------------
@@ -269,3 +338,35 @@ def test_hf_mixer_patch_on_conv_hook_out_reaches_the_output(arch, key, conv_attr
     x = torch.randn(2, 7, 32)
     with torch.no_grad():
         assert not torch.allclose(_first(bridge(x)), _first(reference(x)))
+
+
+def _outcome(call):
+    """The call's first output, or the type and message of what it raised."""
+    try:
+        return _first(call())
+    except Exception as exc:
+        return type(exc), str(exc)
+
+
+PACKED_SEQUENCES = {
+    "seq_idx": torch.zeros(2, 7, dtype=torch.int32),
+    "cu_seqlens": torch.tensor([0, 7, 14], dtype=torch.int32),
+}
+
+
+@pytest.mark.parametrize("name", list(PACKED_SEQUENCES))
+@pytest.mark.parametrize("arch,key,conv_attr,build", HF_MIXERS)
+def test_hf_mixer_packed_sequences_behave_as_hf(arch, key, conv_attr, build, name) -> None:
+    torch.manual_seed(0)
+    hf_module = build().eval()
+    reference = copy.deepcopy(hf_module)
+    bridge = _wire(arch, key, hf_module)
+    x = torch.randn(2, 7, 32)
+    packed = {name: PACKED_SEQUENCES[name]}
+    with torch.no_grad():
+        expected = _outcome(lambda: reference(x, **packed))
+        got = _outcome(lambda: bridge(x, **packed))
+    if isinstance(expected, torch.Tensor):
+        torch.testing.assert_close(got, expected, rtol=0.0, atol=0.0)
+    else:
+        assert got == expected
