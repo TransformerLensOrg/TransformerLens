@@ -136,8 +136,12 @@ def detect_head(
         return torch.stack(batch_scores).mean(0)
 
     cfg = model.cfg
-    tokens = model.to_tokens(seq).to(cfg.device)
+    # Without truncation, so a sequence longer than the context window keeps
+    # its length and is rejected below rather than cut silently to n_ctx.
+    tokens = model.to_tokens(seq, truncate=False).to(cfg.device)
     seq_len = tokens.shape[-1]
+    # Checked before anything is sized from tokens, so an over-long prompt fails fast.
+    assert 1 < seq_len <= cfg.n_ctx, SEQ_LEN_ERR
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
@@ -153,8 +157,7 @@ def detect_head(
             "Using detection pattern with values other than 0 or 1 with error_measure 'mul'"
         )
 
-    # Validate inputs and detection pattern shape
-    assert 1 < tokens.shape[-1] < cfg.n_ctx, SEQ_LEN_ERR
+    # Validate detection pattern shape
     assert (
         is_lower_triangular(detection_pattern) and seq_len == detection_pattern.shape[0]
     ), DET_PAT_NOT_SQUARE_ERR % (seq_len, detection_pattern.shape)

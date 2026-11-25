@@ -409,12 +409,32 @@ def test_detect_head_with_zero_sequence_length():
 
 
 def test_detect_head_with_sequence_length_outside_context_window():
+    # BOS plus n_ctx tokens is one more than the context window holds.
+    seq = " a" * model.cfg.n_ctx
+    assert model.to_tokens(seq, truncate=False).shape[-1] == model.cfg.n_ctx + 1
     with pytest.raises(AssertionError) as e:
-        detect_head(model, "a " * model.cfg.n_ctx, "previous_token_head")
+        detect_head(model, seq, "previous_token_head")
     assert (
         str(e.value)
         == "The sequence must be non-empty and must fit within the model's context window."
     )
+
+
+def test_detect_head_with_sequence_much_longer_than_context_window():
+    with pytest.raises(AssertionError) as e:
+        detect_head(model, "a " * (2 * model.cfg.n_ctx), "previous_token_head")
+    assert (
+        str(e.value)
+        == "The sequence must be non-empty and must fit within the model's context window."
+    )
+
+
+def test_detect_head_with_sequence_filling_context_window():
+    # BOS plus n_ctx - 1 tokens fills the context window exactly, and fits.
+    seq = " a" * (model.cfg.n_ctx - 1)
+    assert model.to_tokens(seq).shape[-1] == model.cfg.n_ctx
+    result = detect_head(model, seq, "previous_token_head")
+    assert result.shape == (model.cfg.n_layers, model.cfg.n_heads)
 
 
 def test_detect_head_with_invalid_detection_pattern():
