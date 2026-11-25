@@ -183,8 +183,7 @@ def move_to_and_update_config(
             model.cfg.dtype = device_or_dtype
         if print_details:
             print("Changing model dtype to", device_or_dtype)
-        for k, v in model.state_dict().items():
-            model.state_dict()[k] = v.to(device_or_dtype)
+        # The parameters themselves are converted by nn.Module.to() below.
 
     # Call the base nn.Module.to() method to avoid recursion with custom to() methods
     # Use the unbound method approach to avoid calling the overridden to() method
