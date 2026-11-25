@@ -364,3 +364,28 @@ def test_warn_if_mps_broken_warning_fires_only_once():
             warn_if_mps(torch.device("mps"))
         broken_warnings = [warning for warning in w if "known MPS bug" in str(warning.message)]
         assert len(broken_warnings) == 1
+
+
+def test_move_to_and_update_config_dtype_converts_params_without_rebuilding_state_dict():
+    """Parameters are converted once by nn.Module.to(), not via repeated state_dict() calls."""
+    from types import SimpleNamespace
+
+    class CountingModule(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.cfg = SimpleNamespace(dtype=torch.float32, device="cpu")
+            self.layers = torch.nn.ModuleList(torch.nn.Linear(4, 4) for _ in range(5))
+            self.state_dict_calls = 0
+
+        def state_dict(self, *args, **kwargs):
+            self.state_dict_calls += 1
+            return super().state_dict(*args, **kwargs)
+
+    model = CountingModule()
+    result = move_to_and_update_config(model, torch.float16, print_details=False)
+
+    assert result is model
+    assert model.cfg.dtype == torch.float16
+    assert {p.dtype for p in model.parameters()} == {torch.float16}
+    # Previously this rebuilt the full state_dict once per parameter (quadratic cost).
+    assert model.state_dict_calls == 0
