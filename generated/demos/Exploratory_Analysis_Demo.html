@@ -1286,7 +1286,7 @@ output has updated towards the correct answer.</p>
 <p>We can then iterate over many possible activations and look at how much they affect the corrupted run. If patching in an activation significantly increases the probability of the correct answer, this allows us to <em>localise</em> which activations matter.</p>
 <p>The ability to localise is a key move in mechanistic interpretability - if the computation is diffuse and spread across the entire model, it is likely much harder to form a clean mechanistic story for what’s going on. But if we can identify precisely which parts of the model matter, we can then zoom in and determine what they represent and how they connect up with each other, and ultimately reverse engineer the underlying circuit that they represent.</p>
 <p>Here’s an animation from the ROME paper demonstrating this technique (they studied factual recall, and use stars to represent corruption applied to the subject of the sentence, but the same principles apply):</p>
-<img alt="CT Animation" src="https://rome.baulab.info/images/small-ct-animation.gif" />
+<p><img alt="CT Animation" src="https://rome.baulab.info/images/small-ct-animation.gif" /></p>
 <p>See also <a class="reference external" href="https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=qeWBvs-R-taFfcCq-S_hgMqx">the explanation in a mech interp explainer</a> and <a class="reference external" href="https://www.neelnanda.io/mechanistic-interpretability/attribution-patching#how-to-think-about-activation-patching">this piece</a> describing how to think about patching on a conceptual level</p>
 <p>The above was all fairly abstract, so let’s zoom in and lay out a concrete example to understand Indirect Object Identification.</p>
 <p>Here our clean input will be eg “After John and Mary went to the store, <strong>John</strong> gave a bottle of milk to” and our corrupted input will be eg “After John and Mary went to the store, <strong>Mary</strong> gave a bottle of milk to”. These prompts are identical except for the name of the indirect object, and so patching is a causal intervention which will allow us to understand precisely which parts of the network are identifying the indirect object.</p>
@@ -1885,7 +1885,7 @@ behaviour is determined by their attention patterns.</p>
 <section id="Comparing-to-the-Paper">
 <h3>Comparing to the Paper<a class="headerlink" href="#Comparing-to-the-Paper" title="Link to this heading">¶</a></h3>
 <p>We can now refer to the (far, far more rigorous and detailed) analysis in the paper to compare our results! Here’s the diagram they give of their results.</p>
-<img alt="IOI1" src="https://pbs.twimg.com/media/FghGkTAWAAAmkhm.jpg" />
+<p><img alt="IOI1" src="https://pbs.twimg.com/media/FghGkTAWAAAmkhm.jpg" /></p>
 <p>(Head 1.2 in their notation is L1H2 in my notation etc. And note - in the <a class="reference external" href="https://arxiv.org/pdf/2211.00593.pdf">latest version of the paper</a> they add 9.0 as a backup name mover, and remove 11.3)</p>
 <p>The heads form three categories corresponding to the early, middle and late categories we found and we did fairly well! Definitely not perfect, but with some fairly generic techniques and some a priori reasoning, we found the broad strokes of the circuit and what it looks like. We focused on the most important heads, so we didn’t find all relevant heads in each category (especially not the heads in brackets, which are more minor), but this serves as a good base for doing more rigorous and
 involved analysis, especially for finding the <em>complete</em> circuit (ie all of the parts of the model which participate in this behaviour) rather than just a partial and suggestive circuit. Go check out <a class="reference external" href="https://arxiv.org/abs/2211.00593">their paper</a> or <a class="reference external" href="https://www.youtube.com/watch?v=gzwj0jWbvbo">our interview</a> to learn more about what they did and what they found!</p>
@@ -1919,7 +1919,7 @@ involved analysis, especially for finding the <em>complete</em> circuit (ie all 
 <p>A really weird observation is that some of the early heads detecting duplicated tokens are induction heads, not just direct duplicate token heads. This is very weird! What’s up with that?</p>
 <p>First off, what’s an induction head? An induction head is an important type of attention head that can detect and continue repeated sequences. It is the second head in a two head induction circuit, which looks for previous copies of the current token and attends to the token <em>after</em> it, and then copies that to the current position and predicts that it will come next. They’re enough of a big deal that <a class="reference external" href="https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html">we wrote a whole paper on
 them</a>.</p>
-<img alt="Move image demo" src="https://pbs.twimg.com/media/FNWAzXjVEAEOGRe.jpg" />
+<p><img alt="Move image demo" src="https://pbs.twimg.com/media/FNWAzXjVEAEOGRe.jpg" /></p>
 <p>Second, why is it surprising that they come up here? It’s surprising because it feels like overkill. The model doesn’t care about <em>what</em> token comes after the first copy of the subject, just that it’s duplicated. And it already has simpler duplicate token heads. My best guess is that it just already had induction heads around and that, in addition to their main function, they <em>also</em> only activate on duplicated tokens. So it was useful to repurpose this existing machinery.</p>
 <p>This suggests that as we look for circuits in larger models life may get more and more complicated, as components in simpler circuits get repurposed and built upon.</p>
 <p>We can verify that these are induction heads by running the model on repeated text and plotting the heads.</p>
@@ -2056,7 +2056,7 @@ the name of the activation and some metadata such as the current layer).</p>
 </div>
 <p>The above suggests that it would be a useful bit of infrastructure to have a “wiki” for the heads of a model, giving their scores according to some metrics re head functions, like the ones we’ve seen here. TransformerLens makes this easy to make, as just changing the name input to <code class="docutils literal notranslate"><span class="pre">TransformerBridge.boot_transformers</span></code> gives a different model but in the same architecture, so the same code should work. If you want to make this, I’d love to see it!</p>
 <p>As a proof of concept, <a class="reference external" href="https://www.neelnanda.io/mosaic">I made a mosaic of all induction heads across the 40 models then in TransformerLens</a>.</p>
-<img alt="induction scores as proof of concept" src="https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2FNeelNanda%2F5vtuFmdzt_.png?alt=media&amp;token=4d613de4-9d14-48d6-ba9d-e591c562d429" />
+<p><img alt="induction scores as proof of concept" src="https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2FNeelNanda%2F5vtuFmdzt_.png?alt=media&amp;token=4d613de4-9d14-48d6-ba9d-e591c562d429" /></p>
 </section>
 </section>
 <section id="Backup-Name-Mover-Heads">
