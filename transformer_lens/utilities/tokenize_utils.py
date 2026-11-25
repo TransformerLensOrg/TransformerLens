@@ -88,13 +88,15 @@ def tokenize_and_concatenate(
             ``(torch.LongTensor(ex["tokens"]) for ex in tokenized_dataset)`` instead. Defaults to True.
 
     Returns:
-        Tokenized dataset of token sequences in a single column ``"tokens"``. Returns the same dataset
-        type as the input (``Dataset`` or ``IterableDataset``).
+        Tokenized dataset of token sequences in a single column ``"tokens"``. If a batch has too
+        few tokens to fill one row, it is padded with the tokenizer's pad ID, or its EOS ID if
+        no pad token is configured. Returns the same dataset type as the input.
     """
     dataset = keep_single_column(dataset, column_name)
-    has_pad_token = tokenizer.pad_token is not None
-    if not has_pad_token:
-        tokenizer.add_special_tokens({"pad_token": "<PAD>"})
+    padding_id = tokenizer.pad_token_id
+    if padding_id is None:
+        # Adding a pad token here would give it an ID the model may have no embedding for.
+        padding_id = tokenizer.eos_token_id
     seq_len = max_length - 1 if add_bos_token else max_length
 
     # Long docs legitimately exceed model_max_length; we slice into rows after.
@@ -130,8 +132,6 @@ def tokenize_and_concatenate(
             num_batches = 1
             tokens = tokens[:seq_len]
             if len(tokens) < seq_len:
-                # Pad with EOS when no native pad token to avoid OOV IDs.
-                padding_id = tokenizer.eos_token_id if not has_pad_token else tokenizer.pad_token_id
                 tokens = np.concatenate(
                     [tokens, np.full(seq_len - len(tokens), padding_id)], axis=0
                 )

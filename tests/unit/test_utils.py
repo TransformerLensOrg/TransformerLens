@@ -609,28 +609,28 @@ def test_tokenize_and_concatenate_no_spurious_sequence_length_warning():
     assert first_row.dim() == 1
 
 
-def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens():
-    """When the tokenizer has no pad token, output should only contain token IDs in the model's vocab."""
-    # Fresh tokenizer (not gpt2_tokenizer fixture): the function mutates pad_token
-    # and we assert pad_token is None at the start.
+@pytest.mark.parametrize("pad_token", [None, "!"], ids=["no-pad", "pad-id-zero"])
+def test_tokenize_and_concatenate_short_sequence_no_invalid_tokens(pad_token):
+    """Packing twice with the same tokenizer should use the same in-vocabulary padding."""
     from datasets import Dataset
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     assert tokenizer.pad_token is None, "GPT-2 has no pad token"
-    original_vocab_size = tokenizer.vocab_size
+    if pad_token is not None:
+        tokenizer.pad_token = pad_token
+        assert tokenizer.pad_token_id == 0
+    original_vocab_size = len(tokenizer)
+    padding_id = tokenizer.eos_token_id if pad_token is None else tokenizer.pad_token_id
+    dataset = Dataset.from_dict({"text": ["Hello"]})
+    expected = [tokenizer.bos_token_id, *tokenizer.encode("Hello", add_special_tokens=False)]
+    expected += [padding_id] * (4 - len(expected))
 
-    dataset = Dataset.from_dict({"text": ["Hello", "world", "today"]})
-    result = utils.tokenize_and_concatenate(
-        dataset,
-        tokenizer,
-        column_name="text",
-        add_bos_token=True,
-        streaming=True,
-    )
-    tokens = result[0]["tokens"]
-    assert tokens.min().item() >= 0
-    assert tokens.max().item() < original_vocab_size, (
-        "Returned tensor contained invalid token ID (e.g. synthetic pad). "
-        "All IDs must be < original tokenizer vocab size."
-    )
+    for _ in range(2):
+        result = utils.tokenize_and_concatenate(dataset, tokenizer, max_length=4, num_proc=None)
+        tokens = result[0]["tokens"]
+        assert tokens.tolist() == expected
+        assert 0 <= tokens.min().item() <= tokens.max().item() < original_vocab_size
+
+    assert tokenizer.pad_token == pad_token
+    assert len(tokenizer) == original_vocab_size
