@@ -64,11 +64,12 @@ Read [the root AGENTS.md](../../../AGENTS.md) for project-wide rules. This file 
 | `exceptions.py` | Custom exception types |
 | `alias_drift.py` | Detects when legacy `MODEL_ALIASES` and the registry have diverged |
 | `discover_architectures.py` | Lightweight HF scan to enumerate architecture classes |
-| `hf_scraper.py` | Full HF Hub scan; builds initial supported/unsupported model lists |
-| `relevancy.py` | Filters models by download count, foundation-org provenance |
+| `hf_scraper.py` | Full HF Hub scan; builds initial supported/unsupported model lists and `data/organization_gaps.json`; `--rescore` recomputes gap scores offline |
+| `relevancy.py` | Scores unsupported architectures (demand, usage, benchmarkability, authorship) |
+| `authorship.py` | Credits a gap architecture's authors; selects candidate organizations for `PREFERRED_AUTHORS` |
 | `generate_report.py` | Renders human-readable status summaries; holds `ARCHITECTURE_DESCRIPTIONS` |
 
-`__init__.py` exports the canonical `HF_SUPPORTED_ARCHITECTURES` set and `CANONICAL_AUTHORS_BY_ARCH` map; agents adding a new HF architecture must update both.
+`__init__.py` exports the canonical `HF_SUPPORTED_ARCHITECTURES` set and `CANONICAL_AUTHORS_BY_ARCH` map; agents adding a new HF architecture must update both. It also holds `PREFERRED_AUTHORS`, the research-relevant organizations whose unsupported architectures get a relevancy boost; after editing it run `hf_scraper --rescore` (see [hf-scraper.md](../../../docs/source/content/adapter_development/hf-scraper.md#organization-gaps)).
 
 ---
 

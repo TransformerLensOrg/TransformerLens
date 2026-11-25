@@ -30,6 +30,8 @@ from .schemas import (
     ArchitectureStats,
     ModelEntry,
     ModelMetadata,
+    OrganizationGap,
+    OrganizationGapsReport,
     ScanInfo,
     SupportedModelsReport,
 )
@@ -372,6 +374,58 @@ CANONICAL_AUTHORS_BY_ARCH: dict[str, list[str]] = {
     "Zamba2ForCausalLM": ["Zyphra"],
 }
 
+# Hub namespaces of research organizations whose unsupported architectures get the
+# authorship boost in relevancy.py. Unlike CANONICAL_AUTHORS_BY_ARCH this is not keyed
+# by architecture: it has to recognize an org's *next* architecture before any adapter
+# exists. Matched case-insensitively. Candidates for promotion are listed in
+# data/organization_gaps.json; after editing, run `hf_scraper --rescore`.
+PREFERRED_AUTHORS: set[str] = {
+    # Industry labs
+    "google",
+    "google-bert",
+    "google-t5",
+    "deepmind",
+    "facebook",
+    "meta-llama",
+    "FacebookAI",
+    "microsoft",
+    "openai",
+    "openai-community",
+    "nvidia",
+    "apple",
+    "amazon",
+    "ibm-granite",
+    "ibm-research",
+    "ibm-ai-platform",
+    "Salesforce",
+    "mistralai",
+    "CohereLabs",
+    "stabilityai",
+    "LiquidAI",
+    "HuggingFaceTB",
+    "HuggingFaceM4",
+    "deepseek-ai",
+    "Qwen",
+    "tencent",
+    "baidu",
+    "ByteDance",
+    "ByteDance-Seed",
+    "zai-org",
+    "moonshotai",
+    "MiniMaxAI",
+    "tiiuae",
+    # Academic and non-profit labs
+    "allenai",
+    "EleutherAI",
+    "bigscience",
+    "bigcode",
+    "state-spaces",
+    "internlm",
+    "OpenGVLab",
+    "openbmb",
+    "BAAI",
+}
+
 # Model-name prefixes that require trust_remote_code=True to load (custom
 # modeling code on the HF Hub).
 REMOTE_CODE_MODEL_PREFIXES: tuple[str, ...] = (
@@ -406,6 +460,7 @@ __all__ = [
     "HF_SUPPORTED_ARCHITECTURES",
     "ARCHITECTURE_ALIASES",
     "CANONICAL_AUTHORS_BY_ARCH",
+    "PREFERRED_AUTHORS",
     "REMOTE_CODE_MODEL_PREFIXES",
     # Exceptions
     "ModelRegistryError",
@@ -422,6 +477,8 @@ __all__ = [
     "ArchitectureAnalysis",
     "SupportedModelsReport",
     "ArchitectureGapsReport",
+    "OrganizationGap",
+    "OrganizationGapsReport",
     # Verification
     "VerificationRecord",
     "VerificationHistory",

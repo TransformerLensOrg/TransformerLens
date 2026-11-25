@@ -170,6 +170,11 @@ class ArchitectureGap:
         total_downloads: Aggregate download count across all models of this architecture
         min_param_count: Parameter count of the smallest model (None if unknown)
         relevancy_score: Composite relevancy score (0-100), or None if not computed
+        authors: Hub namespaces credited with the architecture (top publisher, then
+            the publisher with the oldest repo if different)
+        preferred_author: Whether any author is in PREFERRED_AUTHORS
+        publishers: Per-namespace records (name, models, downloads, likes,
+            first_published) for the top publishers of this architecture
     """
 
     architecture_id: str
@@ -178,6 +183,9 @@ class ArchitectureGap:
     total_downloads: int = 0
     min_param_count: Optional[int] = None
     relevancy_score: Optional[float] = None
+    authors: list[str] = field(default_factory=list)
+    preferred_author: bool = False
+    publishers: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to a JSON-serializable dictionary."""
@@ -187,7 +195,10 @@ class ArchitectureGap:
             "total_downloads": self.total_downloads,
             "min_param_count": self.min_param_count,
             "relevancy_score": self.relevancy_score,
+            "authors": self.authors,
+            "preferred_author": self.preferred_author,
             "sample_models": self.sample_models,
+            "publishers": self.publishers,
         }
         return d
 
@@ -201,6 +212,9 @@ class ArchitectureGap:
             total_downloads=data.get("total_downloads", 0),
             min_param_count=data.get("min_param_count"),
             relevancy_score=data.get("relevancy_score"),
+            authors=data.get("authors", []),
+            preferred_author=data.get("preferred_author", False),
+            publishers=data.get("publishers", []),
         )
 
 
@@ -336,6 +350,107 @@ class ArchitectureGapsReport:
                 "total_unsupported_models",
                 sum(g.total_models for g in gaps),
             ),
+            gaps=gaps,
+        )
+
+
+@dataclass
+class OrganizationGap:
+    """A non-preferred organization whose gap-architecture footprint matches preferred authors.
+
+    Attributes:
+        organization: Hub namespace of the organization
+        relevancy_score: Mean of the two percentiles below (0-100)
+        total_architectures: Number of gap architectures the organization authors
+        total_models: The organization's own models across those architectures
+        total_downloads: Downloads of those models
+        total_likes: Likes of those models
+        downloads_percentile: Share of preferred authors it matches or exceeds on downloads
+        likes_percentile: Share of preferred authors it matches or exceeds on likes
+        architectures: The gap architectures it authors
+    """
+
+    organization: str
+    relevancy_score: float
+    total_architectures: int = 0
+    total_models: int = 0
+    total_downloads: int = 0
+    total_likes: int = 0
+    downloads_percentile: float = 0.0
+    likes_percentile: float = 0.0
+    architectures: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Convert to a JSON-serializable dictionary."""
+        return {
+            "organization": self.organization,
+            "relevancy_score": self.relevancy_score,
+            "total_architectures": self.total_architectures,
+            "total_models": self.total_models,
+            "total_downloads": self.total_downloads,
+            "total_likes": self.total_likes,
+            "downloads_percentile": self.downloads_percentile,
+            "likes_percentile": self.likes_percentile,
+            "architectures": self.architectures,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "OrganizationGap":
+        """Create from a dictionary."""
+        return cls(
+            organization=data["organization"],
+            relevancy_score=data["relevancy_score"],
+            total_architectures=data.get("total_architectures", 0),
+            total_models=data.get("total_models", 0),
+            total_downloads=data.get("total_downloads", 0),
+            total_likes=data.get("total_likes", 0),
+            downloads_percentile=data.get("downloads_percentile", 0.0),
+            likes_percentile=data.get("likes_percentile", 0.0),
+            architectures=data.get("architectures", []),
+        )
+
+
+@dataclass
+class OrganizationGapsReport:
+    """Report of organizations that are candidates for PREFERRED_AUTHORS.
+
+    Attributes:
+        generated_at: Date when this report was generated
+        scan_info: Metadata about the scraping run
+        criteria: The bar candidates cleared (reference_authors, reference_statistic,
+            min_downloads, min_likes), derived from the preferred authors' own footprints
+        total_candidate_organizations: Number of candidate organizations
+        gaps: Candidate organizations sorted by relevancy score
+    """
+
+    generated_at: date
+    gaps: list[OrganizationGap]
+    scan_info: Optional[ScanInfo] = None
+    criteria: dict = field(default_factory=dict)
+    total_candidate_organizations: int = 0
+
+    def to_dict(self) -> dict:
+        """Convert to a JSON-serializable dictionary."""
+        return {
+            "generated_at": self.generated_at.isoformat(),
+            "scan_info": self.scan_info.to_dict() if self.scan_info else None,
+            "criteria": self.criteria,
+            "total_candidate_organizations": self.total_candidate_organizations,
+            "gaps": [g.to_dict() for g in self.gaps],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "OrganizationGapsReport":
+        """Create from a dictionary."""
+        scan_info = None
+        if data.get("scan_info"):
+            scan_info = ScanInfo.from_dict(data["scan_info"])
+        gaps = [OrganizationGap.from_dict(g) for g in data["gaps"]]
+        return cls(
+            generated_at=date.fromisoformat(data["generated_at"]),
+            scan_info=scan_info,
+            criteria=data.get("criteria", {}),
+            total_candidate_organizations=data.get("total_candidate_organizations", len(gaps)),
             gaps=gaps,
         )
 
