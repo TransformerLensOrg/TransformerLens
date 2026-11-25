@@ -229,6 +229,38 @@ class TestDownloadFileFromHf:
         assert result == {"ok": True}
         assert calls == [("abc", True)]
 
+    def test_closes_json_file_after_loading(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """The json file handle must be closed, not left for the garbage collector.
+
+        The test keeps its own reference to every file object opened for the
+        downloaded path, so a handle that was never closed stays observably open.
+        """
+        import builtins
+
+        fake_file = tmp_path / "data.json"
+        fake_file.write_text('{"ok": true}')
+        monkeypatch.setattr(hf_utils, "hf_hub_download", lambda **kwargs: str(fake_file))
+
+        real_open = builtins.open
+        opened: List[Any] = []
+
+        def tracking_open(file: Any, *args: Any, **kwargs: Any) -> Any:
+            handle = real_open(file, *args, **kwargs)
+            if str(file) == str(fake_file):
+                opened.append(handle)
+            return handle
+
+        monkeypatch.setattr(builtins, "open", tracking_open)
+
+        result = hf_utils.download_file_from_hf("any/repo", "data.json")
+        monkeypatch.undo()
+
+        assert result == {"ok": True}
+        assert len(opened) == 1
+        assert opened[0].closed
+
 
 class TestRemotePostInitCompat:
     """4.x-era remote configs define argless __post_init__, which >=5.x calls

@@ -192,7 +192,8 @@ def download_file_from_hf(
     if file_path.endswith(".pth") or force_is_torch:
         return torch.load(file_path, map_location="cpu", weights_only=False)
     elif file_path.endswith(".json"):
-        return json.load(open(file_path, "r"))
+        with open(file_path, "r") as f:
+            return json.load(f)
     else:
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
