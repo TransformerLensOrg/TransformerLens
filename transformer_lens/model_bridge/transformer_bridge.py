@@ -3534,6 +3534,14 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
             )
         prepend = self.cfg.default_prepend_bos if prepend_bos is None else prepend_bos
         mask = utils.get_attention_mask(self.tokenizer, tokens, prepend, padding_side=padding_side)
+        if (
+            padding_side == "right"
+            and prepend
+            and self.tokenizer.bos_token_id == self.tokenizer.pad_token_id
+            and tokens.shape[-1] > 0
+        ):
+            # A BOS-only row otherwise looks entirely like trailing padding.
+            mask[..., 0] = 1
         # An all-ones mask is what the model assumes anyway; skipping it keeps the
         # unpadded path byte-identical.
         return None if bool(mask.all()) else mask
