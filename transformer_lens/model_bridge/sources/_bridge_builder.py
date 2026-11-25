@@ -80,6 +80,9 @@ _HF_PASSTHROUGH_ATTRS = [
     "mamba_d_conv",
     "mamba_chunk_size",
     "lm_head_multiplier",
+    "attention_out_multiplier",
+    "ssm_out_multiplier",
+    "mlp_multipliers",
     # Multimodal
     "vision_config",
     # Cohere
