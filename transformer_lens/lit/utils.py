@@ -234,14 +234,16 @@ def compute_token_gradients(
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], List[str]]:
     """Compute token-level gradients for salience.
 
-    Uses gradient of the loss with respect to token embeddings to compute
-    importance scores for each token.
+    Uses the gradient of the target logit with respect to raw token embeddings
+    to compute importance scores. The model's forward applies all subsequent
+    embedding processing, including positions, normalization, and scaling.
 
     Args:
         model: TransformerLens model.
         text: Input text.
-        target_idx: Target token index for gradient computation.
-                   If None, uses the last token.
+        target_idx: Index of the target token. Its logit at the previous
+                   position is the salience target. Negative values count
+                   from the end. If None, uses the last token.
         prepend_bos: Whether to prepend BOS token.
 
     Returns:
@@ -249,25 +251,43 @@ def compute_token_gradients(
         - grad_l2: L2 norm of gradients per token [seq_len]
         - grad_dot_input: Gradient dot input embedding per token [seq_len]
         - tokens: List of token strings
+
+    Raises:
+        ValueError: If target_idx does not point to a token after the first one.
     """
     # Tokenize
     tokens, token_ids = get_tokens_from_model(model, text, prepend_bos=prepend_bos)
     token_ids = token_ids.unsqueeze(0).to(model.cfg.device)
+    seq_len = token_ids.shape[1]
 
-    input_embeds = model.embed(token_ids)
-    input_embeds.requires_grad_(True)
-
-    # Forward pass
-    logits = model(input_embeds, start_at_layer=0)
-
-    # Determine target
+    # Determine target: the token at target_idx, predicted from the position before it
     if target_idx is None:
-        target_idx = -1  # Last token
+        target_idx = seq_len - 1  # Last token
+    elif target_idx < 0:
+        target_idx += seq_len
+    if not 1 <= target_idx < seq_len:
+        raise ValueError(
+            f"target_idx must point to a token after the first one, got {target_idx} "
+            f"for {seq_len} tokens"
+        )
 
-    # Get target logit and compute gradient
-    target_logit = logits[0, target_idx, token_ids[0, target_idx + 1]]
-    target_logit.backward()
+    input_embeds: Optional[torch.Tensor] = None
 
+    def capture_embeddings(out: torch.Tensor, hook: Any) -> torch.Tensor:
+        nonlocal input_embeds
+        input_embeds = out.detach().clone().requires_grad_(True)
+        return input_embeds
+
+    with torch.enable_grad():
+        # hook_embed can alias post-normalization embeddings (e.g. Bloom).
+        logits = model.run_with_hooks(token_ids, fwd_hooks=[("embed.hook_out", capture_embeddings)])
+
+        # Get target logit and compute gradient
+        target_logit = logits[0, target_idx - 1, token_ids[0, target_idx]]
+        target_logit.backward()
+
+    if input_embeds is None or input_embeds.grad is None:
+        raise RuntimeError("embed.hook_out did not run, so no embedding gradient was captured")
     gradients = input_embeds.grad[0]  # [seq_len, d_model]
 
     # Compute gradient L2 norm per token
