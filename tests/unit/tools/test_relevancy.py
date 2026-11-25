@@ -3,11 +3,15 @@
 Tests cover:
 - Individual component scoring functions
 - Composite relevancy score computation
+- The authorship component and how far its boost reaches
 - Batch scoring and sorting via compute_scores_for_gaps
 - Edge cases (zero values, missing data)
 """
 
+import pytest
+
 from transformer_lens.tools.model_registry.relevancy import (
+    WEIGHT_AUTHORSHIP,
     _normalize_demand,
     _normalize_usage,
     _score_benchmarkability,
@@ -107,8 +111,31 @@ class TestComputeRelevancyScore:
             min_param_count=350_000_000,
             max_model_count=100,
             max_downloads=1_000_000,
+            preferred_author=True,
         )
         assert score == 100.0
+
+    def test_perfect_scores_without_preferred_author(self):
+        score = compute_relevancy_score(
+            model_count=100,
+            total_downloads=1_000_000,
+            min_param_count=350_000_000,
+            max_model_count=100,
+            max_downloads=1_000_000,
+        )
+        assert score == round(100 * (1 - WEIGHT_AUTHORSHIP), 1)
+
+    def test_preferred_author_adds_its_weight(self):
+        base_kwargs = dict(
+            model_count=10,
+            total_downloads=100_000,
+            min_param_count=1_000_000_000,
+            max_model_count=50,
+            max_downloads=10_000_000,
+        )
+        plain = compute_relevancy_score(**base_kwargs)
+        boosted = compute_relevancy_score(preferred_author=True, **base_kwargs)
+        assert boosted - plain == pytest.approx(WEIGHT_AUTHORSHIP * 100, abs=0.1)
 
     def test_zero_everything(self):
         score = compute_relevancy_score(
@@ -232,3 +259,65 @@ class TestComputeScoresForGaps:
         ]
         result = compute_scores_for_gaps(gaps)
         assert result[0]["architecture_id"] == "ArchB"
+
+
+# ============================================================
+# Authorship in compute_scores_for_gaps
+# ============================================================
+
+
+def _gap(arch: str, publisher: str, downloads: int) -> dict:
+    return {
+        "architecture_id": arch,
+        "total_models": 5,
+        "total_downloads": downloads,
+        "min_param_count": 1_000_000_000,
+        "publishers": [
+            {
+                "name": publisher,
+                "models": 5,
+                "downloads": downloads,
+                "likes": 10,
+                "first_published": "2026-01-01T00:00:00Z",
+            }
+        ],
+    }
+
+
+class TestAuthorshipBoost:
+    def test_preferred_author_breaks_a_tie(self):
+        gaps = [_gap("CommunityArch", "somebody", 50_000), _gap("LabArch", "google", 50_000)]
+        result = compute_scores_for_gaps(gaps)
+        assert [g["architecture_id"] for g in result] == ["LabArch", "CommunityArch"]
+        assert result[0]["authors"] == ["google"] and result[0]["preferred_author"] is True
+        assert result[1]["authors"] == ["somebody"] and result[1]["preferred_author"] is False
+
+    def test_boost_outweighs_three_times_the_downloads(self):
+        gaps = [
+            _gap("CommunityArch", "somebody", 30_000),
+            _gap("LabArch", "google", 10_000),
+            _gap("Ceiling", "somebody-else", 1_000_000),
+        ]
+        order = [g["architecture_id"] for g in compute_scores_for_gaps(gaps)]
+        assert order.index("LabArch") < order.index("CommunityArch")
+
+    def test_boost_does_not_outweigh_a_hundred_times_the_downloads(self):
+        gaps = [_gap("CommunityArch", "somebody", 1_000_000), _gap("LabArch", "google", 10_000)]
+        order = [g["architecture_id"] for g in compute_scores_for_gaps(gaps)]
+        assert order == ["CommunityArch", "LabArch"]
+
+    def test_namespace_match_ignores_case(self):
+        result = compute_scores_for_gaps([_gap("LabArch", "GOOGLE", 10_000)])
+        assert result[0]["preferred_author"] is True
+
+    def test_entry_without_publishers_uses_top_sample_model(self):
+        gaps = [
+            {
+                "architecture_id": "LegacyEntry",
+                "total_models": 3,
+                "sample_models": ["google/legacy-base", "somebody/legacy-finetune"],
+            }
+        ]
+        result = compute_scores_for_gaps(gaps)
+        assert result[0]["authors"] == ["google"]
+        assert result[0]["preferred_author"] is True

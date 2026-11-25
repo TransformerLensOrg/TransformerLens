@@ -1,6 +1,6 @@
 # HuggingFace Model Scraper
 
-The HuggingFace model scraper (`transformer_lens.tools.model_registry.hf_scraper`) discovers HF models, extracts each model's architecture from its config, and writes two registry files: `supported_models.json` (models whose architecture has a registered TransformerLens adapter) and `architecture_gaps.json` (unsupported architectures, scored by relevancy). Most adapter contributors will only need to run it after merging a new architecture adapter to populate the registry with that architecture's models.
+The HuggingFace model scraper (`transformer_lens.tools.model_registry.hf_scraper`) discovers HF models, extracts each model's architecture from its config, and writes three registry files: `supported_models.json` (models whose architecture has a registered TransformerLens adapter), `architecture_gaps.json` (unsupported architectures, scored by relevancy), and `organization_gaps.json` (organizations that are candidates for the preferred-author list). Most adapter contributors will only need to run it after merging a new architecture adapter to populate the registry with that architecture's models.
 
 ## When to run
 
@@ -68,14 +68,52 @@ uv run python -m transformer_lens.tools.model_registry.hf_scraper \
     --architecture <ArchClass> --full-scan -o ./tmp/scrape/
 ```
 
+### Re-score — after editing the preferred authors
+
+Recompute every `relevancy_score` in `architecture_gaps.json` and rebuild `organization_gaps.json` from the data already on disk. Run after editing `PREFERRED_AUTHORS` or the relevancy weights:
+
+```bash
+uv run python -m transformer_lens.tools.model_registry.hf_scraper --rescore
+```
+
 ## Output
 
-Two JSON files are written to `--output` (default: `transformer_lens/tools/model_registry/data/`):
+Three JSON files are written to `--output` (default: `transformer_lens/tools/model_registry/data/`):
 
 - **`supported_models.json`** — one entry per model whose `config.architectures[0]` matches a key in `SUPPORTED_ARCHITECTURES`. Each entry has `architecture_id`, `model_id`, `status`, per-phase verification scores, and metadata. Schema: `SupportedModelsReport` in `schemas.py`.
-- **`architecture_gaps.json`** — one entry per *un*supported architecture, with model count, total downloads, smallest known parameter count, sample model IDs, and a computed `relevancy_score`. Sorted by relevancy descending. Schema: `ArchitectureGapsReport` in `schemas.py`.
+- **`architecture_gaps.json`** — one entry per *un*supported architecture, with model count, total downloads, smallest known parameter count, sample model IDs, its `publishers` and `authors`, and a computed `relevancy_score`. Sorted by relevancy descending. Schema: `ArchitectureGapsReport` in `schemas.py`.
+- **`organization_gaps.json`** — organizations that are not in `PREFERRED_AUTHORS`, but have similar relevance to the organizations that are. Sorted by score descending. Schema: `OrganizationGapsReport` in `schemas.py`.
 
 A `verification_history.json` placeholder is also written if it doesn't already exist; `verify_models` is what actually populates it.
+
+## Relevancy scoring
+
+`relevancy_score` (0-100, computed in `relevancy.py`) ranks unsupported architectures for adapter work. It combines four components:
+
+| Component | Weight | Signal |
+| --- | --- | --- |
+| Demand | 0.4275 | Model count, relative to the largest gap architecture |
+| Usage | 0.3325 | Total downloads, log-scaled |
+| Benchmarkability | 0.19 | Size of the smallest checkpoint (smaller is easier to verify) |
+| Authorship | 0.05 | 100 if a preferred author published the architecture, else 0 |
+
+These weights were picked based on several test runs.
+
+**Authorship.** Each gap entry records its `publishers`: the Hub namespaces hosting its checkpoints, with their model count, downloads, likes, and the creation date of their oldest repo. Its `authors` are the publisher with the most downloads and the publisher with the oldest repo. The two usually coincide; if they differ, both are credited, since either can be the originator. The architecture receives authorship points when an associated author is in `PREFERRED_AUTHORS` (`tools/model_registry/__init__.py`).
+
+The authorship boost is modest. It is enough to lift a lab's architecture over a community architecture with comparable numbers, but not enough to lift an unused architecture over a well-used one.
+
+## Organization gaps
+
+`organization_gaps.json` answers "which organizations should we consider adding to `PREFERRED_AUTHORS`?". It is derived from `architecture_gaps.json`, so an organization needs at least one unsupported architecture to be measured.
+
+1. Every author of a gap architecture gets a footprint: the downloads and likes of its own checkpoints in the architectures it authors. Nothing else counts, which weeds out re-uploaders.
+2. The bar is the **median** footprint of the current preferred authors, taken separately for downloads and for likes. The report records it under `criteria`.
+3. A non-preferred organization is listed when it meets or beats the bar on both. Downloads alone admit automated pulls; likes alone admit hype.
+
+Each entry carries `downloads_percentile` and `likes_percentile` (the share of preferred authors it matches or exceeds) and a `relevancy_score` that is their mean.
+
+The list is a shortlist for maintainers to review. To promote an organization, add its namespace to `PREFERRED_AUTHORS` and run `--rescore`; `tests/unit/tools/test_authorship.py` fails until the data files agree with the list. If you are an organization that would like to be included in `PREFERRED_AUTHORS`, please file an issue on GitHub naming your Hub namespace and the architectures you authored, and stating the case for your organization.
 
 ## Flags
 
@@ -89,6 +127,7 @@ A `verification_history.json` placeholder is also written if it doesn't already 
 | `--min-downloads N` | 500 | Skip models below this download threshold. Canonical-org models bypass this via the sweep. |
 | `--checkpoint-interval N` | 5000 | Save a checkpoint every N scanned models. |
 | `--no-canonical-sweep` | off | Skip the post-scan sweep that admits canonical-org models below the download threshold. |
+| `--rescore` | off | Re-score `architecture_gaps.json` and rebuild `organization_gaps.json` from disk, with no Hub requests. |
 
 ## Resumption
 
@@ -124,7 +163,7 @@ If you see a 429 mid-run, the scraper waits and retries automatically (up to 10 
 
 ## Caveats
 
-- **Rate limiting.** HF Hub allows ~1000 requests per 5 minutes. The scraper uses `list_models(expand=['config', 'safetensors'])` to fetch inline metadata, so it spends ~200 paginated calls on a full ~200K-model scan — well under the limit. The retry/backoff is there for transient blips, not as a workaround.
+- **Rate limiting.** HF Hub allows ~1000 requests per 5 minutes. The scraper uses `list_models(expand=[...])` to fetch config, parameter counts, likes, and creation dates inline, so it spends ~200 paginated calls on a full ~200K-model scan — well under the limit. The retry/backoff is there for transient blips, not as a workaround.
 - **Quantized variants are filtered.** AWQ, GPTQ, GGUF, bnb, FP8 checkpoints are dropped at the `is_quantized_model` check. TransformerLens requires full-precision weights.
 - **`--task` matches HF tags, not `pipeline_tag`.** Encoder-decoder models tagged `text2text-generation` are discoverable under the default `--task text-generation` only via tag overlap. For seq2seq architectures (T5, mT5), pass `--task text2text-generation` explicitly to be safe.
 - **One task per run; sequential runs merge.** A full registry refresh is layered task passes: `text-generation`, then `text2text-generation`, then the vision passes `image-classification` and `image-feature-extraction`. The image passes exist to register vision-encoder architectures (ViT, DeiT), which never carry text tags and are invisible to the text passes.

@@ -551,6 +551,66 @@ def validate_architecture_gaps_report(data: dict) -> ValidationResult:
     )
 
 
+def _validate_organization_gap(data: dict, path: str) -> list[ValidationError]:
+    """Validate an OrganizationGap object."""
+    errors = []
+
+    if not isinstance(data, dict):
+        return [ValidationError(path, f"expected object, got {type(data).__name__}", data)]
+
+    errors.extend(_validate_string(data.get("organization"), f"{path}.organization", min_length=1))
+
+    score = data.get("relevancy_score")
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
+        errors.append(ValidationError(f"{path}.relevancy_score", "expected a number", score))
+    elif not 0 <= score <= 100:
+        errors.append(ValidationError(f"{path}.relevancy_score", "value must be 0-100", score))
+
+    for key in ("total_architectures", "total_models", "total_downloads", "total_likes"):
+        errors.extend(_validate_int(data.get(key), f"{path}.{key}", min_value=0))
+
+    errors.extend(_validate_list(data.get("architectures"), f"{path}.architectures"))
+
+    return errors
+
+
+def validate_organization_gaps_report(data: dict) -> ValidationResult:
+    """Validate an OrganizationGapsReport JSON object."""
+    errors = []
+
+    if not isinstance(data, dict):
+        return ValidationResult(
+            valid=False,
+            errors=[
+                ValidationError("", f"expected object at root, got {type(data).__name__}", data)
+            ],
+            schema_type="OrganizationGapsReport",
+        )
+
+    errors.extend(_validate_date_string(data.get("generated_at"), "generated_at"))
+    errors.extend(
+        _validate_int(
+            data.get("total_candidate_organizations"),
+            "total_candidate_organizations",
+            min_value=0,
+        )
+    )
+    if not isinstance(data.get("criteria"), dict):
+        errors.append(ValidationError("criteria", "expected object", data.get("criteria")))
+
+    gaps = data.get("gaps")
+    errors.extend(_validate_list(gaps, "gaps"))
+    if isinstance(gaps, list):
+        for i, gap in enumerate(gaps):
+            errors.extend(_validate_organization_gap(gap, f"gaps[{i}]"))
+
+    return ValidationResult(
+        valid=len(errors) == 0,
+        errors=errors,
+        schema_type="OrganizationGapsReport",
+    )
+
+
 def validate_verification_history(data: dict) -> ValidationResult:
     """Validate a VerificationHistory JSON object.
 
@@ -601,7 +661,8 @@ def validate_json_schema(file_path: Path | str, schema_type: str | None = None) 
     Args:
         file_path: Path to the JSON file to validate
         schema_type: Schema type to validate against. If None, inferred from filename.
-            Supported values: "supported_models", "architecture_gaps", "verification_history"
+            Supported values: "supported_models", "architecture_gaps",
+            "organization_gaps", "verification_history"
 
     Returns:
         ValidationResult with validation status and any errors
@@ -620,13 +681,16 @@ def validate_json_schema(file_path: Path | str, schema_type: str | None = None) 
             schema_type = "supported_models"
         elif "architecture_gaps" in filename or filename == "architecture_gaps":
             schema_type = "architecture_gaps"
+        elif "organization_gaps" in filename:
+            schema_type = "organization_gaps"
         elif "verification" in filename or filename == "verification_history":
             schema_type = "verification_history"
         else:
             raise ValueError(
                 f"Cannot infer schema type from filename '{file_path.name}'. "
                 "Please specify schema_type explicitly. "
-                "Supported values: 'supported_models', 'architecture_gaps', 'verification_history'"
+                "Supported values: 'supported_models', 'architecture_gaps', "
+                "'organization_gaps', 'verification_history'"
             )
 
     # Read and parse the JSON file
@@ -638,20 +702,23 @@ def validate_json_schema(file_path: Path | str, schema_type: str | None = None) 
         return validate_supported_models_report(data)
     elif schema_type == "architecture_gaps":
         return validate_architecture_gaps_report(data)
+    elif schema_type == "organization_gaps":
+        return validate_organization_gaps_report(data)
     elif schema_type == "verification_history":
         return validate_verification_history(data)
     else:
         raise ValueError(
             f"Unknown schema_type: {schema_type}. "
-            "Supported values: 'supported_models', 'architecture_gaps', 'verification_history'"
+            "Supported values: 'supported_models', 'architecture_gaps', "
+            "'organization_gaps', 'verification_history'"
         )
 
 
 def validate_data_directory(data_dir: Path | str | None = None) -> dict[str, ValidationResult]:
     """Validate all JSON files in the data directory.
 
-    Validates supported_models.json, verification_history.json, and
-    architecture_gaps.json.
+    Validates supported_models.json, verification_history.json,
+    architecture_gaps.json, and organization_gaps.json.
 
     Args:
         data_dir: Path to the data directory. If None, uses the default data directory.
@@ -690,6 +757,19 @@ def validate_data_directory(data_dir: Path | str | None = None) -> dict[str, Val
                 valid=False,
                 errors=[ValidationError("", f"Invalid JSON: {e}")],
                 schema_type="architecture_gaps",
+            )
+
+    organizations_path = data_dir / "organization_gaps.json"
+    if organizations_path.exists():
+        try:
+            results["organization_gaps.json"] = validate_json_schema(
+                organizations_path, "organization_gaps"
+            )
+        except json.JSONDecodeError as e:
+            results["organization_gaps.json"] = ValidationResult(
+                valid=False,
+                errors=[ValidationError("", f"Invalid JSON: {e}")],
+                schema_type="organization_gaps",
             )
 
     # Validate verification_history.json

@@ -25,6 +25,8 @@ from .schemas import (
     ArchitectureGapsReport,
     ArchitectureStats,
     ModelEntry,
+    OrganizationGap,
+    OrganizationGapsReport,
     SupportedModelsReport,
 )
 from .verification import VerificationHistory
@@ -373,6 +375,22 @@ def get_supported_architectures() -> list[str]:
     """
     report = _get_supported_models_report()
     return list(sorted(set(m.architecture_id for m in report.models)))
+
+
+def get_organization_gaps(top_n: Optional[int] = None) -> list[OrganizationGap]:
+    """Candidate organizations for PREFERRED_AUTHORS, sorted by relevancy score (descending).
+
+    Raises:
+        DataNotLoadedError: If the organization gaps data is not available
+    """
+    cache_key = "organization_gaps"
+    with _cache_lock:
+        if cache_key not in _cache:
+            data = _load_json("organization_gaps.json")
+            _cache[cache_key] = OrganizationGapsReport.from_dict(data)
+        report = _cache[cache_key]
+        assert isinstance(report, OrganizationGapsReport)
+    return report.gaps if top_n is None else report.gaps[:top_n]
 
 
 def get_all_architectures_with_stats() -> list[ArchitectureStats]:

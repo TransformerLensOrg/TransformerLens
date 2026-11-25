@@ -15,6 +15,10 @@ registry refresh is layered task passes: text-generation, then text2text-generat
 (T5/mT5), then the vision passes image-classification and image-feature-extraction
 (ViT/DeiT).
 
+Each scan also writes organization_gaps.json: organizations that are not yet in
+PREFERRED_AUTHORS but whose unsupported architectures measure up to those of the
+preferred authors (see authorship.py).
+
 Output format matches the schemas defined in schemas.py exactly, so the data
 files can be loaded by api.py without any transformation.
 
@@ -35,6 +39,9 @@ Usage:
 
     # Output to custom directory
     python -m transformer_lens.tools.model_registry.hf_scraper --full-scan --output data/
+
+    # Re-score the existing gaps after editing PREFERRED_AUTHORS (no Hub requests)
+    python -m transformer_lens.tools.model_registry.hf_scraper --rescore
 """
 
 import argparse
@@ -56,6 +63,12 @@ from transformer_lens.benchmarks.text_quality_profiles import (
 )
 
 from . import HF_SUPPORTED_ARCHITECTURES
+from .authorship import (
+    build_organization_gaps_report,
+    merge_publishers,
+    record_publisher,
+    top_publishers,
+)
 from .registry_io import (
     STATUS_UNVERIFIED,
     is_quantized_model,
@@ -390,6 +403,8 @@ def scrape_all_models(
     unsupported_arch_samples: dict[str, list[str]] = {}  # arch -> top model IDs
     unsupported_arch_downloads: dict[str, int] = {}  # arch -> total downloads
     unsupported_arch_min_params: dict[str, int] = {}  # arch -> smallest param count
+    # arch -> namespace -> publisher record (see authorship.record_publisher)
+    unsupported_arch_publishers: dict[str, dict[str, dict]] = {}
     max_samples = 10  # Keep top N sample models per unsupported architecture
 
     scanned = 0
@@ -439,6 +454,7 @@ def scrape_all_models(
         unsupported_arch_samples = checkpoint.get("unsupported_arch_samples", {})
         unsupported_arch_downloads = checkpoint.get("unsupported_arch_downloads", {})
         unsupported_arch_min_params = checkpoint.get("unsupported_arch_min_params", {})
+        unsupported_arch_publishers = checkpoint.get("unsupported_arch_publishers", {})
         seen_models.update(checkpoint.get("seen_models", []))
         scanned = checkpoint.get("scanned", 0)
         skipped = checkpoint.get("skipped", 0)
@@ -455,9 +471,10 @@ def scrape_all_models(
             logger.info("Will scan ALL new models (this may take a while)")
 
     try:
-        # Use expand=['config', 'safetensors', 'pipeline_tag', 'tags', 'cardData'] to get
-        # architecture, parameter count, and prompt-profile signals inline with the
-        # listing, avoiding per-model API calls. With ~1000 models per page, a full
+        # Use expand=['config', 'safetensors', 'pipeline_tag', 'tags', 'cardData', 'likes',
+        # 'createdAt'] to get architecture, parameter count, prompt-profile signals, and
+        # authorship signals inline with the listing, avoiding per-model API calls.
+        # With ~1000 models per page, a full
         # scan of 200K+ models needs only ~200 paginated requests (well within the
         # 1000 req / 5 min limit).
         # Use ``filter`` rather than ``pipeline_tag`` (the query param) so
@@ -470,7 +487,15 @@ def scrape_all_models(
         list_kwargs: dict = {
             "filter": task,
             "sort": "downloads",
-            "expand": ["config", "safetensors", "pipeline_tag", "tags", "cardData"],
+            "expand": [
+                "config",
+                "safetensors",
+                "pipeline_tag",
+                "tags",
+                "cardData",
+                "likes",
+                "createdAt",
+            ],
         }
         if max_models is not None:
             list_kwargs["limit"] = max_models + len(seen_models)
@@ -559,6 +584,13 @@ def scrape_all_models(
                             current_min = unsupported_arch_min_params.get(arch)
                             if current_min is None or param_count < current_min:
                                 unsupported_arch_min_params[arch] = param_count
+                        record_publisher(
+                            unsupported_arch_publishers.setdefault(arch, {}),
+                            model.id,
+                            downloads,
+                            getattr(model, "likes", None) or 0,
+                            getattr(model, "created_at", None),
+                        )
 
                     # Progress logging
                     if scanned % batch_size == 0:
@@ -586,6 +618,7 @@ def scrape_all_models(
                             skipped,
                             unsupported_arch_downloads,
                             unsupported_arch_min_params,
+                            unsupported_arch_publishers,
                         )
                         logger.info(f"Saved checkpoint at {scanned} models")
 
@@ -608,6 +641,7 @@ def scrape_all_models(
                         skipped,
                         unsupported_arch_downloads,
                         unsupported_arch_min_params,
+                        unsupported_arch_publishers,
                     )
                     time.sleep(wait)
                     skipped = 0  # Reset skip counter for restart
@@ -626,6 +660,7 @@ def scrape_all_models(
             skipped,
             unsupported_arch_downloads,
             unsupported_arch_min_params,
+            unsupported_arch_publishers,
         )
         raise
     except Exception as e:
@@ -640,6 +675,7 @@ def scrape_all_models(
             skipped,
             unsupported_arch_downloads,
             unsupported_arch_min_params,
+            unsupported_arch_publishers,
         )
         raise
 
@@ -692,9 +728,7 @@ def scrape_all_models(
     logger.info(f"Wrote {len(supported_models)} supported models to supported_models.json")
 
     # Build architecture gaps report (matches ArchitectureGapsReport schema)
-    # Include download and param count data, then compute relevancy scores
-    from transformer_lens.tools.model_registry.relevancy import compute_scores_for_gaps
-
+    # Include download, param count and publisher data, then compute relevancy scores
     gaps: list[dict] = [
         {
             "architecture_id": arch,
@@ -702,14 +736,15 @@ def scrape_all_models(
             "total_downloads": unsupported_arch_downloads.get(arch, 0),
             "min_param_count": unsupported_arch_min_params.get(arch),
             "sample_models": unsupported_arch_samples.get(arch, []),
+            "publishers": top_publishers(unsupported_arch_publishers.get(arch, {}).values()),
         }
         for arch, count in unsupported_arch_counts.items()
     ]
 
     # Merge with gaps from prior scrapes so sequential task passes (text-generation
     # + text2text-generation + image tasks) don't lose earlier data. For overlapping
-    # architectures, sum counts/downloads, take the smaller min_param_count, and
-    # union sample_models (capped at 10).
+    # architectures, sum counts/downloads, take the smaller min_param_count, union
+    # sample_models (capped at 10), and combine publisher records.
     existing_gaps = _load_existing_gaps(output_dir)
     if existing_gaps:
         new_by_arch = {g["architecture_id"]: g for g in gaps}
@@ -743,47 +778,15 @@ def scrape_all_models(
                     "total_downloads": o["total_downloads"] + n["total_downloads"],
                     "min_param_count": min(min_p) if min_p else None,
                     "sample_models": merged_samples,
+                    "publishers": merge_publishers(
+                        o.get("publishers", []), n.get("publishers", [])
+                    ),
                 }
             )
         gaps = merged
 
-    # Compute relevancy scores and sort by score descending
-    compute_scores_for_gaps(gaps)
-
-    # Guard the load-bearing invariant: each architecture appears at most once in
-    # the gaps list. The merge above produces unique-by-arch entries by
-    # construction, but the report header reads from this list — so an explicit
-    # dedup keeps the header consistent if the merge ever drifts.
-    seen_archs: set[str] = set()
-    deduped: list[dict] = []
-    for g in gaps:
-        arch_id = g["architecture_id"]
-        if arch_id in HF_SUPPORTED_ARCHITECTURES:
-            # Gained an adapter since a prior scrape; the merge above carries the
-            # stale entry forward, so drop it here — it's no longer a gap.
-            continue
-        if arch_id in seen_archs:
-            logger.warning(f"Dropping duplicate gap entry for architecture {arch_id!r}")
-            continue
-        seen_archs.add(arch_id)
-        deduped.append(g)
-    gaps = deduped
-
-    gaps_report = {
-        "generated_at": date.today().isoformat(),
-        "scan_info": scan_info,
-        "total_unsupported_architectures": len(gaps),
-        # Sum from the merged+deduped list so the header stays consistent with
-        # its own gaps[*].total_models — the prior `sum(unsupported_arch_counts...)`
-        # only reflected this run, while the list also carried prior-scrape data.
-        "total_unsupported_models": sum(g["total_models"] for g in gaps),
-        "gaps": gaps,
-    }
-
-    gaps_path = output_dir / "architecture_gaps.json"
-    with open(gaps_path, "w") as f:
-        json.dump(gaps_report, f, indent=2)
-    logger.info(f"Wrote {len(gaps)} architecture gaps to {gaps_path}")
+    gaps_report, organizations_report = _write_gap_reports(output_dir, gaps, scan_info)
+    gaps = gaps_report["gaps"]
 
     # Write verification history placeholder (single file)
     verification_path = output_dir / "verification_history.json"
@@ -827,9 +830,93 @@ def scrape_all_models(
         remaining = sum(g["total_models"] for g in gaps[20:])
         logger.info(f"  ... and {len(gaps) - 20} more architectures ({remaining} models)")
 
+    candidates = organizations_report["gaps"]
+    logger.info(f"\nCANDIDATE PREFERRED AUTHORS ({len(candidates)}):")
+    for candidate in candidates[:20]:
+        logger.info(
+            f"  {candidate['organization']}: "
+            f"score={candidate['relevancy_score']:.1f}, "
+            f"{candidate['total_architectures']} architectures, "
+            f"{candidate['total_downloads']:,} downloads, "
+            f"{candidate['total_likes']:,} likes"
+        )
+
     logger.info("=" * 70)
 
     return supported_report, gaps_report
+
+
+def _write_gap_reports(
+    output_dir: Path,
+    gaps: list[dict],
+    scan_info: Optional[dict],
+    generated_at: Optional[str] = None,
+) -> tuple[dict, dict]:
+    """Score gaps, then write architecture_gaps.json and organization_gaps.json."""
+    from transformer_lens.tools.model_registry.relevancy import compute_scores_for_gaps
+
+    generated_at = generated_at or date.today().isoformat()
+
+    # Compute relevancy scores and sort by score descending
+    compute_scores_for_gaps(gaps)
+
+    # Guard the load-bearing invariant: each architecture appears at most once in
+    # the gaps list. The merge produces unique-by-arch entries by construction,
+    # but the report header reads from this list — so an explicit dedup keeps the
+    # header consistent if the merge ever drifts.
+    seen_archs: set[str] = set()
+    deduped: list[dict] = []
+    for g in gaps:
+        arch_id = g["architecture_id"]
+        if arch_id in HF_SUPPORTED_ARCHITECTURES:
+            # Gained an adapter since a prior scrape; the merge carries the stale
+            # entry forward, so drop it here — it's no longer a gap.
+            continue
+        if arch_id in seen_archs:
+            logger.warning(f"Dropping duplicate gap entry for architecture {arch_id!r}")
+            continue
+        seen_archs.add(arch_id)
+        deduped.append(g)
+    gaps = deduped
+
+    gaps_report = {
+        "generated_at": generated_at,
+        "scan_info": scan_info,
+        "total_unsupported_architectures": len(gaps),
+        # Sum from the merged+deduped list so the header stays consistent with
+        # its own gaps[*].total_models — the prior `sum(unsupported_arch_counts...)`
+        # only reflected this run, while the list also carried prior-scrape data.
+        "total_unsupported_models": sum(g["total_models"] for g in gaps),
+        "gaps": gaps,
+    }
+
+    gaps_path = output_dir / "architecture_gaps.json"
+    with open(gaps_path, "w") as f:
+        json.dump(gaps_report, f, indent=2)
+    logger.info(f"Wrote {len(gaps)} architecture gaps to {gaps_path}")
+
+    organizations_report = build_organization_gaps_report(gaps, scan_info, generated_at)
+    organizations_path = output_dir / "organization_gaps.json"
+    with open(organizations_path, "w") as f:
+        json.dump(organizations_report, f, indent=2)
+        f.write("\n")
+    logger.info(
+        f"Wrote {organizations_report['total_candidate_organizations']} candidate "
+        f"organizations to {organizations_path}"
+    )
+
+    return gaps_report, organizations_report
+
+
+def rescore_gaps(output_dir: Path) -> tuple[dict, dict]:
+    """Re-score architecture_gaps.json and rebuild organization_gaps.json without a scan."""
+    output_dir = Path(output_dir)
+    gaps_path = output_dir / "architecture_gaps.json"
+    data = json.loads(gaps_path.read_text())
+    # generated_at dates the Hub data, which a re-score does not refresh.
+    return _write_gap_reports(
+        output_dir, data["gaps"], data.get("scan_info"), data.get("generated_at")
+    )
 
 
 def _save_checkpoint(
@@ -842,6 +929,7 @@ def _save_checkpoint(
     skipped: int = 0,
     unsupported_arch_downloads: Optional[dict] = None,
     unsupported_arch_min_params: Optional[dict] = None,
+    unsupported_arch_publishers: Optional[dict] = None,
 ):
     """Save scraping progress to a checkpoint file."""
     checkpoint = {
@@ -850,6 +938,7 @@ def _save_checkpoint(
         "unsupported_arch_samples": unsupported_arch_samples,
         "unsupported_arch_downloads": unsupported_arch_downloads or {},
         "unsupported_arch_min_params": unsupported_arch_min_params or {},
+        "unsupported_arch_publishers": unsupported_arch_publishers or {},
         "seen_models": seen_models,
         "scanned": scanned,
         "skipped": skipped,
@@ -884,6 +973,9 @@ Examples:
 
     # Output to custom directory
     python -m transformer_lens.tools.model_registry.hf_scraper --full-scan -o ./my_data/
+
+    # Re-score the existing gaps after editing PREFERRED_AUTHORS (no Hub requests)
+    python -m transformer_lens.tools.model_registry.hf_scraper --rescore
 """,
     )
     parser.add_argument(
@@ -945,7 +1037,19 @@ Examples:
         "from the listing payload already in hand (no extra requests).",
     )
 
+    parser.add_argument(
+        "--rescore",
+        action="store_true",
+        help="Re-score architecture_gaps.json and rebuild organization_gaps.json from "
+        "the data already on disk, without querying the Hub. Run after editing "
+        "PREFERRED_AUTHORS or the relevancy weights.",
+    )
+
     args = parser.parse_args()
+
+    if args.rescore:
+        rescore_gaps(args.output)
+        return
 
     max_models = None if args.full_scan else args.limit
 

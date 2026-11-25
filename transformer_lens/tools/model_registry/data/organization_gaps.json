@@ -1,0 +1,292 @@
+{
+  "generated_at": "2026-11-24",
+  "scan_info": {
+    "total_scanned": 339,
+    "task_filter": "image-feature-extraction",
+    "min_downloads": 500,
+    "scan_duration_seconds": 0.3
+  },
+  "criteria": {
+    "reference_authors": 30,
+    "reference_statistic": "median",
+    "min_downloads": 37818.0,
+    "min_likes": 724.0
+  },
+  "total_candidate_organizations": 19,
+  "gaps": [
+    {
+      "organization": "vikhyatk",
+      "relevancy_score": 80.0,
+      "total_architectures": 2,
+      "total_models": 2,
+      "total_downloads": 2404600,
+      "total_likes": 1941,
+      "downloads_percentile": 93.3,
+      "likes_percentile": 66.7,
+      "architectures": [
+        "HfMoondream",
+        "Moondream"
+      ]
+    },
+    {
+      "organization": "XiaomiMiMo",
+      "relevancy_score": 76.7,
+      "total_architectures": 4,
+      "total_models": 17,
+      "total_downloads": 256048,
+      "total_likes": 4448,
+      "downloads_percentile": 73.3,
+      "likes_percentile": 80.0,
+      "architectures": [
+        "MiMoV2ForCausalLM",
+        "MiMoForCausalLM",
+        "MiMoV2ASRForCausalLM",
+        "MiMoV2FlashForCausalLM"
+      ]
+    },
+    {
+      "organization": "inclusionAI",
+      "relevancy_score": 73.3,
+      "total_architectures": 10,
+      "total_models": 37,
+      "total_downloads": 124783,
+      "total_likes": 5591,
+      "downloads_percentile": 63.3,
+      "likes_percentile": 83.3,
+      "architectures": [
+        "BailingMoeV3ForCausalLM",
+        "Ling3UBTreeModel",
+        "BailingMMNativeForConditionalGeneration",
+        "BailingMoeForCausalLM",
+        "BailingMoeV2ForCausalLM",
+        "LingDSparkModel",
+        "MingV3ASRForConditionalGeneration",
+        "BailingMoeV2_5ForCausalLM",
+        "LLaDAMoEModel",
+        "BailingMoeLinearV2ForCausalLM"
+      ]
+    },
+    {
+      "organization": "dots-studio",
+      "relevancy_score": 71.7,
+      "total_architectures": 3,
+      "total_models": 5,
+      "total_downloads": 329870,
+      "total_likes": 2043,
+      "downloads_percentile": 76.7,
+      "likes_percentile": 66.7,
+      "architectures": [
+        "DotsOCRForCausalLM",
+        "Dots1ForCausalLM",
+        "Dots3NoteForCausalLM"
+      ]
+    },
+    {
+      "organization": "lightonai",
+      "relevancy_score": 70.0,
+      "total_architectures": 2,
+      "total_models": 7,
+      "total_downloads": 627034,
+      "total_likes": 1207,
+      "downloads_percentile": 80.0,
+      "likes_percentile": 60.0,
+      "architectures": [
+        "LightOnOCRForConditionalGeneration",
+        "RITAModelForCausalLM"
+      ]
+    },
+    {
+      "organization": "ai4bharat",
+      "relevancy_score": 70.0,
+      "total_architectures": 2,
+      "total_models": 7,
+      "total_downloads": 623557,
+      "total_likes": 997,
+      "downloads_percentile": 80.0,
+      "likes_percentile": 60.0,
+      "architectures": [
+        "ParlerTTSForConditionalGeneration",
+        "IndicTransForConditionalGeneration"
+      ]
+    },
+    {
+      "organization": "z-lab",
+      "relevancy_score": 70.0,
+      "total_architectures": 2,
+      "total_models": 18,
+      "total_downloads": 262355,
+      "total_likes": 1653,
+      "downloads_percentile": 73.3,
+      "likes_percentile": 66.7,
+      "architectures": [
+        "DFlash2DraftModel",
+        "DFlashDraftModel"
+      ]
+    },
+    {
+      "organization": "stepfun-ai",
+      "relevancy_score": 70.0,
+      "total_architectures": 3,
+      "total_models": 6,
+      "total_downloads": 218646,
+      "total_likes": 1609,
+      "downloads_percentile": 73.3,
+      "likes_percentile": 66.7,
+      "architectures": [
+        "Step3p5ForCausalLM",
+        "StepAudio2ForCausalLM",
+        "Step3VLForConditionalGeneration"
+      ]
+    },
+    {
+      "organization": "XHToken",
+      "relevancy_score": 66.7,
+      "total_architectures": 1,
+      "total_models": 9,
+      "total_downloads": 57803,
+      "total_likes": 2890,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 73.3,
+      "architectures": [
+        "Spark2_5ForCausalLM"
+      ]
+    },
+    {
+      "organization": "liuhaotian",
+      "relevancy_score": 63.3,
+      "total_architectures": 2,
+      "total_models": 6,
+      "total_downloads": 111686,
+      "total_likes": 1568,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 66.7,
+      "architectures": [
+        "LlavaLlamaForCausalLM",
+        "LlavaMistralForCausalLM"
+      ]
+    },
+    {
+      "organization": "upstage",
+      "relevancy_score": 63.3,
+      "total_architectures": 3,
+      "total_models": 3,
+      "total_downloads": 89898,
+      "total_likes": 1725,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 66.7,
+      "architectures": [
+        "SolarOpenForCausalLM",
+        "SolarForCausalLM",
+        "SolarOpen2ForCausalLM"
+      ]
+    },
+    {
+      "organization": "RecursiveSI",
+      "relevancy_score": 61.7,
+      "total_architectures": 1,
+      "total_models": 2,
+      "total_downloads": 116957,
+      "total_likes": 1474,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 63.3,
+      "architectures": [
+        "FlintForCausalLM"
+      ]
+    },
+    {
+      "organization": "Cactus-Compute",
+      "relevancy_score": 60.0,
+      "total_architectures": 1,
+      "total_models": 2,
+      "total_downloads": 196646,
+      "total_likes": 768,
+      "downloads_percentile": 70.0,
+      "likes_percentile": 50.0,
+      "architectures": [
+        "NeedleForToolCalling"
+      ]
+    },
+    {
+      "organization": "IFM",
+      "relevancy_score": 60.0,
+      "total_architectures": 2,
+      "total_models": 9,
+      "total_downloads": 99179,
+      "total_likes": 1212,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 60.0,
+      "architectures": [
+        "K2HorizonForCausalLM",
+        "JaisASRForConditionalGeneration"
+      ]
+    },
+    {
+      "organization": "bosonai",
+      "relevancy_score": 60.0,
+      "total_architectures": 1,
+      "total_models": 1,
+      "total_downloads": 76134,
+      "total_likes": 859,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 60.0,
+      "architectures": [
+        "HiggsMultimodalQwen3ForConditionalGeneration"
+      ]
+    },
+    {
+      "organization": "parler-tts",
+      "relevancy_score": 60.0,
+      "total_architectures": 1,
+      "total_models": 6,
+      "total_downloads": 58784,
+      "total_likes": 998,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 60.0,
+      "architectures": [
+        "ParlerTTSForConditionalGeneration"
+      ]
+    },
+    {
+      "organization": "Nanbeige",
+      "relevancy_score": 60.0,
+      "total_architectures": 1,
+      "total_models": 2,
+      "total_downloads": 56268,
+      "total_likes": 931,
+      "downloads_percentile": 60.0,
+      "likes_percentile": 60.0,
+      "architectures": [
+        "NanbeigeForCausalLM"
+      ]
+    },
+    {
+      "organization": "ATH-MaaS",
+      "relevancy_score": 58.3,
+      "total_architectures": 4,
+      "total_models": 9,
+      "total_downloads": 40722,
+      "total_likes": 1302,
+      "downloads_percentile": 53.3,
+      "likes_percentile": 63.3,
+      "architectures": [
+        "Ovis",
+        "Ovis2_5",
+        "Ovis2_6ForCausalLM",
+        "OvisU1"
+      ]
+    },
+    {
+      "organization": "JetBrains",
+      "relevancy_score": 53.3,
+      "total_architectures": 1,
+      "total_models": 7,
+      "total_downloads": 52195,
+      "total_likes": 749,
+      "downloads_percentile": 56.7,
+      "likes_percentile": 50.0,
+      "architectures": [
+        "MellumForCausalLM"
+      ]
+    }
+  ]
+}
