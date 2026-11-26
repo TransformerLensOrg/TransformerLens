@@ -557,6 +557,20 @@ def test_granite_moe_mlp_row_is_the_inline_moe_plus_shared_mlp_write():
         torch.testing.assert_close(row, write, atol=ATOL, rtol=0)
 
 
+def test_recurrent_gemma_labels_sliding_attention(monkeypatch):
+    bridge = _recurrent_gemma()
+    # Exercise the newer HF config vocabulary even on older versions.
+    monkeypatch.setattr(
+        bridge.cfg,
+        "layers_block_type",
+        ["linear_attention", "linear_attention", "sliding_attention", "linear_attention"],
+    )
+    with torch.no_grad():
+        _, cache = bridge.run_with_cache(TOKENS)
+    _, labels = cache.decompose_resid(return_labels=True)
+    assert labels[1::2] == ["0_mixer_out", "1_mixer_out", "2_attn_out", "3_mixer_out"]
+
+
 def test_recurrent_gemma_hook_embed_is_the_scaled_embedding():
     """HF scales the embedding by its bfloat16 normalizer after embed_tokens."""
     bridge = _recurrent_gemma()
