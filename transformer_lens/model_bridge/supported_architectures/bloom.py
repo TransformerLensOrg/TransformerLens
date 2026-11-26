@@ -106,7 +106,7 @@ class BloomArchitectureAdapter(ArchitectureAdapter):
     ) -> tuple[torch.nn.Linear, torch.nn.Linear, torch.nn.Linear]:
         """Split the QKV matrix into separate linear transformations.
         Args:
-            attention_component: The original attention layer component
+            original_attention_component: The original attention layer component
         Returns:
             Tuple of nn.Linear modules for Q, K, and V transformations
         """

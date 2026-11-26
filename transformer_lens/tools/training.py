@@ -31,15 +31,15 @@ class TrainConfig:
         lr (float): Learning rate to use for training
         seed (int): Random seed to use for training
         momentum (float): Momentum to use for training
-        max_grad_norm (float, *optional*): Maximum gradient norm to use for
+        max_grad_norm (float, *optional*): Maximum gradient norm to clip gradients to
         weight_decay (float, *optional*): Weight decay to use for training
         optimizer_name (str): The name of the optimizer to use
         device (str or torch.device, *optional*): Device to use for training
         warmup_steps (int, *optional*): Number of warmup steps to use for training
         save_every (int, *optional*): After how many batches should a checkpoint be saved
-        save_dir, (str, *optional*): Where to save checkpoints
+        save_dir (str, *optional*): Where to save checkpoints
         wandb (bool): Whether to use Weights and Biases for logging
-        wandb_project (str, *optional*): Name of the Weights and Biases project to use
+        wandb_project_name (str, *optional*): Name of the Weights and Biases project to use
         print_every (int, *optional*): Print the loss every n steps
         max_steps (int, *optional*): Terminate the epoch after this many steps. Used for debugging.
     """
