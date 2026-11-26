@@ -147,6 +147,7 @@ def models(request):
     return _build(*CASES[request.param])
 
 
+@pytest.mark.filterwarnings("error:.*past_key_values.* is deprecated:FutureWarning")
 def test_forward_fills_the_cache(models):
     _, bridge = models
     cache = DynamicCache()
@@ -155,6 +156,7 @@ def test_forward_fills_the_cache(models):
     assert cache.get_seq_length() == PROMPT.shape[1]
 
 
+@pytest.mark.filterwarnings("error:.*past_key_values.* is deprecated:FutureWarning")
 def test_cached_generation_matches_uncached_and_hf(models):
     reference, bridge = models
     hf_tokens = _hf_greedy(reference)

@@ -1,6 +1,8 @@
 """HuggingFace transformers Driver."""
 from __future__ import annotations
 
+from functools import cached_property
+from inspect import Parameter, signature
 from typing import Any, Iterator, Mapping
 
 import torch
@@ -26,6 +28,19 @@ class TransformersDriver(DriverBase):
         super().__init__(adapter.cfg, tokenizer)
         self._model = model
         self._adapter = adapter
+
+    @cached_property
+    def _uses_cache_keyword(self) -> bool:
+        try:
+            params = signature(self._model.forward).parameters
+        except (TypeError, ValueError):
+            return False
+        cache = params.get("cache")
+        return (
+            cache is not None
+            and cache.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
+            and "past_key_values" not in params
+        )
 
     def forward(
         self,
@@ -56,6 +71,9 @@ class TransformersDriver(DriverBase):
                 "TransformersDriver.forward does not generate; use "
                 "bridge.generate() for multi-token decoding."
             )
+        # Recent HF models renamed the argument; the bridge's public name stays unchanged.
+        if "past_key_values" in kwargs and self._uses_cache_keyword:
+            kwargs.setdefault("cache", kwargs.pop("past_key_values"))
         if input_ids is not None:
             raw = self._model(input_ids, **kwargs)
         else:
@@ -100,3 +118,4 @@ class TransformersDriver(DriverBase):
         """Used by weight-processing paths that move the model to a different
         device. Non-torch drivers don't implement this."""
         self._model = value
+        self.__dict__.pop("_uses_cache_keyword", None)

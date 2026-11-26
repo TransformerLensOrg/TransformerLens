@@ -571,6 +571,24 @@ class TestTransformersDriverDialect:
         result = self._driver().forward(torch.randn(2, 4))
         assert isinstance(result.logits, torch.Tensor)
 
+    def test_forward_uses_the_underlying_models_cache_keyword(self):
+        class CacheModel(nn.Module):
+            def forward(self, input_ids, *, cache):
+                return cache
+
+        class LegacyCacheModel(nn.Module):
+            def forward(self, input_ids, *, past_key_values):
+                return past_key_values
+
+        driver = self._driver()
+        tokens = torch.ones(1, 2)
+        cache = torch.ones(1, 4)
+        driver.set_underlying_model(CacheModel())
+        assert driver.forward(tokens, past_key_values=cache).logits is cache
+        assert driver.forward(tokens, cache=cache).logits is cache
+        driver.set_underlying_model(LegacyCacheModel())
+        assert driver.forward(tokens, past_key_values=cache).logits is cache
+
 
 class TestLossGateOnTorchBridge:
     """Final-position-only drivers must refuse loss on TransformerBridge too,
