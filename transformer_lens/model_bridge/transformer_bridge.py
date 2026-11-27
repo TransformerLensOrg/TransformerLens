@@ -2344,6 +2344,7 @@ class TransformerBridge(BridgeCore, HookIntrospectionMixin, nn.Module):
                     "does not register one."
                 )
             effective_stop_at_layer = self._resolve_stop_at_layer(stop_at_layer, len(self.blocks))
+        self._note_run(effective_stop_at_layer)
         if start_at_layer is not None:
             input = self._setup_start_at_layer(input, start_at_layer)
         # Armed by position in the bridge's own stack: HF module names (h.N, layers.N,

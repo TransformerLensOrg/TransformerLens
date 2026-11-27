@@ -94,6 +94,81 @@ def build_alias_to_canonical_map(hook_dict: Any, prefix: str = "") -> dict:
     return aliases
 
 
+class _FiredHookTracker:
+    """Which of one run's caller-supplied forward hooks fired.
+
+    A hook can attach to a hook point the forward never reaches (a switched-on fork the
+    attention bridge does not implement, say); the caller then reads or edits nothing
+    and nothing says so. One warning per run names such hooks.
+    """
+
+    def __init__(self) -> None:
+        self.fired: Dict[str, bool] = {}
+        # Per label: the block layers its hook points sit in, None for a point outside the blocks.
+        self.layers: Dict[str, List[Optional[int]]] = {}
+        self.before_blocks: Dict[str, bool] = {}
+        self.runs = 0
+        self.ran_to_the_end = False
+        self.furthest_stop = 0
+
+    def track(self, label: str, name: str, hook_fn: Callable) -> Callable:
+        """Wrap ``hook_fn`` so its first call marks ``label`` as fired."""
+        # Library cache callbacks are attached to every hook point, silent ones included.
+        if getattr(hook_fn, "_is_caching_hook", False):
+            return hook_fn
+        layer: Optional[int] = None
+        if name.startswith("blocks."):
+            index = name.split(".")[1]
+            layer = int(index) if index.isdigit() else None
+        self.fired.setdefault(label, False)
+        self.layers.setdefault(label, []).append(layer)
+        self.before_blocks[label] = self.before_blocks.get(
+            label, False
+        ) or BridgeCore._is_embedding_stage_hook(name)
+
+        def tracked(tensor: Any, hook: Any, _fn: Callable = hook_fn, _label: str = label) -> Any:
+            self.fired[_label] = True
+            # By keyword, as HookPoint calls it: a caller's hook may take `hook` keyword-only.
+            return _fn(tensor, hook=hook)
+
+        return tracked
+
+    def note_run(self, stop_layer: Optional[int]) -> None:
+        self.runs += 1
+        if stop_layer is None:
+            self.ran_to_the_end = True
+        else:
+            self.furthest_stop = max(self.furthest_stop, stop_layer)
+
+    def never_fired(self) -> List[str]:
+        """Labels whose hooks were reachable by some run and never called."""
+        if self.runs == 0:
+            return []
+        dead = []
+        for label, fired in self.fired.items():
+            if fired:
+                continue
+            if not self.ran_to_the_end:
+                # Every run stopped early; only hooks before the stop could have fired.
+                reachable = self.before_blocks[label] or any(
+                    layer is not None and layer < self.furthest_stop for layer in self.layers[label]
+                )
+                if not reachable:
+                    continue
+            dead.append(label)
+        return dead
+
+    def warn(self, api: str, stacklevel: int) -> None:
+        dead = self.never_fired()
+        if dead:
+            warnings.warn(
+                f"{api}: {len(dead)} forward hook(s) were attached and never fired: {dead}. "
+                "The model's forward pass does not reach those hook points, so the hook "
+                "read and changed nothing.",
+                stacklevel=stacklevel,
+            )
+
+
 class BridgeCore:
     """Framework-agnostic bridge surface: hooks, cache, run_with_*, driver wiring.
 
@@ -134,6 +209,7 @@ class BridgeCore:
         self._block_alias_cache: Optional[Tuple[Tuple[int, int], Dict[str, str]]] = None
         self._property_alias_registry: Dict[str, str] = {}
         self.context_level = 0
+        self._hook_trackers: List[_FiredHookTracker] = []
         self._driver = driver
         if not hasattr(adapter, "component_mapping") or adapter.component_mapping is None:
             raise ValueError("Adapter must have a component_mapping attribute")
@@ -821,6 +897,18 @@ class BridgeCore:
             return "use_attn_in"
         return None
 
+    def _open_hook_trackers(self) -> List[_FiredHookTracker]:
+        """Trackers of the hook runs in progress; created on demand for bridges built without __init__."""
+        trackers = self.__dict__.get("_hook_trackers")
+        if trackers is None:
+            trackers = self.__dict__["_hook_trackers"] = []
+        return trackers
+
+    def _note_run(self, stop_layer: Optional[int]) -> None:
+        """Tell the open hook runs that a forward pass ran, and where it was told to stop."""
+        for tracker in self._open_hook_trackers():
+            tracker.note_run(stop_layer)
+
     def _warn_gated_skipped(self, api: str, names: List[str], stacklevel: int = 3) -> None:
         """One warning per sweep for filter-matched gated-off names."""
         if names:
@@ -1244,14 +1332,18 @@ class BridgeCore:
             added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
             context_level = getattr(self, "context_level", 0) + 1
             self.context_level = context_level
+            tracker = _FiredHookTracker()
 
             def add_hook_to_point(
                 hook_point: HookPoint,
                 hook_fn: Callable,
                 name: str,
                 dir: Literal["fwd", "bwd"] = "fwd",
+                label: Optional[str] = None,
             ) -> None:
                 self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir)
+                if dir == "fwd":
+                    hook_fn = tracker.track(label or name, name, hook_fn)
                 if self.compatibility_mode and name != hook_point.name:
                     alias_names_list: list = []
                     if hook_point.name is not None:
@@ -1271,13 +1363,17 @@ class BridgeCore:
                 direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
                 hook_dict = self.hook_dict
                 aliases = build_alias_to_canonical_map(hook_dict)
-                for hook_name_or_filter, hook_fn in hook_list:
+                for position, (hook_name_or_filter, hook_fn) in enumerate(hook_list):
                     if isinstance(hook_name_or_filter, str):
                         actual_hook_name, hook_point = self._resolve_hook_point(
                             hook_name_or_filter, aliases, hook_dict
                         )
-                        add_hook_to_point(hook_point, hook_fn, actual_hook_name, direction)
+                        add_hook_to_point(
+                            hook_point, hook_fn, actual_hook_name, direction, hook_name_or_filter
+                        )
                     else:
+                        # A filter was not targeting each match; it is dead only if none fired.
+                        filter_label = f"<name filter #{position}>"
                         seen_hooks = set()
                         gated_skipped: List[str] = []
                         for n, hook_point in hook_dict.items():
@@ -1290,14 +1386,21 @@ class BridgeCore:
                                     gated_skipped.append(n)
                                     continue
                                 hook_name_to_use = hook_point.name if hook_point.name else n
-                                add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
+                                add_hook_to_point(
+                                    hook_point, hook_fn, hook_name_to_use, direction, filter_label
+                                )
                         self._warn_gated_skipped("hooks", gated_skipped, stacklevel=4)
 
+            completed = False
             try:
                 apply_hooks(fwd_hooks, True)
                 apply_hooks(bwd_hooks, False)
+                self._open_hook_trackers().append(tracker)
                 yield self
+                completed = True
             finally:
+                if tracker in self._open_hook_trackers():
+                    self._open_hook_trackers().remove(tracker)
                 try:
                     for hook_point, direction, handle in added_hooks:
                         if reset_hooks_end:
@@ -1306,6 +1409,9 @@ class BridgeCore:
                             hook_point.clear_context()
                 finally:
                     self.context_level -= 1
+            # Past the finally: a body that raised did not finish its run, so it is not judged.
+            if completed:
+                tracker.warn("hooks", stacklevel=4)
 
         return _hooks_context()
 
@@ -1340,6 +1446,7 @@ class BridgeCore:
         """
         _validate_execution_kwargs(kwargs, "run_with_hooks")
         added_hooks: List[Tuple[HookPoint, Literal["fwd", "bwd"], LensHandle]] = []
+        tracker = _FiredHookTracker()
         n_blocks = self._registered_block_count()
         effective_stop_layer = None
         if stop_at_layer is not None and n_blocks is not None:
@@ -1355,6 +1462,7 @@ class BridgeCore:
             hook_fn: Callable,
             name: str,
             dir: Literal["fwd", "bwd"] = "fwd",
+            label: Optional[str] = None,
         ) -> None:
             if effective_start_layer is not None and self._is_embedding_stage_hook(name):
                 return
@@ -1369,6 +1477,8 @@ class BridgeCore:
                     if effective_start_layer is not None and layer_num < effective_start_layer:
                         return
             self.check_hooks_to_add(hook_point, name, hook_fn, dir=dir)
+            if dir == "fwd":
+                hook_fn = tracker.track(label or name, name, hook_fn)
             if self.compatibility_mode and name != hook_point.name:
                 alias_names_list: list = []
                 if hook_point.name is not None:
@@ -1390,7 +1500,7 @@ class BridgeCore:
             direction: Literal["fwd", "bwd"] = "fwd" if is_fwd else "bwd"
             hook_dict = self.hook_dict
             aliases = build_alias_to_canonical_map(hook_dict)
-            for hook_name_or_filter, hook_fn in hook_list:
+            for position, (hook_name_or_filter, hook_fn) in enumerate(hook_list):
                 if remove_batch_dim:
                     original_hook_fn = hook_fn
 
@@ -1421,8 +1531,12 @@ class BridgeCore:
                             f"Cannot add hook {hook_name_or_filter} because {reason} is False. "
                             f"Call set_{reason}(True) first."
                         )
-                    add_hook_to_point(hook_point, hook_fn, actual_hook_name, direction)
+                    add_hook_to_point(
+                        hook_point, hook_fn, actual_hook_name, direction, hook_name_or_filter
+                    )
                 else:
+                    # A filter was not targeting each match; it is dead only if none fired.
+                    filter_label = f"<name filter #{position}>"
                     seen_hooks: set = set()
                     gated_skipped: List[str] = []
                     for n, hook_point in hook_dict.items():
@@ -1435,11 +1549,14 @@ class BridgeCore:
                                 gated_skipped.append(n)
                                 continue
                             hook_name_to_use = hook_point.name if hook_point.name else n
-                            add_hook_to_point(hook_point, hook_fn, hook_name_to_use, direction)
+                            add_hook_to_point(
+                                hook_point, hook_fn, hook_name_to_use, direction, filter_label
+                            )
                     self._warn_gated_skipped("run_with_hooks", gated_skipped, stacklevel=4)
 
         context_level = getattr(self, "context_level", 0) + 1
         self.context_level = context_level
+        completed = False
         try:
             if effective_stop_layer is not None:
                 stop_at_layer = effective_stop_layer
@@ -1447,14 +1564,18 @@ class BridgeCore:
             apply_hooks(bwd_hooks, False)
             if start_at_layer is not None:
                 kwargs["start_at_layer"] = start_at_layer
+            self._open_hook_trackers().append(tracker)
             try:
                 output = self.forward(
                     input, return_type=return_type, stop_at_layer=stop_at_layer, **kwargs
                 )
             except StopAtLayerException as e:
                 output = e.layer_output
+            completed = True
             return output
         finally:
+            if tracker in self._open_hook_trackers():
+                self._open_hook_trackers().remove(tracker)
             try:
                 for hook_point, direction, handle in added_hooks:
                     if reset_hooks_end:
@@ -1463,6 +1584,9 @@ class BridgeCore:
                         hook_point.clear_context()
             finally:
                 self.context_level -= 1
+                # A forward that raised did not finish its run, so it is not judged.
+                if completed:
+                    tracker.warn("run_with_hooks", stacklevel=3)
 
     # ---- high-level execution: run_with_cache ----
 
