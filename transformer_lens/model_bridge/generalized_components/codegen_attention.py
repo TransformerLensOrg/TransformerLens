@@ -10,7 +10,7 @@ Optional parameters (may be absent in some CodeGen checkpoints):
   - rotary_dim: if None, RoPE is applied to the full head dimension.
 """
 
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional, Tuple, cast
 
 import torch
 
@@ -45,6 +45,17 @@ def _rotate_every_two(x: torch.Tensor) -> torch.Tensor:
     x2 = x[:, :, :, 1::2]  # odd-indexed dims
     x = torch.stack((-x2, x1), dim=-1)
     return x.flatten(-2)
+
+
+def _create_sinusoidal_positions(num_pos: int, dim: int) -> torch.Tensor:
+    """Return CodeGen's sinusoidal RoPE table, ``[num_pos, dim]`` (sin half, then cos half).
+
+    Mirrors ``create_sinusoidal_positions`` from
+    ``transformers.models.codegen.modeling_codegen``.
+    """
+    inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2, dtype=torch.int64) / dim))
+    sinusoid_inp = torch.arange(num_pos, dtype=torch.int64).float()[:, None] * inv_freq
+    return torch.cat((torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)), dim=1)
 
 
 def _apply_rotary_pos_emb(
@@ -151,6 +162,9 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         ``embed_positions``) and a HuggingFace-style 4D causal attention mask.
         The mask is provided so that both the bridge and the HF component
         apply identical causal masking during the ``all_components`` benchmark.
+        From transformers 5.24 the attention module has no ``embed_positions``
+        and takes ``position_embeddings`` (sin, cos) instead; when the wrapped
+        module has no table of its own, they are built here from ``position_ids``.
 
         Args:
             batch_size: Batch size.
@@ -159,8 +173,9 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
             dtype: Tensor dtype (defaults to float32).
 
         Returns:
-            Dict with ``hidden_states``, ``position_ids``, and
-            ``attention_mask`` suitable for both bridge and HF forward calls.
+            Dict with ``hidden_states``, ``position_ids``, ``attention_mask``
+            and, on transformers >= 5.24, ``position_embeddings``, suitable for
+            both bridge and HF forward calls.
         """
         import torch
 
@@ -180,13 +195,22 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         )
         causal[:, 0] = causal[:, 0].masked_fill(mask_upper, min_val)
 
-        return {
+        position_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, -1)
+        inputs: Dict[str, Any] = {
             "hidden_states": torch.randn(batch_size, seq_len, d_model, device=device, dtype=dtype),
-            "position_ids": torch.arange(seq_len, device=device)
-            .unsqueeze(0)
-            .expand(batch_size, -1),
+            "position_ids": position_ids,
             "attention_mask": causal,
         }
+        # transformers >= 5.24 keeps the table on CodeGenModel.rotary_emb and passes
+        # (sin, cos) to the attention as position_embeddings.
+        if self.original_component is not None and not hasattr(
+            self.original_component, "embed_positions"
+        ):
+            rotary_dim = getattr(self.original_component, "rotary_dim", None)
+            table = _create_sinusoidal_positions(seq_len, rotary_dim or d_model).to(device)
+            sincos = table[position_ids]
+            inputs["position_embeddings"] = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
+        return inputs
 
     # ------------------------------------------------------------------
     # Component wiring
@@ -301,8 +325,18 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         q, k, v, batch_size, seq_len, head_dim = self._reshape_qkv_to_heads(q, k, v, num_heads)
 
         # ---- RoPE ----
+        # transformers >= 5.24 computes (sin, cos) once in CodeGenModel.rotary_emb and
+        # passes them as position_embeddings; earlier versions keep the sinusoidal
+        # table on the attention module as embed_positions.
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = kwargs.get(
+            "position_embeddings", None
+        )
         position_ids: Optional[torch.Tensor] = kwargs.get("position_ids", None)
-        if position_ids is not None:
+        sin: Optional[torch.Tensor] = None
+        cos: Optional[torch.Tensor] = None
+        if position_embeddings is not None:
+            sin, cos = position_embeddings
+        elif position_ids is not None:
             embed_positions = cast(torch.Tensor, self.original_component.embed_positions)  # type: ignore[union-attr]
             # Move buffer to the right device if needed (mirrors HF forward)
             if embed_positions.device != position_ids.device:
@@ -313,6 +347,7 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
             half = sincos.shape[-1] // 2
             sin, cos = sincos[:, :, :half], sincos[:, :, half:]
 
+        if sin is not None and cos is not None:
             rotary_dim: Optional[int] = getattr(self.original_component, "rotary_dim", None)
             if rotary_dim is not None:
                 # Only rotate the first rotary_dim dimensions; pass the rest through.
@@ -329,7 +364,10 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         kv_seq_len = k.shape[-2]
 
         # ---- Scaled dot-product (fp32, matching HF CodeGen._attn) ----
-        scale = cast(torch.Tensor, self.original_component.scale_attn)  # type: ignore[union-attr]
+        # transformers >= 5.24 stores the reciprocal, head_dim ** -0.5, as `scaling`.
+        scale = getattr(self.original_component, "scale_attn", None)
+        if scale is None:
+            scale = 1.0 / cast(float, self.original_component.scaling)
         q_f32 = q.to(torch.float32)
         k_f32 = k.to(torch.float32)
 

@@ -8,10 +8,13 @@ Tests cover:
 - RoPE is applied to Q and K (partial rotary_dim path and full-dim path)
 - Causal masking is applied correctly
 - KV cache is passed through to _update_kv_cache
+- The transformers >= 5.24 layout (position_embeddings, scaling) gives the
+  same output as the earlier layout (embed_positions, scale_attn)
 """
 
 from unittest.mock import MagicMock
 
+import pytest
 import torch
 
 from transformer_lens.model_bridge.generalized_components.codegen_attention import (
@@ -518,3 +521,61 @@ class TestCodeGenAttentionBridgeCausalMask:
                 assert torch.all(
                     attn_weights[:, :, i, j].abs() < 1e-5
                 ), f"attn_weights[:, :, {i}, {j}] should be ~0 (future position)"
+
+
+# ---------------------------------------------------------------------------
+# transformers >= 5.24 layout
+# ---------------------------------------------------------------------------
+
+
+def _to_transformers_5_24_layout(original, head_dim: int) -> None:
+    """Rearrange the stand-in in place as transformers >= 5.24 lays out CodeGenAttention.
+
+    The sinusoidal table moves to ``CodeGenModel.rotary_emb``, which passes
+    ``position_embeddings`` (sin, cos) to the attention, and ``scale_attn``
+    (``head_dim ** 0.5``) becomes ``scaling`` (``head_dim ** -0.5``).
+    """
+    del original.embed_positions
+    del original.scale_attn
+    original.scaling = float(head_dim) ** -0.5
+
+
+class TestCodeGenAttentionBridgeTransformers524Layout:
+    """The 5.24 layout must reproduce the earlier layout's attention exactly."""
+
+    @pytest.mark.parametrize("rotary_dim", [8, 16])
+    def test_position_embeddings_match_embed_positions(self, rotary_dim):
+        """Output and pattern with position_embeddings equal those with embed_positions."""
+        config = _make_config(rotary_dim=rotary_dim)
+        bridge, original = _make_bridge(config=config)
+        B, S = 2, 6
+        hs = torch.randn(B, S, config.d_model)
+        pos_ids = torch.arange(3, 3 + S).unsqueeze(0).expand(B, -1)
+        sincos = original.embed_positions[pos_ids]
+        position_embeddings = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
+
+        with torch.no_grad():
+            old_out, old_weights = bridge(hs, position_ids=pos_ids)
+            _to_transformers_5_24_layout(original, config.d_head)
+            new_out, new_weights = bridge(hs, position_embeddings=position_embeddings)
+
+        torch.testing.assert_close(new_out, old_out, rtol=0.0, atol=0.0)
+        torch.testing.assert_close(new_weights, old_weights, rtol=0.0, atol=0.0)
+
+    def test_random_inputs_supply_position_embeddings(self):
+        """Without a table on the module, get_random_inputs builds (sin, cos) from position_ids."""
+        config = _make_config()
+        bridge, original = _make_bridge(config=config)
+        old_inputs = bridge.get_random_inputs(batch_size=2, seq_len=5)
+        assert "position_embeddings" not in old_inputs
+        table = original.embed_positions
+
+        _to_transformers_5_24_layout(original, config.d_head)
+        inputs = bridge.get_random_inputs(batch_size=2, seq_len=5)
+        sin, cos = inputs["position_embeddings"]
+        torch.testing.assert_close(
+            torch.cat([sin, cos], dim=-1), table[inputs["position_ids"]], rtol=0.0, atol=0.0
+        )
+        with torch.no_grad():
+            attn_out, _ = bridge(**inputs)
+        assert attn_out.shape == (2, 5, config.d_model)
