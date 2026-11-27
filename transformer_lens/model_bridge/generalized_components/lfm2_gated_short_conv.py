@@ -1,7 +1,11 @@
 """LiquidAI LFM2 gated short-convolution mixer bridge."""
+from typing import Any
 
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.depthwise_conv1d import (
+    route_causal_conv1d,
 )
 
 
@@ -27,3 +31,9 @@ class Lfm2ShortConvBridge(GeneralizedComponent):
         "hook_conv": "conv.hook_out",
         "hook_gated": "out.hook_in",
     }
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        # transformers >= 5.15 calls a module-level causal_conv1d_fn with conv's
+        # weight; route it through the conv bridge so its hooks fire.
+        with route_causal_conv1d(self.original_component, "conv"):
+            return super().forward(*args, **kwargs)

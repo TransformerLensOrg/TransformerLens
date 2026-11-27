@@ -8,6 +8,9 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
 )
+from transformer_lens.model_bridge.generalized_components.depthwise_conv1d import (
+    route_causal_conv1d,
+)
 from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
     SSMStateHookMixin,
 )
@@ -79,7 +82,10 @@ class SSM2MixerBridge(SSMStateHookMixin, GeneralizedComponent):
         if self.eager_scan and hidden_states is not None and not has_cache:
             output: Any = self._eager_scan_forward(hidden_states, kwargs.get("attention_mask"))
         else:
-            output = self.original_component(*args, **kwargs)
+            # transformers >= 5.15 calls a module-level causal_conv1d_fn with
+            # conv1d's weight; route it through the conv1d bridge so its hooks fire.
+            with route_causal_conv1d(self.original_component, "conv1d"):
+                output = self.original_component(*args, **kwargs)
 
         if isinstance(output, tuple) and len(output) > 0:
             first = output[0]
