@@ -57,6 +57,7 @@ from transformer_lens.tools.analysis.direct_logit_attribution import (
     direct_logit_attribution,
 )
 from transformer_lens.tools.analysis.interchange import (
+    PAD_POSITION,
     LearnedSubspace,
     NormMatchedPlacebo,
     SubspaceInterchange,
@@ -103,6 +104,7 @@ __all__ = [
     "LearnedSubspace",
     "Node",
     "NormMatchedPlacebo",
+    "PAD_POSITION",
     "SparseProbeConvergenceError",
     "SubspaceBasis",
     "SubspaceInterchange",

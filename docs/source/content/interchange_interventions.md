@@ -65,7 +65,7 @@ print((logits.argmax(-1) == test_targets).float().mean())  # tensor(1.)
 `task_logits` runs the model in one forward pass and reads the task out of its output, so the
 tools do not assume next-token prediction; the hook must fire exactly once in that pass.
 Activations at the hook must be `[batch, d_model]`, or `[batch, pos, d_model]` with one position
-index per example. Fit a basis on one set of pairs and evaluate it on pairs it was not fit on, as
+index per example, or several (see [Several positions](#several-positions)). Fit a basis on one set of pairs and evaluate it on pairs it was not fit on, as
 here: the held-out pairs put the same nouns in a new frame. Reusing the nouns gives the
 arbitrary-label control below keys it can learn; holding out nouns as well is a stronger test of
 the real alignment.
@@ -74,6 +74,52 @@ the real alignment.
 return CPU tensors, so memory does not grow with the number of pairs. `run_with_intervention` is
 the same intervention as one differentiable forward pass, for training an intervention's
 parameters.
+
+## Several positions
+
+A variable is often spread over several positions, and then a one-position interchange
+underestimates it. `positions` may also be `[batch, k]`, in two modes:
+
+- **Aligned** (the default). Base position `j` takes the source's activation at source position
+  `j`. Each (example, position) pair is one row of the intervention, so every intervention and
+  basis works unchanged, with one basis shared by the `k` positions. Pad shorter rows with
+  `PAD_POSITION` (from `transformer_lens.tools.analysis`), in the same slots for base and source; `collect_activations` returns
+  `[batch, k, d_model]`, NaN in the padded slots.
+- **Pooled** (`pool="mean"`). Each row names a span. `collect_activations` returns the span
+  means, `[batch, d_model]`, and the intervention maps the base span's mean and the source span's
+  mean to a new mean. Every base position in the span then moves by the same amount, the change
+  in the mean: for `SubspaceInterchange`, the span's mean takes the source's coordinates inside
+  the subspace, and each position keeps its offset from the mean. No alignment is needed, so base
+  and source spans may differ in length, as words do in speech.
+
+`PAD_POSITION` is never a valid index. Other negative indices are rejected in `[batch, k]`
+positions: -1 means the last position in `[batch]` positions, so in a row it raises an error
+instead of being read as padding. Write the last position out, e.g. `seq_len - 1`.
+
+Subject number in "The key(s) near the cabinet" is carried jointly by the subject and the
+preposition after it at block 4. Patching the whole residual stream at either position alone
+moves few predictions, while patching both moves them all:
+
+```python
+full = SubspaceInterchange(torch.eye(bridge.cfg.d_model))
+hook = "blocks.4.hook_out"
+subject = test_at
+preposition = test_at + 1
+both = torch.stack([subject, preposition], dim=1)  # [batch, 2]
+
+for at, pool in ((subject, None), (preposition, None), (both, None), (both, "mean")):
+    acts = collect_activations(bridge, hook, test_source, task_logits, positions=at, pool=pool)
+    logits = intervened_logits(
+        bridge, hook, full, test_base, acts, task_logits, positions=at, pool=pool
+    )
+    print((logits.argmax(-1) == test_targets).float().mean())
+# tensor(0.1250), tensor(0.3750), tensor(1.), tensor(1.)
+```
+
+`fit_das` takes the same `[batch, k]` `base_positions` and `source_positions`, and `pool`; it
+learns one subspace for all `k` positions. Pooling is a different intervention, not a cheaper
+version of alignment: where the variable sits at one position of the span, pooling over the
+whole span dilutes its shift by the span's length.
 
 ## Bases and baselines
 
