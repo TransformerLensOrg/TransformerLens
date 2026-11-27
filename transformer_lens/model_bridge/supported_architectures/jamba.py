@@ -54,12 +54,16 @@ from transformer_lens.model_bridge.generalized_components import (
     GatedMLPBridge,
     LinearBridge,
     MoEBridge,
+    MoERouterBridge,
     RMSNormalizationBridge,
     SSMMixerBridge,
     UnembeddingBridge,
 )
 from transformer_lens.model_bridge.generalized_components.base import (
     GeneralizedComponent,
+)
+from transformer_lens.model_bridge.generalized_components.moe import (
+    hf_routers_return_logits_weights_indices,
 )
 
 
@@ -191,6 +195,18 @@ class JambaArchitectureAdapter(ArchitectureAdapter):
             },
         )
 
+    def _build_router_bridge(self) -> LinearBridge:
+        """The sparse layers' router.
+
+        Up to transformers 5.21 it is an ``nn.Linear`` that returns the logits.
+        From 5.22 it is a ``JambaTopKRouter`` returning
+        ``(router_logits, top_k_weights, top_k_index)``, which MoERouterBridge
+        unpacks (a plain LinearBridge would hand the tuple to its hook).
+        """
+        if hf_routers_return_logits_weights_indices():
+            return MoERouterBridge(name="router", optional=True)
+        return LinearBridge(name="router", optional=True)
+
     def _build_ffn_bridge(self, num_experts: int) -> GatedMLPBridge | MoEBridge:
         """Dense SwiGLU or mixed dense/MoE sharing HF path ``.feed_forward``."""
         if num_experts > 1:
@@ -207,7 +223,7 @@ class JambaArchitectureAdapter(ArchitectureAdapter):
                     "dense_gate": LinearBridge(name="gate_proj", optional=True),
                     "dense_in": LinearBridge(name="up_proj", optional=True),
                     "dense_out": LinearBridge(name="down_proj", optional=True),
-                    "router": LinearBridge(name="router", optional=True),
+                    "router": self._build_router_bridge(),
                 },
             )
         return self._gated_mlp(name="feed_forward")

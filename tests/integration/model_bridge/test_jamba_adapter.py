@@ -28,6 +28,9 @@ from transformer_lens.model_bridge.generalized_components import (
     BlockBridge,
     SSMMixerBridge,
 )
+from transformer_lens.model_bridge.generalized_components.moe import (
+    hf_routers_return_logits_weights_indices,
+)
 from transformer_lens.model_bridge.generalized_components.ssm_protocol import (
     find_ssm_mixer,
 )
@@ -209,6 +212,30 @@ class TestJambaMoEDenseMix:
         moe = bridge.blocks[1].mlp.original_component
         assert isinstance(dense, JambaMLP)
         assert isinstance(moe, JambaSparseMoeBlock)
+
+    def test_router_hook_out_is_the_logits(self, cache) -> None:
+        # transformers >= 5.22 routes through a JambaTopKRouter that returns
+        # (router_logits, top_k_weights, top_k_index); hook_out stays the logits.
+        for i in ATTN_LAYERS:  # the MoE layers of this config
+            logits = cache[f"blocks.{i}.mlp.router.hook_out"]
+            assert logits.is_floating_point() and logits.shape == (8, 4)
+
+    def test_router_routing_hooks_on_topk_routers(self, cache) -> None:
+        if not hf_routers_return_logits_weights_indices():
+            # transformers < 5.22: the router is an nn.Linear with no top-k to hook.
+            for i in ATTN_LAYERS:
+                assert f"blocks.{i}.mlp.router.hook_expert_indices" not in cache
+            return
+        for i in ATTN_LAYERS:
+            logits = cache[f"blocks.{i}.mlp.router.hook_out"]
+            indices = cache[f"blocks.{i}.mlp.router.hook_expert_indices"]
+            weights = cache[f"blocks.{i}.mlp.router.hook_expert_weights"]
+            assert not indices.is_floating_point() and indices.shape == (8, 2)
+            assert weights.shape == (8, 4)
+            assert torch.equal(
+                indices.sort(dim=-1).values,
+                logits.topk(2, dim=-1).indices.sort(dim=-1).values,
+            )
 
 
 class TestJambaAblationSurface:
