@@ -492,7 +492,7 @@ class ActivationCache:
         )
         if block_type in ("mlp", "moe"):
             return f"{layer}_mlp_out"
-        if block_type in ("attention", "full_attention"):
+        if block_type in ("attention", "full_attention", "sliding_attention"):
             return f"{layer}_attn_out"
         return f"{layer}_{name}_out"
 
