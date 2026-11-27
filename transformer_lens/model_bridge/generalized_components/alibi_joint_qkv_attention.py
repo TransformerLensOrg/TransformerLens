@@ -64,10 +64,14 @@ class ALiBiJointQKVAttentionBridge(JointQKVAttentionBridge):
 
         hooked_input = self.hook_in(hidden_states)
 
-        # Split fused QKV via parent's split mechanism
-        q_output = self.q(hooked_input)
-        k_output = self.k(hooked_input)
-        v_output = self.v(hooked_input)
+        # Split fused QKV via parent's split mechanism; the per-head fork honours
+        # use_split_qkv_input / use_attn_in, which the bridge accepts for this class.
+        if self._is_split_qkv_fork_active():
+            q_output, k_output, v_output = self._split_forward_qkv(hooked_input)
+        else:
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
 
         attn_output, attn_weights = self._reconstruct_attention(
             q_output, k_output, v_output, **kwargs
@@ -141,7 +145,20 @@ class ALiBiJointQKVAttentionBridge(JointQKVAttentionBridge):
         attn_output = self._reshape_attn_output(
             attn_output, batch_size, seq_len, num_heads, head_dim
         )
-        attn_output = self._apply_output_projection(attn_output)
+        # supports_attn_result is inherited, so this override must fork per head itself or
+        # use_attn_result is accepted while hook_result never fires.
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and hasattr(self, "o")
+            and self.o.original_component is not None
+        ):
+            # Fire hook_z on the flat pre-projection tensor first, so patches at
+            # hook_z reach the per-head computation (same order as the parent).
+            attn_output = self.o.hook_in(attn_output)
+            z_4d = attn_output.view(batch_size, seq_len, num_heads, head_dim)
+            attn_output = self._compute_per_head_result(z_4d, num_heads, head_dim)
+        else:
+            attn_output = self._apply_output_projection(attn_output)
 
         return attn_output, attn_weights
 

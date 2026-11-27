@@ -103,8 +103,10 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
 
     All TransformerLens hooks fire in the forward pass:
     ``hook_q``, ``hook_k``, ``hook_v``, ``hook_attn_scores``,
-    ``hook_pattern``, ``hook_z`` (via ``o.hook_in``), ``hook_result``
-    (via ``hook_out``).
+    ``hook_pattern``, ``hook_z`` (via ``o.hook_in``) and ``hook_out``;
+    ``hook_result`` (per head) with ``use_attn_result``, and the
+    ``hook_q_input`` / ``hook_k_input`` / ``hook_v_input`` / ``hook_attn_in``
+    forks with ``use_split_qkv_input`` / ``use_attn_in``.
     """
 
     def __init__(
@@ -276,9 +278,13 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
         hooked_input = self.hook_in(hidden_states)
 
         # ---- 3. Q / K / V projections (fires hook_q, hook_k, hook_v) ----
-        q_output = self.q(hooked_input)
-        k_output = self.k(hooked_input)
-        v_output = self.v(hooked_input)
+        # The per-head fork honours use_split_qkv_input / use_attn_in.
+        if self._is_split_qkv_fork_active():
+            q_output, k_output, v_output = self._split_forward_qkv(hooked_input)
+        else:
+            q_output = self.q(hooked_input)
+            k_output = self.k(hooked_input)
+            v_output = self.v(hooked_input)
 
         # ---- 4. Reconstruct attention with RoPE ----
         attn_output, attn_weights = self._reconstruct_attention(
@@ -399,7 +405,20 @@ class CodeGenAttentionBridge(JointQKVAttentionBridge):
             attn_output, batch_size, seq_len, num_heads, head_dim
         )
 
-        # Output projection (fires hook_z via o.hook_in)
-        attn_output = self._apply_output_projection(attn_output)
+        # supports_attn_result is inherited, so this override must fork per head itself or
+        # use_attn_result is accepted while hook_result never fires.
+        if (
+            bool(getattr(self.config, "use_attn_result", False))
+            and hasattr(self, "o")
+            and self.o.original_component is not None
+        ):
+            # Fire hook_z on the flat pre-projection tensor first, so patches at
+            # hook_z reach the per-head computation (same order as the parent).
+            attn_output = self.o.hook_in(attn_output)
+            z_4d = attn_output.view(batch_size, seq_len, num_heads, head_dim)
+            attn_output = self._compute_per_head_result(z_4d, num_heads, head_dim)
+        else:
+            # Output projection (fires hook_z via o.hook_in)
+            attn_output = self._apply_output_projection(attn_output)
 
         return (attn_output, attn_weights)
