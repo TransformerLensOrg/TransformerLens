@@ -8,6 +8,7 @@ from .activation_functions import (
     softcap_enabled,
     solu,
 )
+from .activation_quantiles import ActivationQuantiles, band_ablation_hook
 from .attribute_utils import get_nested_attr, set_nested_attr
 from .components_utils import get_act_name
 from .defaults_utils import (

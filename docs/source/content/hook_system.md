@@ -149,6 +149,29 @@ def ablate(z, hook):
 model.run_with_hooks("text", fwd_hooks=[(f"blocks.{layer}.attn.hook_z", ablate)])
 ```
 
+### Ablate each neuron's central quantile band, keeping its tails
+
+Thresholds come from each neuron's own activation distribution. `ActivationQuantiles` estimates
+per-unit quantiles over a corpus in bounded memory (exact up to `max_samples` rows, a uniform
+sample beyond), and `band_ablation_hook` replaces every activation inside `[low, high]` with
+`value`, so only firings below `low` or above `high` pass:
+
+```python
+from transformer_lens.utilities import ActivationQuantiles, band_ablation_hook
+
+hook_name = f"blocks.{layer}.mlp.hook_post"
+stats = ActivationQuantiles(max_samples=50_000)
+for tokens in batches:
+    _, cache = model.run_with_cache(tokens, names_filter=hook_name)
+    stats.update(cache[hook_name])            # pass mask= to skip padding positions
+low, high = stats.quantiles([0.03, 0.97])
+
+logits = model.run_with_hooks(
+    "text",
+    fwd_hooks=[(hook_name, band_ablation_hook(low, high))],  # or value=stats.mean
+)
+```
+
 ### Activation patching (swap an activation from one prompt into another)
 
 ```python
