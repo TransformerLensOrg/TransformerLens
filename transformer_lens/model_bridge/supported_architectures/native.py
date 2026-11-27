@@ -119,8 +119,11 @@ class NativeArchitectureAdapter(ArchitectureAdapter):
     def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
 
-        self.supports_fold_ln = True
-        self.supports_center_writing_weights = True
+        # Shortformer adds W_pos to the q/k inputs after ln1, so they aren't ln1's
+        # centered, unit-scale output: folding ln1 or centering W_pos changes the model.
+        shortformer = (cfg.positional_embedding_type or "").lower() == "shortformer"
+        self.supports_fold_ln = not shortformer or _uses_no_norm(cfg)
+        self.supports_center_writing_weights = not shortformer
         # Native Q/K/V/O are nn.Linear [out, in]; the fold_layer_norm formulas
         # index [head, d_model, d_head]. Without these rearranges folding either
         # raises inside einops or silently mis-places the scale.

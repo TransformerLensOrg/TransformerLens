@@ -3,7 +3,8 @@
 Cfg-driven features: ``normalization_type`` (LN / RMS / LNPre / RMSPre —
 the ``Pre`` variants are param-free), ``final_rms``, ``gated_mlp``,
 ``attn_only``, ``n_key_value_heads`` (GQA), ``attn_scores_soft_cap``,
-``output_logits_soft_cap``, ``positional_embedding_type`` (standard / rotary),
+``output_logits_soft_cap``, ``positional_embedding_type`` (standard / rotary /
+shortformer),
 ``rotary_dim`` / ``rotary_base`` / ``rope_scaling`` (linear PI, dynamic/NTK,
 llama3 by-parts).
 """
@@ -307,12 +308,18 @@ class NativeAttention(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         pattern_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        shortformer_pos_embed: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         batch, seq, _ = hidden_states.shape
 
-        q = self.q(hidden_states).view(batch, seq, self.n_heads, self.d_head).transpose(1, 2)
-        k = self.k(hidden_states).view(batch, seq, self.n_kv_heads, self.d_head).transpose(1, 2)
+        # Shortformer: positions feed queries and keys only, never the values.
+        qk_input = hidden_states
+        if shortformer_pos_embed is not None:
+            qk_input = hidden_states + shortformer_pos_embed
+
+        q = self.q(qk_input).view(batch, seq, self.n_heads, self.d_head).transpose(1, 2)
+        k = self.k(qk_input).view(batch, seq, self.n_kv_heads, self.d_head).transpose(1, 2)
         v = self.v(hidden_states).view(batch, seq, self.n_kv_heads, self.d_head).transpose(1, 2)
 
         if self.rotary is not None:
@@ -451,12 +458,14 @@ class NativeBlock(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
+        shortformer_pos_embed: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> tuple[torch.Tensor]:
         attn_out, _pattern = self.attn(
             self.ln1(hidden_states),
             attention_mask=attention_mask,
             position_ids=position_ids,
+            shortformer_pos_embed=shortformer_pos_embed,
         )
         hidden_states = hidden_states + attn_out
         if not self.cfg.attn_only:
@@ -482,7 +491,8 @@ class NativeModel(nn.Module):
         self.tok_embed = nn.Embedding(cfg.d_vocab, cfg.d_model)
 
         kind = _positional_kind(cfg)
-        if kind == "standard":
+        self.shortformer = kind == "shortformer"
+        if kind in ("standard", "shortformer"):
             self.pos = nn.Embedding(cfg.n_ctx, cfg.d_model)
             self.rotary = None
         elif kind == "rotary":
@@ -491,7 +501,7 @@ class NativeModel(nn.Module):
         else:
             raise ValueError(
                 f"Unsupported positional_embedding_type={kind!r}. "
-                f"NativeModel supports 'standard' and 'rotary'."
+                f"NativeModel supports 'standard', 'rotary' and 'shortformer'."
             )
 
         self.layers = TypedModuleList(
@@ -541,12 +551,21 @@ class NativeModel(nn.Module):
                 torch.arange(seq, device=model_input.device).unsqueeze(0).expand(batch, -1)
             )
 
+        # Shortformer: positions skip the residual stream and go to each block's q/k.
+        shortformer_pos_embed: Optional[torch.Tensor] = None
         if self.pos is not None:
-            hidden_states = hidden_states + self.pos(position_ids)
+            pos_embed = self.pos(position_ids)
+            if self.shortformer:
+                shortformer_pos_embed = pos_embed
+            else:
+                hidden_states = hidden_states + pos_embed
 
         for block in self.layers:
             (hidden_states,) = block(
-                hidden_states, attention_mask=attention_mask, position_ids=position_ids
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                shortformer_pos_embed=shortformer_pos_embed,
             )
         hidden_states = self.ln_out(hidden_states)
         logits = self.head(hidden_states)
