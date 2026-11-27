@@ -100,6 +100,11 @@ User contributed examples of the library being used in action:
   scripts for training decision transformers which uses transformer lens to view intermediate
   activations, perform attribution and ablations. A write up of the initial work can be found
   [here](https://www.lesswrong.com/posts/bBuBDJBYHt39Q5zZy/decision-transformer-interpretability).
+* [MechInterpLens](https://github.com/aditeyabaral/MechInterpLens): A starter template for
+  mechanistic interpretability on toy transformers. Train a small GPT-2 on a task you design,
+  capture its activations with TransformerLens, and ablate every neuron and attention head to find
+  the ones the model needs. Includes a [Colab
+  quickstart](https://colab.research.google.com/github/aditeyabaral/MechInterpLens/blob/main/examples/quickstart.ipynb).
 
 Check out [our demos folder](https://github.com/TransformerLensOrg/TransformerLens/tree/main/demos) for
 more examples of TransformerLens in practice
