@@ -14,6 +14,8 @@ from types import CodeType, FunctionType, MethodType
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import torch
+import transformers
+from packaging import version
 from torch import nn
 
 from transformer_lens.hook_points import HookPoint
@@ -622,6 +624,19 @@ class MoEBridge(GeneralizedComponent):
         else:
             hidden_states = self.hook_out(output)
             return hidden_states
+
+
+def hf_routers_return_logits_weights_indices() -> bool:
+    """Whether the installed transformers has the router changes of 5.22.
+
+    transformers 5.22 (huggingface/transformers#49206) made the GraniteMoe-family
+    routers return ``(router_logits, top_k_weights, top_k_index)``, the order
+    MoERouterBridge expects by default, instead of
+    ``(top_k_index, top_k_weights, router_logits)``; and it replaced Jamba's
+    ``nn.Linear`` router, which returned the logits, with a ``JambaTopKRouter``
+    that returns that tuple.
+    """
+    return version.parse(transformers.__version__).release >= (5, 22)
 
 
 class MoERouterBridge(LinearBridge):

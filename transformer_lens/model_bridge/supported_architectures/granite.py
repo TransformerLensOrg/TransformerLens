@@ -18,6 +18,9 @@ from transformer_lens.model_bridge.generalized_components import (
     ScaledResidualBlockBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.moe import (
+    hf_routers_return_logits_weights_indices,
+)
 
 
 class GraniteArchitectureAdapter(ArchitectureAdapter):
@@ -74,18 +77,22 @@ class GraniteArchitectureAdapter(ArchitectureAdapter):
     def _build_moe_bridge(self) -> MoEBridge:
         """Sparse MoE block with a hookable router.
 
-        logits_index=-1: GraniteMoe-family routers return
+        Before transformers 5.22, GraniteMoe-family routers return
         (top_k_index, top_k_weights, router_logits) — index 0 is an int64
-        index tensor, so the default would hook the wrong element.
+        index tensor, so the default positions would hook the wrong element.
+        From 5.22 they return (router_logits, top_k_weights, top_k_index),
+        the default.
         """
+        if hf_routers_return_logits_weights_indices():
+            router = MoERouterBridge(name="router")
+        else:
+            router = MoERouterBridge(
+                name="router", logits_index=-1, indices_index=0, weights_index=1
+            )
         return MoEBridge(
             name="block_sparse_moe",
             config=self.cfg,
-            submodules={
-                "gate": MoERouterBridge(
-                    name="router", logits_index=-1, indices_index=0, weights_index=1
-                )
-            },
+            submodules={"gate": router},
         )
 
     def _build_component_mapping(self) -> dict:

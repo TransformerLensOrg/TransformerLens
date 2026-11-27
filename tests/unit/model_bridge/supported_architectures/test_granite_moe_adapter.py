@@ -19,6 +19,9 @@ from transformer_lens.model_bridge.generalized_components import (
     RotaryEmbeddingBridge,
     UnembeddingBridge,
 )
+from transformer_lens.model_bridge.generalized_components.moe import (
+    hf_routers_return_logits_weights_indices,
+)
 from transformer_lens.model_bridge.supported_architectures.granite import (
     GraniteArchitectureAdapter,
 )
@@ -230,5 +233,9 @@ def test_moe_router_is_hookable(adapter: GraniteMoeArchitectureAdapter) -> None:
     router = mlp.submodules["gate"]
     assert isinstance(router, MoERouterBridge)
     assert router.name == "router"
-    # (top_k_index, top_k_weights, router_logits) — index 0 is int64 indices.
-    assert router.logits_index == -1
+    if hf_routers_return_logits_weights_indices():
+        # transformers >= 5.22: (router_logits, top_k_weights, top_k_index).
+        assert (router.logits_index, router.weights_index, router.indices_index) == (0, 1, 2)
+    else:
+        # (top_k_index, top_k_weights, router_logits) — index 0 is int64 indices.
+        assert (router.logits_index, router.weights_index, router.indices_index) == (-1, 1, 0)
