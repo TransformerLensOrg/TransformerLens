@@ -166,6 +166,28 @@ Activation caching benchmarks:
 - `benchmark_run_with_cache()` - Test cache functionality
 - `benchmark_activation_cache()` - Compare cached activations
 
+### `adapter_coverage.py`
+
+Adapter coverage checks. Logit parity cannot tell whether an adapter maps and exposes the
+whole architecture, because a bridge that delegates its forward to HuggingFace reproduces
+the logits whatever its hooks describe. These checks are report-only: they are not part of
+`run_benchmark_suite()` and do not affect a model's registry status.
+
+A finding is one of two kinds. A **misleading** adapter (wrong hooks or logits) fails; an
+**incomplete** one passes, with what it leaves out listed as gaps and counted in a coverage
+figure.
+
+- `benchmark_residual_floor()` - Every block's change to the residual stream is accounted for by hooked outputs (blocking)
+- `benchmark_hook_consistency()` - Bridge logits match HuggingFace, the residual stream adds up, the final residual gives the logits, and hook edits match edits on the HF module (blocking)
+- `benchmark_layer_type_coverage()` - The same holds on layer kinds the config allows but the checkpoint lacks (blocking)
+- `benchmark_scaling_factor_coverage()` - The same holds when a multiplier the checkpoint leaves at 1.0 takes another value (blocking)
+- `benchmark_structural_coverage()` - Which HF parameters are owned by the bridge component their module kind calls for (`MODULE_KIND_OWNERS`); the rest are gaps
+- `benchmark_expected_hooks()` - Which hooks the block classes promise are absent or silent; those are gaps
+- `benchmark_reference_comparison()` - Which of a reference adapter's hook and weight names the adapter lacks; those are gaps
+
+`adapter_coverage_runner.py` runs them on one adapter file in a fresh subprocess; see
+[Checking an Adapter's Coverage](#checking-an-adapters-coverage).
+
 ### `main_benchmark.py`
 
 Main benchmark suite with tiered comparison logic:
@@ -223,6 +245,54 @@ python -m transformer_lens.benchmarks.main_benchmark \
     --no-hf-reference \
     --quiet  # Suppress verbose output
 ```
+
+### Checking an Adapter's Coverage
+
+```bash
+# The adapter already registered for a checkpoint
+python -m transformer_lens.benchmarks.adapter_coverage_runner --checkpoint gpt2
+
+# An adapter file that is not registered, used for this run only
+python -m transformer_lens.benchmarks.adapter_coverage_runner \
+    --adapter path/to/my_adapter.py \
+    --checkpoint org/tiny-random-FooForCausalLM \
+    --output coverage.json
+
+# The same, compared with a reference adapter for the architecture
+python -m transformer_lens.benchmarks.adapter_coverage_runner \
+    --adapter path/to/my_adapter.py \
+    --reference-adapter transformer_lens.model_bridge.supported_architectures.gpt2 \
+    --checkpoint gpt2
+```
+
+The exit code is 0 when there is no blocking finding and 1 otherwise. The JSON report has:
+
+| Field | Meaning |
+| --- | --- |
+| `passed` | No blocking finding |
+| `blocking_findings` | One entry per finding: `check`, `part`, `message` |
+| `n_blocking_parts`, `n_blocking_failed` | How many blocking parts ran and how many failed, counting variant runs |
+| `coverage`, `coverage_basis` | A figure from 0 to 1 and what it is measured against: `reference` (share of a reference adapter's hook and weight names the adapter has) or `ownership` (share of parameter-bearing module path patterns owned by the component for their kind) |
+| `gaps` | One entry per gap: `kind` (`unmapped`, `generic`, `absent_hook`, `silent_hook`, `missing_from_reference`), `where`, `declared`, `reason` |
+| `checks` | One entry per check: `name`, `status` (`pass`, `gaps`, `fail` or `skip`), `message`, `details` |
+
+A check that does not apply is a `skip`; one that could not run is a blocking finding,
+because it certifies nothing. `--hf-class` is read from the checkpoint's config when omitted.
+
+From Python, `run_adapter_coverage()` is the same run as a function, and
+`run_coverage_checks(bridge)` runs the checks on a bridge you have already built, with no
+checkpoint name, adapter file or subprocess:
+
+```python
+from transformer_lens.benchmarks.adapter_coverage_runner import run_coverage_checks
+
+report = run_coverage_checks(bridge)
+print(report["passed"], report["coverage"], report["gaps"])
+```
+
+The layer-type and scaling checks rebuild the architecture from an edited config. Above
+`--max-variant-params` (20M by default) they first rebuild it small, from the checkpoint's
+config with the size fields reduced and random weights.
 
 ## Example Output
 

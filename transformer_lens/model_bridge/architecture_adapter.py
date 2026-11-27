@@ -111,6 +111,11 @@ class ArchitectureAdapter:
     # forward sorts/scatters. They stay hookable at runtime.
     component_test_skip_suffixes: tuple = ()
 
+    # What the adapter leaves unexposed on purpose: HF module path pattern or hook
+    # name -> one-line reason. The adapter coverage check lists each as a declared
+    # gap; a declaration explains a gap and never hides it or lifts a failure.
+    declared_coverage_gaps: Dict[str, str] = {}
+
     # Whether run_with_cache should request attention tensors from Hugging Face.
     # Set False when an adapter reconstructs those tensors but the HF wrapper
     # rejects output_attentions=True.

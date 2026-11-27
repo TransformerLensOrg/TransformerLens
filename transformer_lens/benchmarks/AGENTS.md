@@ -11,6 +11,7 @@ If an agent is here because the user asked to "update the registry" or "verify a
 ## What this directory IS for
 
 - The phase-by-phase benchmark implementations (`forward_pass.py`, `generation.py`, `hook_registration.py`, `weight_processing.py`, `multimodal.py`, `audio.py`, `vision.py`, `encoder_common.py`, `text_quality.py`, `text_quality_profiles.py` (Phase-4 prompt-profile data + resolver), `component_outputs.py`, `backward_gradients.py`, `activation_cache.py`, `component_benchmark.py`).
+- `adapter_coverage.py` + `adapter_coverage_runner.py` — report-only checks that an adapter maps and exposes the whole architecture. Wrong hooks or logits block (residual floor, hook consistency, layer-kind and multiplier variants); unexposed parts are gaps that lower a coverage figure (ownership map, promised hooks, reference comparison). Not called by `verify_models`; a new bridge component needs a role in the ownership map there.
 - `main_benchmark.py` — exploratory benchmark runner for ad-hoc comparison. Useful for debugging a single model's phase scores without touching the registry.
 - `utils.py` — shared helpers including `BenchmarkSeverity`.
 
