@@ -51,15 +51,15 @@ class ParamProcessingConversion:
     def convert(self, state_dict: Dict[str, torch.Tensor], current_key: str) -> torch.Tensor:
         """Convert a parameter in the state dict.
 
-        Fetches tensor from source_key (or current_key if not specified),
-        applies conversion, and stores result at current_key.
+        Fetches tensor from source_key (or current_key if not specified)
+        and applies the conversion.
 
         Args:
-            state_dict: The state dictionary to modify
-            current_key: The key where the converted tensor should be stored
+            state_dict: The state dictionary to read from
+            current_key: The key of the parameter being converted
 
         Returns:
-            Modified state dictionary
+            The converted tensor
         """
         # Determine which key to fetch from
         fetch_key = current_key
@@ -73,17 +73,13 @@ class ParamProcessingConversion:
         return self.tensor_conversion.convert(tensor, state_dict)
 
     def revert(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Revert a parameter conversion in the state dict.
-
-        Fetches tensor from current_key, applies reversion,
-        and stores result back at current_key.
+        """Revert a parameter conversion.
 
         Args:
-            state_dict: The state dictionary to modify
-            current_key: The key of the tensor to revert
+            tensor: The converted tensor to revert
 
         Returns:
-            Modified state dictionary
+            The reverted tensor
         """
         # Apply reversion (handles None gracefully)
         return self.tensor_conversion.revert(tensor)
