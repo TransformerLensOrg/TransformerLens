@@ -79,6 +79,10 @@ class BloomBlockBridge(BlockBridge):
                 f"Original component not set for {self.name}. Call set_original_component() first."
             )
 
+        # Same capture wiring as BlockBridge.forward: without it hook_mlp_in never
+        # fires and the attention forks read ln1's output instead of its input.
+        self._maybe_wire_capture_hooks()
+        self._clear_attention_capture()
         args, kwargs = self._maybe_inject_start_residual(args, kwargs)
         self._check_stop_at_layer(*args, **kwargs)
         args, kwargs = self._hook_input_hidden_states(args, kwargs)
@@ -132,5 +136,8 @@ class BloomBlockBridge(BlockBridge):
             kwargs["alibi"] = alibi
         # else: alibi is already present from HF, don't overwrite it!
 
-        output = self.original_component(*args, **kwargs)
+        try:
+            output = self.original_component(*args, **kwargs)
+        finally:
+            self._clear_attention_capture()
         return self._apply_output_hook(output, wrap_single_element=False)

@@ -146,8 +146,8 @@ def test_cache_callbacks_backward_hooks_and_unrun_contexts_are_not_reported(brid
     assert not _dead_hook_warnings(quiet)
 
 
-def test_codegen_split_qkv_hook_is_accepted_and_reported_as_never_firing() -> None:
-    """The case this warning exists for: the setting is accepted and the hook is dead."""
+def test_codegen_split_qkv_hook_fires_and_only_the_dead_hook_is_reported() -> None:
+    """CodeGen with `use_split_qkv_input` feeds `hook_q_input`; only a hook no forward pass reaches is named."""
     settings: dict[str, Any] = dict(
         vocab_size=128,
         n_embd=64,
@@ -162,7 +162,20 @@ def test_codegen_split_qkv_hook_is_accepted_and_reported_as_never_firing() -> No
     config = CodeGenConfig(**settings)
     codegen = _bridge("CodeGenForCausalLM", config)
     codegen.set_use_split_qkv_input(True)
+    codegen.blocks[0].hook_off_path = HookPoint()
+    codegen.clear_hook_registry()
+    codegen._initialize_hook_registry()
+    assert DEAD in codegen.hook_dict
+
+    fired: list[str] = []
+
+    def _record(tensor: torch.Tensor, *, hook: Any) -> None:
+        fired.append(hook.name)
+
     with pytest.warns(UserWarning, match="never fired") as records:
-        codegen.run_with_hooks(TOKENS, fwd_hooks=[("blocks.0.hook_q_input", _keep)])
+        codegen.run_with_hooks(
+            TOKENS, fwd_hooks=[("blocks.0.hook_q_input", _record), (DEAD, _keep)]
+        )
     (message,) = _dead_hook_warnings(records)
-    assert "blocks.0.hook_q_input" in message
+    assert DEAD in message and "blocks.0.hook_q_input" not in message
+    assert "blocks.0.hook_q_input" in fired
