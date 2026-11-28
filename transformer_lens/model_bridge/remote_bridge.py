@@ -91,6 +91,7 @@ class RemoteBridge(BridgeCore, HookIntrospectionMixin):
         # Early copy of _finalize_return's gate — fail before the wasted remote forward.
         self._check_loss_supported(return_type)
         self._reject_stop_at_layer(kwargs.pop("stop_at_layer", None))
+        self._note_run(None)
         if isinstance(input, str):
             kwargs["input_ids"] = self.to_tokens(input)  # BOS-aware, matches boot_transformers
         elif isinstance(input, list) and any(isinstance(item, str) for item in input):
