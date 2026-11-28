@@ -23,6 +23,15 @@ class Qwen2AudioArchitectureAdapter(Qwen2ArchitectureAdapter):
     _testing_lm_attr = "model.language_model"
     _testing_eager = "config"
 
+    _OPAQUE_AUDIO = (
+        "wrapped opaquely (hook_in/hook_out only); audio features are injected by the "
+        "HF forward when input_features is passed"
+    )
+    declared_coverage_gaps = {
+        "model.audio_tower": _OPAQUE_AUDIO,
+        "model.multi_modal_projector": _OPAQUE_AUDIO,
+    }
+
     def __init__(self, cfg: Any) -> None:
         """Initialize the Qwen2-Audio architecture adapter."""
         super().__init__(cfg)

@@ -12,6 +12,12 @@ from transformer_lens.model_bridge.supported_architectures.llava import (
 
 
 class Mistral3ArchitectureAdapter(LlavaArchitectureAdapter):
+    declared_coverage_gaps = {
+        "model.vision_tower": (
+            "Pixtral's 2D-RoPE block-diagonal attention has no CLIP-shaped bridge, "
+            "so the vision tower is delegated opaquely"
+        ),
+    }
     """Architecture adapter for Mistral3ForConditionalGeneration models."""
 
     def __init__(self, cfg: Any) -> None:

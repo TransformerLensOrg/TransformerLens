@@ -8,6 +8,15 @@ from transformer_lens.benchmarks.activation_cache import (
     benchmark_activation_cache,
     benchmark_run_with_cache,
 )
+from transformer_lens.benchmarks.adapter_coverage import (
+    benchmark_expected_hooks,
+    benchmark_hook_consistency,
+    benchmark_layer_type_coverage,
+    benchmark_reference_comparison,
+    benchmark_residual_floor,
+    benchmark_scaling_factor_coverage,
+    benchmark_structural_coverage,
+)
 from transformer_lens.benchmarks.backward_gradients import (
     benchmark_backward_hooks,
     benchmark_critical_backward_hooks,
@@ -71,4 +80,12 @@ __all__ = [
     # Activation cache benchmarks
     "benchmark_activation_cache",
     "benchmark_run_with_cache",
+    # Adapter coverage checks
+    "benchmark_structural_coverage",
+    "benchmark_expected_hooks",
+    "benchmark_residual_floor",
+    "benchmark_layer_type_coverage",
+    "benchmark_hook_consistency",
+    "benchmark_scaling_factor_coverage",
+    "benchmark_reference_comparison",
 ]

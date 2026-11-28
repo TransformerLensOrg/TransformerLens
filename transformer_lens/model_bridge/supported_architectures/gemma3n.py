@@ -52,6 +52,12 @@ class Gemma3nArchitectureAdapter(ArchitectureAdapter):
     required_libraries: list[str] = ["timm"]
     required_libraries_group: str = "multimodal"
 
+    _TEXT_ONLY = "text-only adapter: the tower stays referenced but unbridged"
+    declared_coverage_gaps = {
+        "model.vision_tower": _TEXT_ONLY,
+        "model.audio_tower": _TEXT_ONLY,
+    }
+
     # Phase 3 (processed/compatibility mode) folds LN into a single residual stream, which
     # AltUp's 4-stream residual can't represent. Phases 1 (HF parity), 2 (hooks), and 4 (text
     # quality) do apply and pass.
